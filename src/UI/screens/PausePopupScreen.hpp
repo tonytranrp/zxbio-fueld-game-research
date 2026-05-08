@@ -12,9 +12,9 @@ namespace biofuel::ui::screens {
 
 // ------------------------------------------------------------------------------
 // PausePopupScreen - Semi-transparent overlay with Resume/Quit options
-// Pushed on top of the active screen when ESC is pressed.
-// Uses MenuHelper for all list rendering and input handling.
-// Uses AnimationController for smooth fade-in/out transitions.
+// Slides in from the right edge when ESC is pressed during gameplay.
+// Uses AnimationController for in/out transitions — ScreenManager's built-in
+// transition system is disabled (duration=0) since we handle visuals ourselves.
 // ------------------------------------------------------------------------------
 class PausePopupScreen final : public Screen {
 public:
@@ -41,25 +41,25 @@ private:
         .hitboxPaddingY = 4,
     };
 
-    // Animation durations
-    static constexpr f32 FADE_DURATION = 0.3f;
-    static constexpr f32 SCALE_DURATION = 0.35f;
+    static constexpr f32 SLIDE_DURATION = 0.3f;
 
     i32 m_selected = 0;
     f32 m_cooldown = 0.0f;
 
-    // Animated values driven by AnimationManager
-    u8 m_overlayAlpha = 0;     // 0→180 for dark overlay fade-in
-    f32 m_panelScale = 0.0f;  // 0→1 for panel pop-in scale
-    f32 m_panelOffsetY = 30.0f; // Y offset for slide-up effect
+    // Animated values driven by AnimationManager callbacks
+    u8 m_overlayAlpha = 0;        // 0→180 dark backdrop
+    f32 m_panelSlidePct = 1.0f;   // 0.0 = centered, 1.0 = off right edge
 
-    bool m_animatingIn = true;   // true during fade-in, false when fully visible
-    bool m_animatingOut = false; // true during fade-out (ESC dismiss)
-    bool m_quitting = false;     // true if dismiss should quit the app
+    bool m_animatingIn = true;    // true during slide-in, blocks input
+    bool m_animatingOut = false;  // true during slide-out (ESC dismiss)
+    bool m_quitting = false;      // true if dismiss should quit the app
 
     void activateSelected();
-    void startFadeIn();
-    void startFadeOut();
+    void startSlideIn();
+    void startSlideOut();
+
+    // Screen-space X offset for current slide position
+    [[nodiscard]] f32 panelSlideOffsetX(i32 screenWidth) const;
 };
 
 } // namespace biofuel::ui::screens

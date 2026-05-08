@@ -5,33 +5,40 @@
 
 namespace biofuel::ui::screens {
 
+// ------------------------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------------------------
+
+f32 PausePopupScreen::panelSlideOffsetX(const i32 screenWidth) const {
+    return (screenWidth + PANEL_WIDTH) / 2.0f * m_panelSlidePct;
+}
+
+// ------------------------------------------------------------------------------
+// Screen lifecycle
+// ------------------------------------------------------------------------------
+
 void PausePopupScreen::onEnter() {
     m_selected = 0;
     m_cooldown = 0.0f;
 
-    // Block rendering of screens below (MainMenuScreen won't show through)
     setRenderPassthrough(false);
+    setTransitionDuration(0.0f);  // ScreenManager transition disabled — we animate ourselves
 
-    // Start with invisible state
     m_overlayAlpha = 0;
-    m_panelScale = 0.0f;
-    m_panelOffsetY = 30.0f;
+    m_panelSlidePct = 1.0f;
     m_animatingIn = true;
     m_animatingOut = false;
+    m_quitting = false;
 
-    // Start fade-in animation using AnimationManager
-    startFadeIn();
+    startSlideIn();
 }
 
 void PausePopupScreen::onExit() {
-    // Cancel any running animations to prevent dangling pointer access
     auto& mgr = animation::AnimationManager::instance();
-    mgr.cancelAll("pause_fade_in");
-    mgr.cancelAll("pause_scale_in");
-    mgr.cancelAll("pause_slide_in");
-    mgr.cancelAll("pause_fade_out");
-    mgr.cancelAll("pause_scale_out");
-    mgr.cancelAll("pause_slide_out");
+    mgr.cancelAll("pause_in_overlay");
+    mgr.cancelAll("pause_in_slide");
+    mgr.cancelAll("pause_out_overlay");
+    mgr.cancelAll("pause_out_slide");
     mgr.prune();
 }
 
@@ -39,11 +46,12 @@ void PausePopupScreen::onUpdate(const f32 dt) {
     if (m_cooldown > 0.0f) {
         m_cooldown -= dt;
     }
-
-    // AnimationManager handles the animation updates - no extra work needed here.
-    // m_overlayAlpha, m_panelScale, and m_panelOffsetY are driven by the
-    // animation callbacks set in startFadeIn().
+    // Animation values are driven by AnimationManager callbacks.
 }
+
+// ------------------------------------------------------------------------------
+// Rendering
+// ------------------------------------------------------------------------------
 
 void PausePopupScreen::onRender() {
     using namespace utils::render;
@@ -51,29 +59,24 @@ void PausePopupScreen::onRender() {
     const i32 sw = Renderer::screenWidth();
     const i32 sh = Renderer::screenHeight();
 
-    // Dark overlay — alpha driven by animation (0→180 for fade-in)
+    // Dark backdrop — alpha driven by animation (0→180 for slide-in)
     Renderer::drawRect(0, 0, sw, sh, {0, 0, 0, m_overlayAlpha});
 
-    // Only render panel content if visible enough
-    if (m_overlayAlpha < 10 && m_panelScale < 0.01f) {
+    // Skip panel while fully off-screen
+    if (m_overlayAlpha < 5 && m_panelSlidePct > 0.95f) {
         return;
     }
 
-    // Panel with scale and slide offset
-    const i32 panelW = static_cast<i32>(PANEL_WIDTH * m_panelScale);
-    const i32 panelH = static_cast<i32>(PANEL_HEIGHT * m_panelScale);
-    const i32 panelX = (sw - panelW) / 2;
-    const i32 panelY = (sh - panelH) / 2 + static_cast<i32>(m_panelOffsetY);
-
-    if (panelW <= 0 || panelH <= 0) {
-        return;
-    }
+    const i32 panelW = PANEL_WIDTH;
+    const i32 panelH = PANEL_HEIGHT;
+    const i32 panelX = (sw - panelW) / 2 + static_cast<i32>(panelSlideOffsetX(sw));
+    const i32 panelY = (sh - panelH) / 2;
 
     // Panel background
     Renderer::drawRect(panelX, panelY, panelW, panelH, {30, 30, 40, 240});
     Renderer::drawRectLines(panelX, panelY, panelW, panelH, {80, 80, 100, 255});
 
-    // Title — centered in panel
+    // Title
     constexpr std::string_view title = "PAUSED";
     const i32 titleW = MeasureText(title.data(), TITLE_SIZE);
     Renderer::drawText(
@@ -110,14 +113,18 @@ void PausePopupScreen::onRender() {
     );
 }
 
+// ------------------------------------------------------------------------------
+// Input
+// ------------------------------------------------------------------------------
+
 void PausePopupScreen::onInput() {
-    // ESC → dismiss (starts fade-out animation)
+    // ESC dismisses via slide-out
     if (IsKeyPressed(KEY_ESCAPE) && !m_animatingOut) {
-        startFadeOut();
+        startSlideOut();
         return;
     }
 
-    // Block input while animating in
+    // Block navigation while sliding in
     if (m_animatingIn) {
         return;
     }
@@ -134,10 +141,10 @@ void PausePopupScreen::onInput() {
         return;
     }
 
-    // Mouse hit-testing
+    // Mouse hit-testing — account for current slide position
     const i32 sw = utils::render::Renderer::screenWidth();
     const i32 sh = utils::render::Renderer::screenHeight();
-    const i32 panelX = (sw - PANEL_WIDTH) / 2;
+    const i32 panelX = (sw - PANEL_WIDTH) / 2 + static_cast<i32>(panelSlideOffsetX(sw));
     const i32 panelY = (sh - PANEL_HEIGHT) / 2;
     const i32 menuStartY = panelY + 70 + 28;
 
@@ -156,93 +163,76 @@ void PausePopupScreen::onInput() {
     }
 }
 
-void PausePopupScreen::startFadeIn() {
+// ------------------------------------------------------------------------------
+// Animation setup
+// ------------------------------------------------------------------------------
+
+void PausePopupScreen::startSlideIn() {
     auto& mgr = animation::AnimationManager::instance();
 
-    // Overlay alpha: 0 → 180
-    auto fadeAnim = animation::PremadeAnimations::makeFloatLerp(
-        "pause_fade_in",
-        0.0f, 180.0f, FADE_DURATION,
+    // Overlay: 0 → 180
+    auto overlayAnim = animation::PremadeAnimations::makeFloatLerp(
+        "pause_in_overlay",
+        0.0f, 180.0f, SLIDE_DURATION,
         animation::Easing::easeOutQuad
     );
-    fadeAnim->onUpdate([this](animation::Animation<f32>* a) {
+    overlayAnim->onUpdate([this](animation::Animation<f32>* a) {
         m_overlayAlpha = static_cast<u8>(a->current());
     });
-    fadeAnim->onComplete([this](animation::Animation<f32>*) {
+    overlayAnim->onComplete([this](animation::Animation<f32>*) {
         m_overlayAlpha = 180;
         m_animatingIn = false;
     });
-    fadeAnim->onCancel([this](animation::Animation<f32>*) {
+    overlayAnim->onCancel([this](animation::Animation<f32>*) {
         m_animatingIn = false;
     });
-    mgr.add(std::move(fadeAnim));
+    mgr.add(std::move(overlayAnim));
 
-    // Panel scale: 0.7 → 1.0 (easeOutBack for slight overshoot)
-    auto scaleAnim = animation::PremadeAnimations::makeFloatLerp(
-        "pause_scale_in",
-        0.7f, 1.0f, SCALE_DURATION,
-        animation::Easing::easeOutBack
-    );
-    scaleAnim->onUpdate([this](animation::Animation<f32>* a) {
-        m_panelScale = a->current();
-    });
-    mgr.add(std::move(scaleAnim));
-
-    // Panel Y offset: 30 → 0 (slide up)
+    // Panel: slide from right (1.0 → 0.0)
     auto slideAnim = animation::PremadeAnimations::makeFloatLerp(
-        "pause_slide_in",
-        30.0f, 0.0f, SCALE_DURATION,
+        "pause_in_slide",
+        1.0f, 0.0f, SLIDE_DURATION,
         animation::Easing::easeOutCubic
     );
     slideAnim->onUpdate([this](animation::Animation<f32>* a) {
-        m_panelOffsetY = a->current();
+        m_panelSlidePct = a->current();
     });
     mgr.add(std::move(slideAnim));
 }
 
-void PausePopupScreen::startFadeOut() {
+void PausePopupScreen::startSlideOut() {
     m_animatingOut = true;
+
+    // Let MainMenuScreen render through while this screen slides away
+    setRenderPassthrough(true);
+
     auto& mgr = animation::AnimationManager::instance();
 
-    // Cancel any in-progress fade-in animations
-    mgr.cancelAll("pause_fade_in");
-    mgr.cancelAll("pause_scale_in");
-    mgr.cancelAll("pause_slide_in");
+    mgr.cancelAll("pause_in_overlay");
+    mgr.cancelAll("pause_in_slide");
 
-    // Overlay alpha: 180 → 0
-    auto fadeAnim = animation::PremadeAnimations::makeFloatLerp(
-        "pause_fade_out",
-        180.0f, 0.0f, FADE_DURATION,
-        animation::Easing::easeInQuad
+    // Overlay: 180 → 0 — easeOutQuad clears quickly then decelerates to transparent
+    auto overlayAnim = animation::PremadeAnimations::makeFloatLerp(
+        "pause_out_overlay",
+        180.0f, 0.0f, SLIDE_DURATION,
+        animation::Easing::easeOutQuad
     );
-    fadeAnim->onUpdate([this](animation::Animation<f32>* a) {
+    overlayAnim->onUpdate([this](animation::Animation<f32>* a) {
         m_overlayAlpha = static_cast<u8>(a->current());
     });
-    mgr.add(std::move(fadeAnim));
+    mgr.add(std::move(overlayAnim));
 
-    // Panel scale: 1.0 → 0.7 (easeInQuad — smooth shrink, no overshoot)
-    auto scaleAnim = animation::PremadeAnimations::makeFloatLerp(
-        "pause_scale_out",
-        1.0f, 0.7f, SCALE_DURATION,
-        animation::Easing::easeInQuad
-    );
-    scaleAnim->onUpdate([this](animation::Animation<f32>* a) {
-        m_panelScale = a->current();
-    });
-    mgr.add(std::move(scaleAnim));
-
-    // Panel Y offset: 0 → 30 (slide down, dismiss on complete)
+    // Panel: continues leftward off-screen (0.0 → -1.0)
     auto slideAnim = animation::PremadeAnimations::makeFloatLerp(
-        "pause_slide_out",
-        0.0f, 30.0f, SCALE_DURATION,
-        animation::Easing::easeInQuad
+        "pause_out_slide",
+        0.0f, -1.0f, SLIDE_DURATION,
+        animation::Easing::easeOutQuad
     );
     slideAnim->onUpdate([this](animation::Animation<f32>* a) {
-        m_panelOffsetY = a->current();
+        m_panelSlidePct = a->current();
     });
     slideAnim->onComplete([this](animation::Animation<f32>*) {
         if (auto* sm = manager()) {
-            setTransitionDuration(0.0f); // skip ScreenManager's transition overlay
             sm->pop();
             if (m_quitting) {
                 sm->requestQuit();
@@ -252,9 +242,13 @@ void PausePopupScreen::startFadeOut() {
     mgr.add(std::move(slideAnim));
 }
 
+// ------------------------------------------------------------------------------
+// Actions
+// ------------------------------------------------------------------------------
+
 void PausePopupScreen::activateSelected() {
-    m_quitting = (m_selected == 1); // index 1 = "Quit to Desktop"
-    startFadeOut();
+    m_quitting = (m_selected == 1);
+    startSlideOut();
 }
 
 } // namespace biofuel::ui::screens
