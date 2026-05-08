@@ -1,0 +1,58 @@
+{
+  "active_plan": "C:\\Users\\Tonyt\\Documents\\GitHub\\zxbio-fueld-game-research\\.sisyphus\\plans\\screen-manager.md",
+  "started_at": "2026-05-08T05:19:13.454Z",
+  "session_ids": [
+    "ses_1fa686bf6ffe2K7Xhhzi0QHyB5",
+    "ses_1f9d4cc15ffeX9jfjIjSYRQ91R",
+    "ses_1f9d494f9ffeqIvjlymssai6Ag",
+    "ses_1f9d47008ffeQsLoudS1KAo0Ym",
+    "ses_1f9d40404ffe7XNZYVwvVdTBGT"
+  ],
+  "session_origins": {
+    "ses_1fa686bf6ffe2K7Xhhzi0QHyB5": "direct",
+    "ses_1f9d4cc15ffeX9jfjIjSYRQ91R": "appended",
+    "ses_1f9d494f9ffeqIvjlymssai6Ag": "appended",
+    "ses_1f9d47008ffeQsLoudS1KAo0Ym": "appended",
+    "ses_1f9d40404ffe7XNZYVwvVdTBGT": "appended"
+  },
+  "plan_name": "screen-manager",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Screen Abstract Base Class",
+      "session_id": "ses_1f9f367e3ffeyRGPPM7nlV15LB",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-08T05:29:44.308Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Refactor App.cpp to Delegate to ScreenManager",
+      "session_id": "ses_1f9e61d32ffeHiyY02E9vMlwgd",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-08T05:44:38.303Z"
+    },
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "Fade Transition System",
+      "session_id": "ses_1f9ddbd4cffehlG2LdplxfyjZH",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-08T05:56:12.532Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_1f9d47008ffeQsLoudS1KAo0Ym",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-08T06:18:20.457Z"
+    }
+  }
+}

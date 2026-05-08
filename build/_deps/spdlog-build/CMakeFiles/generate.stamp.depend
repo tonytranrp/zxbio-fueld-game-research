@@ -1,0 +1,12 @@
+# CMake generation dependency list for this directory.
+C:/Program Files/CMake/share/cmake-4.3/Modules/CheckCXXSourceCompiles.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/CheckIncludeFileCXX.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/CheckLibraryExists.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/FindPackageHandleStandardArgs.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/FindPackageMessage.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/FindThreads.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/GNUInstallDirs.cmake
+C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/CMakeFiles/cmake.verify_globs
+C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/spdlog-src/CMakeLists.txt
+C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/spdlog-src/cmake/ide.cmake
+C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/spdlog-src/cmake/utils.cmake

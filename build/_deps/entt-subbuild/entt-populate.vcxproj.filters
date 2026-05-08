@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\c8f4e34630b3d2655a349a1017fa2cbb\entt-populate-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\c8f4e34630b3d2655a349a1017fa2cbb\entt-populate-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\c8f4e34630b3d2655a349a1017fa2cbb\entt-populate-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\c8f4e34630b3d2655a349a1017fa2cbb\entt-populate-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\c8f4e34630b3d2655a349a1017fa2cbb\entt-populate-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\c8f4e34630b3d2655a349a1017fa2cbb\entt-populate-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\c8f4e34630b3d2655a349a1017fa2cbb\entt-populate-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\c8f4e34630b3d2655a349a1017fa2cbb\entt-populate-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\f6b046a9a87dd0351254aa9c860a4e58\entt-populate-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\ce4075c6013ba7ae5e1a3a299d7e6da9\entt-populate.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\entt-subbuild\CMakeFiles\entt-populate" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{CA02F532-173F-3496-B14D-E4F4E3755D99}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

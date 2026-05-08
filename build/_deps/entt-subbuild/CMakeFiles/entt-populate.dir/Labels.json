@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/entt-populate"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/ce4075c6013ba7ae5e1a3a299d7e6da9/entt-populate.rule"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/f6b046a9a87dd0351254aa9c860a4e58/entt-populate-complete.rule"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/c8f4e34630b3d2655a349a1017fa2cbb/entt-populate-build.rule"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/c8f4e34630b3d2655a349a1017fa2cbb/entt-populate-configure.rule"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/c8f4e34630b3d2655a349a1017fa2cbb/entt-populate-download.rule"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/c8f4e34630b3d2655a349a1017fa2cbb/entt-populate-install.rule"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/c8f4e34630b3d2655a349a1017fa2cbb/entt-populate-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/c8f4e34630b3d2655a349a1017fa2cbb/entt-populate-patch.rule"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/c8f4e34630b3d2655a349a1017fa2cbb/entt-populate-test.rule"
+		},
+		{
+			"file" : "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/entt-subbuild/CMakeFiles/c8f4e34630b3d2655a349a1017fa2cbb/entt-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"entt-populate"
+		],
+		"name" : "entt-populate"
+	}
+}

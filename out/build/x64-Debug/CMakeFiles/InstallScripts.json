@@ -1,0 +1,16 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/cmake_install.cmake",
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/_deps/raylib-build/cmake_install.cmake",
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/_deps/raylib-build/raylib/cmake_install.cmake",
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/_deps/raylib-build/raylib/external/glfw/cmake_install.cmake",
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/_deps/raylib-build/raylib/external/glfw/src/cmake_install.cmake",
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/_deps/entt-build/cmake_install.cmake",
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/_deps/nlohmann_json-build/cmake_install.cmake",
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/_deps/taskflow-build/cmake_install.cmake",
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/_deps/spdlog-build/cmake_install.cmake",
+		"C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/out/build/x64-Debug/src/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

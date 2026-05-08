@@ -1,0 +1,10 @@
+^C:\USERS\TONYT\DOCUMENTS\GITHUB\ZXBIO-FUELD-GAME-RESEARCH\BUILD\_DEPS\SPDLOG-SUBBUILD\CMAKEFILES\C1D5D558A04A7C53AB4822BA47CD54B9\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/spdlog-subbuild -BC:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/spdlog-subbuild --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/build/_deps/spdlog-subbuild/spdlog-populate.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

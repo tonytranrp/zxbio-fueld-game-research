@@ -1,0 +1,62 @@
+{
+	"abstract" : true,
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"target_link_libraries"
+		],
+		"files" : 
+		[
+			"out/build/x64-Debug/_deps/taskflow-src/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 236,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 238,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"id" : "default_settings::@d95f1189e0aa65798999",
+	"interfaceCompileDependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "error_settings::@d95f1189e0aa65798999"
+		}
+	],
+	"interfaceLinkLibraries" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "error_settings::@d95f1189e0aa65798999"
+		}
+	],
+	"name" : "default_settings",
+	"paths" : 
+	{
+		"build" : "_deps/taskflow-build",
+		"source" : "out/build/x64-Debug/_deps/taskflow-src"
+	},
+	"sources" : [],
+	"type" : "INTERFACE_LIBRARY"
+}

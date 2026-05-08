@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\CMakeFiles\bf3899ddfc4c10c89e9ee8b1ae772c7c\uninstall.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\raylib-src\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\_deps\raylib-build\CMakeFiles\uninstall" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{82E5D5A6-C589-3264-B9B0-5818536D9DDD}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
