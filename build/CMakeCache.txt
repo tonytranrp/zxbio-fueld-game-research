@@ -14,6 +14,9 @@
 # EXTERNAL cache entries
 ########################
 
+//Dev mode: start on pause popup for shader testing
+BIOFUEL_DEV_STARTUP_PAUSE_POPUP:BOOL=OFF
+
 //Build shared libraries
 BUILD_SHARED_LIBS:BOOL=OFF
 
@@ -439,6 +442,9 @@ GLFW_SOURCE_DIR:STATIC=C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research
 
 //Force use of high-performance GPU on hybrid systems
 GLFW_USE_HYBRID_HPG:BOOL=OFF
+
+//Path to a program.
+GLSLC:FILEPATH=GLSLC-NOTFOUND
 
 //Include everything disabled by default (for CI usage
 INCLUDE_EVERYTHING:BOOL=OFF

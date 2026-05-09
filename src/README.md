@@ -5,7 +5,8 @@
 ```
 src/
 ├── main.cpp                  ← Entry point
-├── Core/                     ← App, Types, game loop
+├── CMakeLists.txt            ← Build config + shader embedding pipeline
+├── Core/                     ← App, Types, LoadingTask, game loop
 │   └── README.md
 ├── Data/                     ← Event bus, event types, central bridge
 │   ├── README.md
@@ -15,14 +16,27 @@ src/
 │   └── README.md
 ├── UI/                       ← Screen stack, screen base class, all screens
 │   ├── README.md
-│   └── screens/              ← Individual game screens (MainMenu, PausePopup, ...)
+│   └── screens/              ← Loading, MainMenu, PausePopup, ...
+├── AnimationController/      ← Animation system, easing, blur effects
+│   ├── README.md
+│   ├── animation/            ← Animation<T>, easing functions, premade animations
+│   └── screen/               ← ScreenBlurEffect
 └── Utils/                    ← Reusable utilities
-    ├── render/  README.md    ← Raylib draw wrappers
+    ├── render/  README.md    ← Renderer, ShaderManager, shader modules
     ├── event/   README.md    ← EventBus wrapper
     ├── ui/      README.md    ← MenuHelper, reusable UI logic
     ├── json/    README.md    ← JSON file I/O
     ├── task/    README.md    ← Parallel task execution
     └── font/    README.md    ← Font loading/caching
+
+assets/shaders/               ← Authoritative GLSL shader source (syntax-highlighted .glsl)
+├── blur_h.glsl               ← Horizontal Gaussian blur
+└── blur_v.glsl               ← Vertical Gaussian blur
+
+assets/fonts/                 ← Font files (.ttf)
+assets/models/                ← 3D models (.glb/.iqm)
+assets/sprites/               ← 2D spritesheets (.png)
+assets/audio/                 ← Sound effects + music
 ```
 
 ## Global Coding Standards

@@ -3,14 +3,23 @@
 // ------------------------------------------------------------------------------
 // Embedded GLSL Fragment Shaders — Backward-Compatible Aliases
 // ------------------------------------------------------------------------------
-// This file now delegates to individual shader modules in the Shader/ subfolder.
-// The GLSL source strings live in BlurHModule.hpp and BlurVModule.hpp.
+// The authoritative GLSL source now lives in assets/shaders/*.glsl files.
+// At build time, CMake reads those files and generates
+// ${CMAKE_BINARY_DIR}/generated/ShaderSources.hpp with constexpr string_view
+// constants (e.g., shader_source::blur_h_source).
 //
-// These aliases exist for backward compatibility — new code should use the
-// module classes directly (e.g., BlurHModule::FRAGMENT_SOURCE).
+// Shader modules (BlurHModule, BlurVModule) reference those generated constants
+// as their FRAGMENT_SOURCE. These aliases provide backward compatibility for any
+// code still using the old BLUR_H_FS / BLUR_V_FS names.
 //
-// To add a new shader: create a new Module.hpp in Utils/render/Shader/,
-// then add a backward-compatible alias here if needed.
+// New code should use module constants directly:
+//   BlurHModule::FRAGMENT_SOURCE  instead of  BLUR_H_FS
+//
+// To add a new shader:
+//   1. Create assets/shaders/my_shader.glsl
+//   2. Add to CMake foreach(SHADER_FILE ...) list in src/CMakeLists.txt
+//   3. Create a module header in Shader/ referencing the generated source
+//   4. Register in LoadingScreen::buildTasks()
 // ------------------------------------------------------------------------------
 
 #include "Utils/render/Shader/BlurHModule.hpp"

@@ -2,6 +2,18 @@
 	"entries" : 
 	[
 		{
+			"name" : "BIOFUEL_DEV_STARTUP_PAUSE_POPUP",
+			"properties" : 
+			[
+				{
+					"name" : "HELPSTRING",
+					"value" : "Dev mode: start on pause popup for shader testing"
+				}
+			],
+			"type" : "BOOL",
+			"value" : "OFF"
+		},
+		{
 			"name" : "BUILD_SHARED_LIBS",
 			"properties" : 
 			[
@@ -2544,6 +2556,18 @@
 			],
 			"type" : "BOOL",
 			"value" : "OFF"
+		},
+		{
+			"name" : "GLSLC",
+			"properties" : 
+			[
+				{
+					"name" : "HELPSTRING",
+					"value" : "Path to a program."
+				}
+			],
+			"type" : "FILEPATH",
+			"value" : "GLSLC-NOTFOUND"
 		},
 		{
 			"name" : "INCLUDE_EVERYTHING",

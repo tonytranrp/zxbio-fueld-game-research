@@ -1,12 +1,9 @@
 #include "App.hpp"
 #include "Utils/render/Render.hpp"
 #include "Utils/render/ShaderManager.hpp"
-#include "Utils/render/Shader/BlurHModule.hpp"
-#include "Utils/render/Shader/BlurVModule.hpp"
 #include "Data/Data.hpp"
 #include "UI/ScreenManager.hpp"
-#include "UI/screens/MainMenuScreen.hpp"
-#include "UI/screens/PausePopupScreen.hpp"
+#include "UI/screens/LoadingScreen.hpp"
 #include "Systems/Input/InputSystem.hpp"
 #include "AnimationController/AnimationManager.hpp"
 #include <raylib.h>
@@ -55,25 +52,9 @@ void Application::init() {
     animation::AnimationManager::instance().init();
     utils::render::ShaderManager::instance().init();
 
-    // Compile embedded blur shaders directly into GPU memory — no external files needed
-    using namespace utils::render::shader;
-    utils::render::ShaderManager::instance().loadFromMemory(
-        BlurHModule::NAME.data(), BlurHModule::VERTEX_SOURCE, BlurHModule::FRAGMENT_SOURCE.data());
-    utils::render::ShaderManager::instance().loadFromMemory(
-        BlurVModule::NAME.data(), BlurVModule::VERTEX_SOURCE, BlurVModule::FRAGMENT_SOURCE.data());
-
-#ifdef BIOFUEL_DEV_STARTUP_PAUSE_POPUP
-    // Dev flag: start directly on PausePopupScreen for testing
-    {
-        auto menu = std::make_unique<ui::screens::MainMenuScreen>();
-        menu->setTransitionDuration(0.0f);
-        Data::screens().push(std::move(menu));
-    }
-    Data::screens().update(0.0f);  // Complete instant transition
-    Data::screens().push(std::make_unique<ui::screens::PausePopupScreen>());
-#else
-    Data::screens().push(std::make_unique<ui::screens::MainMenuScreen>());
-#endif
+    // Push loading screen immediately — it handles shader compilation
+    // and other deferred init work while showing progress.
+    Data::screens().push(std::make_unique<ui::screens::LoadingScreen>());
 
     m_initialized = true;
     m_running = true;

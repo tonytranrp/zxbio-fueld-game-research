@@ -79,18 +79,25 @@ private:
 - `"blur_h"` — horizontal Gaussian blur pass
 - `"blur_v"` — vertical Gaussian blur pass
 
-These are **embedded in the binary** as C++ string literals and compiled at startup:
+These are compiled at startup by the loading screen from GLSL source embedded in the binary:
 
 ```cpp
-#include "Utils/render/EmbeddedShaders.hpp"
-
-// In App::init():
-using namespace utils::render::embedded;
-utils::render::ShaderManager::instance().loadFromMemory("blur_h", nullptr, BLUR_H_FS.data());
-utils::render::ShaderManager::instance().loadFromMemory("blur_v", nullptr, BLUR_V_FS.data());
+// In LoadingScreen::buildTasks():
+shaders.loadFromMemory(
+    BlurHModule::NAME.data(),
+    BlurHModule::VERTEX_SOURCE,
+    BlurHModule::FRAGMENT_SOURCE.data()
+);
+shaders.loadFromMemory(
+    BlurVModule::NAME.data(),
+    BlurVModule::VERTEX_SOURCE,
+    BlurVModule::FRAGMENT_SOURCE.data()
+);
 ```
 
-No external `.fs` files are needed at runtime — the shader source lives in `Utils/render/EmbeddedShaders.hpp`.
+By the time any popup screen uses `ScreenBlurEffect`, the shaders are already compiled and cached. Consumer code just does `shaderMgr.get()` and `shaderMgr.has()` — no compilation at that point.
+
+No external `.fs` files are needed at runtime — the GLSL source lives in `assets/shaders/*.glsl` and is embedded at build time via CMake.
 
 ### Co-Owner Pattern
 

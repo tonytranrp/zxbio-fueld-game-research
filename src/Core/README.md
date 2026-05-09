@@ -8,7 +8,8 @@ The `Core/` directory contains the application bootstrap, game loop, and project
 Core/
 ├── App.hpp          ← Application class (window, loop, lifecycle)
 ├── App.cpp          ← Application implementation
-└── Types.hpp        ← Project-wide type aliases (i32, f32, u8, etc.)
+├── Types.hpp        ← Project-wide type aliases (i32, f32, u8, etc.)
+└── LoadingTask.hpp  ← Deferred init task queue for loading screen
 ```
 
 ## Coding Standards
@@ -35,6 +36,7 @@ This makes intent explicit and prevents implicit conversion bugs. Use `i32` for 
 
 `Application` owns the Raylib window and the main loop. It:
 - Creates the window in `init()`
+- Pushes `LoadingScreen` immediately — all heavy init (shader compilation) happens there with visual progress
 - Calls `InputSystem::poll()` → `ScreenManager::handleInput()` each frame
 - Delegates update/render to ScreenManager
 - Closes the window in `shutdown()`

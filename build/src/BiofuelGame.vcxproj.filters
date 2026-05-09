@@ -4,6 +4,9 @@
     <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\AnimationController\AnimationManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\AnimationController\screen\ScreenBlurEffect.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Core\App.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -14,6 +17,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\ScreenManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\screens\LoadingScreen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\screens\MainMenuScreen.cpp">
@@ -32,6 +38,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Render.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\ShaderManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\task\TaskUtils.cpp">
@@ -57,7 +66,13 @@
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\AnimationController\animation\PremadeAnimations.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\AnimationController\screen\ScreenBlurEffect.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Core\App.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Core\LoadingTask.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Core\Types.hpp">
@@ -67,6 +82,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Data\event\EventManager.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Data\event\animation\AnimationEvents.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Data\event\input\InputEvents.hpp">
@@ -96,6 +114,9 @@
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\UI.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\screens\LoadingScreen.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\screens\MainMenuScreen.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -111,7 +132,22 @@
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\json\JsonUtils.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\EmbeddedShaders.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Render.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\BlurHModule.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\BlurVModule.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\ShaderModule.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\ShaderManager.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\task\TaskUtils.hpp">

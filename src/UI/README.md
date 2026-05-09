@@ -11,9 +11,11 @@ UI/
 ├── ScreenManager.cpp       ← ScreenManager implementation
 ├── UI.hpp                  ← Stub for future UI components
 └── screens/
+    ├── LoadingScreen.hpp   ← Startup screen with progress bar & deferred init
+    ├── LoadingScreen.cpp
     ├── MainMenuScreen.hpp  ← Title screen with navigable menu
     ├── MainMenuScreen.cpp
-    ├── PausePopupScreen.hpp ← ESC overlay with Resume/Quit
+    ├── PausePopupScreen.hpp ← ESC overlay with Resume/Quit + blur backdrop
     └── PausePopupScreen.cpp
 ```
 
@@ -143,7 +145,7 @@ cmake -DBIOFUEL_DEV_STARTUP_PAUSE_POPUP=ON build
 cmake --build build --config Release
 ```
 
-This starts the game directly on `PausePopupScreen` (with `MainMenuScreen` underneath for blur testing).
+The loading screen still runs (shaders must compile), then transitions to `PausePopupScreen` with `MainMenuScreen` underneath for blur testing.
 
 ## Adding a New Screen
 

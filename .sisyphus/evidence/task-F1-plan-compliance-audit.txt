@@ -1,0 +1,135 @@
+PLAN COMPLIANCE AUDIT — F1
+==========================
+Date: 2026-05-08 18:08:59
+
+MUST HAVE VERIFICATION (10 items)
+==================================
+
+1. All event struct fields use i32/f32 instead of raw int/float
+   - MouseEvents.hpp: f32 x, y, deltaX, deltaY; i32 button ✅
+   - InputEvents.hpp: i32 key; bool ctrl, shift, alt ✅
+   - ScreenEvents.hpp: i32 width, height, prevWidth, prevHeight ✅
+   - AnimationEvents.hpp: std::string_view screenName; u8 targetAlpha; f32 duration ✅
+   VERDICT: PASS
+
+2. All singleton instance() methods have [[nodiscard]]
+   - EventManager.hpp: [[nodiscard]] static EventManager& instance() ✅
+   - FontManager.hpp: [[nodiscard]] static FontManager& instance() ✅
+   - ScreenManager.hpp: [[nodiscard]] static ScreenManager& instance() ✅
+   - AnimationManager.hpp: [[nodiscard]] static AnimationManager& instance() ✅
+   - ShaderManager.hpp: [[nodiscard]] static ShaderManager& instance() ✅
+   VERDICT: PASS
+
+3. App::Config uses i32 types and designated initializers
+   - App.hpp: i32 width, i32 height, i32 targetFps ✅
+   - main.cpp: .title = ..., .width = 1280, .height = 720, .targetFps = 60, .fullscreen = false, .resizable = true ✅
+   VERDICT: PASS
+
+4. AnimationEvents uses std::string_view instead of const char*
+   - AnimationEvents.hpp: std::string_view screenName ✅
+   - No const char* in AnimationEvents.hpp ✅
+   VERDICT: PASS
+
+5. Shader Module system with convention-only approach (no virtual dispatch)
+   - ShaderModule.hpp: Convention docs, ShaderModuleConfig struct, no virtual methods ✅
+   - BlurHModule.hpp: Standalone class with static constexpr members, no inheritance ✅
+   - BlurVModule.hpp: Standalone class with static constexpr members, no inheritance ✅
+   VERDICT: PASS
+
+6. Module headers only include Core/Types.hpp and string_view
+   - ShaderModule.hpp: #include "Core/Types.hpp" and #include <string_view> ✅
+   - BlurHModule.hpp: #include "Utils/render/Shader/ShaderModule.hpp" (which includes Core/Types.hpp and string_view) ✅
+   - BlurVModule.hpp: #include "Utils/render/Shader/ShaderModule.hpp" ✅
+   VERDICT: PASS
+
+7. README with shader module creation guide
+   - src/Utils/render/Shader/README.md exists ✅
+   - Contains "Creating a New Shader Module" section ✅
+   - Contains "Using a Shader Module" section ✅
+   - Contains "Initializing Shader Modules" section ✅
+   - Contains directory structure diagram ✅
+   VERDICT: PASS
+
+8. Pixel-identical blur effect output after reorganization
+   - Build succeeds: cmake --build build --config Release --target BiofuelGame ✅
+   - GLSL source in BlurHModule.hpp matches original (9-tap Gaussian) ✅
+   - GLSL source in BlurVModule.hpp matches original (9-tap Gaussian) ✅
+   - ScreenBlurEffect.cpp uses module references for shader names and uniforms ✅
+   VERDICT: PASS (build verification only — visual verification requires running the game)
+
+9. App::init() uses module-based shader names
+   - App.cpp includes BlurHModule.hpp and BlurVModule.hpp ✅
+   - App.cpp uses BlurHModule::NAME.data(), BlurHModule::VERTEX_SOURCE, BlurHModule::FRAGMENT_SOURCE.data() ✅
+   - App.cpp uses BlurVModule::NAME.data(), BlurVModule::VERTEX_SOURCE, BlurVModule::FRAGMENT_SOURCE.data() ✅
+   - No raw "blur_h" or "blur_v" strings in App.cpp ✅
+   VERDICT: PASS
+
+10. ShaderManager has unloadExisting() private helper
+    - ShaderManager.hpp line 54: void unloadExisting(std::string_view name); (private section) ✅
+    - ShaderManager.cpp line 74: void ShaderManager::unloadExisting(std::string_view name) ✅
+    - Called from load() (line 38) and loadFromMemory() (line 57) ✅
+    VERDICT: PASS
+
+MUST NOT HAVE VERIFICATION (7 items)
+======================================
+
+1. NO virtual methods in Shader Module system
+   - grep for "virtual" in Shader/*.hpp: Only found in a comment ("no virtual methods") ✅
+   - No virtual methods in BlurHModule, BlurVModule, or ShaderModule ✅
+   VERDICT: PASS
+
+2. NO ShaderManager.hpp or raylib.h includes in module headers
+   - grep for "raylib.h|ShaderManager" in Shader/*.hpp: Only found in a comment ✅
+   - BlurHModule.hpp includes only ShaderModule.hpp ✅
+   - BlurVModule.hpp includes only ShaderModule.hpp ✅
+   VERDICT: PASS
+
+3. NO new Renderer methods
+   - Render.hpp: drawText, drawTextCentered, drawRect, drawRectLines, drawSprite, screenWidth, screenHeight ✅
+   - No new methods beyond the original set ✅
+   VERDICT: PASS
+
+4. NO ShaderManager API redesign beyond extracting duplicated helper
+   - ShaderManager.hpp: load(), loadFromMemory(), unload(), get(), has(), getLocation(), setValue(), setValueTexture() ✅
+   - Only addition is private unloadExisting() helper ✅
+   - Public API unchanged ✅
+   VERDICT: PASS
+
+5. NO render pipeline abstractions, framebuffer objects, or pipeline state in modules
+   - grep for "Framebuffer|framebuffer|FBO|PipelineState|RenderPipeline" in src/: No matches ✅
+   VERDICT: PASS
+
+6. NO FontManager parameter type changes
+   - FontUtils.hpp: void load(const std::string& name, const std::string& path, i32 baseSize) ✅
+   - Parameters still use const std::string& (not string_view) ✅
+   - baseSize changed from int to i32 (as planned in Task 16) ✅
+   VERDICT: PASS
+
+7. NO changing const char* → string_view in contexts that need ownership
+   - App.hpp Config.title is std::string (needs ownership) ✅
+   - FontManager::load() uses const std::string& (needs ownership for map key) ✅
+   - AnimationEvents screenName uses std::string_view (doesn't need ownership) ✅
+   VERDICT: PASS
+
+ADDITIONAL VERIFICATIONS
+==========================
+
+- Build succeeds: cmake --build build --config Release --target BiofuelGame ✅
+- No raw int/float in event struct headers ✅
+- All module files exist in src/Utils/render/Shader/ ✅
+- CMakeLists.txt includes Utils/render/Shader directory ✅
+- EmbeddedShaders.hpp delegates to module sources ✅
+- ScreenBlurEffect.cpp uses module references (BlurHModule::NAME, etc.) ✅
+- PausePopupScreen.hpp uses designated Color initializer {.r = 15, .g = 15, .b = 25, .a = 0} ✅
+- ScreenBlurEffect.hpp uses designated Color initializer {.r = 15, .g = 15, .b = 25, .a = 0} ✅
+- FontUtils.hpp uses i32 baseSize ✅
+- App::run() has [[nodiscard]] ✅
+- Renderer::screenWidth() and screenHeight() have noexcept ✅
+- static constexpr std::string_view in screen .cpp files ✅
+
+FINAL VERDICT: APPROVE
+========================
+Must Have: 10/10 PASS
+Must NOT Have: 7/7 PASS
+Build: PASS
+All module files exist: PASS
