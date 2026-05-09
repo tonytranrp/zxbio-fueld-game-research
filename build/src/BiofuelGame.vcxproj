@@ -459,6 +459,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Render.hpp" />
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\BlurHModule.hpp" />
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\BlurVModule.hpp" />
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\CrossfadeModule.hpp" />
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\ShaderModule.hpp" />
     <ClCompile Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\ShaderManager.cpp" />
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\ShaderManager.hpp" />

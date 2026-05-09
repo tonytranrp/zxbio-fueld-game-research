@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Types.hpp"
+#include <raylib.h>
 #include <memory>
 #include <vector>
 
@@ -24,6 +25,10 @@ public:
     void pop();
     void replace(std::unique_ptr<Screen> screen);
     void clear();
+
+    // Deferred operations — safe to call from onUpdate() during update loop
+    void queuePush(std::unique_ptr<Screen> screen);
+    void queueReplace(std::unique_ptr<Screen> screen);
 
     // Per-frame delegation
     void update(f32 dt);
@@ -52,6 +57,25 @@ private:
 
     std::vector<std::unique_ptr<Screen>> m_screens;
     bool m_quitRequested = false;
+
+    enum class PendingAction { None, Push, Replace };
+    PendingAction m_pendingAction = PendingAction::None;
+    std::unique_ptr<Screen> m_pendingScreen;
+
+    void processPendingActions();
+
+    // Crossfade transition rendering
+    Shader m_crossfadeShader{};
+    RenderTexture2D m_transitionTexOut{};
+    RenderTexture2D m_transitionTexIn{};
+    i32 m_crossfadeProgressLoc = -1;
+    i32 m_crossfadeTexInLoc = -1;
+    i32 m_transitionTexWidth = 0;
+    i32 m_transitionTexHeight = 0;
+
+    void ensureCrossfadeShader();
+    void ensureTransitionTextures(i32 width, i32 height);
+    void renderCrossfade(Screen* outgoing, Screen* incoming);
 };
 
 } // namespace biofuel::ui

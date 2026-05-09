@@ -1,6 +1,8 @@
 #include "ScreenManager.hpp"
 #include "Screen.hpp"
 #include "Utils/render/Render.hpp"
+#include "Utils/render/ShaderManager.hpp"
+#include "Utils/render/Shader/CrossfadeModule.hpp"
 #include "AnimationController/animation/Easing.hpp"
 #include "Data/Data.hpp"
 #include <spdlog/spdlog.h>
@@ -26,6 +28,17 @@ void ScreenManager::init() {
 
 void ScreenManager::shutdown() {
     clear();
+
+    if (m_transitionTexOut.id > 0) UnloadRenderTexture(m_transitionTexOut);
+    if (m_transitionTexIn.id > 0) UnloadRenderTexture(m_transitionTexIn);
+    // m_crossfadeShader is owned by ShaderManager — do NOT UnloadShader here.
+    // ShaderManager::shutdown() handles unloading all shaders in its map.
+    // Calling UnloadShader directly would double-free the shader's locs array
+    // since ShaderManager holds a copy of the same Shader struct.
+
+    m_transitionTexOut = {};
+    m_transitionTexIn = {};
+    m_crossfadeShader = {};
 }
 
 // ------------------------------------------------------------------------------
@@ -95,11 +108,109 @@ void ScreenManager::replace(std::unique_ptr<Screen> screen) {
     m_screens.push_back(std::move(screen));
 }
 
+// ------------------------------------------------------------------------------
+// Deferred Stack Operations — safe to call from onUpdate()
+// ------------------------------------------------------------------------------
+
+void ScreenManager::queuePush(std::unique_ptr<Screen> screen) {
+    m_pendingAction = PendingAction::Push;
+    m_pendingScreen = std::move(screen);
+}
+
+void ScreenManager::queueReplace(std::unique_ptr<Screen> screen) {
+    m_pendingAction = PendingAction::Replace;
+    m_pendingScreen = std::move(screen);
+}
+
+void ScreenManager::processPendingActions() {
+    if (m_pendingAction == PendingAction::None) return;
+    if (!m_pendingScreen) return;
+
+    const auto action = m_pendingAction;
+    m_pendingAction = PendingAction::None;
+
+    switch (action) {
+        case PendingAction::Push:
+            push(std::move(m_pendingScreen));
+            break;
+        case PendingAction::Replace:
+            replace(std::move(m_pendingScreen));
+            break;
+        default:
+            break;
+    }
+}
+
 void ScreenManager::clear() {
     while (!m_screens.empty()) {
         m_screens.back()->onExit();
         m_screens.pop_back();
     }
+}
+
+// ------------------------------------------------------------------------------
+// Crossfade Transition Rendering
+// ------------------------------------------------------------------------------
+
+void ScreenManager::ensureCrossfadeShader() {
+    if (m_crossfadeShader.id > 0) return;
+
+    // Shader is already compiled during LoadingScreen — just look it up.
+    using namespace utils::render::shader;
+    auto& sm = utils::render::ShaderManager::instance();
+    m_crossfadeShader = sm.get(CrossfadeModule::NAME.data());
+
+    if (m_crossfadeShader.id > 0) {
+        m_crossfadeProgressLoc = GetShaderLocation(m_crossfadeShader, CrossfadeModule::UNIFORM_PROGRESS.data());
+        m_crossfadeTexInLoc = GetShaderLocation(m_crossfadeShader, CrossfadeModule::UNIFORM_TEXTURE_IN.data());
+    }
+}
+
+void ScreenManager::ensureTransitionTextures(i32 width, i32 height) {
+    if (m_transitionTexWidth == width && m_transitionTexHeight == height) return;
+
+    if (m_transitionTexOut.id > 0) UnloadRenderTexture(m_transitionTexOut);
+    if (m_transitionTexIn.id > 0) UnloadRenderTexture(m_transitionTexIn);
+
+    m_transitionTexOut = LoadRenderTexture(width, height);
+    m_transitionTexIn = LoadRenderTexture(width, height);
+    m_transitionTexWidth = width;
+    m_transitionTexHeight = height;
+}
+
+void ScreenManager::renderCrossfade(Screen* outgoing, Screen* incoming) {
+    using namespace utils::render;
+    const i32 sw = Renderer::screenWidth();
+    const i32 sh = Renderer::screenHeight();
+
+    ensureCrossfadeShader();
+    ensureTransitionTextures(sw, sh);
+
+    // Render outgoing screen
+    BeginTextureMode(m_transitionTexOut);
+    ClearBackground(BLANK);
+    outgoing->onRender();
+    EndTextureMode();
+
+    // Render incoming screen
+    BeginTextureMode(m_transitionTexIn);
+    ClearBackground(BLANK);
+    incoming->onRender();
+    EndTextureMode();
+
+    // Composite with crossfade shader
+    const f32 progress = incoming->m_transitionProgress;
+    SetShaderValueTexture(m_crossfadeShader, m_crossfadeTexInLoc, m_transitionTexIn.texture);
+    SetShaderValue(m_crossfadeShader, m_crossfadeProgressLoc, &progress, SHADER_UNIFORM_FLOAT);
+
+    BeginShaderMode(m_crossfadeShader);
+    DrawTextureRec(
+        m_transitionTexOut.texture,
+        {0, 0, static_cast<f32>(sw), static_cast<f32>(-sh)},
+        {0, 0},
+        WHITE
+    );
+    EndShaderMode();
 }
 
 // ------------------------------------------------------------------------------
@@ -153,10 +264,30 @@ void ScreenManager::update(f32 dt) {
             ++it;
         }
     }
+
+    // Process any deferred push/replace from onUpdate() calls above
+    processPendingActions();
 }
 
 void ScreenManager::render() {
-    // Render screens bottom-to-top
+    // Find transitioning screens for crossfade
+    Screen* outgoing = nullptr;
+    Screen* incoming = nullptr;
+    for (auto& screen : m_screens) {
+        if (screen->m_transitionState == Screen::TransitionState::TransitionOut) {
+            outgoing = screen.get();
+        }
+        if (screen->m_transitionState == Screen::TransitionState::TransitionIn) {
+            incoming = screen.get();
+        }
+    }
+
+    if (outgoing && incoming) {
+        renderCrossfade(outgoing, incoming);
+        return;
+    }
+
+    // Normal render path — screens bottom-to-top
     for (auto& screen : m_screens) {
         bool isTop = (&screen == &m_screens.back());
         if (isTop || screen->m_passthroughRender) {

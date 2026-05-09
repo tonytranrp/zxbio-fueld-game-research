@@ -76,6 +76,7 @@ set(OLD_GLOB
   "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/src/Utils/render/Render.hpp"
   "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/src/Utils/render/Shader/BlurHModule.hpp"
   "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/src/Utils/render/Shader/BlurVModule.hpp"
+  "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/src/Utils/render/Shader/CrossfadeModule.hpp"
   "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/src/Utils/render/Shader/ShaderModule.hpp"
   "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/src/Utils/render/ShaderManager.hpp"
   "C:/Users/Tonyt/Documents/GitHub/zxbio-fueld-game-research/src/Utils/task/TaskUtils.hpp"

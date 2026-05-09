@@ -1,11 +1,11 @@
 #include "LoadingScreen.hpp"
 #include "MainMenuScreen.hpp"
-#include "PausePopupScreen.hpp"
 #include "UI/ScreenManager.hpp"
 #include "Utils/render/Render.hpp"
 #include "Utils/render/ShaderManager.hpp"
 #include "Utils/render/Shader/BlurHModule.hpp"
 #include "Utils/render/Shader/BlurVModule.hpp"
+#include "Utils/render/Shader/CrossfadeModule.hpp"
 #include "Data/Data.hpp"
 #include "AnimationController/AnimationManager.hpp"
 #include <raylib.h>
@@ -34,6 +34,11 @@ void LoadingScreen::buildTasks() {
                 BlurVModule::VERTEX_SOURCE,
                 BlurVModule::FRAGMENT_SOURCE.data()
             );
+            sm.loadFromMemory(
+                CrossfadeModule::NAME.data(),
+                CrossfadeModule::VERTEX_SOURCE,
+                CrossfadeModule::FRAGMENT_SOURCE.data()
+            );
         }
     });
 
@@ -46,12 +51,8 @@ void LoadingScreen::buildTasks() {
 // ------------------------------------------------------------------------------
 
 void LoadingScreen::onEnter() {
-    // Disable ScreenManager transition — we handle our own via replace()
-    setTransitionDuration(0.0f);
-
     buildTasks();
 
-    // If there are no tasks, skip straight to done state
     if (m_tasks.totalTasks() == 0) {
         m_tasksDone = true;
         m_actualProgress = 1.0f;
@@ -190,13 +191,7 @@ void LoadingScreen::onInput() {
 
 void LoadingScreen::transitionToNext() {
     if (auto* sm = manager()) {
-#ifdef BIOFUEL_DEV_STARTUP_PAUSE_POPUP
-        sm->push(std::make_unique<MainMenuScreen>());
-        sm->update(0.0f);
-        sm->push(std::make_unique<PausePopupScreen>());
-#else
-        sm->replace(std::make_unique<MainMenuScreen>());
-#endif
+        sm->queueReplace(std::make_unique<MainMenuScreen>());
     }
 }
 

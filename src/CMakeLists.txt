@@ -14,7 +14,7 @@ file(MAKE_DIRECTORY ${GENERATED_DIR})
 
 set(SHADER_SOURCES_CONTENT "#pragma once\n#include <string_view>\n\nnamespace biofuel::shader_source {\n")
 
-foreach(SHADER_FILE IN ITEMS blur_h blur_v)
+foreach(SHADER_FILE IN ITEMS blur_h blur_v crossfade)
     file(READ "${SHADER_DIR}/${SHADER_FILE}.glsl" SHADER_CONTENT)
     string(APPEND SHADER_SOURCES_CONTENT
         "inline constexpr std::string_view ${SHADER_FILE}_source = R\"shader(${SHADER_CONTENT})shader\";\n\n"
@@ -74,7 +74,7 @@ endif()
 # ------------------------------------------------------------------------------
 find_program(GLSLC glslc)
 if(GLSLC)
-    foreach(SHADER IN ITEMS blur_h blur_v)
+    foreach(SHADER IN ITEMS blur_h blur_v crossfade)
         add_custom_command(
             TARGET ${PROJECT_NAME} PRE_BUILD
             COMMAND ${GLSLC} --target-env=opengl -o NUL "${SHADER_DIR}/${SHADER}.glsl"

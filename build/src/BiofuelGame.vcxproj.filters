@@ -144,6 +144,9 @@
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\BlurVModule.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\CrossfadeModule.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Shader\ShaderModule.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
