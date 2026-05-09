@@ -8,13 +8,16 @@ Event-driven animation system for the Fuel Farm game. Provides a flexible, type-
 
 ```
 AnimationController/
-├── README.md                    ← This file
-├── AnimationManager.hpp/.cpp    ← Singleton that owns and updates all active animations
+├── README.md                          ← This file
+├── AnimationManager.hpp/.cpp          ← Singleton that owns and updates all active animations
+├── screen/                            ← Screen-level visual effects (co-owners of rendering)
+│   ├── ScreenBlurEffect.hpp/.cpp      ← Gaussian blur backdrop for popup screens
+│   └── README.md
 └── animation/
-    ├── Easing.hpp               ← All easing function definitions
-    ├── Animation.hpp            ← Core Animation<T> template with event callbacks
-    ├── Animation.inl             ← Template implementation (header-only for now)
-    └── PremadeAnimations.hpp    ← Factory functions for common animation patterns
+    ├── Easing.hpp                     ← All easing function definitions
+    ├── Animation.hpp                  ← Core Animation<T> template with event callbacks
+    ├── Animation.inl                   ← Template implementation (header-only for now)
+    └── PremadeAnimations.hpp          ← Factory functions for common animation patterns
 ```
 
 ---
@@ -88,6 +91,7 @@ Factory functions that create pre-configured animations for common patterns. The
 | `makePulse()` | Scale oscillates between 1 and maxScale |
 | `makeShake()` | Position oscillates ±intensity |
 | `makeColorShift()` | Color interpolates from start to end |
+| `makeFloatLerp()` | Generic float interpolation |
 
 **Usage:**
 ```cpp
@@ -97,6 +101,41 @@ anim->onComplete += [](Animation<Color>* a) {
 };
 AnimationManager::instance().add(std::move(anim));
 ```
+
+### 5. ScreenBlurEffect (Co-Owner of Rendering)
+
+`ScreenBlurEffect` is a higher-level utility that makes the animation system a **co-owner of screen rendering**. It captures the screen behind a popup, applies a two-pass Gaussian blur shader, and draws the result as a tinted backdrop.
+
+**Why this matters:**
+- Screens no longer need to manually track overlay state or draw solid rectangles that obscure the background
+- The blur effect is self-contained: it owns capture textures, shaders, fade state, and renders itself
+- This is the "co-owner" pattern: AnimationController doesn't just animate values, it participates directly in the render pipeline
+
+**Usage:**
+```cpp
+#include "AnimationController/screen/ScreenBlurEffect.hpp"
+
+animation::screen::ScreenBlurEffect blur;
+
+// In onEnter():
+static constexpr animation::screen::BlurConfig CONFIG = {
+    .tintColor = {15, 15, 25, 0},
+    .maxTintAlpha = 120,
+    .fadeInDuration = 0.3f,
+    .fadeOutDuration = 0.3f,
+    .blurRadius = 3.0f,
+};
+blur.init(screenWidth, screenHeight);
+blur.startBlurIn(CONFIG);
+
+// In onUpdate(dt):
+blur.update(dt);
+
+// In onRender():
+blur.render(prevScreen);  // Captures, blurs, and draws backdrop
+```
+
+**Shaders are embedded** — no external `.fs` files needed. The GLSL source lives in `Utils/render/EmbeddedShaders.hpp` and is compiled into the binary via `LoadShaderFromMemory`.
 
 ---
 
@@ -122,6 +161,10 @@ void MainMenuScreen::onAnimationComplete(const AnimationCompleteEvent& e) {
 - `AnimationUpdateEvent<T>` — fired every frame during animation
 - `AnimationCompleteEvent<T>` — fired when animation finishes normally
 - `AnimationCancelEvent<T>` — fired when animation is cancelled
+- `ScreenTransitionStartedEvent` — fired when a screen starts transitioning
+- `ScreenTransitionCompletedEvent` — fired when a screen finishes transitioning
+- `ScreenBlurFadeStartedEvent` — fired when blur fade begins
+- `ScreenBlurFadeCompletedEvent` — fired when blur fade ends
 
 ---
 
@@ -158,6 +201,7 @@ Screens use the animation system for:
 1. **Screen transitions** — fade in/out when pushing/popping screens
 2. **UI element animations** — menu items sliding in, panels scaling up
 3. **Visual effects** — title pulse, button hover, shake on error
+4. **Blur effects** — blurred backdrops behind popup screens (via `ScreenBlurEffect`)
 
 **Pattern for screen transitions:**
 ```cpp
@@ -182,6 +226,30 @@ void MyScreen::onEnter() override {
 }
 ```
 
+**Pattern for blur effects:**
+```cpp
+void MyPopupScreen::onEnter() override {
+    static constexpr animation::screen::BlurConfig CONFIG = {
+        .tintColor = {15, 15, 25, 0},
+        .maxTintAlpha = 120,
+        .fadeInDuration = 0.3f,
+        .fadeOutDuration = 0.3f,
+        .blurRadius = 3.0f,
+    };
+    m_blur.init(screenWidth, screenHeight);
+    m_blur.startBlurIn(CONFIG);
+}
+
+void MyPopupScreen::onUpdate(f32 dt) override {
+    m_blur.update(dt);
+}
+
+void MyPopupScreen::onRender() override {
+    m_blur.render(prevScreen);  // Captures, blurs, and draws backdrop
+    // ... render panel on top
+}
+```
+
 ---
 
 ## Coding Standards
@@ -189,6 +257,7 @@ void MyScreen::onEnter() override {
 - All animation types live in `biofuel::animation` namespace
 - `AnimationManager` lives in `biofuel::animation` namespace
 - Easing functions are in `biofuel::animation::Easing` namespace
+- Screen effects live in `biofuel::animation::screen` namespace
 - Use `f32` for all timing values (seconds)
 - Use `u8` for alpha/Color channels
 - Animations are **moved** into `AnimationManager` (unique_ptr)

@@ -11,7 +11,7 @@ FontManager& FontManager::instance() {
     return instance;
 }
 
-void FontManager::load(const std::string& name, const std::string& path, int baseSize) {
+void FontManager::load(const std::string& name, const std::string& path, i32 baseSize) {
     unload(name);
     m_fonts[name] = LoadFontEx(path.c_str(), baseSize, nullptr, 0);
 }

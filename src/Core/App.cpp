@@ -1,7 +1,8 @@
 #include "App.hpp"
 #include "Utils/render/Render.hpp"
 #include "Utils/render/ShaderManager.hpp"
-#include "Utils/render/EmbeddedShaders.hpp"
+#include "Utils/render/Shader/BlurHModule.hpp"
+#include "Utils/render/Shader/BlurVModule.hpp"
 #include "Data/Data.hpp"
 #include "UI/ScreenManager.hpp"
 #include "UI/screens/MainMenuScreen.hpp"
@@ -55,11 +56,11 @@ void Application::init() {
     utils::render::ShaderManager::instance().init();
 
     // Compile embedded blur shaders directly into GPU memory — no external files needed
-    using namespace utils::render::embedded;
+    using namespace utils::render::shader;
     utils::render::ShaderManager::instance().loadFromMemory(
-        "blur_h", nullptr, BLUR_H_FS.data());
+        BlurHModule::NAME.data(), BlurHModule::VERTEX_SOURCE, BlurHModule::FRAGMENT_SOURCE.data());
     utils::render::ShaderManager::instance().loadFromMemory(
-        "blur_v", nullptr, BLUR_V_FS.data());
+        BlurVModule::NAME.data(), BlurVModule::VERTEX_SOURCE, BlurVModule::FRAGMENT_SOURCE.data());
 
 #ifdef BIOFUEL_DEV_STARTUP_PAUSE_POPUP
     // Dev flag: start directly on PausePopupScreen for testing

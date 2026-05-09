@@ -2,6 +2,7 @@
 #include "Screen.hpp"
 #include "Utils/render/Render.hpp"
 #include "AnimationController/animation/Easing.hpp"
+#include "Data/Data.hpp"
 #include <spdlog/spdlog.h>
 
 namespace biofuel::ui {
@@ -46,6 +47,11 @@ void ScreenManager::push(std::unique_ptr<Screen> screen) {
     screen->m_transitionState = Screen::TransitionState::TransitionIn;
     screen->m_transitionProgress = 0.0f;
 
+    Data::eventBus().trigger(event::animation::ScreenTransitionStartedEvent{
+        .screenName = "Screen",
+        .isEntering = true
+    });
+
     m_screens.push_back(std::move(screen));
 }
 
@@ -62,6 +68,11 @@ void ScreenManager::pop() {
 
     m_screens.back()->m_transitionState = Screen::TransitionState::TransitionOut;
     m_screens.back()->m_transitionProgress = 0.0f;
+
+    Data::eventBus().trigger(event::animation::ScreenTransitionStartedEvent{
+        .screenName = "Screen",
+        .isEntering = false
+    });
 }
 
 void ScreenManager::replace(std::unique_ptr<Screen> screen) {
@@ -107,13 +118,22 @@ void ScreenManager::update(f32 dt) {
     // Advance transitions for all screens with easing support
     for (auto& screen : m_screens) {
         if (screen->isTransitioning()) {
-            screen->m_transitionProgress += dt / screen->m_transitionDuration;
+            if (screen->m_transitionDuration > 0.0f) {
+                screen->m_transitionProgress += dt / screen->m_transitionDuration;
+            } else {
+                // Instant transition — avoid division by zero / NaN
+                screen->m_transitionProgress = 1.0f;
+            }
 
             if (screen->m_transitionProgress >= 1.0f) {
                 screen->m_transitionProgress = 1.0f;
 
                 if (screen->m_transitionState == Screen::TransitionState::TransitionIn) {
                     screen->m_transitionState = Screen::TransitionState::None;
+                    Data::eventBus().trigger(event::animation::ScreenTransitionCompletedEvent{
+                        .screenName = "Screen",
+                        .isEntering = true
+                    });
                 }
                 // TransitionOut: stay at TransitionOut + progress=1.0 so needsRemoval() returns true
             }
@@ -143,32 +163,6 @@ void ScreenManager::render() {
             screen->onRender();
         }
     }
-
-    // Draw fade overlay if top screen is transitioning
-    if (!m_screens.empty() && m_screens.back()->isTransitioning()) {
-        Screen* top = m_screens.back().get();
-        f32 overlayAlpha = 0.0f;
-
-        if (top->m_transitionState == Screen::TransitionState::TransitionIn) {
-            // Apply easing to the fade overlay for smooth transition
-            // TransitionIn: fade from black (alpha=255) to transparent (alpha=0)
-            // Use easeOutQuad for a smooth deceleration
-            f32 easedProgress = animation::Easing::easeOutQuad(top->m_transitionProgress);
-            overlayAlpha = (1.0f - easedProgress) * 255.0f;
-        } else if (top->m_transitionState == Screen::TransitionState::TransitionOut) {
-            // TransitionOut: fade from transparent to black
-            // Use easeInQuad for a smooth acceleration
-            f32 easedProgress = animation::Easing::easeInQuad(top->m_transitionProgress);
-            overlayAlpha = easedProgress * 255.0f;
-        }
-
-        Color fadeColor = {0, 0, 0, static_cast<u8>(overlayAlpha)};
-        utils::render::Renderer::drawRect(
-            0, 0,
-            utils::render::Renderer::screenWidth(),
-            utils::render::Renderer::screenHeight(),
-            fadeColor);
-    }
 }
 
 void ScreenManager::handleInput() {
@@ -194,6 +188,13 @@ Screen* ScreenManager::currentScreen() const noexcept {
         return nullptr;
     }
     return m_screens.back().get();
+}
+
+Screen* ScreenManager::screenBelowTop() const noexcept {
+    if (m_screens.size() < 2) {
+        return nullptr;
+    }
+    return m_screens[m_screens.size() - 2].get();
 }
 
 bool ScreenManager::isEmpty() const noexcept {

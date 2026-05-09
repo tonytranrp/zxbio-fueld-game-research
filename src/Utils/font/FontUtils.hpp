@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Types.hpp"
 #include <raylib.h>
 #include <string>
 #include <unordered_map>
@@ -14,7 +15,7 @@ class FontManager {
 public:
     [[nodiscard]] static FontManager& instance();
 
-    void load(const std::string& name, const std::string& path, int baseSize);
+    void load(const std::string& name, const std::string& path, i32 baseSize);
     void unload(const std::string& name);
     void unloadAll();
 

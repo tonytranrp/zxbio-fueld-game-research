@@ -106,6 +106,45 @@ static constexpr f32 KEY_REPEAT_DELAY = 0.12f;
 static constexpr std::array<MenuItem, 3> s_items = {{ ... }};
 ```
 
+## Popup Screens with Blur Backdrop
+
+For modal/popup screens that appear over other screens (e.g., pause menu), use `ScreenBlurEffect` to blur and tint the screen behind the popup:
+
+```cpp
+#include "AnimationController/screen/ScreenBlurEffect.hpp"
+
+class MyPopupScreen final : public Screen {
+private:
+    animation::screen::ScreenBlurEffect m_blurEffect;
+
+    void onEnter() override {
+        const i32 sw = utils::render::Renderer::screenWidth();
+        const i32 sh = utils::render::Renderer::screenHeight();
+        m_blurEffect.init(sw, sh);
+        m_blurEffect.startBlurIn(BLUR_CONFIG);
+    }
+
+    void onRender() override {
+        Screen* prev = manager()->screenBelowTop();
+        m_blurEffect.render(prev);  // Blurs the screen behind
+        // ... draw popup panel on top ...
+    }
+};
+```
+
+See `AnimationController/screen/README.md` for full `ScreenBlurEffect` documentation.
+
+## Development Compile-Time Flag
+
+For testing a specific screen without navigating to it manually, use the CMake dev flag:
+
+```bash
+cmake -DBIOFUEL_DEV_STARTUP_PAUSE_POPUP=ON build
+cmake --build build --config Release
+```
+
+This starts the game directly on `PausePopupScreen` (with `MainMenuScreen` underneath for blur testing).
+
 ## Adding a New Screen
 
 1. Create `UI/screens/MyScreen.hpp` and `.cpp`

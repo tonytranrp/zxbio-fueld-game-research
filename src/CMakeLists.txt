@@ -13,6 +13,7 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/Core
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render
+        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render/Shader
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/event
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/json
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/task
@@ -22,6 +23,7 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens
         ${CMAKE_CURRENT_SOURCE_DIR}/Data
         ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController
+        ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController/screen
         ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController/animation
         ${entt_SOURCE_DIR}/src
         ${Taskflow_SOURCE_DIR}
@@ -37,6 +39,12 @@ target_link_libraries(${PROJECT_NAME}
 
 # spdlog header-only mode for faster compile
 target_compile_definitions(${PROJECT_NAME} PRIVATE SPDLOG_HEADER_ONLY)
+
+# Development compile-time flag: set to ON to start directly on PausePopupScreen
+option(BIOFUEL_DEV_STARTUP_PAUSE_POPUP "Dev mode: start on pause popup for shader testing" OFF)
+if(BIOFUEL_DEV_STARTUP_PAUSE_POPUP)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_STARTUP_PAUSE_POPUP)
+endif()
 
 # Platform-specific link libraries
 if(APPLE)

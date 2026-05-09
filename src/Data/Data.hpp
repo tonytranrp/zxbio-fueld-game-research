@@ -6,6 +6,7 @@
 // ------------------------------------------------------------------------------
 
 #include "event/EventManager.hpp"
+#include "event/animation/AnimationEvents.hpp"
 #include "event/input/InputEvents.hpp"
 #include "event/mouse/MouseEvents.hpp"
 #include "event/screen/ScreenEvents.hpp"

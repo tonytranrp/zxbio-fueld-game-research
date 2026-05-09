@@ -2,19 +2,16 @@
 
 #include "UI/Screen.hpp"
 #include "Utils/ui/MenuHelper.hpp"
-#include "AnimationController/AnimationManager.hpp"
-#include "AnimationController/animation/PremadeAnimations.hpp"
-#include "AnimationController/animation/Easing.hpp"
+#include "AnimationController/screen/ScreenBlurEffect.hpp"
 #include <array>
 #include <string_view>
 
 namespace biofuel::ui::screens {
 
 // ------------------------------------------------------------------------------
-// PausePopupScreen - Semi-transparent overlay with Resume/Quit options
-// Slides in from the right edge when ESC is pressed during gameplay.
-// Uses AnimationController for in/out transitions — ScreenManager's built-in
-// transition system is disabled (duration=0) since we handle visuals ourselves.
+// PausePopupScreen - Semi-transparent blurred overlay with Resume/Quit options
+// Slides in from the right edge when ESC is pressed.
+// Uses ScreenBlurEffect to blur and tint the screen behind the panel.
 // ------------------------------------------------------------------------------
 class PausePopupScreen final : public Screen {
 public:
@@ -42,12 +39,22 @@ private:
     };
 
     static constexpr f32 SLIDE_DURATION = 0.3f;
+    static constexpr animation::screen::BlurConfig BLUR_CONFIG = {
+        .tintColor = {.r = 15, .g = 15, .b = 25, .a = 0},
+        .maxTintAlpha = 120,
+        .fadeInDuration = 0.3f,
+        .fadeOutDuration = 0.3f,
+        .blurRadius = 3.0f,
+    };
 
     i32 m_selected = 0;
     f32 m_cooldown = 0.0f;
 
-    // Animated values driven by AnimationManager callbacks
-    u8 m_overlayAlpha = 0;        // 0→180 dark backdrop
+    // ScreenBlurEffect is a co-owner of rendering — it captures the screen
+    // behind this popup, applies Gaussian blur, and draws the result.
+    animation::screen::ScreenBlurEffect m_blurEffect;
+
+    // Panel slide state (animated via AnimationManager)
     f32 m_panelSlidePct = 1.0f;   // 0.0 = centered, 1.0 = off right edge
 
     bool m_animatingIn = true;    // true during slide-in, blocks input
@@ -58,8 +65,7 @@ private:
     void startSlideIn();
     void startSlideOut();
 
-    // Screen-space X offset for current slide position
-    [[nodiscard]] f32 panelSlideOffsetX(i32 screenWidth) const;
+    [[nodiscard]] f32 panelSlideOffsetX(i32 screenWidth) const noexcept;
 };
 
 } // namespace biofuel::ui::screens
