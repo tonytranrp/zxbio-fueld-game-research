@@ -1,4 +1,5 @@
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\AnimationController\AnimationManager.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\AnimationManager.obj
+C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\AnimationController\screen\ScreenBackdropController.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\ScreenBackdropController.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\AnimationController\screen\ScreenBlurEffect.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\ScreenBlurEffect.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Core\App.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\App.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Data\event\EventManager.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\EventManager.obj
@@ -7,11 +8,8 @@ C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\ScreenManager.c
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\screens\LoadingScreen.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\LoadingScreen.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\screens\MainMenuScreen.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\MainMenuScreen.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\UI\screens\PausePopupScreen.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\PausePopupScreen.obj
-C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\event\EventBus.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\EventBus.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\font\FontUtils.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\FontUtils.obj
-C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\json\JsonUtils.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\JsonUtils.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\Render.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\Render.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\render\ShaderManager.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\ShaderManager.obj
-C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\task\TaskUtils.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\TaskUtils.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\Utils\ui\MenuHelper.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\MenuHelper.obj
 C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\src\main.cpp;C:\Users\Tonyt\Documents\GitHub\zxbio-fueld-game-research\build\src\BiofuelGame.dir\Release\main.obj

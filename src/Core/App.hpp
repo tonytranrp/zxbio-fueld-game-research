@@ -22,7 +22,7 @@ public:
     };
 
     explicit Application(Config config = {});
-    ~Application();
+    ~Application() noexcept;
 
     // Non-copyable, non-movable
     Application(const Application&) = delete;
@@ -31,7 +31,7 @@ public:
     Application& operator=(Application&&) = delete;
 
     // Main entry point - blocks until window closes
-    [[nodiscard]] int run();
+    [[nodiscard]] i32 run();
 
     // Explicit lifecycle (if you want manual control instead of run())
     void init();
@@ -45,9 +45,11 @@ private:
     void update(f32 deltaTime);
     void render();
 
-    Config m_config;
+    const Config m_config;
     bool m_initialized = false;
     bool m_running = false;
+
+    static constexpr f64 FIXED_DT = 1.0 / 60.0;
 };
 
 } // namespace biofuel

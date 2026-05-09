@@ -3,6 +3,7 @@
 #include "Core/Types.hpp"
 #include <raylib.h>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace biofuel::utils::font {
@@ -13,20 +14,22 @@ namespace biofuel::utils::font {
 // ------------------------------------------------------------------------------
 class FontManager {
 public:
-    [[nodiscard]] static FontManager& instance();
+    [[nodiscard]] static FontManager& instance() noexcept;
 
-    void load(const std::string& name, const std::string& path, i32 baseSize);
-    void unload(const std::string& name);
-    void unloadAll();
+    void load(std::string_view name, std::string_view path, i32 baseSize);
+    void unload(std::string_view name);
+    void unloadAll() noexcept;
+    void shutdown() noexcept;
 
-    [[nodiscard]] Font get(const std::string& name) const;
-    [[nodiscard]] bool has(const std::string& name) const;
+    [[nodiscard]] Font get(std::string_view name) const noexcept;
+    [[nodiscard]] bool has(std::string_view name) const noexcept;
 
 private:
     FontManager() = default;
-    ~FontManager();
+    ~FontManager() noexcept;
 
     std::unordered_map<std::string, Font> m_fonts;
+    bool m_shutDown = false;
 };
 
 } // namespace biofuel::utils::font

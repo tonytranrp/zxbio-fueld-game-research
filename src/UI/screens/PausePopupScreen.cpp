@@ -57,6 +57,17 @@ void PausePopupScreen::onExit() {
 }
 
 void PausePopupScreen::onUpdate(const f32 dt) {
+    if (m_wantsPop) {
+        m_wantsPop = false;
+        if (auto* sm = manager()) {
+            sm->pop();
+            if (m_quitting) {
+                sm->requestQuit();
+            }
+        }
+        return;
+    }
+
     if (m_cooldown > 0.0f) {
         m_cooldown -= dt;
     }
@@ -97,9 +108,9 @@ void PausePopupScreen::onRender() {
 
     // Title
     static constexpr std::string_view title = "PAUSED";
-    const i32 titleW = MeasureText(title.data(), TITLE_SIZE);
+    const i32 titleW = Renderer::measureText(title, TITLE_SIZE);
     Renderer::drawText(
-        std::string{title},
+        title,
         panelX + (panelW - titleW) / 2,
         panelY + 28,
         TITLE_SIZE,
@@ -121,10 +132,10 @@ void PausePopupScreen::onRender() {
     );
 
     // Hint
-    static constexpr std::string_view hint = "ESC to close  |  \x1A\x1B to navigate  |  ENTER to select";
-    const i32 hintW = MeasureText(hint.data(), HINT_SIZE);
+    static constexpr std::string_view hint = "ESC to close  |  UP / DOWN to navigate  |  ENTER to select";
+    const i32 hintW = Renderer::measureText(hint, HINT_SIZE);
     Renderer::drawText(
-        std::string{hint},
+        hint,
         panelX + (panelW - hintW) / 2,
         panelY + panelH - 32,
         HINT_SIZE,
@@ -226,12 +237,7 @@ void PausePopupScreen::startSlideOut() {
         m_panelSlidePct = a->current();
     });
     slideAnim->onComplete([this](animation::Animation<f32>*) {
-        if (auto* sm = manager()) {
-            sm->pop();
-            if (m_quitting) {
-                sm->requestQuit();
-            }
-        }
+        m_wantsPop = true;
     });
     mgr.add(std::move(slideAnim));
 }

@@ -2,6 +2,7 @@
 
 #include "UI/Screen.hpp"
 #include "Core/LoadingTask.hpp"
+#include "AnimationController/screen/ScreenBackdropController.hpp"
 
 namespace biofuel::ui::screens {
 
@@ -17,6 +18,8 @@ namespace biofuel::ui::screens {
 // ------------------------------------------------------------------------------
 class LoadingScreen final : public Screen {
 public:
+    LoadingScreen(i32 width, i32 height, i32 targetFps);
+
     void onEnter() override;
     void onUpdate(f32 dt) override;
     void onRender() override;
@@ -24,11 +27,16 @@ public:
 
 private:
     static constexpr f32 MIN_DISPLAY_SECONDS = 3.0f;
+    static constexpr f32 DOTS_INTERVAL = 0.4f;
     static constexpr i32 BAR_WIDTH = 400;
     static constexpr i32 BAR_HEIGHT = 18;
     static constexpr i32 TITLE_SIZE = 40;
     static constexpr i32 STATUS_SIZE = 16;
     static constexpr f32 PROGRESS_LERP_SPEED = 10.0f;
+
+    i32 m_appWidth;
+    i32 m_appHeight;
+    i32 m_appTargetFps;
 
     LoadingTaskQueue m_tasks;
     f32 m_elapsed = 0.0f;
@@ -36,6 +44,8 @@ private:
     f32 m_actualProgress = 0.0f;
     bool m_tasksDone = false;
     bool m_allowSkip = false;
+    bool m_transitioned = false;
+    animation::screen::ScreenBackdropController m_backdrop;
 
     void buildTasks();
     void transitionToNext();

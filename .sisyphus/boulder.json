@@ -1,66 +1,58 @@
 {
-  "active_plan": "C:\\Users\\Tonyt\\Documents\\GitHub\\zxbio-fueld-game-research\\.sisyphus\\plans\\code-cleanliness-shader-reorg.md",
-  "started_at": "2026-05-09T03:34:20.818Z",
+  "active_plan": "C:\\Users\\Tonyt\\Documents\\GitHub\\zxbio-fueld-game-research\\.sisyphus\\plans\\code-review-fixes.md",
+  "started_at": "2026-05-09T18:26:28.290Z",
   "session_ids": [
-    "ses_1f5a985fbffebdddd5sI2pb71W",
-    "ses_1f51649a6fferRc4nT4ThCz80C",
-    "ses_1f51624bbffe7m7r7rVPzyHDpn",
-    "ses_1f5160905ffe5VDsno0vH62YKu",
-    "ses_1f515cbbdffeDjBEEad28UBIsg"
+    "ses_1f468c5cdffeEF5vIPwRKKD05x",
+    "ses_1f1f09928ffeBYn2PVKADM3lpo",
+    "ses_1f1f073d5ffeC50LyotRfL8wnB",
+    "ses_1f1f04d6effeIZmPPOICLg7gsk",
+    "ses_1f1f022b1ffe68AnZf1vXYMOYc"
   ],
   "session_origins": {
-    "ses_1f5a985fbffebdddd5sI2pb71W": "direct",
-    "ses_1f51649a6fferRc4nT4ThCz80C": "appended",
-    "ses_1f51624bbffe7m7r7rVPzyHDpn": "appended",
-    "ses_1f5160905ffe5VDsno0vH62YKu": "appended",
-    "ses_1f515cbbdffeDjBEEad28UBIsg": "appended"
+    "ses_1f468c5cdffeEF5vIPwRKKD05x": "direct",
+    "ses_1f1f09928ffeBYn2PVKADM3lpo": "appended",
+    "ses_1f1f073d5ffeC50LyotRfL8wnB": "appended",
+    "ses_1f1f04d6effeIZmPPOICLg7gsk": "appended",
+    "ses_1f1f022b1ffe68AnZf1vXYMOYc": "appended"
   },
-  "plan_name": "code-cleanliness-shader-reorg",
+  "plan_name": "code-review-fixes",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Fix event struct types (mouse, input, screen, animation)",
-      "session_id": "ses_1f5315594ffe0tfGAQnpHJz6bv",
+      "task_title": "Fix GLSL bugs (OOB array + uninitialized variables)",
+      "session_id": "ses_1f201a0b6ffeEStIyQjOOG5N5D",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-09T03:40:44.024Z"
+      "updated_at": "2026-05-09T18:30:37.076Z"
     },
     "todo:7": {
       "task_key": "todo:7",
       "task_label": "7",
-      "task_title": "Create ShaderModule.hpp base config + convention",
-      "session_id": "ses_1f5288cfcffejH7NHZWuupsgrh",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-09T03:49:29.507Z"
-    },
-    "todo:8": {
-      "task_key": "todo:8",
-      "task_label": "8",
-      "task_title": "Create BlurHModule.hpp",
-      "session_id": "ses_1f524220effeF4z4f6jB5yRb7t",
+      "task_title": "Add MainMenuScreen::onExit() for shader cleanup",
+      "session_id": "ses_1f1fb630dffeWpWhcSq30lmUnX",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-09T03:52:32.367Z"
+      "updated_at": "2026-05-09T18:35:53.170Z"
     },
-    "todo:11": {
-      "task_key": "todo:11",
-      "task_label": "11",
-      "task_title": "Update App.cpp to module-based shader initialization",
-      "session_id": "ses_1f520b868ffen2LQKrSDRpaLH9",
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "Fix CMake NUL device (cross-platform shader validation)",
+      "session_id": "ses_1f1f25b18ffeBnhaP2A3ZZXWPT",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-09T04:00:31.890Z"
+      "updated_at": "2026-05-09T18:45:03.340Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_1f51649a6fferRc4nT4ThCz80C",
-      "agent": "oracle",
-      "updated_at": "2026-05-09T04:09:35.764Z"
+      "session_id": "ses_1f1f022b1ffe68AnZf1vXYMOYc",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-09T18:46:21.571Z"
     }
   }
 }

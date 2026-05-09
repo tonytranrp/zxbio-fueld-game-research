@@ -15,7 +15,7 @@ Application::Application(Config config)
 {
 }
 
-Application::~Application() {
+Application::~Application() noexcept {
     if (m_initialized) {
         shutdown();
     }
@@ -33,28 +33,17 @@ void Application::init() {
     if (m_config.resizable) {
         SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     }
+    if (m_config.fullscreen) {
+        SetConfigFlags(FLAG_FULLSCREEN_MODE);
+    }
 
     InitWindow(m_config.width, m_config.height, m_config.title.c_str());
 
-    // We handle ESC ourselves — disable the default Raylib ESC→close behavior
-    SetExitKey(KEY_NULL);
-
-    SetWindowMinSize(m_config.width, m_config.height);
-
-    if (m_config.fullscreen) {
-        ToggleFullscreen();
-    }
-
-    SetTargetFPS(m_config.targetFps);
-
-    Data::events().init();
-    Data::screens().init();
-    animation::AnimationManager::instance().init();
-    utils::render::ShaderManager::instance().init();
-
-    // Push loading screen immediately — it handles shader compilation
-    // and other deferred init work while showing progress.
-    Data::screens().push(std::make_unique<ui::screens::LoadingScreen>());
+    // Push loading screen immediately — it handles ALL remaining init
+    // (window config, systems init, shader compilation, crossfade preload)
+    // while showing real-time progress via the task queue.
+    Data::screens().push(std::make_unique<ui::screens::LoadingScreen>(
+        m_config.width, m_config.height, m_config.targetFps));
 
     m_initialized = true;
     m_running = true;
@@ -68,6 +57,7 @@ void Application::shutdown() {
     Data::screens().shutdown();
     animation::AnimationManager::instance().shutdown();
     utils::render::ShaderManager::instance().shutdown();
+    Data::fonts().shutdown();
     Data::events().shutdown();
     CloseWindow();
     m_initialized = false;
@@ -78,13 +68,27 @@ void Application::shutdown() {
 // Main Loop
 // ------------------------------------------------------------------------------
 
-int Application::run() {
+i32 Application::run() {
     init();
 
+    f64 accumulator = 0.0;
+
     while (m_running && !WindowShouldClose() && !Data::screens().quitRequested()) {
-        const f32 dt = GetFrameTime();
+        const f64 dt = static_cast<f64>(GetFrameTime());
+        accumulator += dt;
+
+        // Cap to prevent spiral-of-death (max 5 frames behind)
+        if (accumulator > FIXED_DT * 5.0) {
+            accumulator = FIXED_DT * 5.0;
+        }
+
         processInput();
-        update(dt);
+
+        while (accumulator >= FIXED_DT) {
+            update(static_cast<f32>(FIXED_DT));
+            accumulator -= FIXED_DT;
+        }
+
         render();
     }
 
@@ -114,10 +118,15 @@ void Application::render() {
 
     // Debug overlay
     const i32 screenH = Renderer::screenHeight();
+    const i32 overlayX = 14;
+    const i32 overlayY = screenH - 34;
+    const i32 overlayW = 182;
+    const i32 overlayH = 22;
+    Renderer::drawRect(overlayX, overlayY - 2, overlayW, overlayH, {10, 12, 18, 118});
     Renderer::drawText(
         TextFormat("Window: %dx%d | FPS: %d",
             Renderer::screenWidth(), screenH, GetFPS()),
-        20, screenH - 30, 16, DARKGRAY
+        overlayX + 6, overlayY + 1, 14, {108, 112, 126, 255}
     );
 
     Renderer::endFrame();

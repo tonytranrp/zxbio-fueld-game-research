@@ -28,6 +28,9 @@ public:
     }
 
     void processNext() {
+        if (m_tasks.empty()) {
+            return;
+        }
         if (isDone()) {
             return;
         }
@@ -49,6 +52,9 @@ public:
     }
 
     [[nodiscard]] const std::string& currentName() const noexcept {
+        if (isDone() && m_currentIndex > 0) {
+            return m_tasks[m_currentIndex - 1].name;
+        }
         if (m_currentIndex >= 0 && m_currentIndex < static_cast<i32>(m_tasks.size())) {
             return m_tasks[m_currentIndex].name;
         }

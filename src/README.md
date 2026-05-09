@@ -1,170 +1,63 @@
-# src/ — Game Source Code
+# src - Game Source Code
 
-## Directory Structure
+This directory contains the authored C++ source for the game. The maintained code lives in the top-level feature folders below; generated files inside `src/build/` are not authored source.
 
-```
+## Current layout
+
+```text
 src/
-├── main.cpp                  ← Entry point
-├── CMakeLists.txt            ← Build config + shader embedding pipeline
-├── Core/                     ← App, Types, LoadingTask, game loop
-│   └── README.md
-├── Data/                     ← Event bus, event types, central bridge
-│   ├── README.md
-│   └── event/                ← Event structs organized by domain
-│       └── README.md
-├── Systems/                  ← Gameplay systems (stateless, static methods)
-│   └── README.md
-├── UI/                       ← Screen stack, screen base class, all screens
-│   ├── README.md
-│   └── screens/              ← Loading, MainMenu, PausePopup, ...
-├── AnimationController/      ← Animation system, easing, blur effects
-│   ├── README.md
-│   ├── animation/            ← Animation<T>, easing functions, premade animations
-│   └── screen/               ← ScreenBlurEffect
-└── Utils/                    ← Reusable utilities
-    ├── render/  README.md    ← Renderer, ShaderManager, shader modules
-    ├── event/   README.md    ← EventBus wrapper
-    ├── ui/      README.md    ← MenuHelper, reusable UI logic
-    ├── json/    README.md    ← JSON file I/O
-    ├── task/    README.md    ← Parallel task execution
-    └── font/    README.md    ← Font loading/caching
-
-assets/shaders/               ← Authoritative GLSL shader source (syntax-highlighted .glsl)
-├── blur_h.glsl               ← Horizontal Gaussian blur
-└── blur_v.glsl               ← Vertical Gaussian blur
-
-assets/fonts/                 ← Font files (.ttf)
-assets/models/                ← 3D models (.glb/.iqm)
-assets/sprites/               ← 2D spritesheets (.png)
-assets/audio/                 ← Sound effects + music
+|-- main.cpp
+|-- CMakeLists.txt
+|-- Core/
+|-- Data/
+|-- Systems/
+|-- UI/
+|-- AnimationController/
+`-- Utils/
 ```
 
-## Global Coding Standards
+## Ownership by folder
 
-These apply to **every file** in this project.
+- `Core/` - app bootstrap, main loop, project types, loading task queue
+- `Data/` - event manager, event definitions, global access bridge
+- `Systems/` - runtime systems; right now this is mainly input polling
+- `UI/` - screen stack and concrete screens
+- `AnimationController/` - generic animation runtime and screen blur effect
+- `Utils/` - concrete shared helpers for rendering, fonts, and UI menus
 
-### 1. Types — Always Project Types
+## Repo rules that matter most
+
+### Types
+
+Use project aliases from `Core/Types.hpp` for numeric values in project-owned APIs and state.
 
 ```cpp
-// ❌ Never use raw primitive types
-int x = 0;
-float dt = 0.0f;
-unsigned char alpha = 255;
-
-// ✅ Always use project types from Core/Types.hpp
-i32 x = 0;
-f32 dt = 0.0f;
+i32 width = 1280;
+f32 dt = 0.016f;
 u8 alpha = 255;
 ```
 
-### 2. [[nodiscard]] on All Value-Returning Functions
+Keep raw Raylib or platform-native types at the boundary when that is the real API shape, such as key codes, `Color`, `Vector2`, `Texture2D`, or `Shader`.
 
-```cpp
-[[nodiscard]] i32 screenWidth();          // Yes
-[[nodiscard]] bool isRunning() const;      // Yes
-void update(f32 dt);                       // No return = no [[nodiscard]]
-```
+### Modern C++
 
-### 3. constexpr for Compile-Time Constants
+Prefer:
 
-```cpp
-static constexpr i32 TILE_SIZE = 32;
-static constexpr f32 TICK_RATE = 1.0 / 60.0;
-static constexpr std::string_view TITLE = "Fuel Farm";
-```
+- `std::string_view` for static text and non-owning string parameters
+- `std::span` for read-only lists
+- `constexpr` for fixed layout and timing values
+- `[[nodiscard]]` on query-style functions
+- `noexcept` on accessors and small state transitions when they truly cannot throw
+- small concrete RAII wrappers when they remove repeated pairing logic
 
-### 4. noexcept on All Accessors
+Do not introduce templates by default. Use them only when they remove real duplication across multiple concrete users or match an existing generic subsystem.
 
-```cpp
-[[nodiscard]] i32 getWidth() const noexcept { return m_width; }
-```
+### Boundaries
 
-### 5. std::string_view for String Literals
+- gameplay and UI code should prefer `Renderer` and `ShaderManager` instead of open-coding raw Raylib draw and shader calls
+- screens should use `ScreenManager` for navigation and quitting
+- low-level runtime code may still call raw Raylib APIs inside utility boundaries where wrapping would be artificial
 
-```cpp
-// ✅ Zero-allocation compile-time string
-static constexpr std::string_view LABEL = "New Game";
+### Generated content
 
-// Convert to std::string only at the API boundary
-Renderer::drawText(std::string{LABEL}, x, y, size, color);
-```
-
-### 6. Designated Initializers for Clarity
-
-```cpp
-// ✅ Self-documenting
-Config config{
-    .title = "Biofuel Game",
-    .width = 1280,
-    .height = 720,
-    .resizable = true,
-};
-
-// ❌ Positional — fragile, easy to swap fields
-Config config("Biofuel Game", 1280, 720, true);
-```
-
-### 7. Named Constants — No Magic Numbers
-
-```cpp
-// ❌
-Renderer::drawText("Title", 20, 30, 48, YELLOW);
-
-// ✅
-static constexpr i32 TITLE_X = 20;
-static constexpr i32 TITLE_SIZE = 48;
-Renderer::drawText(std::string{TITLE_STR}, TITLE_X, TITLE_Y, TITLE_SIZE, COLOR_TITLE);
-```
-
-### 8. Free Functions Over Static Methods When Possible
-
-```cpp
-// ✅ Preferred for stateless operations
-namespace utils::ui {
-    void renderMenu(...);
-}
-
-// ⚠️ Only if you need to group related functions with shared state
-class Renderer {
-public:
-    static void beginFrame(...);
-    static void endFrame(...);
-};
-```
-
-### 9. File Organization
-
-- **`.hpp`** — declarations: class interfaces, function signatures, constexpr data
-- **`.cpp`** — definitions: function bodies, static variables, implementation details
-- **One class/concern per file pair** — don't put two unrelated classes in one file
-- **GLOB_RECURSE picks up everything** — just create the file, CMake finds it
-
-### 10. Namespaces Match Directory Structure
-
-```
-src/Core/App.hpp       → namespace biofuel { class Application ... }
-src/Systems/           → namespace biofuel::systems { ... }
-src/UI/                → namespace biofuel::ui { ... }
-src/UI/screens/        → namespace biofuel::ui::screens { ... }
-src/Utils/render/      → namespace biofuel::utils::render { ... }
-src/Data/              → namespace biofuel { class Data ... }
-src/Data/event/input/  → namespace biofuel::event::input { ... }
-```
-
-### 11. Include Guards
-
-Always `#pragma once` — never `#ifndef` guards.
-
-### 12. When to Use Templates
-
-Templates are **allowed only** when:
-- You're writing a generic container/algorithm that works with 3+ types
-- You're wrapping a third-party template library (Taskflow, entt)
-- You need `std::span<T>` for array abstraction
-
-Templates are **forbidden** when:
-- You're avoiding a `std::string` allocation — use `std::string_view`
-- You only have 1-2 concrete instantiations — just write the concrete code
-- You're "future-proofing" — YAGNI
-
-Default to concrete types. Templates add compile time, obscure error messages, and make the codebase harder to navigate.
+Do not treat `build/`, `out/`, or `src/build/` as source folders. They can exist locally, but they are generated outputs and should not drive architecture or README content.

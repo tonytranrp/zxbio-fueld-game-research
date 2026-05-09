@@ -1,46 +1,26 @@
-# Utils/font — Font Management
+# Utils/font
 
-Loads, caches, and provides Raylib `Font` objects by name.
+Font loading and caching helpers.
 
-## Architecture
+## Current contents
 
-```
+```text
 Utils/font/
-├── FontUtils.hpp   ← FontManager singleton: load, unload, get
-└── FontUtils.cpp   ← FontManager implementation
+|-- FontUtils.hpp
+`-- FontUtils.cpp
 ```
 
-## Coding Standards
+## FontManager
 
-### 1. Load Fonts by Name
+`FontManager` is a small singleton that:
 
-```cpp
-FontManager::instance().load("pixel", "assets/fonts/pixel.ttf", 16);
-```
+- loads fonts by caller-chosen name
+- unloads and replaces fonts safely
+- returns loaded fonts by name
+- falls back to `GetFontDefault()` when a lookup misses
 
-The name is your key for later lookups — use short, descriptive names.
+## Guidance
 
-### 2. Get With Fallback
-
-```cpp
-Font font = FontManager::instance().get("pixel");  // Returns default font if "pixel" not loaded
-```
-
-`get()` never returns an invalid font — it falls back to `GetFontDefault()`.
-
-### 3. Unload When Replacing
-
-```cpp
-FontManager::instance().unload("pixel");     // Frees the old font
-FontManager::instance().load("pixel", ...);  // Loads new version
-```
-
-### 4. Types
-
-- Font handles: Raylib `Font` (by value — it's a lightweight handle)
-- Font names: `const std::string&`
-- Sizes: `i32` (base size in pixels)
-
-## Templates
-
-None. The font manager stores `Font` objects in an `std::unordered_map<std::string, Font>` — no templates needed at this layer.
+- prefer `std::string_view` at the call boundary
+- keep font ownership inside the manager
+- use this manager only for cached font resources, not as a general dependency hub

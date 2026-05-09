@@ -2,20 +2,36 @@
 #include "PausePopupScreen.hpp"
 #include "UI/ScreenManager.hpp"
 #include "Utils/render/Render.hpp"
+#include "Utils/render/Shader/MainMenuBgModule.hpp"
 #include <raylib.h>
 #include <cmath>
 #include <memory>
 
 namespace biofuel::ui::screens {
 
-// ------------------------------------------------------------------------------
-// Lifecycle
-// ------------------------------------------------------------------------------
-
 void MainMenuScreen::onEnter() {
-    m_selected  = 0;
-    m_cooldown  = 0.0f;
+    m_selected = 0;
+    m_cooldown = 0.0f;
     m_titlePulse = 0.0f;
+    m_menuSlide = {};
+
+    m_introPhase = IntroPhase::WaitingForTransition;
+    m_titleFade.elapsed = 0.0f;
+    m_subtitleFade.elapsed = 0.0f;
+    m_hintsFade.elapsed = 0.0f;
+    m_menuFade.elapsed = 0.0f;
+
+    m_backdrop.configure(animation::screen::ScreenBackdropConfig{
+        .shaderName = utils::render::shader::MainMenuBgModule::NAME,
+        .fallbackColor = COLOR_BG,
+        .revealDelay = BG_REVEAL_DELAY,
+        .revealDuration = BG_REVEAL_DURATION,
+        .brightnessFloor = 0.0f,
+        .brightnessCeiling = 1.0f,
+        .transitionWeight = 0.45f,
+        .revealWeight = 0.55f,
+    });
+    m_backdrop.reset();
 
 #ifdef BIOFUEL_DEV_STARTUP_PAUSE_POPUP
     if (auto* sm = manager()) {
@@ -24,16 +40,73 @@ void MainMenuScreen::onEnter() {
 #endif
 }
 
+void MainMenuScreen::onExit() {}
+
 void MainMenuScreen::onUpdate(const f32 dt) {
+    m_backdrop.update(dt);
+    updateMenuSlide(dt);
+
+    if (m_introPhase == IntroPhase::WaitingForTransition) {
+        if (!isTransitioning() && backgroundRevealProgress() >= BG_TEXT_SYNC_THRESHOLD) {
+            startIntro();
+        }
+        return;
+    }
+
+    if (m_introPhase != IntroPhase::Done) {
+        advanceIntro(dt);
+    }
+
     if (m_cooldown > 0.0f) {
         m_cooldown -= dt;
     }
-    m_titlePulse += dt;
+
+    if (m_introPhase >= IntroPhase::TitleFade) {
+        m_titlePulse += dt;
+    }
 }
 
-// ------------------------------------------------------------------------------
-// Rendering
-// ------------------------------------------------------------------------------
+void MainMenuScreen::startIntro() {
+    m_introPhase = IntroPhase::TitleFade;
+    m_titleFade.elapsed = 0.001f;
+}
+
+void MainMenuScreen::advanceIntro(const f32 dt) {
+    if (m_introPhase >= IntroPhase::TitleFade) {
+        m_titleFade.elapsed += dt;
+    }
+
+    if (m_introPhase == IntroPhase::TitleFade && m_titleFade.elapsed >= m_subtitleFade.delay) {
+        m_introPhase = IntroPhase::SubtitleFade;
+        m_subtitleFade.elapsed = 0.001f;
+    }
+
+    if (m_introPhase >= IntroPhase::SubtitleFade) {
+        m_subtitleFade.elapsed += dt;
+    }
+
+    if (m_introPhase == IntroPhase::SubtitleFade && m_subtitleFade.elapsed >= m_hintsFade.delay) {
+        m_introPhase = IntroPhase::HintsFade;
+        m_hintsFade.elapsed = 0.001f;
+    }
+
+    if (m_introPhase >= IntroPhase::HintsFade) {
+        m_hintsFade.elapsed += dt;
+    }
+
+    if (m_introPhase == IntroPhase::HintsFade && m_hintsFade.elapsed >= m_menuFade.delay) {
+        m_introPhase = IntroPhase::MenuFade;
+        m_menuFade.elapsed = 0.001f;
+    }
+
+    if (m_introPhase >= IntroPhase::MenuFade) {
+        m_menuFade.elapsed += dt;
+    }
+
+    if (m_introPhase == IntroPhase::MenuFade && m_menuFade.alpha() >= 1.0f) {
+        m_introPhase = IntroPhase::Done;
+    }
+}
 
 void MainMenuScreen::onRender() {
     using namespace utils::render;
@@ -41,164 +114,83 @@ void MainMenuScreen::onRender() {
     const i32 sw = Renderer::screenWidth();
     const i32 sh = Renderer::screenHeight();
 
-    // ---- Pulsing title at top-left ----
-    const f32 pulse = (std::sin(m_titlePulse * TITLE_PULSE_SPEED) * 0.5f + 0.5f)
-                      * TITLE_PULSE_RANGE + TITLE_PULSE_MIN;
-    const Color titleColor = {
-        static_cast<u8>(pulse),
-        static_cast<u8>(pulse * 0.85f),
-        static_cast<u8>(pulse * 0.5f),
-        255
-    };
+    m_backdrop.render(transitionAlpha());
 
-    static constexpr std::string_view titleStr = "FUEL FARM";
-    Renderer::drawText(
-        std::string{titleStr},
-        TITLE_X,
-        TITLE_Y,
-        TITLE_FONT_SIZE,
-        titleColor
-    );
+    if (m_introPhase >= IntroPhase::TitleFade) {
+        const f32 pulse = (std::sin(m_titlePulse * TITLE_PULSE_SPEED) * 0.5f + 0.5f)
+                          * TITLE_PULSE_RANGE + TITLE_PULSE_MIN;
+        const u8 fadeAlpha = static_cast<u8>(m_titleFade.alpha() * 255.0f);
+        const Color titleColor = {
+            static_cast<u8>(pulse),
+            static_cast<u8>(pulse * 0.85f),
+            static_cast<u8>(pulse * 0.5f),
+            fadeAlpha
+        };
 
-    // ---- Subtitle below title ----
-    const i32 subtitleY = TITLE_Y + TITLE_FONT_SIZE + TITLE_SUBTITLE_GAP;
-    static constexpr std::string_view subtitleStr = "2D Pixel-Art Biofuel Management Sim";
-    Renderer::drawText(
-        std::string{subtitleStr},
-        TITLE_X,
-        subtitleY,
-        SUBTITLE_FONT_SIZE,
-        COLOR_GRAY_DIM
-    );
+        static constexpr std::string_view titleStr = "FUEL FARM";
+        Renderer::drawText(titleStr, TITLE_X, TITLE_Y, TITLE_FONT_SIZE, titleColor);
+    }
 
-    // ---- Controls hint below subtitle ----
-    const i32 hintsY = subtitleY + SUBTITLE_FONT_SIZE + SUBTITLE_HINTS_GAP;
-    static constexpr std::string_view hintsStr = "ESC Pause  |  \x11\x10 Navigate  |  ENTER Select";
-    Renderer::drawText(
-        std::string{hintsStr},
-        TITLE_X,
-        hintsY,
-        HINTS_FONT_SIZE,
-        COLOR_GRAY_DIM
-    );
+    if (m_introPhase >= IntroPhase::SubtitleFade) {
+        const u8 alpha = static_cast<u8>(m_subtitleFade.alpha() * 255.0f);
+        const Color subColor = {COLOR_GRAY_DIM.r, COLOR_GRAY_DIM.g, COLOR_GRAY_DIM.b, alpha};
+        static constexpr std::string_view subtitleStr = "2D Pixel-Art Biofuel Management Sim";
+        Renderer::drawText(
+            subtitleStr,
+            TITLE_X,
+            TITLE_Y + TITLE_FONT_SIZE + TITLE_SUBTITLE_GAP,
+            SUBTITLE_FONT_SIZE,
+            subColor
+        );
+    }
 
-    // ---- Horizontal menu bar at bottom-middle ----
-    const i32 barY = sh - MENU_BAR_Y_OFFSET;
-    renderMenuBar(sw / 2, barY);
+    if (m_introPhase >= IntroPhase::HintsFade) {
+        const u8 alpha = static_cast<u8>(m_hintsFade.alpha() * 255.0f);
+        const Color hintColor = {COLOR_GRAY_DIM.r, COLOR_GRAY_DIM.g, COLOR_GRAY_DIM.b, alpha};
+        static constexpr std::string_view hintsStr = "ESC Pause  |  LEFT / RIGHT Navigate  |  ENTER Select";
+        const i32 subtitleY = TITLE_Y + TITLE_FONT_SIZE + TITLE_SUBTITLE_GAP;
+        const i32 hintsY = subtitleY + SUBTITLE_FONT_SIZE + SUBTITLE_HINTS_GAP;
+        Renderer::drawText(hintsStr, TITLE_X, hintsY, HINTS_FONT_SIZE, hintColor);
+    }
 
-    // ---- Version footer ----
+    if (m_introPhase >= IntroPhase::MenuFade) {
+        auto layout = MENU_LAYOUT;
+        const u8 menuAlpha = static_cast<u8>(m_menuFade.alpha() * 255.0f);
+        layout.colorSelected.a = menuAlpha;
+        layout.colorSelectedGlow.a = menuAlpha;
+        layout.colorSide.a = menuAlpha;
+        layout.colorSideLocked.a = menuAlpha;
+        layout.colorLockedLabel.a = menuAlpha;
+
+        utils::ui::renderHorizontalCarousel(
+            std::span{s_items},
+            m_selected,
+            sw / 2,
+            sh - MENU_BAR_Y_OFFSET,
+            layout,
+            m_menuSlide.motion()
+        );
+    }
+
     static constexpr std::string_view versionStr = "v0.1.0 | Raylib 5.5 | C++20";
-    // Bottom-right: right-aligned
     const i32 versionX = sw - FOOTER_MARGIN_X;
     const i32 versionY = sh - FOOTER_BOTTOM_OFFSET;
     Renderer::drawText(
-        std::string{versionStr},
-        versionX - MeasureText(versionStr.data(), FOOTER_FONT_SIZE),
+        versionStr,
+        versionX - Renderer::measureText(versionStr, FOOTER_FONT_SIZE),
         versionY,
         FOOTER_FONT_SIZE,
         COLOR_VERSION
     );
-
 }
-
-// ------------------------------------------------------------------------------
-// Menu bar — horizontal row of 3 items centered at bottom of screen
-// Selected item: gold with underline bar and arrow indicators
-// Unselected: dim gray. Locked: dark gray with "(locked)" label.
-// ------------------------------------------------------------------------------
-
-void MainMenuScreen::renderMenuBar(const i32 centerX, const i32 barY) const {
-    using namespace utils::render;
-
-    const i32 itemCount = static_cast<i32>(s_items.size());
-
-    // Calculate starting X so items are evenly spaced and centered
-    // Item centers: centerX + (i - 1) * MENU_ITEM_SPACING for 3 items
-    // General: centerX + (i - (itemCount-1)/2) * MENU_ITEM_SPACING
-    const f32 halfSpan = (itemCount - 1) * MENU_ITEM_SPACING * 0.5f;
-    const i32 startX = static_cast<i32>(centerX - halfSpan);
-
-    for (i32 i = 0; i < itemCount; ++i) {
-        const i32 itemX = startX + i * MENU_ITEM_SPACING;
-        const bool isSelected = (i == m_selected);
-        const bool isLocked    = s_items[i].locked;
-
-        // Choose color based on state
-        Color itemColor = COLOR_GRAY_DIM;
-        if (isLocked) {
-            itemColor = COLOR_GRAY_LOCKED;
-        } else if (isSelected) {
-            itemColor = COLOR_GOLD;
-        }
-
-        // Draw item label centered at itemX
-        Renderer::drawTextCentered(
-            std::string{s_items[i].label},
-            itemX,
-            barY,
-            MENU_FONT_SIZE,
-            itemColor
-        );
-
-        // Draw "(locked)" label below locked items
-        if (isLocked) {
-            Renderer::drawTextCentered(
-                "(locked)",
-                itemX,
-                barY + MENU_FONT_SIZE + 4,
-                HINTS_FONT_SIZE,
-                COLOR_GRAY_LOCKED_LABEL
-            );
-        }
-
-        // Draw selection indicators for the selected item
-        if (isSelected && !isLocked) {
-            // Gold underline bar beneath the selected item
-            const i32 underlineX = itemX - UNDERLINE_WIDTH / 2;
-            const i32 underlineY = barY + MENU_FONT_SIZE + UNDERLINE_OFFSET_Y;
-            Renderer::drawRect(
-                underlineX,
-                underlineY,
-                UNDERLINE_WIDTH,
-                UNDERLINE_HEIGHT,
-                COLOR_GOLD
-            );
-
-            // Arrow indicators on left and right of selected item
-            static constexpr std::string_view arrowLeft  = "\x11"; // left arrow
-            static constexpr std::string_view arrowRight = "\x10"; // right arrow
-
-            // Measure label width to position arrows just outside the text
-            const i32 labelW = MeasureText(s_items[m_selected].label.data(), MENU_FONT_SIZE);
-            const i32 arrowLeftX  = itemX - labelW / 2 - ARROW_OFFSET_X - 8;
-            const i32 arrowRightX = itemX + labelW / 2 + ARROW_OFFSET_X;
-
-            Renderer::drawTextCentered(
-                std::string{arrowLeft},
-                arrowLeftX,
-                barY,
-                ARROW_FONT_SIZE,
-                COLOR_GOLD_DIM
-            );
-            Renderer::drawTextCentered(
-                std::string{arrowRight},
-                arrowRightX,
-                barY,
-                ARROW_FONT_SIZE,
-                COLOR_GOLD_DIM
-            );
-        }
-    }
-}
-
-// ------------------------------------------------------------------------------
-// Input handling
-// ------------------------------------------------------------------------------
 
 void MainMenuScreen::onInput() {
+    if (m_introPhase != IntroPhase::Done) {
+        return;
+    }
+
     using namespace utils::render;
 
-    // ESC -> push pause popup
     if (IsKeyPressed(KEY_ESCAPE)) {
         if (auto* sm = manager()) {
             sm->push(std::make_unique<PausePopupScreen>());
@@ -206,110 +198,47 @@ void MainMenuScreen::onInput() {
         return;
     }
 
-    // Keyboard navigation
-    if (navigateMenu()) {
+    i32 navigatedSelection = m_selected;
+    if (utils::ui::navigateHorizontalMenu(
+            navigatedSelection,
+            static_cast<i32>(s_items.size()),
+            m_cooldown,
+            std::span{s_items},
+            MENU_LAYOUT)) {
         activateSelected();
         return;
     }
+    if (navigatedSelection != m_selected) {
+        selectMenuIndex(navigatedSelection);
+    }
 
-    // Mouse hit-testing on menu bar items
-    const i32 sw = Renderer::screenWidth();
-    const i32 sh = Renderer::screenHeight();
-    const i32 barY = sh - MENU_BAR_Y_OFFSET;
-    const i32 hitIndex = hitTestMenuBar(sw / 2, barY);
-    if (hitIndex >= 0) {
-        m_selected = hitIndex;
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            activateSelected();
+    const auto hit = utils::ui::hitTestHorizontalCarousel(
+        std::span{s_items},
+        m_selected,
+        Renderer::screenWidth() / 2,
+        Renderer::screenHeight() - MENU_BAR_Y_OFFSET,
+        MENU_LAYOUT,
+        m_menuSlide.motion()
+    );
+    if (hit.hoveredIndex >= 0) {
+        const bool hoveredSelected = hit.hoveredIndex == m_selected;
+        if (!hoveredSelected) {
+            selectMenuIndex(hit.hoveredIndex);
+        }
+        if (hit.clicked) {
+            if (hoveredSelected) {
+                activateSelected();
+            }
         }
     }
 }
-
-// ------------------------------------------------------------------------------
-// Horizontal menu navigation — LEFT/A decrement, RIGHT/D increment,
-// wrapping around and skipping locked items. ENTER/SPACE to activate.
-// ------------------------------------------------------------------------------
-
-bool MainMenuScreen::navigateMenu() {
-    const i32 itemCount = static_cast<i32>(s_items.size());
-
-    // Enter/Space to activate
-    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
-        if (!s_items[m_selected].locked) {
-            return true;
-        }
-        return false;
-    }
-
-    if (m_cooldown > 0.0f) {
-        return false;
-    }
-
-    i32 dir = 0;
-    if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A)) {
-        dir = -1;
-    } else if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D)) {
-        dir = 1;
-    } else {
-        return false;
-    }
-
-    // Wrap around and skip locked items
-    do {
-        m_selected = (m_selected + dir + itemCount) % itemCount;
-    } while (s_items[m_selected].locked);
-
-    m_cooldown = KEY_REPEAT_DELAY;
-    return false;
-}
-
-// ------------------------------------------------------------------------------
-// Mouse hit-testing for menu bar items
-// ------------------------------------------------------------------------------
-
-i32 MainMenuScreen::hitTestMenuBar(const i32 centerX, const i32 barY) const {
-    using namespace utils::render;
-
-    const i32 itemCount = static_cast<i32>(s_items.size());
-    const f32 halfSpan = (itemCount - 1) * MENU_ITEM_SPACING * 0.5f;
-    const i32 startX = static_cast<i32>(centerX - halfSpan);
-    const Vector2 mouse = GetMousePosition();
-
-    static constexpr i32 HIT_PAD_X = 20;
-    static constexpr i32 HIT_PAD_Y = 10;
-
-    for (i32 i = 0; i < itemCount; ++i) {
-        if (s_items[i].locked) {
-            continue;
-        }
-
-        const i32 itemX = startX + i * MENU_ITEM_SPACING;
-        const i32 labelW = MeasureText(s_items[i].label.data(), MENU_FONT_SIZE);
-
-        const Rectangle hitbox = {
-            static_cast<f32>(itemX - labelW / 2 - HIT_PAD_X),
-            static_cast<f32>(barY - HIT_PAD_Y),
-            static_cast<f32>(labelW + HIT_PAD_X * 2),
-            static_cast<f32>(MENU_FONT_SIZE + HIT_PAD_Y * 2)
-        };
-
-        if (CheckCollisionPointRec(mouse, hitbox)) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-// ------------------------------------------------------------------------------
-// Activation logic
-// ------------------------------------------------------------------------------
 
 void MainMenuScreen::activateSelected() {
     switch (m_selected) {
-    case 0: // New Game — placeholder until game screen exists
+    case 0:
+    case 1:
         break;
-    case 2: // Quit
+    case 2:
         if (auto* sm = manager()) {
             sm->requestQuit();
         }
@@ -321,6 +250,53 @@ void MainMenuScreen::activateSelected() {
 
 bool MainMenuScreen::isLocked(const i32 index) const {
     return s_items[index].locked;
+}
+
+f32 MainMenuScreen::backgroundRevealProgress() const noexcept {
+    return m_backdrop.revealProgress();
+}
+
+void MainMenuScreen::updateMenuSlide(const f32 dt) noexcept {
+    if (!m_menuSlide.active()) {
+        m_menuSlide.direction = 0;
+        m_menuSlide.elapsed = m_menuSlide.duration;
+        return;
+    }
+
+    m_menuSlide.elapsed += dt;
+    if (m_menuSlide.elapsed >= m_menuSlide.duration) {
+        m_menuSlide.elapsed = m_menuSlide.duration;
+        m_menuSlide.direction = 0;
+    }
+}
+
+void MainMenuScreen::selectMenuIndex(const i32 newIndex) noexcept {
+    if (newIndex == m_selected) {
+        return;
+    }
+
+    const i32 oldIndex = m_selected;
+    m_selected = newIndex;
+    m_menuSlide.direction = inferMenuDirection(oldIndex, newIndex);
+    m_menuSlide.elapsed = 0.0f;
+}
+
+i32 MainMenuScreen::inferMenuDirection(const i32 oldIndex, const i32 newIndex) const noexcept {
+    const i32 itemCount = static_cast<i32>(s_items.size());
+    if (itemCount <= 1 || oldIndex == newIndex) {
+        return 0;
+    }
+
+    const i32 wrappedRight = (oldIndex + 1) % itemCount;
+    const i32 wrappedLeft = (oldIndex - 1 + itemCount) % itemCount;
+    if (newIndex == wrappedRight) {
+        return 1;
+    }
+    if (newIndex == wrappedLeft) {
+        return -1;
+    }
+
+    return (newIndex > oldIndex) ? 1 : -1;
 }
 
 } // namespace biofuel::ui::screens

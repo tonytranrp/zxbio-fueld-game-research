@@ -5,27 +5,41 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 
 # ------------------------------------------------------------------------------
-# Shader source embedding — reads .glsl files at configure time, generates
-# a header with constexpr std::string_view for each shader.
+# Shader source embedding — BUILD TIME, not configure time.
+# Editing a .glsl file and hitting Build (F7) in Visual Studio will now
+# regenerate ShaderSources.hpp and recompile dependent files automatically.
 # ------------------------------------------------------------------------------
 set(SHADER_DIR "${CMAKE_SOURCE_DIR}/assets/shaders")
 set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY ${GENERATED_DIR})
 
-set(SHADER_SOURCES_CONTENT "#pragma once\n#include <string_view>\n\nnamespace biofuel::shader_source {\n")
-
-foreach(SHADER_FILE IN ITEMS blur_h blur_v crossfade)
-    file(READ "${SHADER_DIR}/${SHADER_FILE}.glsl" SHADER_CONTENT)
-    string(APPEND SHADER_SOURCES_CONTENT
-        "inline constexpr std::string_view ${SHADER_FILE}_source = R\"shader(${SHADER_CONTENT})shader\";\n\n"
-    )
+set(SHADER_NAMES blur_h blur_v blur_composite crossfade loading_prelude mainmenu_bg)
+set(SHADER_SOURCE_FILES "")
+foreach(NAME ${SHADER_NAMES})
+    list(APPEND SHADER_SOURCE_FILES "${SHADER_DIR}/${NAME}.glsl")
 endforeach()
 
-string(APPEND SHADER_SOURCES_CONTENT "} // namespace biofuel::shader_source\n")
+set(GENERATED_SHADER_HEADER "${GENERATED_DIR}/ShaderSources.hpp")
 
-file(WRITE "${GENERATED_DIR}/ShaderSources.hpp" "${SHADER_SOURCES_CONTENT}")
+# Build-time command: regenerate header whenever any .glsl changes
+add_custom_command(
+    OUTPUT ${GENERATED_SHADER_HEADER}
+    COMMAND ${CMAKE_COMMAND}
+        -D SHADER_DIR="${SHADER_DIR}"
+        -D OUTPUT_FILE="${GENERATED_SHADER_HEADER}"
+        -D "SHADER_NAMES=${SHADER_NAMES}"
+        -P "${CMAKE_SOURCE_DIR}/cmake/EmbedShaders.cmake"
+    DEPENDS
+        ${SHADER_SOURCE_FILES}
+        "${CMAKE_SOURCE_DIR}/cmake/EmbedShaders.cmake"
+    COMMENT "Embedding shader sources into ShaderSources.hpp"
+)
+
+# Dummy target so the executable can depend on the generated header
+add_custom_target(GenerateShaderSources DEPENDS ${GENERATED_SHADER_HEADER})
 
 add_executable(${PROJECT_NAME} ${SOURCES})
+add_dependencies(${PROJECT_NAME} GenerateShaderSources)
 
 # Header-only library include paths (CPM sets these variables)
 target_include_directories(${PROJECT_NAME}
@@ -36,9 +50,6 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render/Shader
-        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/event
-        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/json
-        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/task
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/font
         ${CMAKE_CURRENT_SOURCE_DIR}/Systems
         ${CMAKE_CURRENT_SOURCE_DIR}/UI
@@ -72,12 +83,17 @@ endif()
 # Optional shader validation with glslc (Vulkan SDK / shaderc)
 # Non-fatal — warns if glslc not found, proceeds without validation.
 # ------------------------------------------------------------------------------
+if(WIN32)
+    set(NULL_DEVICE "NUL")
+else()
+    set(NULL_DEVICE "/dev/null")
+endif()
 find_program(GLSLC glslc)
 if(GLSLC)
-    foreach(SHADER IN ITEMS blur_h blur_v crossfade)
+    foreach(SHADER IN ITEMS ${SHADER_NAMES})
         add_custom_command(
             TARGET ${PROJECT_NAME} PRE_BUILD
-            COMMAND ${GLSLC} --target-env=opengl -o NUL "${SHADER_DIR}/${SHADER}.glsl"
+            COMMAND ${GLSLC} --target-env=opengl -o ${NULL_DEVICE} "${SHADER_DIR}/${SHADER}.glsl"
             COMMENT "Validating shader: ${SHADER}.glsl"
         )
     endforeach()

@@ -7,7 +7,7 @@
 
 namespace biofuel::systems::input {
 
-void InputSystem::poll() {
+void InputSystem::poll() noexcept {
     auto& bus = Data::eventBus();
 
     for (i32 key = GetKeyPressed(); key != 0; key = GetKeyPressed()) {

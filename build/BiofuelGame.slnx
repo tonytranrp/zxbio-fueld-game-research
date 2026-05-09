@@ -8,10 +8,14 @@
 		<Platform Name="x64"/>
 	</Configurations>
 	<Project Path="src/BiofuelGame.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="5ddd8462-a6e6-365e-b7b7-add8b7e026e7">
+		<BuildDependency Project="src/GenerateShaderSources.vcxproj"/>
 		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
 		<BuildDependency Project="_deps/raylib-build/raylib/external/glfw/src/glfw.vcxproj"/>
 		<BuildDependency Project="_deps/raylib-build/raylib/raylib.vcxproj"/>
 		<BuildDependency Project="_deps/spdlog-build/spdlog.vcxproj"/>
+	</Project>
+	<Project Path="src/GenerateShaderSources.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="893d3c24-14cf-35d3-acff-3d13616ed43b">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
 	</Project>
 	<Project Path="_deps/raylib-build/raylib/raylib.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="12258956-4b09-3e31-abd8-b755076170b1">
 		<BuildDependency Project="ZERO_CHECK.vcxproj"/>

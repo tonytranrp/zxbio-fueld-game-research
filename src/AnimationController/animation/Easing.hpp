@@ -78,7 +78,7 @@ namespace biofuel::animation::Easing {
     return t == 0.0f ? 0.0f : std::pow(2.0f, 10.0f * (t - 1.0f));
 }
 [[nodiscard]] inline f32 easeOutExpo(f32 t) noexcept {
-    return t == 1.0f ? 1.0f : 1.0f - std::pow(-2.0f, -10.0f * t);
+    return t == 1.0f ? 1.0f : 1.0f - std::pow(2.0f, -10.0f * t);
 }
 [[nodiscard]] inline f32 easeInOutExpo(f32 t) noexcept {
     if (t == 0.0f) return 0.0f;

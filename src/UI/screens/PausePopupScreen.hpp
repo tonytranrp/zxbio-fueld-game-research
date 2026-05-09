@@ -41,10 +41,15 @@ private:
     static constexpr f32 SLIDE_DURATION = 0.3f;
     static constexpr animation::screen::BlurConfig BLUR_CONFIG = {
         .tintColor = {.r = 15, .g = 15, .b = 25, .a = 0},
-        .maxTintAlpha = 120,
-        .fadeInDuration = 0.3f,
-        .fadeOutDuration = 0.3f,
-        .blurRadius = 3.0f,
+        .maxTintAlpha = 108,
+        .fadeInDuration = 0.32f,
+        .fadeOutDuration = 0.26f,
+        .blurRadius = 2.7f,
+        .captureScale = 0.42f,
+        .desaturation = 0.22f,
+        .vignetteStrength = 0.24f,
+        .dimStrength = 0.18f,
+        .blurPassCount = 2,
     };
 
     i32 m_selected = 0;
@@ -60,6 +65,7 @@ private:
     bool m_animatingIn = true;    // true during slide-in, blocks input
     bool m_animatingOut = false;  // true during slide-out (ESC dismiss)
     bool m_quitting = false;      // true if dismiss should quit the app
+    bool m_wantsPop = false;      // deferred pop flag to avoid re-entrancy
 
     void activateSelected();
     void startSlideIn();

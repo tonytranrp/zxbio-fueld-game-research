@@ -12,6 +12,7 @@
 #include "event/screen/ScreenEvents.hpp"
 #include "event/window/WindowEvents.hpp"
 #include "UI/ScreenManager.hpp"
+#include "Utils/font/FontUtils.hpp"
 
 namespace biofuel {
 
@@ -30,6 +31,10 @@ public:
 
     [[nodiscard]] static ui::ScreenManager& screens() {
         return ui::ScreenManager::instance();
+    }
+
+    [[nodiscard]] static utils::font::FontManager& fonts() {
+        return utils::font::FontManager::instance();
     }
 };
 

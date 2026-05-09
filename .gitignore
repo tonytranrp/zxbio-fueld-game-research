@@ -1,1 +1,35 @@
-.vs
+# Local IDE and editor settings
+.vs/
+.vscode/
+.idea/
+
+# Build trees and generated output
+build/
+out/
+src/build/
+bin/
+lib/
+generated/
+Testing/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+build.ninja
+.ninja_deps
+.ninja_log
+Makefile
+
+# CMake and tool-generated local config
+CMakeUserPresets.json
+
+# MSVC, link, and debug artifacts
+*.obj
+*.iobj
+*.ipdb
+*.ilk
+*.pdb
+*.recipe
+*.tlog
+*.lastbuildstate
+*.vcxproj.user

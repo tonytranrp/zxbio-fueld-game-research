@@ -1,54 +1,31 @@
-# Event System
+# Data/event
 
-This folder contains the game's event system built on top of **entt** dispatcher.
+The event layer is built on `entt::dispatcher` and stores only event definitions plus the manager that owns the dispatcher.
 
-## Architecture
+## Current folders
 
-```
+```text
 Data/event/
-├── EventManager.hpp      ← Central manager (init, shutdown, get bus)
-├── input/
-│   └── InputEvents.hpp   ← Keyboard input events
-├── mouse/
-│   └── MouseEvents.hpp   ← Mouse input events
-├── screen/
-│   └── ScreenEvents.hpp  ← Screen/resize events
-└── window/
-    └── WindowEvents.hpp  ← Window lifecycle events
+|-- EventManager.hpp
+|-- EventManager.cpp
+|-- animation/
+|-- input/
+|-- mouse/
+|-- screen/
+`-- window/
 ```
 
 ## Rules
 
-1. **One event type per folder** — each domain gets its own subfolder
-2. **Only `.hpp` files** — events are pure data structs, no `.cpp` needed
-3. **Hooked via `Data.hpp`** — the main bridge file that exposes events to the rest of the engine
-4. **Manager pattern** — `EventManager` owns the bus, handles init/shutdown
+- event structs are plain data in `.hpp` files
+- the manager owns lifecycle; event folders do not have behavior classes
+- keep event names specific to the domain that fires them
+- prefer project aliases in event payloads unless the external API shape is naturally a raw type
 
-## How to add a new event
+## Adding an event
 
-1. Create a new folder under `Data/event/` (e.g. `Data/event/custom/`)
-2. Add `CustomEvents.hpp` with your event struct(s)
-3. Include it in `Data.hpp` hook
-4. Emit from anywhere: `eventBus.emit<CustomEvent>(args...)`
-5. Listen from anywhere: `eventBus.connect<CustomEvent, &Listener::onCustom>(listener)`
+1. Put the new struct in the matching domain folder.
+2. Include that header where the event is produced or consumed.
+3. Trigger it through `Data::eventBus().trigger(...)`.
 
-## Example
-
-```cpp
-// In Data/event/input/InputEvents.hpp
-struct KeyPressedEvent {
-    int key;
-    bool ctrl;
-    bool shift;
-};
-
-// Emitting
-biofuel::Data::eventBus().emit<KeyPressedEvent>(KEY_SPACE, false, false);
-
-// Listening
-class PlayerController {
-    void onKeyPressed(const KeyPressedEvent& e) { ... }
-};
-
-player.connect<input::KeyPressedEvent, &PlayerController::onKeyPressed>(*this);
-```
+Keep the event API small and explicit. If a payload needs many unrelated fields, it usually means the event is doing too much.

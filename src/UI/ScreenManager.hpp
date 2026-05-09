@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Types.hpp"
+#include "Utils/render/RenderSurface.hpp"
 #include <raylib.h>
 #include <memory>
 #include <vector>
@@ -46,6 +47,10 @@ public:
     void requestQuit() noexcept { m_quitRequested = true; }
     [[nodiscard]] bool quitRequested() const noexcept { return m_quitRequested; }
 
+    // Crossfade transition preloading — called during LoadingScreen init tasks
+    void preloadCrossfadeShader();
+    void preloadTransitionTextures();
+
     ScreenManager(const ScreenManager&) = delete;
     ScreenManager& operator=(const ScreenManager&) = delete;
     ScreenManager(ScreenManager&&) = delete;
@@ -63,15 +68,14 @@ private:
     std::unique_ptr<Screen> m_pendingScreen;
 
     void processPendingActions();
+    void releaseTransitionTextures() noexcept;
 
     // Crossfade transition rendering
     Shader m_crossfadeShader{};
-    RenderTexture2D m_transitionTexOut{};
-    RenderTexture2D m_transitionTexIn{};
+    utils::render::RenderSurface m_transitionOut;
+    utils::render::RenderSurface m_transitionIn;
     i32 m_crossfadeProgressLoc = -1;
     i32 m_crossfadeTexInLoc = -1;
-    i32 m_transitionTexWidth = 0;
-    i32 m_transitionTexHeight = 0;
 
     void ensureCrossfadeShader();
     void ensureTransitionTextures(i32 width, i32 height);
