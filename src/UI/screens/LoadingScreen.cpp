@@ -9,11 +9,29 @@
 #include "Utils/render/Shader/CrossfadeModule.hpp"
 #include "Utils/render/Shader/LoadingPreludeModule.hpp"
 #include "Utils/render/Shader/MainMenuBgModule.hpp"
+#include "Utils/render/Shader/MenuOptionModule.hpp"
 #include "Data/Data.hpp"
 #include "AnimationController/AnimationManager.hpp"
 #include <raylib.h>
 
 namespace biofuel::ui::screens {
+
+namespace {
+
+void ensureShaderLoaded(
+    utils::render::ShaderManager& shaderManager,
+    const std::string_view name,
+    const char* vertexSource,
+    const std::string_view fragmentSource)
+{
+    if (shaderManager.has(name)) {
+        return;
+    }
+
+    shaderManager.loadFromMemory(name, vertexSource, fragmentSource.data());
+}
+
+} // namespace
 
 LoadingScreen::LoadingScreen(i32 width, i32 height, i32 targetFps)
     : m_appWidth(width), m_appHeight(height)
@@ -46,28 +64,32 @@ void LoadingScreen::buildTasks() {
     using namespace utils::render::shader;
     auto& shaderManager = utils::render::ShaderManager::instance();
     m_tasks.add({"Compiling blur horizontal shader...", 2.0f, [&shaderManager]() {
-        shaderManager.loadFromMemory(BlurHModule::NAME.data(),
-            BlurHModule::VERTEX_SOURCE, BlurHModule::FRAGMENT_SOURCE.data());
+        ensureShaderLoaded(shaderManager, BlurHModule::NAME,
+            BlurHModule::VERTEX_SOURCE, BlurHModule::FRAGMENT_SOURCE);
     }});
     m_tasks.add({"Compiling blur vertical shader...", 2.0f, [&shaderManager]() {
-        shaderManager.loadFromMemory(BlurVModule::NAME.data(),
-            BlurVModule::VERTEX_SOURCE, BlurVModule::FRAGMENT_SOURCE.data());
+        ensureShaderLoaded(shaderManager, BlurVModule::NAME,
+            BlurVModule::VERTEX_SOURCE, BlurVModule::FRAGMENT_SOURCE);
     }});
     m_tasks.add({"Compiling blur composite shader...", 1.2f, [&shaderManager]() {
-        shaderManager.loadFromMemory(BlurCompositeModule::NAME.data(),
-            BlurCompositeModule::VERTEX_SOURCE, BlurCompositeModule::FRAGMENT_SOURCE.data());
+        ensureShaderLoaded(shaderManager, BlurCompositeModule::NAME,
+            BlurCompositeModule::VERTEX_SOURCE, BlurCompositeModule::FRAGMENT_SOURCE);
     }});
     m_tasks.add({"Compiling crossfade shader...", 2.0f, [&shaderManager]() {
-        shaderManager.loadFromMemory(CrossfadeModule::NAME.data(),
-            CrossfadeModule::VERTEX_SOURCE, CrossfadeModule::FRAGMENT_SOURCE.data());
+        ensureShaderLoaded(shaderManager, CrossfadeModule::NAME,
+            CrossfadeModule::VERTEX_SOURCE, CrossfadeModule::FRAGMENT_SOURCE);
     }});
     m_tasks.add({"Compiling loading prelude shader...", 2.0f, [&shaderManager]() {
-        shaderManager.loadFromMemory(LoadingPreludeModule::NAME.data(),
-            LoadingPreludeModule::VERTEX_SOURCE, LoadingPreludeModule::FRAGMENT_SOURCE.data());
+        ensureShaderLoaded(shaderManager, LoadingPreludeModule::NAME,
+            LoadingPreludeModule::VERTEX_SOURCE, LoadingPreludeModule::FRAGMENT_SOURCE);
+    }});
+    m_tasks.add({"Compiling menu option shader...", 1.3f, [&shaderManager]() {
+        ensureShaderLoaded(shaderManager, MenuOptionModule::NAME,
+            MenuOptionModule::VERTEX_SOURCE, MenuOptionModule::FRAGMENT_SOURCE);
     }});
     m_tasks.add({"Compiling background shader...", 2.0f, [&shaderManager]() {
-        shaderManager.loadFromMemory(MainMenuBgModule::NAME.data(),
-            MainMenuBgModule::VERTEX_SOURCE, MainMenuBgModule::FRAGMENT_SOURCE.data());
+        ensureShaderLoaded(shaderManager, MainMenuBgModule::NAME,
+            MainMenuBgModule::VERTEX_SOURCE, MainMenuBgModule::FRAGMENT_SOURCE);
     }});
 
     m_tasks.add({"Caching transition shader...", 1.0f, []() {

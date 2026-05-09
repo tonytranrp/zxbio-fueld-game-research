@@ -97,7 +97,7 @@ void ScreenBackdropController::ensureShader() const {
     }
 
     auto& shaderManager = utils::render::ShaderManager::instance();
-    m_shader = shaderManager.get(m_config.shaderName);
+    m_shader = shaderManager.tryGet(m_config.shaderName);
     if (m_shader.id == 0) {
         m_shaderReady = false;
         return;

@@ -33,3 +33,10 @@ CMakeUserPresets.json
 *.tlog
 *.lastbuildstate
 *.vcxproj.user
+
+# Logs
+*.log
+
+# Personal tooling (CommandCode, Sisyphus)
+.commandcode/
+.sisyphus/

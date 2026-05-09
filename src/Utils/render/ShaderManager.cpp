@@ -103,12 +103,21 @@ void ShaderManager::unload(std::string_view name) {
 // ------------------------------------------------------------------------------
 
 Shader ShaderManager::get(std::string_view name) const noexcept {
+    const Shader shader = tryGet(name);
+    if (shader.id > 0) {
+        return shader;
+    }
+
+    spdlog::warn("ShaderManager: shader '{}' not found", std::string{name});
+    return Shader{};
+}
+
+Shader ShaderManager::tryGet(std::string_view name) const noexcept {
     const std::string key{name};
     auto it = m_shaders.find(key);
     if (it != m_shaders.end()) {
         return it->second;
     }
-    spdlog::warn("ShaderManager: shader '{}' not found", key);
     return Shader{};
 }
 

@@ -63,8 +63,10 @@ struct HorizontalMenuItemVisualState {
     i32 fontSize = 0;
     i32 hitWidth = 0;
     f32 slotOffset = 0.0f;
-    f32 emphasis = 0.0f;
+    f32 selectedStrength = 0.0f;
+    f32 hoverStrength = 0.0f;
     bool selected = false;
+    bool hovered = false;
     bool locked = false;
     bool visible = false;
     Color color = BLANK;
@@ -125,10 +127,12 @@ void renderVerticalMenu(
 void renderHorizontalCarousel(
     std::span<const MenuItem> items,
     i32 selectedIndex,
+    i32 hoveredIndex,
     i32 centerX,
     i32 centerY,
     const HorizontalMenuLayout& layout = {},
-    const HorizontalMenuMotion& motion = {}
+    const HorizontalMenuMotion& motion = {},
+    f32 animTime = 0.0f
 );
 
 [[nodiscard]] HorizontalMenuHitResult hitTestHorizontalCarousel(

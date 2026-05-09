@@ -13,7 +13,7 @@ set(SHADER_DIR "${CMAKE_SOURCE_DIR}/assets/shaders")
 set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY ${GENERATED_DIR})
 
-set(SHADER_NAMES blur_h blur_v blur_composite crossfade loading_prelude mainmenu_bg)
+set(SHADER_NAMES blur_h blur_v blur_composite crossfade loading_prelude mainmenu_bg menu_option)
 set(SHADER_SOURCE_FILES "")
 foreach(NAME ${SHADER_NAMES})
     list(APPEND SHADER_SOURCE_FILES "${SHADER_DIR}/${NAME}.glsl")

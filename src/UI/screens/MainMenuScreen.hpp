@@ -121,8 +121,8 @@ private:
         .accentHeight = 2,
         .colorSelected = COLOR_GOLD,
         .colorSelectedGlow = COLOR_WARM_HI,
-        .colorSide = {110, 113, 126, 230},
-        .colorSideLocked = {68, 70, 82, 215},
+        .colorSide = {134, 138, 154, 236},
+        .colorSideLocked = {82, 86, 98, 224},
         .colorLockedLabel = COLOR_GRAY_LOCKED_LABEL,
         .keyRepeatDelay = KEY_REPEAT_DELAY,
     };
@@ -133,8 +133,10 @@ private:
     static constexpr i32 FOOTER_BOTTOM_OFFSET   = 25;
     // ---- State ----
     i32 m_selected  = 0;
+    i32 m_hovered = -1;
     f32 m_cooldown  = 0.0f;
     f32 m_titlePulse = 0.0f;
+    f32 m_menuFxTime = 0.0f;
     MenuSlideState m_menuSlide{};
 
     // ---- Intro fade-in animation ----

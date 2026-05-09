@@ -1,6 +1,8 @@
 #include "App.hpp"
 #include "Utils/render/Render.hpp"
 #include "Utils/render/ShaderManager.hpp"
+#include "Utils/render/Shader/LoadingPreludeModule.hpp"
+#include "Utils/render/Shader/MenuOptionModule.hpp"
 #include "Data/Data.hpp"
 #include "UI/ScreenManager.hpp"
 #include "UI/screens/LoadingScreen.hpp"
@@ -38,6 +40,18 @@ void Application::init() {
     }
 
     InitWindow(m_config.width, m_config.height, m_config.title.c_str());
+    auto& shaderManager = utils::render::ShaderManager::instance();
+    shaderManager.init();
+    shaderManager.loadFromMemory(
+        utils::render::shader::LoadingPreludeModule::NAME.data(),
+        utils::render::shader::LoadingPreludeModule::VERTEX_SOURCE,
+        utils::render::shader::LoadingPreludeModule::FRAGMENT_SOURCE.data()
+    );
+    shaderManager.loadFromMemory(
+        utils::render::shader::MenuOptionModule::NAME.data(),
+        utils::render::shader::MenuOptionModule::VERTEX_SOURCE,
+        utils::render::shader::MenuOptionModule::FRAGMENT_SOURCE.data()
+    );
 
     // Push loading screen immediately — it handles ALL remaining init
     // (window config, systems init, shader compilation, crossfade preload)

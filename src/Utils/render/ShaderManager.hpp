@@ -30,6 +30,7 @@ public:
 
     // Get a loaded shader by name. Returns a default-invalid shader if not found.
     [[nodiscard]] Shader get(std::string_view name) const noexcept;
+    [[nodiscard]] Shader tryGet(std::string_view name) const noexcept;
 
     // Check if a shader is loaded and valid
     [[nodiscard]] bool has(std::string_view name) const noexcept;

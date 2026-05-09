@@ -40,6 +40,39 @@ void Renderer::drawTextCentered(const char* text, i32 centerX, i32 y, i32 fontSi
     ::DrawText(text, centerX - textWidth / 2, y, fontSize, color);
 }
 
+void Renderer::drawText(
+    Font font,
+    std::string_view text,
+    i32 x,
+    i32 y,
+    i32 fontSize,
+    Color color,
+    const f32 spacing)
+{
+    const std::string ownedText{text};
+    DrawTextEx(
+        font,
+        ownedText.c_str(),
+        Vector2{static_cast<f32>(x), static_cast<f32>(y)},
+        static_cast<f32>(fontSize),
+        spacing,
+        color
+    );
+}
+
+void Renderer::drawTextCentered(
+    Font font,
+    std::string_view text,
+    i32 centerX,
+    i32 y,
+    i32 fontSize,
+    Color color,
+    const f32 spacing)
+{
+    const i32 textWidth = measureText(font, text, fontSize, spacing);
+    drawText(font, text, centerX - textWidth / 2, y, fontSize, color, spacing);
+}
+
 void Renderer::drawRect(i32 x, i32 y, i32 width, i32 height, Color color) {
     DrawRectangle(x, y, width, height, color);
 }
@@ -104,6 +137,16 @@ void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, i32 width, i32
 i32 Renderer::measureText(std::string_view text, i32 fontSize) noexcept {
     const std::string ownedText{text};
     return MeasureText(ownedText.c_str(), fontSize);
+}
+
+i32 Renderer::measureText(Font font, std::string_view text, i32 fontSize, const f32 spacing) noexcept {
+    const std::string ownedText{text};
+    return static_cast<i32>(MeasureTextEx(
+        font,
+        ownedText.c_str(),
+        static_cast<f32>(fontSize),
+        spacing
+    ).x);
 }
 
 i32 Renderer::screenWidth() noexcept {

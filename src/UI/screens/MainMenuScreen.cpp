@@ -11,8 +11,10 @@ namespace biofuel::ui::screens {
 
 void MainMenuScreen::onEnter() {
     m_selected = 0;
+    m_hovered = -1;
     m_cooldown = 0.0f;
     m_titlePulse = 0.0f;
+    m_menuFxTime = 0.0f;
     m_menuSlide = {};
 
     m_introPhase = IntroPhase::WaitingForTransition;
@@ -45,6 +47,7 @@ void MainMenuScreen::onExit() {}
 void MainMenuScreen::onUpdate(const f32 dt) {
     m_backdrop.update(dt);
     updateMenuSlide(dt);
+    m_menuFxTime += dt;
 
     if (m_introPhase == IntroPhase::WaitingForTransition) {
         if (!isTransitioning() && backgroundRevealProgress() >= BG_TEXT_SYNC_THRESHOLD) {
@@ -165,10 +168,12 @@ void MainMenuScreen::onRender() {
         utils::ui::renderHorizontalCarousel(
             std::span{s_items},
             m_selected,
+            m_hovered,
             sw / 2,
             sh - MENU_BAR_Y_OFFSET,
             layout,
-            m_menuSlide.motion()
+            m_menuSlide.motion(),
+            m_menuFxTime
         );
     }
 
@@ -220,14 +225,13 @@ void MainMenuScreen::onInput() {
         MENU_LAYOUT,
         m_menuSlide.motion()
     );
+    m_hovered = hit.hoveredIndex;
     if (hit.hoveredIndex >= 0) {
-        const bool hoveredSelected = hit.hoveredIndex == m_selected;
-        if (!hoveredSelected) {
-            selectMenuIndex(hit.hoveredIndex);
-        }
         if (hit.clicked) {
-            if (hoveredSelected) {
+            if (hit.hoveredIndex == m_selected) {
                 activateSelected();
+            } else {
+                selectMenuIndex(hit.hoveredIndex);
             }
         }
     }

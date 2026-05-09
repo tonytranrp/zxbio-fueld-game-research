@@ -1,5 +1,7 @@
 #include "MenuHelper.hpp"
 #include "Utils/render/Render.hpp"
+#include "Utils/render/Shader/MenuOptionModule.hpp"
+#include "Utils/render/ShaderManager.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -12,14 +14,32 @@ namespace {
 constexpr i32 VERTICAL_ACCENT_BAR_WIDTH = 14;
 constexpr i32 VERTICAL_ACCENT_BAR_HEIGHT = 2;
 constexpr i32 VERTICAL_ACCENT_SQUARE = 4;
-
+constexpr i32 HORIZONTAL_VISIBLE_LIMIT = 8;
 constexpr f32 HORIZONTAL_SLOT_VISIBILITY = 1.35f;
-constexpr std::array<i32, 5> HORIZONTAL_RELATIVE_OFFSETS = {-2, -1, 0, 1, 2};
+constexpr f32 HORIZONTAL_HOVER_PREVIEW_STRENGTH = 0.35f;
+constexpr f32 HORIZONTAL_FONT_SPACING = 1.0f;
 
-std::array<HorizontalMenuItemVisualState, HORIZONTAL_RELATIVE_OFFSETS.size()> g_horizontalStates{};
+std::array<HorizontalMenuItemVisualState, HORIZONTAL_VISIBLE_LIMIT> g_horizontalStates{};
 
 [[nodiscard]] i32 wrapIndex(const i32 index, const i32 itemCount) noexcept {
     return (index % itemCount + itemCount) % itemCount;
+}
+
+[[nodiscard]] i32 shortestCircularOffset(
+    const i32 itemIndex,
+    const i32 selectedIndex,
+    const i32 itemCount) noexcept
+{
+    i32 offset = itemIndex - selectedIndex;
+    const i32 halfCount = itemCount / 2;
+
+    if (offset > halfCount) {
+        offset -= itemCount;
+    } else if (offset < -halfCount) {
+        offset += itemCount;
+    }
+
+    return offset;
 }
 
 [[nodiscard]] f32 saturate(const f32 value) noexcept {
@@ -53,6 +73,7 @@ std::array<HorizontalMenuItemVisualState, HORIZONTAL_RELATIVE_OFFSETS.size()> g_
 void rebuildHorizontalStates(
     std::span<const MenuItem> items,
     const i32 selectedIndex,
+    const i32 hoveredIndex,
     const i32 centerX,
     const i32 centerY,
     const HorizontalMenuLayout& layout,
@@ -67,48 +88,105 @@ void rebuildHorizontalStates(
     }
 
     const i32 itemCount = static_cast<i32>(items.size());
-    for (i32 slot = 0; slot < static_cast<i32>(HORIZONTAL_RELATIVE_OFFSETS.size()); ++slot) {
-        const i32 offset = HORIZONTAL_RELATIVE_OFFSETS[slot];
+    const i32 visibleCount = std::min(itemCount, static_cast<i32>(g_horizontalStates.size()));
+    for (i32 itemIndex = 0; itemIndex < visibleCount; ++itemIndex) {
+        const i32 offset = shortestCircularOffset(itemIndex, selectedIndex, itemCount);
         const f32 slotOffset = static_cast<f32>(offset) + motion.slotShift;
         if (std::abs(slotOffset) > HORIZONTAL_SLOT_VISIBILITY) {
             continue;
         }
 
-        const i32 itemIndex = wrapIndex(selectedIndex + offset, itemCount);
-        auto& state = g_horizontalStates[slot];
-        const f32 emphasis = easeOutCubic(1.0f - saturate(std::abs(slotOffset)));
-        const i32 fontSize = lerpInt(layout.sideFontSize, layout.centerFontSize, emphasis);
+        auto& state = g_horizontalStates[itemIndex];
+        const bool selected = (itemIndex == selectedIndex);
+        const bool hovered = (itemIndex == hoveredIndex);
+        const f32 selectedStrength = easeOutCubic(1.0f - saturate(std::abs(slotOffset)));
+        const f32 hoverStrength = hovered && !selected ? HORIZONTAL_HOVER_PREVIEW_STRENGTH : 0.0f;
+        const i32 fontSize = lerpInt(
+            layout.sideFontSize,
+            layout.centerFontSize,
+            saturate(selectedStrength + hoverStrength * 0.18f));
 
         state.itemIndex = itemIndex;
         state.slotOffset = slotOffset;
-        state.emphasis = emphasis;
+        state.selectedStrength = selectedStrength;
+        state.hoverStrength = hoverStrength;
+        state.selected = selected;
+        state.hovered = hovered;
         state.locked = items[itemIndex].locked;
         state.visible = true;
         state.fontSize = fontSize;
         state.centerX = centerX + static_cast<i32>(std::lround(slotOffset * static_cast<f32>(layout.sideOffsetX)));
-        state.baselineY = centerY + static_cast<i32>(std::lround(std::abs(slotOffset) * static_cast<f32>(layout.sideOffsetY)));
-        state.hitWidth = Renderer::measureText(items[itemIndex].label, state.fontSize);
+        state.baselineY = centerY + static_cast<i32>(std::lround(std::abs(slotOffset) * static_cast<f32>(layout.sideOffsetY)))
+            - (hovered && !selected ? 2 : 0);
+        state.hitWidth = Renderer::measureText(GetFontDefault(), items[itemIndex].label, state.fontSize, HORIZONTAL_FONT_SPACING);
         const Color sideColor = state.locked ? layout.colorSideLocked : layout.colorSide;
-        state.color = lerpColor(sideColor, layout.colorSelected, emphasis);
+        const f32 previewBlend = saturate(selectedStrength + hoverStrength);
+        state.color = lerpColor(sideColor, layout.colorSelected, previewBlend);
+    }
+}
+
+[[nodiscard]] Shader menuOptionShader() noexcept {
+    return utils::render::ShaderManager::instance().tryGet(
+        utils::render::shader::MenuOptionModule::NAME);
+}
+
+void renderMenuOptionGlow(
+    const HorizontalMenuItemVisualState& state,
+    const MenuItem& item,
+    const f32 animTime) noexcept
+{
+    Shader shader = menuOptionShader();
+    if (shader.id == 0) {
+        return;
     }
 
-    auto* focusedState = &g_horizontalStates.front();
-    f32 nearestSlotDistance = 999.0f;
-    for (auto& state : g_horizontalStates) {
-        if (!state.visible) {
-            continue;
-        }
+    const i32 timeLoc = utils::render::ShaderManager::getLocation(
+        shader, utils::render::shader::MenuOptionModule::UNIFORM_ITIME);
+    const i32 centerLoc = utils::render::ShaderManager::getLocation(
+        shader, utils::render::shader::MenuOptionModule::UNIFORM_ICENTER);
+    const i32 halfSizeLoc = utils::render::ShaderManager::getLocation(
+        shader, utils::render::shader::MenuOptionModule::UNIFORM_IHALF_SIZE);
+    const i32 selectionLoc = utils::render::ShaderManager::getLocation(
+        shader, utils::render::shader::MenuOptionModule::UNIFORM_SELECTION_STRENGTH);
+    const i32 hoverLoc = utils::render::ShaderManager::getLocation(
+        shader, utils::render::shader::MenuOptionModule::UNIFORM_HOVER_STRENGTH);
 
-        const f32 slotDistance = std::abs(state.slotOffset);
-        if (slotDistance < nearestSlotDistance) {
-            nearestSlotDistance = slotDistance;
-            focusedState = &state;
-        }
-    }
+    const Font font = GetFontDefault();
+    constexpr f32 textPadX = 10.0f;
+    constexpr f32 textPadY = 10.0f;
+    const f32 center[2] = {
+        static_cast<f32>(state.centerX),
+        static_cast<f32>(state.baselineY + state.fontSize / 2)
+    };
+    const f32 halfSize[2] = {
+        static_cast<f32>(state.hitWidth) * 0.5f + textPadX,
+        static_cast<f32>(state.fontSize) * 0.5f + textPadY
+    };
+    const f32 selectionStrength = state.selectedStrength;
+    const f32 hoverStrength = state.hoverStrength;
+    const Color glowTint = {
+        static_cast<u8>(210 + selectionStrength * 28.0f),
+        static_cast<u8>(222 + selectionStrength * 18.0f),
+        static_cast<u8>(255),
+        static_cast<u8>(255 * saturate(selectionStrength * 0.9f + hoverStrength * 0.75f))
+    };
 
-    for (auto& state : g_horizontalStates) {
-        state.selected = (&state == focusedState) && state.visible;
-    }
+    utils::render::ShaderManager::setValue(shader, timeLoc, &animTime, SHADER_UNIFORM_FLOAT);
+    utils::render::ShaderManager::setValue(shader, centerLoc, center, SHADER_UNIFORM_VEC2);
+    utils::render::ShaderManager::setValue(shader, halfSizeLoc, halfSize, SHADER_UNIFORM_VEC2);
+    utils::render::ShaderManager::setValue(shader, selectionLoc, &selectionStrength, SHADER_UNIFORM_FLOAT);
+    utils::render::ShaderManager::setValue(shader, hoverLoc, &hoverStrength, SHADER_UNIFORM_FLOAT);
+
+    const utils::render::ScopedShaderMode shaderScope(shader);
+    Renderer::drawTextCentered(
+        font,
+        item.label,
+        state.centerX,
+        state.baselineY,
+        state.fontSize,
+        glowTint,
+        HORIZONTAL_FONT_SPACING
+    );
 }
 
 } // namespace
@@ -297,12 +375,14 @@ bool navigateHorizontalMenu(
 void renderHorizontalCarousel(
     std::span<const MenuItem> items,
     const i32 selectedIndex,
+    const i32 hoveredIndex,
     const i32 centerX,
     const i32 centerY,
     const HorizontalMenuLayout& layout,
-    const HorizontalMenuMotion& motion)
+    const HorizontalMenuMotion& motion,
+    const f32 animTime)
 {
-    rebuildHorizontalStates(items, selectedIndex, centerX, centerY, layout, motion);
+    rebuildHorizontalStates(items, selectedIndex, hoveredIndex, centerX, centerY, layout, motion);
 
     for (const auto& state : g_horizontalStates) {
         if (!state.visible) {
@@ -310,11 +390,13 @@ void renderHorizontalCarousel(
         }
 
         Renderer::drawTextCentered(
+            GetFontDefault(),
             items[state.itemIndex].label,
             state.centerX,
             state.baselineY,
             state.fontSize,
-            state.color
+            state.color,
+            HORIZONTAL_FONT_SPACING
         );
 
         if (state.locked) {
@@ -323,19 +405,23 @@ void renderHorizontalCarousel(
                 state.centerX,
                 state.baselineY + state.fontSize + 2,
                 layout.lockedLabelFontSize,
-                lerpColor(layout.colorLockedLabel, layout.colorSelectedGlow, state.emphasis * 0.25f)
+                lerpColor(layout.colorLockedLabel, layout.colorSelectedGlow, state.hoverStrength * 0.4f)
             );
+        }
+
+        if (!state.locked) {
+            renderMenuOptionGlow(state, items[state.itemIndex], animTime);
         }
 
         if (!state.selected || state.locked) {
             continue;
         }
 
-        const i32 underlineWidth = lerpInt(layout.underlineWidth / 2, layout.underlineWidth, state.emphasis);
-        const i32 underlineHeight = std::max(1, lerpInt(1, layout.underlineHeight, state.emphasis));
-        const i32 accentWidth = std::max(8, lerpInt(layout.accentWidth / 2, layout.accentWidth, state.emphasis));
-        const i32 accentHeight = std::max(1, lerpInt(1, layout.accentHeight, state.emphasis));
-        const i32 accentGap = lerpInt(layout.accentGap / 2, layout.accentGap, state.emphasis);
+        const i32 underlineWidth = lerpInt(layout.underlineWidth / 2, layout.underlineWidth, state.selectedStrength);
+        const i32 underlineHeight = std::max(1, lerpInt(1, layout.underlineHeight, state.selectedStrength));
+        const i32 accentWidth = std::max(8, lerpInt(layout.accentWidth / 2, layout.accentWidth, state.selectedStrength));
+        const i32 accentHeight = std::max(1, lerpInt(1, layout.accentHeight, state.selectedStrength));
+        const i32 accentGap = lerpInt(layout.accentGap / 2, layout.accentGap, state.selectedStrength);
 
         const i32 underlineX = state.centerX - underlineWidth / 2;
         const i32 underlineY = state.baselineY + state.fontSize + layout.underlineOffsetY;
@@ -344,7 +430,7 @@ void renderHorizontalCarousel(
             underlineY,
             underlineWidth,
             underlineHeight,
-            lerpColor(layout.colorSide, layout.colorSelected, state.emphasis)
+            lerpColor(layout.colorSide, layout.colorSelected, state.selectedStrength)
         );
 
         const i32 accentY = state.baselineY + state.fontSize / 2;
@@ -356,14 +442,14 @@ void renderHorizontalCarousel(
             accentY - accentHeight / 2,
             accentWidth,
             accentHeight,
-            lerpColor(layout.colorSide, layout.colorSelectedGlow, state.emphasis)
+            lerpColor(layout.colorSide, layout.colorSelectedGlow, state.selectedStrength)
         );
         Renderer::drawRect(
             rightAccentX,
             accentY - accentHeight / 2,
             accentWidth,
             accentHeight,
-            lerpColor(layout.colorSide, layout.colorSelectedGlow, state.emphasis)
+            lerpColor(layout.colorSide, layout.colorSelectedGlow, state.selectedStrength)
         );
     }
 }
@@ -376,7 +462,7 @@ HorizontalMenuHitResult hitTestHorizontalCarousel(
     const HorizontalMenuLayout& layout,
     const HorizontalMenuMotion& motion)
 {
-    rebuildHorizontalStates(items, selectedIndex, centerX, centerY, layout, motion);
+    rebuildHorizontalStates(items, selectedIndex, -1, centerX, centerY, layout, motion);
 
     const Vector2 mouse = GetMousePosition();
     HorizontalMenuHitResult result;

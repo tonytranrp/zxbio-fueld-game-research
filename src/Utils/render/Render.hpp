@@ -71,6 +71,15 @@ public:
     static void drawTextCentered(std::string_view text, i32 centerX, i32 y, i32 fontSize, Color color);
     static void drawText(const char* text, i32 x, i32 y, i32 fontSize, Color color);
     static void drawTextCentered(const char* text, i32 centerX, i32 y, i32 fontSize, Color color);
+    static void drawText(Font font, std::string_view text, i32 x, i32 y, i32 fontSize, Color color, f32 spacing = 0.0f);
+    static void drawTextCentered(
+        Font font,
+        std::string_view text,
+        i32 centerX,
+        i32 y,
+        i32 fontSize,
+        Color color,
+        f32 spacing = 0.0f);
     static void drawRect(i32 x, i32 y, i32 width, i32 height, Color color);
     static void drawRectLines(i32 x, i32 y, i32 width, i32 height, Color color);
     static void drawSprite(Texture2D texture, i32 x, i32 y, i32 width, i32 height);
@@ -79,6 +88,7 @@ public:
     static void drawRenderTexture(Texture2D texture, i32 x, i32 y, i32 width, i32 height, Color tint);
 
     [[nodiscard]] static i32 measureText(std::string_view text, i32 fontSize) noexcept;
+    [[nodiscard]] static i32 measureText(Font font, std::string_view text, i32 fontSize, f32 spacing = 0.0f) noexcept;
     [[nodiscard]] static i32 screenWidth() noexcept;
     [[nodiscard]] static i32 screenHeight() noexcept;
 };
