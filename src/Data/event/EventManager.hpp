@@ -11,7 +11,7 @@ namespace biofuel {
 
 class EventManager {
 public:
-    static EventManager& instance();
+    [[nodiscard]] static EventManager& instance();
 
     void init();
     void shutdown();

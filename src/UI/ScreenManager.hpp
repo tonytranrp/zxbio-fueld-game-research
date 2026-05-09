@@ -32,6 +32,7 @@ public:
 
     // Queries
     [[nodiscard]] Screen* currentScreen() const noexcept;
+    [[nodiscard]] Screen* screenBelowTop() const noexcept;
     [[nodiscard]] bool isEmpty() const noexcept;
     [[nodiscard]] size_t stackSize() const noexcept;
     [[nodiscard]] bool isTransitioning() const noexcept;

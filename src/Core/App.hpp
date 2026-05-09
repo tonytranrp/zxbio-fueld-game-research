@@ -14,9 +14,9 @@ class Application {
 public:
     struct Config {
         std::string title = "Biofuel Game";
-        int width = 1280;
-        int height = 720;
-        int targetFps = 60;
+        i32 width = 1280;
+        i32 height = 720;
+        i32 targetFps = 60;
         bool fullscreen = false;
         bool resizable = false;
     };
@@ -31,7 +31,7 @@ public:
     Application& operator=(Application&&) = delete;
 
     // Main entry point - blocks until window closes
-    int run();
+    [[nodiscard]] int run();
 
     // Explicit lifecycle (if you want manual control instead of run())
     void init();

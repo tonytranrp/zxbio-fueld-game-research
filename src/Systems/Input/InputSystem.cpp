@@ -20,16 +20,16 @@ void InputSystem::poll() {
     const Vector2 mouse = GetMousePosition();
     for (const i32 btn : {MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE}) {
         if (IsMouseButtonPressed(btn)) {
-            bus.trigger(event::mouse::MousePressedEvent{btn, mouse.x, mouse.y});
+            bus.trigger(event::mouse::MousePressedEvent{btn, static_cast<f32>(mouse.x), static_cast<f32>(mouse.y)});
         }
         if (IsMouseButtonReleased(btn)) {
-            bus.trigger(event::mouse::MouseReleasedEvent{btn, mouse.x, mouse.y});
+            bus.trigger(event::mouse::MouseReleasedEvent{btn, static_cast<f32>(mouse.x), static_cast<f32>(mouse.y)});
         }
     }
 
     const Vector2 scroll = GetMouseWheelMoveV();
     if (scroll.x != 0.0f || scroll.y != 0.0f) {
-        bus.trigger(event::mouse::MouseScrolledEvent{scroll.x, scroll.y});
+        bus.trigger(event::mouse::MouseScrolledEvent{static_cast<f32>(scroll.x), static_cast<f32>(scroll.y)});
     }
 
     if (WindowShouldClose()) {

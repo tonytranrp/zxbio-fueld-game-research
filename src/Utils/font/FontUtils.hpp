@@ -12,7 +12,7 @@ namespace biofuel::utils::font {
 // ------------------------------------------------------------------------------
 class FontManager {
 public:
-    static FontManager& instance();
+    [[nodiscard]] static FontManager& instance();
 
     void load(const std::string& name, const std::string& path, int baseSize);
     void unload(const std::string& name);

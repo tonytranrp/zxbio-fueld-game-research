@@ -1,32 +1,34 @@
 #pragma once
 
+#include "Core/Types.hpp"
+
 // ------------------------------------------------------------------------------
 // Mouse Events - Mouse movement, clicks, scroll
 // ------------------------------------------------------------------------------
 namespace biofuel::event::mouse {
 
 struct MouseMovedEvent {
-    float x;
-    float y;
-    float deltaX;
-    float deltaY;
+    f32 x;
+    f32 y;
+    f32 deltaX;
+    f32 deltaY;
 };
 
 struct MousePressedEvent {
-    int button;     // MouseButton enum
-    float x;
-    float y;
+    i32 button;     // MouseButton enum
+    f32 x;
+    f32 y;
 };
 
 struct MouseReleasedEvent {
-    int button;
-    float x;
-    float y;
+    i32 button;
+    f32 x;
+    f32 y;
 };
 
 struct MouseScrolledEvent {
-    float scrollX;
-    float scrollY;
+    f32 scrollX;
+    f32 scrollY;
 };
 
 } // namespace biofuel::event::mouse

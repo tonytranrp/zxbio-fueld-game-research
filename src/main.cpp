@@ -5,13 +5,14 @@
 // ------------------------------------------------------------------------------
 int main()
 {
-    biofuel::Application::Config config;
-    config.title = "Biofuel Game - Fuel Farm";
-    config.width = 1280;
-    config.height = 720;
-    config.targetFps = 60;
-    config.fullscreen = false;
-    config.resizable = true;
+    biofuel::Application::Config config{
+        .title = "Biofuel Game - Fuel Farm",
+        .width = 1280,
+        .height = 720,
+        .targetFps = 60,
+        .fullscreen = false,
+        .resizable = true,
+    };
 
     biofuel::Application app(config);
     return app.run();

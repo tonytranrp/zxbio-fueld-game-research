@@ -1,26 +1,28 @@
 #pragma once
 
+#include "Core/Types.hpp"
+
 // ------------------------------------------------------------------------------
 // Input Events - Keyboard and gamepad input
 // ------------------------------------------------------------------------------
 namespace biofuel::event::input {
 
 struct KeyPressedEvent {
-    int key;        // Raylib key code (e.g. KEY_SPACE)
+    i32 key;        // Raylib key code (e.g. KEY_SPACE)
     bool ctrl;
     bool shift;
     bool alt;
 };
 
 struct KeyReleasedEvent {
-    int key;
+    i32 key;
     bool ctrl;
     bool shift;
     bool alt;
 };
 
 struct KeyRepeatEvent {
-    int key;
+    i32 key;
 };
 
 } // namespace biofuel::event::input

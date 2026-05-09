@@ -36,11 +36,11 @@ void MainMenuScreen::onRender() {
         255
     };
 
-    constexpr std::string_view title = "FUEL FARM";
+    static constexpr std::string_view title = "FUEL FARM";
     const i32 titleW = MeasureText(title.data(), TITLE_SIZE);
     Renderer::drawText(std::string{title}, (sw - titleW) / 2, sh / 6, TITLE_SIZE, titleColor);
 
-    constexpr std::string_view subtitle = "2D Pixel-Art Biofuel Management Sim";
+    static constexpr std::string_view subtitle = "2D Pixel-Art Biofuel Management Sim";
     const i32 subW = MeasureText(subtitle.data(), SUBTITLE_SIZE);
     Renderer::drawText(std::string{subtitle}, (sw - subW) / 2, sh / 6 + 56, SUBTITLE_SIZE, GRAY);
 
@@ -55,12 +55,12 @@ void MainMenuScreen::onRender() {
     );
 
     // ---- Footer ----
-    constexpr std::string_view hint = "ESC - Pause Menu  |  \x1A\x1B - Navigate  |  ENTER - Select";
+    static constexpr std::string_view hint = "ESC - Pause Menu  |  \x1A\x1B - Navigate  |  ENTER - Select";
     constexpr i32 hintSize = 14;
     const i32 hintW = MeasureText(hint.data(), hintSize);
     Renderer::drawText(std::string{hint}, (sw - hintW) / 2, sh - 50, hintSize, {100, 100, 120, 255});
 
-    constexpr std::string_view version = "v0.1.0  |  Raylib 5.5  |  C++20";
+    static constexpr std::string_view version = "v0.1.0  |  Raylib 5.5  |  C++20";
     constexpr i32 verSize = 12;
     const i32 verW = MeasureText(version.data(), verSize);
     Renderer::drawText(std::string{version}, (sw - verW) / 2, sh - 30, verSize, {60, 60, 70, 255});
