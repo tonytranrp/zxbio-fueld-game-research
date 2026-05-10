@@ -27,6 +27,9 @@ void AnimationManager::update(const f32 dt) {
 }
 
 void AnimationManager::prune() {
+    if (m_animations.empty()) {
+        return;
+    }
     const auto before = m_animations.size();
     m_animations.erase(
         std::remove_if(m_animations.begin(), m_animations.end(),

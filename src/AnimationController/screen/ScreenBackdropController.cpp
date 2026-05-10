@@ -1,7 +1,6 @@
 #include "ScreenBackdropController.hpp"
 #include "AnimationController/animation/Easing.hpp"
 #include "Utils/render/Render.hpp"
-#include "Utils/render/Shader/MainMenuBgModule.hpp"
 #include "Utils/render/ShaderManager.hpp"
 #include <algorithm>
 
@@ -24,6 +23,7 @@ void ScreenBackdropController::configure(const ScreenBackdropConfig& config) noe
     m_brightnessLoc = -1;
     m_revealLoc = -1;
     m_shaderReady = false;
+    m_uniformCache.clear();
 }
 
 void ScreenBackdropController::reset() noexcept {
@@ -84,6 +84,29 @@ f32 ScreenBackdropController::revealProgress() const noexcept {
         ? std::clamp(delayed / m_config.revealDuration, 0.0f, 1.0f)
         : 1.0f;
     return animation::Easing::easeOutCubic(normalized);
+}
+
+void ScreenBackdropController::setFloat(std::string_view uniformName, const f32 value) const {
+    ensureShader();
+    if (!m_shaderReady) {
+        return;
+    }
+    // Check cache first to avoid per-frame GL lookups
+    i32 loc = -1;
+    const std::string key{uniformName};
+    auto it = m_uniformCache.find(key);
+    if (it != m_uniformCache.end()) {
+        loc = it->second;
+    } else {
+        loc = utils::render::ShaderManager::getLocation(m_shader, uniformName);
+        m_uniformCache.emplace(key, loc);
+    }
+    utils::render::ShaderManager::setValue(m_shader, loc, &value, SHADER_UNIFORM_FLOAT);
+}
+
+Shader ScreenBackdropController::shader() const noexcept {
+    ensureShader();
+    return m_shader;
 }
 
 bool ScreenBackdropController::ready() const noexcept {

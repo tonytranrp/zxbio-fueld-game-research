@@ -140,16 +140,36 @@ void renderMenuOptionGlow(
         return;
     }
 
-    const i32 timeLoc = utils::render::ShaderManager::getLocation(
-        shader, utils::render::shader::MenuOptionModule::UNIFORM_ITIME);
-    const i32 centerLoc = utils::render::ShaderManager::getLocation(
-        shader, utils::render::shader::MenuOptionModule::UNIFORM_ICENTER);
-    const i32 halfSizeLoc = utils::render::ShaderManager::getLocation(
-        shader, utils::render::shader::MenuOptionModule::UNIFORM_IHALF_SIZE);
-    const i32 selectionLoc = utils::render::ShaderManager::getLocation(
-        shader, utils::render::shader::MenuOptionModule::UNIFORM_SELECTION_STRENGTH);
-    const i32 hoverLoc = utils::render::ShaderManager::getLocation(
-        shader, utils::render::shader::MenuOptionModule::UNIFORM_HOVER_STRENGTH);
+    // Cache uniform locations — resolved once per shader load
+    struct MenuGlowLocCache {
+        i32 timeLoc      = -1;
+        i32 centerLoc    = -1;
+        i32 halfSizeLoc  = -1;
+        i32 selectionLoc = -1;
+        i32 hoverLoc     = -1;
+        u32 shaderId     = 0;
+    };
+    static MenuGlowLocCache s_cache;
+
+    if (s_cache.shaderId != static_cast<u32>(shader.id)) {
+        s_cache.timeLoc = utils::render::ShaderManager::getLocation(
+            shader, utils::render::shader::MenuOptionModule::UNIFORM_ITIME);
+        s_cache.centerLoc = utils::render::ShaderManager::getLocation(
+            shader, utils::render::shader::MenuOptionModule::UNIFORM_ICENTER);
+        s_cache.halfSizeLoc = utils::render::ShaderManager::getLocation(
+            shader, utils::render::shader::MenuOptionModule::UNIFORM_IHALF_SIZE);
+        s_cache.selectionLoc = utils::render::ShaderManager::getLocation(
+            shader, utils::render::shader::MenuOptionModule::UNIFORM_SELECTION_STRENGTH);
+        s_cache.hoverLoc = utils::render::ShaderManager::getLocation(
+            shader, utils::render::shader::MenuOptionModule::UNIFORM_HOVER_STRENGTH);
+        s_cache.shaderId = static_cast<u32>(shader.id);
+    }
+
+    const i32 timeLoc      = s_cache.timeLoc;
+    const i32 centerLoc    = s_cache.centerLoc;
+    const i32 halfSizeLoc  = s_cache.halfSizeLoc;
+    const i32 selectionLoc = s_cache.selectionLoc;
+    const i32 hoverLoc     = s_cache.hoverLoc;
 
     const Font font = GetFontDefault();
     constexpr f32 textPadX = 10.0f;

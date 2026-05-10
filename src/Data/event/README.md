@@ -10,6 +10,7 @@ Data/event/
 |-- EventManager.cpp
 |-- animation/
 |-- input/
+|-- model/
 |-- mouse/
 |-- screen/
 `-- window/

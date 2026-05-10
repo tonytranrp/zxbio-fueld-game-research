@@ -1,0 +1,50 @@
+# LoadingScreen
+
+Animated loading bar displayed during engine initialization. It processes a weighted task queue one task per frame and now reflects the real startup asset pipeline, including model preload work.
+
+## Current contents
+
+```text
+UI/screens/LoadingScreen/
+|-- LoadingScreen.hpp
+|-- LoadingScreen.cpp
+`-- README.md
+```
+
+## LoadingScreen
+
+The screen lifecycle:
+
+1. **`onEnter()`** - Configures the `ScreenBackdropController` with the loading prelude shader, builds the dynamic initialization queue from startup systems plus registered preload assets, and resets animation state.
+2. **`onUpdate()`** - Processes one `LoadingTask` per frame, smoothly lerps the display progress toward actual progress, and auto-transitions to `MainMenuScreen` when all tasks complete and the minimum display time has elapsed.
+3. **`onRender()`** - Renders the shader backdrop, dark panel, title, progress bar, current task text, skip hint, and footer.
+4. **`onInput()`** - Any key or mouse click skips the remaining minimum time once tasks are finished.
+
+## Task queue
+
+The queue is dynamic. It always includes startup systems and shader compilation, then appends one visible preload task per registered startup model asset.
+
+| Phase | Tasks |
+|-------|-------|
+| Window config | Exit key, minimum size, target FPS |
+| System init | Event bus, screen stack, animation system, shader system, model system |
+| Shader compilation | Embedded screen shaders used by the current startup flow |
+| Model preload | One task per `ModelSystem` registry entry marked `preloadOnStartup` |
+| Preloading | Crossfade shader cache and render buffer allocation |
+
+Each task reports its name and weight. Model tasks show the current asset name so the loading UI matches the real runtime asset pipeline.
+
+## Dependencies
+
+- `LoadingTaskQueue` from `Core/LoadingTask.hpp`
+- `ScreenBackdropController` for the shader backdrop
+- `ShaderManager` and embedded screen shader modules
+- `ModelSystem` for typed model registration and preload work
+- `ScreenManager` for transition to `MainMenuScreen`
+
+## Coding standards
+
+- No helper types live in this screen header; keep the class self-contained
+- Use `constexpr` for timing constants and layout dimensions
+- Build tasks in `buildTasks()`, called from `onEnter()`
+- Defer navigation via `queueReplace()` to avoid re-entrancy during update

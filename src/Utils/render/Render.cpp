@@ -1,6 +1,24 @@
 #include "Render.hpp"
+#include <array>
+#include <cstring>
 
 namespace biofuel::utils::render {
+
+namespace {
+
+// Stack-buffer null termination for string_view — avoids heap allocation
+// for short strings (covers all UI text). Falls back to std::string for long text.
+const char* nullTerminate(std::string_view sv, std::array<char, 256>& buf) {
+    if (sv.size() < buf.size()) {
+        std::memcpy(buf.data(), sv.data(), sv.size());
+        buf[sv.size()] = '\0';
+        return buf.data();
+    }
+    // Fallback: caller must keep the returned string alive
+    return nullptr;
+}
+
+} // namespace
 
 void Renderer::beginFrame(Color clearColor) {
     BeginDrawing();
@@ -21,14 +39,24 @@ void Renderer::drawTextCentered(const std::string& text, i32 x, i32 y, i32 fontS
 }
 
 void Renderer::drawText(std::string_view text, i32 x, i32 y, i32 fontSize, Color color) {
-    const std::string ownedText{text};
-    ::DrawText(ownedText.c_str(), x, y, fontSize, color);
+    std::array<char, 256> buf;
+    if (const char* cstr = nullTerminate(text, buf)) {
+        ::DrawText(cstr, x, y, fontSize, color);
+    } else {
+        ::DrawText(std::string{text}.c_str(), x, y, fontSize, color);
+    }
 }
 
 void Renderer::drawTextCentered(std::string_view text, i32 centerX, i32 y, i32 fontSize, Color color) {
-    const i32 textWidth = measureText(text, fontSize);
-    const std::string ownedText{text};
-    ::DrawText(ownedText.c_str(), centerX - textWidth / 2, y, fontSize, color);
+    std::array<char, 256> buf;
+    if (const char* cstr = nullTerminate(text, buf)) {
+        const i32 textWidth = MeasureText(cstr, fontSize);
+        ::DrawText(cstr, centerX - textWidth / 2, y, fontSize, color);
+    } else {
+        const std::string ownedText{text};
+        const i32 textWidth = MeasureText(ownedText.c_str(), fontSize);
+        ::DrawText(ownedText.c_str(), centerX - textWidth / 2, y, fontSize, color);
+    }
 }
 
 void Renderer::drawText(const char* text, i32 x, i32 y, i32 fontSize, Color color) {
@@ -49,10 +77,13 @@ void Renderer::drawText(
     Color color,
     const f32 spacing)
 {
-    const std::string ownedText{text};
+    std::array<char, 256> buf;
+    const char* cstr = nullTerminate(text, buf);
+    const std::string fallback = cstr ? std::string{} : std::string{text};
+    const char* ptr = cstr ? cstr : fallback.c_str();
     DrawTextEx(
         font,
-        ownedText.c_str(),
+        ptr,
         Vector2{static_cast<f32>(x), static_cast<f32>(y)},
         static_cast<f32>(fontSize),
         spacing,
@@ -135,15 +166,21 @@ void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, i32 width, i32
 }
 
 i32 Renderer::measureText(std::string_view text, i32 fontSize) noexcept {
-    const std::string ownedText{text};
-    return MeasureText(ownedText.c_str(), fontSize);
+    std::array<char, 256> buf;
+    if (const char* cstr = nullTerminate(text, buf)) {
+        return MeasureText(cstr, fontSize);
+    }
+    return MeasureText(std::string{text}.c_str(), fontSize);
 }
 
 i32 Renderer::measureText(Font font, std::string_view text, i32 fontSize, const f32 spacing) noexcept {
-    const std::string ownedText{text};
+    std::array<char, 256> buf;
+    const char* cstr = nullTerminate(text, buf);
+    const std::string fallback = cstr ? std::string{} : std::string{text};
+    const char* ptr = cstr ? cstr : fallback.c_str();
     return static_cast<i32>(MeasureTextEx(
         font,
-        ownedText.c_str(),
+        ptr,
         static_cast<f32>(fontSize),
         spacing
     ).x);

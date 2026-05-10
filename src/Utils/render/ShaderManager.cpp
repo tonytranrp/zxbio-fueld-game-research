@@ -34,37 +34,38 @@ void ShaderManager::shutdown() {
 // ------------------------------------------------------------------------------
 
 void ShaderManager::load(std::string_view name, std::string_view vertPath, std::string_view fragPath) {
-    const std::string key{name};
-    unloadExisting(key);
+    unloadExisting(name);
 
-    const char* vPath = vertPath.empty() ? nullptr : std::string{vertPath}.c_str();
-    const char* fPath = fragPath.empty() ? nullptr : std::string{fragPath}.c_str();
+    // Hoist strings so pointers survive until LoadShader returns
+    const std::string vertStr{vertPath};
+    const std::string fragStr{fragPath};
+    const char* vPath = vertPath.empty() ? nullptr : vertStr.c_str();
+    const char* fPath = fragPath.empty() ? nullptr : fragStr.c_str();
 
     Shader shader = LoadShader(vPath, fPath);
 
     if (!IsShaderValid(shader)) {
         spdlog::error("ShaderManager: failed to load shader '{}' (vert: {}, frag: {})",
-            key, vertPath.empty() ? "<default>" : vertPath, fragPath.empty() ? "<default>" : fragPath);
+            name, vertPath.empty() ? "<default>" : vertPath, fragPath.empty() ? "<default>" : fragPath);
         return;
     }
 
-    spdlog::info("ShaderManager: loaded shader '{}'", key);
-    m_shaders.emplace(key, shader);
+    spdlog::info("ShaderManager: loaded shader '{}'", name);
+    m_shaders.emplace(std::string{name}, shader);
 }
 
 void ShaderManager::loadFromMemory(std::string_view name, const char* vertCode, const char* fragCode) {
-    const std::string key{name};
-    unloadExisting(key);
+    unloadExisting(name);
 
     Shader shader = LoadShaderFromMemory(vertCode, fragCode);
 
     if (!IsShaderValid(shader)) {
-        spdlog::error("ShaderManager: failed to compile shader '{}' from memory", key);
+        spdlog::error("ShaderManager: failed to compile shader '{}' from memory", name);
         return;
     }
 
-    spdlog::info("ShaderManager: compiled shader '{}' from memory", key);
-    m_shaders.emplace(key, shader);
+    spdlog::info("ShaderManager: compiled shader '{}' from memory", name);
+    m_shaders.emplace(std::string{name}, shader);
 }
 
 // ------------------------------------------------------------------------------
@@ -72,8 +73,8 @@ void ShaderManager::loadFromMemory(std::string_view name, const char* vertCode, 
 // ------------------------------------------------------------------------------
 
 void ShaderManager::unloadExisting(std::string_view name) {
-    const std::string key{name};
-    auto it = m_shaders.find(key);
+    // Transparent find — no temp string allocation
+    auto it = m_shaders.find(name);
     if (it != m_shaders.end()) {
         if (IsShaderValid(it->second)) {
             UnloadShader(it->second);
@@ -87,14 +88,13 @@ void ShaderManager::unloadExisting(std::string_view name) {
 // ------------------------------------------------------------------------------
 
 void ShaderManager::unload(std::string_view name) {
-    const std::string key{name};
-    auto it = m_shaders.find(key);
+    auto it = m_shaders.find(name);
     if (it != m_shaders.end()) {
         if (IsShaderValid(it->second)) {
             UnloadShader(it->second);
         }
         m_shaders.erase(it);
-        spdlog::info("ShaderManager: unloaded shader '{}'", key);
+        spdlog::info("ShaderManager: unloaded shader '{}'", name);
     }
 }
 
@@ -108,13 +108,14 @@ Shader ShaderManager::get(std::string_view name) const noexcept {
         return shader;
     }
 
-    spdlog::warn("ShaderManager: shader '{}' not found", std::string{name});
+    // Only warn on miss — this path is rare (startup only)
+    spdlog::warn("ShaderManager: shader '{}' not found", name);
     return Shader{};
 }
 
 Shader ShaderManager::tryGet(std::string_view name) const noexcept {
-    const std::string key{name};
-    auto it = m_shaders.find(key);
+    // Transparent find — no temp string allocation
+    auto it = m_shaders.find(name);
     if (it != m_shaders.end()) {
         return it->second;
     }
@@ -122,7 +123,7 @@ Shader ShaderManager::tryGet(std::string_view name) const noexcept {
 }
 
 bool ShaderManager::has(std::string_view name) const noexcept {
-    return m_shaders.find(std::string{name}) != m_shaders.end();
+    return m_shaders.find(name) != m_shaders.end();
 }
 
 // ------------------------------------------------------------------------------
@@ -133,7 +134,10 @@ i32 ShaderManager::getLocation(Shader shader, std::string_view uniformName) noex
     if (!IsShaderValid(shader)) {
         return -1;
     }
-    return GetShaderLocation(shader, std::string{uniformName}.c_str());
+    // All uniform names in this codebase come from constexpr string_view literals
+    // (e.g. "uCameraYaw"), which are null-terminated by construction.
+    // Using .data() avoids a heap-allocating std::string copy.
+    return GetShaderLocation(shader, uniformName.data());
 }
 
 void ShaderManager::setValue(Shader shader, i32 loc, const void* value, i32 uniformType) noexcept {

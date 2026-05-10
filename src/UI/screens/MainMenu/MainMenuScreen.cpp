@@ -1,5 +1,5 @@
 #include "MainMenuScreen.hpp"
-#include "PausePopupScreen.hpp"
+#include "PausePopupScreen/PausePopupScreen.hpp"
 #include "UI/ScreenManager.hpp"
 #include "Utils/render/Render.hpp"
 #include "Utils/render/Shader/MainMenuBgModule.hpp"
@@ -16,6 +16,10 @@ void MainMenuScreen::onEnter() {
     m_titlePulse = 0.0f;
     m_menuFxTime = 0.0f;
     m_menuSlide = {};
+    m_dismiss = {};
+    m_dimensionShift = 0.0f;
+    m_cameraComponent.reset();
+    m_cameraPhase = CameraPhase::Idle;
 
     m_introPhase = IntroPhase::WaitingForTransition;
     m_titleFade.elapsed = 0.0f;
@@ -34,6 +38,8 @@ void MainMenuScreen::onEnter() {
         .revealWeight = 0.55f,
     });
     m_backdrop.reset();
+    m_transitionHands.load();
+    m_transitionHands.reset();
 
 #ifdef BIOFUEL_DEV_STARTUP_PAUSE_POPUP
     if (auto* sm = manager()) {
@@ -42,12 +48,22 @@ void MainMenuScreen::onEnter() {
 #endif
 }
 
-void MainMenuScreen::onExit() {}
+void MainMenuScreen::onExit() {
+    m_transitionHands.unload();
+}
 
 void MainMenuScreen::onUpdate(const f32 dt) {
     m_backdrop.update(dt);
     updateMenuSlide(dt);
+    updateDismiss(dt);
+    updateDimensionShift(dt);
+    m_cameraComponent.update(dt);
+    m_transitionHands.update(dt, m_dimensionShift, m_cameraComponent.controller().current());
     m_menuFxTime += dt;
+    // Prevent precision loss after extended play — wrap at ~16 min
+    if (m_menuFxTime > 1000.0f) {
+        m_menuFxTime = std::fmod(m_menuFxTime, 1000.0f);
+    }
 
     if (m_introPhase == IntroPhase::WaitingForTransition) {
         if (!isTransitioning() && backgroundRevealProgress() >= BG_TEXT_SYNC_THRESHOLD) {
@@ -117,12 +133,40 @@ void MainMenuScreen::onRender() {
     const i32 sw = Renderer::screenWidth();
     const i32 sh = Renderer::screenHeight();
 
-    m_backdrop.render(transitionAlpha());
+    // Pass dimension shift to shader before render
+    m_backdrop.setFloat(
+        utils::render::shader::MainMenuBgModule::UNIFORM_UDIMENSION_SHIFT,
+        m_dimensionShift
+    );
 
-    if (m_introPhase >= IntroPhase::TitleFade) {
+    // Apply camera component uniforms to the shader directly
+    m_cameraComponent.apply(m_backdrop.shader());
+
+    m_backdrop.render(transitionAlpha());
+    m_transitionHands.render();
+
+    // ---- Compute dismiss offsets per element ----
+    const f32 titleDismiss  = m_dismiss.progress(UIDismissState::ELEM_TITLE);
+    const f32 hintsDismiss  = m_dismiss.progress(UIDismissState::ELEM_HINTS);
+    const f32 menuDismiss   = m_dismiss.progress(UIDismissState::ELEM_MENU);
+    const f32 footerDismiss = m_dismiss.progress(UIDismissState::ELEM_FOOTER);
+
+    // Title block slides LEFT; menu/footer slide DOWN
+    const i32 titleSlideX  = -static_cast<i32>(static_cast<f32>(DISMISS_SLIDE_LEFT) * titleDismiss);
+    const i32 hintsSlideX  = -static_cast<i32>(static_cast<f32>(DISMISS_SLIDE_LEFT) * hintsDismiss);
+    const i32 menuSlideY   =  static_cast<i32>(static_cast<f32>(DISMISS_SLIDE_DOWN) * menuDismiss);
+    const i32 footerSlideY =  static_cast<i32>(static_cast<f32>(DISMISS_SLIDE_DOWN) * footerDismiss);
+
+    // Fade multiplier: 1.0 at rest, 0.0 when fully dismissed
+    const f32 titleFadeMul  = 1.0f - titleDismiss;
+    const f32 hintsFadeMul  = 1.0f - hintsDismiss;
+    const f32 menuFadeMul   = 1.0f - menuDismiss;
+    const f32 footerFadeMul = 1.0f - footerDismiss;
+
+    if (m_introPhase >= IntroPhase::TitleFade && titleDismiss < 1.0f) {
         const f32 pulse = (std::sin(m_titlePulse * TITLE_PULSE_SPEED) * 0.5f + 0.5f)
                           * TITLE_PULSE_RANGE + TITLE_PULSE_MIN;
-        const u8 fadeAlpha = static_cast<u8>(m_titleFade.alpha() * 255.0f);
+        const u8 fadeAlpha = static_cast<u8>(m_titleFade.alpha() * 255.0f * titleFadeMul);
         const Color titleColor = {
             static_cast<u8>(pulse),
             static_cast<u8>(pulse * 0.85f),
@@ -131,34 +175,34 @@ void MainMenuScreen::onRender() {
         };
 
         static constexpr std::string_view titleStr = "FUEL FARM";
-        Renderer::drawText(titleStr, TITLE_X, TITLE_Y, TITLE_FONT_SIZE, titleColor);
+        Renderer::drawText(titleStr, TITLE_X + titleSlideX, TITLE_Y, TITLE_FONT_SIZE, titleColor);
     }
 
-    if (m_introPhase >= IntroPhase::SubtitleFade) {
-        const u8 alpha = static_cast<u8>(m_subtitleFade.alpha() * 255.0f);
+    if (m_introPhase >= IntroPhase::SubtitleFade && titleDismiss < 1.0f) {
+        const u8 alpha = static_cast<u8>(m_subtitleFade.alpha() * 255.0f * titleFadeMul);
         const Color subColor = {COLOR_GRAY_DIM.r, COLOR_GRAY_DIM.g, COLOR_GRAY_DIM.b, alpha};
         static constexpr std::string_view subtitleStr = "2D Pixel-Art Biofuel Management Sim";
         Renderer::drawText(
             subtitleStr,
-            TITLE_X,
+            TITLE_X + titleSlideX,
             TITLE_Y + TITLE_FONT_SIZE + TITLE_SUBTITLE_GAP,
             SUBTITLE_FONT_SIZE,
             subColor
         );
     }
 
-    if (m_introPhase >= IntroPhase::HintsFade) {
-        const u8 alpha = static_cast<u8>(m_hintsFade.alpha() * 255.0f);
+    if (m_introPhase >= IntroPhase::HintsFade && hintsDismiss < 1.0f) {
+        const u8 alpha = static_cast<u8>(m_hintsFade.alpha() * 255.0f * hintsFadeMul);
         const Color hintColor = {COLOR_GRAY_DIM.r, COLOR_GRAY_DIM.g, COLOR_GRAY_DIM.b, alpha};
         static constexpr std::string_view hintsStr = "ESC Pause  |  LEFT / RIGHT Navigate  |  ENTER Select";
         const i32 subtitleY = TITLE_Y + TITLE_FONT_SIZE + TITLE_SUBTITLE_GAP;
         const i32 hintsY = subtitleY + SUBTITLE_FONT_SIZE + SUBTITLE_HINTS_GAP;
-        Renderer::drawText(hintsStr, TITLE_X, hintsY, HINTS_FONT_SIZE, hintColor);
+        Renderer::drawText(hintsStr, TITLE_X + hintsSlideX, hintsY, HINTS_FONT_SIZE, hintColor);
     }
 
-    if (m_introPhase >= IntroPhase::MenuFade) {
+    if (m_introPhase >= IntroPhase::MenuFade && menuDismiss < 1.0f) {
         auto layout = MENU_LAYOUT;
-        const u8 menuAlpha = static_cast<u8>(m_menuFade.alpha() * 255.0f);
+        const u8 menuAlpha = static_cast<u8>(m_menuFade.alpha() * 255.0f * menuFadeMul);
         layout.colorSelected.a = menuAlpha;
         layout.colorSelectedGlow.a = menuAlpha;
         layout.colorSide.a = menuAlpha;
@@ -170,26 +214,36 @@ void MainMenuScreen::onRender() {
             m_selected,
             m_hovered,
             sw / 2,
-            sh - MENU_BAR_Y_OFFSET,
+            sh - MENU_BAR_Y_OFFSET + menuSlideY,
             layout,
             m_menuSlide.motion(),
             m_menuFxTime
         );
     }
 
-    static constexpr std::string_view versionStr = "v0.1.0 | Raylib 5.5 | C++20";
-    const i32 versionX = sw - FOOTER_MARGIN_X;
-    const i32 versionY = sh - FOOTER_BOTTOM_OFFSET;
-    Renderer::drawText(
-        versionStr,
-        versionX - Renderer::measureText(versionStr, FOOTER_FONT_SIZE),
-        versionY,
-        FOOTER_FONT_SIZE,
-        COLOR_VERSION
-    );
+    if (footerDismiss < 1.0f) {
+        static constexpr std::string_view versionStr = "v0.1.0 | Raylib 5.5 | C++20";
+        const i32 versionX = sw - FOOTER_MARGIN_X;
+        const i32 versionY = sh - FOOTER_BOTTOM_OFFSET + footerSlideY;
+        const Color footerColor = {
+            COLOR_VERSION.r, COLOR_VERSION.g, COLOR_VERSION.b,
+            static_cast<u8>(static_cast<f32>(COLOR_VERSION.a) * footerFadeMul)
+        };
+        Renderer::drawText(
+            versionStr,
+            versionX - Renderer::measureText(versionStr, FOOTER_FONT_SIZE),
+            versionY,
+            FOOTER_FONT_SIZE,
+            footerColor
+        );
+    }
 }
 
 void MainMenuScreen::onInput() {
+    if (isDismissing()) {
+        return;
+    }
+
     if (m_introPhase != IntroPhase::Done) {
         return;
     }
@@ -239,8 +293,9 @@ void MainMenuScreen::onInput() {
 
 void MainMenuScreen::activateSelected() {
     switch (m_selected) {
-    case 0:
-    case 1:
+    case 0: // New Game
+    case 1: // Continue
+        startDismiss();
         break;
     case 2:
         if (auto* sm = manager()) {
@@ -301,6 +356,95 @@ i32 MainMenuScreen::inferMenuDirection(const i32 oldIndex, const i32 newIndex) c
     }
 
     return (newIndex > oldIndex) ? 1 : -1;
+}
+
+// ------------------------------------------------------------------------------
+// Dismiss Animation
+// ------------------------------------------------------------------------------
+
+void MainMenuScreen::startDismiss() {
+    if (m_dismiss.active) {
+        return;
+    }
+    m_dismiss.active = true;
+    m_dismiss.elapsed = 0.0f;
+    m_transitionHands.start();
+}
+
+void MainMenuScreen::updateDismiss(const f32 dt) noexcept {
+    if (!m_dismiss.active) {
+        return;
+    }
+    m_dismiss.elapsed += dt;
+}
+
+bool MainMenuScreen::isDismissing() const noexcept {
+    return m_dismiss.active;
+}
+
+// ------------------------------------------------------------------------------
+// Dimension Shift
+// ------------------------------------------------------------------------------
+
+void MainMenuScreen::updateDimensionShift(const f32 dt) noexcept {
+    if (!m_dismiss.isDone()) {
+        return;  // only start after dismiss fully completes
+    }
+    if (m_dimensionShift >= 1.0f) {
+        return;  // already at maximum
+    }
+    m_dimensionShift = std::min(1.0f, m_dimensionShift + dt / DIMENSION_SHIFT_DURATION);
+
+    // Start camera sequence once when dimension shift begins
+    if (m_cameraPhase == CameraPhase::Idle) {
+        startCameraSequence();
+    }
+
+    // Advance to next phase when current animation completes
+    advanceCameraSequence();
+}
+
+void MainMenuScreen::startCameraSequence() noexcept {
+    // Phase 1: instantly snap to looking right (very brief, ~0.1s)
+    m_cameraComponent.controller().reset();
+    m_cameraComponent.controller().setTarget(
+        utils::render::component::ShaderCameraState{.yaw = CAMERA_YAW_RIGHT},
+        0.1f,
+        animation::Easing::easeOutCubic
+    );
+    m_cameraPhase = CameraPhase::SweepToLeft;
+}
+
+void MainMenuScreen::advanceCameraSequence() noexcept {
+    if (!m_cameraComponent.controller().isComplete()) {
+        return;  // current phase still animating
+    }
+
+    switch (m_cameraPhase) {
+    case CameraPhase::SweepToLeft:
+        // Phase 2: smooth sweep from right → left
+        m_cameraComponent.controller().setTarget(
+            utils::render::component::ShaderCameraState{.yaw = CAMERA_YAW_LEFT},
+            CAMERA_SWEEP_DURATION,
+            animation::Easing::easeInOutCubic
+        );
+        m_cameraPhase = CameraPhase::ReturnToCenter;
+        break;
+
+    case CameraPhase::ReturnToCenter:
+        // Phase 3: smooth sweep from left → center
+        m_cameraComponent.controller().setTarget(
+            utils::render::component::ShaderCameraState{.yaw = 0.0f},
+            CAMERA_RETURN_DURATION,
+            animation::Easing::easeInOutQuad
+        );
+        m_cameraPhase = CameraPhase::Done;
+        break;
+
+    case CameraPhase::Idle:
+    case CameraPhase::Done:
+        break;
+    }
 }
 
 } // namespace biofuel::ui::screens

@@ -39,7 +39,10 @@ namespace AnimationUtils {
 template<typename T>
 struct Lerp {
     static T call(const T& a, const T& b, f32 t) {
-        return a + (b - a) * t;
+        static_assert(sizeof(T) == 0,
+            "Lerp<T>: no specialization for this type. "
+            "Add a Lerp<YourType> specialization in Animation.hpp.");
+        return a;  // unreachable, silences return-value warnings
     }
 };
 

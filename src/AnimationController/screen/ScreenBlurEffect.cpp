@@ -226,8 +226,12 @@ void ScreenBlurEffect::blurPass(
 
     i32& texelLoc = horizontal ? m_cachedTexelLocH : m_cachedTexelLocV;
     i32& radiusLoc = horizontal ? m_cachedRadiusLocH : m_cachedRadiusLocV;
-    const std::string_view texelName = shader::BlurHModule::UNIFORM_TEXEL_SIZE;
-    const std::string_view radiusName = shader::BlurHModule::UNIFORM_BLUR_RADIUS;
+    const std::string_view texelName = horizontal
+        ? shader::BlurHModule::UNIFORM_TEXEL_SIZE
+        : shader::BlurVModule::UNIFORM_TEXEL_SIZE;
+    const std::string_view radiusName = horizontal
+        ? shader::BlurHModule::UNIFORM_BLUR_RADIUS
+        : shader::BlurVModule::UNIFORM_BLUR_RADIUS;
 
     if (texelLoc < 0) {
         texelLoc = ShaderManager::getLocation(shader, texelName);

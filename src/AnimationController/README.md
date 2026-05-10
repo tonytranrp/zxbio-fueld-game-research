@@ -13,6 +13,8 @@ AnimationController/
 |   |-- Easing.hpp
 |   `-- PremadeAnimations.hpp
 `-- screen/
+    |-- MenuTransitionHands.hpp
+    |-- MenuTransitionHands.cpp
     |-- ScreenBlurEffect.hpp
     |-- ScreenBlurEffect.cpp
     `-- README.md
@@ -24,6 +26,7 @@ AnimationController/
 - `AnimationManager` owns active animation instances and updates them each frame
 - `PremadeAnimations` provides concrete factory helpers for common animation patterns
 - `ScreenBlurEffect` is a screen-facing helper that captures, blurs, and tints the screen below a popup
+- `MenuTransitionHands` is a screen-facing transition effect that now consumes typed model instances from `ModelSystem`
 
 ## Style guidance
 
@@ -33,4 +36,5 @@ AnimationController/
 
 ## Current users
 
-The pause popup uses the animation runtime for panel slide-in/slide-out and uses `ScreenBlurEffect` for its blurred backdrop.
+- the pause popup uses the animation runtime for panel slide-in/slide-out and uses `ScreenBlurEffect` for its blurred backdrop
+- the main menu transition uses `MenuTransitionHands` for the hand-and-portal presentation while model lifetime stays in `Systems/Model`

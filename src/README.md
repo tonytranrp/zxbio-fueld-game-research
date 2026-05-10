@@ -21,6 +21,7 @@ src/
 - `Core/` - app bootstrap, main loop, project types, loading task queue
 - `Data/` - event manager, event definitions, global access bridge
 - `Systems/` - runtime systems; right now this is mainly input polling
+- `Systems/Model/` - typed runtime model assets, instances, preload flow, and conservative model animation state
 - `UI/` - screen stack and concrete screens
 - `AnimationController/` - generic animation runtime and screen blur effect
 - `Utils/` - concrete shared helpers for rendering, fonts, and UI menus
@@ -55,6 +56,7 @@ Do not introduce templates by default. Use them only when they remove real dupli
 ### Boundaries
 
 - gameplay and UI code should prefer `Renderer` and `ShaderManager` instead of open-coding raw Raylib draw and shader calls
+- gameplay and UI code should prefer `ModelSystem` instead of open-coding raw Raylib model lifetime
 - screens should use `ScreenManager` for navigation and quitting
 - low-level runtime code may still call raw Raylib APIs inside utility boundaries where wrapping would be artificial
 

@@ -32,7 +32,7 @@ private:
     EventManager() = default;
     ~EventManager() = default;
 
-    std::unique_ptr<entt::dispatcher> m_dispatcher;
+    mutable std::unique_ptr<entt::dispatcher> m_dispatcher;
 };
 
 } // namespace biofuel

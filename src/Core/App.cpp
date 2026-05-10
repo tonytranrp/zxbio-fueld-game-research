@@ -5,7 +5,7 @@
 #include "Utils/render/Shader/MenuOptionModule.hpp"
 #include "Data/Data.hpp"
 #include "UI/ScreenManager.hpp"
-#include "UI/screens/LoadingScreen.hpp"
+#include "UI/screens/LoadingScreen/LoadingScreen.hpp"
 #include "Systems/Input/InputSystem.hpp"
 #include "AnimationController/AnimationManager.hpp"
 #include <raylib.h>
@@ -69,6 +69,7 @@ void Application::shutdown() {
     }
 
     Data::screens().shutdown();
+    Data::models().shutdown();
     animation::AnimationManager::instance().shutdown();
     utils::render::ShaderManager::instance().shutdown();
     Data::fonts().shutdown();
@@ -121,6 +122,7 @@ void Application::processInput() {
 
 void Application::update(const f32 dt) {
     animation::AnimationManager::instance().update(dt);
+    Data::models().update(dt);
     Data::screens().update(dt);
 }
 
@@ -130,7 +132,8 @@ void Application::render() {
     Renderer::beginFrame(BLACK);
     Data::screens().render();
 
-    // Debug overlay
+    // Debug overlay (hidden in release builds)
+#ifndef NDEBUG
     const i32 screenH = Renderer::screenHeight();
     const i32 overlayX = 14;
     const i32 overlayY = screenH - 34;
@@ -142,6 +145,7 @@ void Application::render() {
             Renderer::screenWidth(), screenH, GetFPS()),
         overlayX + 6, overlayY + 1, 14, {108, 112, 126, 255}
     );
+#endif
 
     Renderer::endFrame();
 }

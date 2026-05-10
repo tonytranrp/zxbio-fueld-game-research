@@ -1,5 +1,5 @@
 #include "LoadingScreen.hpp"
-#include "MainMenuScreen.hpp"
+#include "MainMenu/MainMenuScreen.hpp"
 #include "UI/ScreenManager.hpp"
 #include "Utils/render/Render.hpp"
 #include "Utils/render/ShaderManager.hpp"
@@ -13,6 +13,7 @@
 #include "Data/Data.hpp"
 #include "AnimationController/AnimationManager.hpp"
 #include <raylib.h>
+#include <string>
 
 namespace biofuel::ui::screens {
 
@@ -60,6 +61,9 @@ void LoadingScreen::buildTasks() {
     m_tasks.add({"Initializing shader system...", 0.3f, []() {
         utils::render::ShaderManager::instance().init();
     }});
+    m_tasks.add({"Initializing model system...", 0.4f, []() {
+        Data::models().init();
+    }});
 
     using namespace utils::render::shader;
     auto& shaderManager = utils::render::ShaderManager::instance();
@@ -92,6 +96,22 @@ void LoadingScreen::buildTasks() {
             MainMenuBgModule::VERTEX_SOURCE, MainMenuBgModule::FRAGMENT_SOURCE);
     }});
 
+    for (const auto& modelSpec : Data::models().registry()) {
+        if (!modelSpec.preloadOnStartup) {
+            continue;
+        }
+
+        std::string taskName = "Loading model asset: ";
+        taskName += modelSpec.debugName;
+        if (!modelSpec.shaderName.empty()) {
+            taskName += " (model + shader)";
+        }
+
+        m_tasks.add({std::move(taskName), 1.6f, [assetId = modelSpec.id]() {
+            (void)Data::models().preload(assetId);
+        }});
+    }
+
     m_tasks.add({"Caching transition shader...", 1.0f, []() {
         Data::screens().preloadCrossfadeShader();
     }});
@@ -104,12 +124,12 @@ void LoadingScreen::onEnter() {
     m_backdrop.configure(animation::screen::ScreenBackdropConfig{
         .shaderName = utils::render::shader::LoadingPreludeModule::NAME,
         .fallbackColor = Color{12, 14, 20, 255},
-        .revealDelay = 0.0f,
-        .revealDuration = 1.8f,
-        .brightnessFloor = 0.18f,
-        .brightnessCeiling = 0.96f,
-        .transitionWeight = 0.25f,
-        .revealWeight = 0.75f,
+        .revealDelay = 1.8f,          // doors stay closed for 1.8s while loading
+        .revealDuration = 1.5f,       // door-opening animation takes 1.5s
+        .brightnessFloor = 0.65f,     // panels visible almost immediately
+        .brightnessCeiling = 1.0f,
+        .transitionWeight = 0.85f,    // brightness comes from transition-in (fast)
+        .revealWeight = 0.15f,        // door opening barely affects brightness
     });
     m_backdrop.reset();
 

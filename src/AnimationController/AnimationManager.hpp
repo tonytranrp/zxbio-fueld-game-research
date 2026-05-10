@@ -3,6 +3,7 @@
 #include "animation/Animation.hpp"
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace biofuel::animation {
@@ -20,7 +21,11 @@ public:
     // ---- Add an animation (takes ownership) ----
     template<typename T>
     void add(std::unique_ptr<Animation<T>> anim) {
-        static_assert(sizeof(Animation<T>) != sizeof(Animation<f32>),
+        static_assert(
+            std::is_same_v<T, f32> ||
+            std::is_same_v<T, Color> ||
+            std::is_same_v<T, Vector2> ||
+            std::is_same_v<T, Rectangle>,
             "AnimationManager only supports Animation<f32>, Animation<Color>, "
             "Animation<Vector2>, Animation<Rectangle>");
         m_animations.emplace_back(std::move(anim));

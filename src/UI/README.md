@@ -10,29 +10,48 @@ UI/
 |-- ScreenManager.hpp
 |-- ScreenManager.cpp
 `-- screens/
-    |-- LoadingScreen.hpp
-    |-- LoadingScreen.cpp
-    |-- MainMenuScreen.hpp
-    |-- MainMenuScreen.cpp
-    |-- PausePopupScreen.hpp
-    `-- PausePopupScreen.cpp
+    |-- LoadingScreen/
+    |   |-- LoadingScreen.hpp
+    |   |-- LoadingScreen.cpp
+    |   `-- README.md
+    |-- MainMenu/
+    |   |-- MainMenuTypes.hpp
+    |   |-- MainMenuScreen.hpp
+    |   |-- MainMenuScreen.cpp
+    |   `-- README.md
+    `-- PausePopupScreen/
+        |-- PausePopupScreen.hpp
+        |-- PausePopupScreen.cpp
+        `-- README.md
 ```
 
-## Screen flow today
+## Screen flow
 
-- app startup pushes `LoadingScreen`
-- loading screen compiles shaders and initializes runtime services
-- loading transitions to `MainMenuScreen`
+- App startup pushes `LoadingScreen`
+- Loading screen compiles shaders and initializes runtime services
+- Loading transitions to `MainMenuScreen`
 - `PausePopupScreen` can be pushed on top of the menu for blur-backed pause UI
+- "New Game" / "Continue" on the main menu triggers a cascading dismiss animation
 
 ## Screen rules
 
-- concrete screens should be `final`
-- initialize or reset per-entry state in `onEnter()`
-- use `manager()` for push/pop/replace/quit requests
-- use deferred queue operations from inside update code when re-entrancy is a concern
-- keep screen-owned animation state local to the screen or a focused helper such as `ScreenBlurEffect`
+- Concrete screens must be `final`
+- Each screen lives in its own subdirectory under `screens/` with its own `README.md`
+- If a screen has helper types (enums, structs), extract them into a `*Types.hpp` file within that subdirectory
+- Initialize or reset per-entry state in `onEnter()`
+- Use `manager()` for push/pop/replace/quit requests
+- Use deferred queue operations (`queuePush`, `queueReplace`) from inside update code when re-entrancy is a concern
+- Keep screen-owned animation state local to the screen or a focused helper such as `ScreenBlurEffect`
+- Screens and screen helpers should request typed model instances from `ModelSystem`; they should not call raw Raylib model load/unload APIs directly
 
 ## Current transition behavior
 
-`ScreenManager` owns screen stack transitions and render-texture-based crossfades. Individual screens can still opt into their own animation flow, such as the pause popup slide animation.
+`ScreenManager` owns screen stack transitions and render-texture-based crossfades. Individual screens can still opt into their own animation flow, such as the pause popup slide animation and the main menu dismiss cascade.
+
+## Adding a new screen
+
+1. Create `src/UI/screens/YourScreen/` directory
+2. If you have helper types, create `YourScreenTypes.hpp` first
+3. Write `YourScreen.hpp` and `YourScreen.cpp` — inherit from `Screen`, mark `final`
+4. Add a `README.md` documenting the screen's flow, types, dependencies, and standards
+5. Add `.../UI/screens/YourScreen` to the include directories in `src/CMakeLists.txt`

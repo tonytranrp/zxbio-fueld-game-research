@@ -26,8 +26,10 @@ entt::dispatcher& EventManager::dispatcher() {
 }
 
 const entt::dispatcher& EventManager::dispatcher() const {
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
-    return const_cast<EventManager*>(this)->dispatcher();
+    if (!m_dispatcher) {
+        m_dispatcher = std::make_unique<entt::dispatcher>();
+    }
+    return *m_dispatcher;
 }
 
 void EventManager::clear() {

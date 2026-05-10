@@ -54,6 +54,9 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/Systems
         ${CMAKE_CURRENT_SOURCE_DIR}/UI
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens
+        ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens/LoadingScreen
+        ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens/MainMenu
+        ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens/PausePopupScreen
         ${CMAKE_CURRENT_SOURCE_DIR}/Data
         ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController
         ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController/screen

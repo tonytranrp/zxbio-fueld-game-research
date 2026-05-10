@@ -16,11 +16,17 @@ namespace biofuel::utils::render::shader {
 // GLSL source lives in assets/shaders/mainmenu_bg.glsl and is embedded at
 // build time via CMake into shader_source::mainmenu_bg_source.
 //
-// Uniforms:
-//   iResolution (vec3) — viewport width, height, 1.0
-//   iTime       (float) — elapsed seconds since screen entered
-//   uBrightness (float) — overall brightness envelope during screen intro
-//   uRevealProgress (float) — background landing progress (0.0 → 1.0)
+// Uniforms (shader-owned):
+//   iResolution      (vec3)  — viewport width, height, 1.0
+//   iTime            (float) — elapsed seconds since screen entered
+//   uBrightness      (float) — overall brightness envelope during screen intro
+//   uRevealProgress  (float) — background landing progress (0.0 → 1.0)
+//   uDimensionShift  (float) — warp-through effect after UI dismiss (0.0 → 1.0)
+//
+// Component-managed uniforms (set by CameraComponent):
+//   uCameraOffsetX   (float) — via Components/Camera/CameraComponent
+//   uCameraOffsetY   (float) — via Components/Camera/CameraComponent
+//   uCameraYaw       (float) — via Components/Camera/CameraComponent
 // ==============================================================================
 
 class MainMenuBgModule {
@@ -34,10 +40,15 @@ public:
         .vertexSource = VERTEX_SOURCE,
     };
 
+    // Shader-owned uniforms (managed by ScreenBackdropController)
     static constexpr std::string_view UNIFORM_IRESOLUTION = "iResolution";
     static constexpr std::string_view UNIFORM_ITIME = "iTime";
     static constexpr std::string_view UNIFORM_UBRIGHTNESS = "uBrightness";
     static constexpr std::string_view UNIFORM_UREVEAL_PROGRESS = "uRevealProgress";
+    static constexpr std::string_view UNIFORM_UDIMENSION_SHIFT = "uDimensionShift";
+
+    // NOTE: Camera uniforms (uCameraYaw, uCameraOffsetX/Y) are now managed
+    // by CameraComponent — see Components/Camera/CameraComponent.hpp
 };
 
 } // namespace biofuel::utils::render::shader

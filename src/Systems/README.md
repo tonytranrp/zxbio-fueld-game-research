@@ -9,6 +9,10 @@ Today the authored system in this folder is:
 ```text
 Systems/
 |-- README.md
+|-- Model/
+|   |-- ModelSystem.hpp
+|   |-- ModelSystem.cpp
+|   `-- README.md
 `-- Input/
     |-- InputSystem.hpp
     `-- InputSystem.cpp
@@ -26,3 +30,15 @@ Additional gameplay systems can be added here later, but this README documents o
 ## InputSystem
 
 `InputSystem::poll()` gathers keyboard, mouse, wheel, and close-request state from Raylib each frame and publishes matching events through the shared dispatcher.
+
+## ModelSystem
+
+`ModelSystem` owns typed runtime model assets, startup preload tasks, model instances, and the first animation-state layer for 3D model usage.
+
+Use it when code needs to:
+
+- preload a model during startup
+- create a runtime model instance
+- attach model-local shaders
+- drive local direct animation calls
+- receive future event-driven animation requests

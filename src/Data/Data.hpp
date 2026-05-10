@@ -8,9 +8,11 @@
 #include "event/EventManager.hpp"
 #include "event/animation/AnimationEvents.hpp"
 #include "event/input/InputEvents.hpp"
+#include "event/model/ModelEvents.hpp"
 #include "event/mouse/MouseEvents.hpp"
 #include "event/screen/ScreenEvents.hpp"
 #include "event/window/WindowEvents.hpp"
+#include "Systems/Model/ModelSystem.hpp"
 #include "UI/ScreenManager.hpp"
 #include "Utils/font/FontUtils.hpp"
 
@@ -35,6 +37,10 @@ public:
 
     [[nodiscard]] static utils::font::FontManager& fonts() {
         return utils::font::FontManager::instance();
+    }
+
+    [[nodiscard]] static systems::model::ModelSystem& models() {
+        return systems::model::ModelSystem::instance();
     }
 };
 

@@ -2,7 +2,9 @@
 
 #include "Core/Types.hpp"
 #include <raylib.h>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace biofuel::animation::screen {
 
@@ -24,6 +26,14 @@ public:
     void update(f32 dt) noexcept;
     void render(f32 transitionAlpha) const;
 
+    // Set an arbitrary float uniform on the backdrop shader.
+    // The uniform is applied on the next render() call.
+    void setFloat(std::string_view uniformName, f32 value) const;
+
+    // Get the underlying Raylib Shader handle for component apply().
+    // Returns a default Shader{} if not yet loaded.
+    [[nodiscard]] Shader shader() const noexcept;
+
     [[nodiscard]] f32 revealProgress() const noexcept;
     [[nodiscard]] bool ready() const noexcept;
 
@@ -37,6 +47,9 @@ private:
     mutable i32 m_brightnessLoc = -1;
     mutable i32 m_revealLoc = -1;
     mutable bool m_shaderReady = false;
+
+    // Cached arbitrary uniform locations (for setFloat calls)
+    mutable std::unordered_map<std::string, i32> m_uniformCache;
 
     f32 m_time = 0.0f;
     f32 m_revealElapsed = 0.0f;
