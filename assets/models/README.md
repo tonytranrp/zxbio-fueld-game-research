@@ -19,7 +19,7 @@ Example:
 ```text
 assets/models/
 `-- menu_transition_hands/
-    |-- low_poly_hands.glb
+    |-- rigged_hand.glb
     `-- README.md
 ```
 
@@ -34,6 +34,7 @@ That registry is the source of truth for:
 - optional shader pairing
 - preload-on-startup behavior
 - optional animation-state metadata
+- optional authored keyframe clip factory for rigged assets
 
 ## Shaders
 

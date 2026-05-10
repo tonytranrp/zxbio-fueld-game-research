@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AnimationController/animation/ModelKeyframe.hpp"
 #include "Core/Types.hpp"
 #include "Data/event/model/ModelEvents.hpp"
 #include <memory>
@@ -25,6 +26,8 @@ struct ModelAnimationStateSpec {
 };
 
 struct ModelAssetSpec {
+    using KeyframeClipFactory = std::vector<animation::model::KeyframeClip>(*)();
+
     ModelAssetId id{};
     std::string_view debugName;
     std::string_view assetPath;
@@ -33,6 +36,7 @@ struct ModelAssetSpec {
     std::string_view shaderFragmentPath;
     bool preloadOnStartup = false;
     bool loadAnimations = false;
+    KeyframeClipFactory keyframeClipFactory = nullptr;
     std::string_view defaultIdleState;
     const ModelAnimationStateSpec* animationStates = nullptr;
     i32 animationStateCount = 0;
@@ -63,6 +67,8 @@ struct SharedAssetData {
     i32 animationCount = 0;
     ModelAssetMetrics metrics{};
     Shader shader{};
+    animation::model::ModelRigBinding rigBinding{};
+    std::vector<animation::model::KeyframeClip> keyframeClips;
 };
 
 class ModelAnimator final {
@@ -119,6 +125,8 @@ public:
     [[nodiscard]] Shader shader() const noexcept;
     [[nodiscard]] ModelAnimator& animator() noexcept { return m_animator; }
     [[nodiscard]] const ModelAnimator& animator() const noexcept { return m_animator; }
+    [[nodiscard]] const animation::model::ModelKeyframeState& keyframeState() const noexcept { return m_keyframePlayer.state(); }
+    [[nodiscard]] f32 keyframeScalar(std::string_view channelName, f32 fallback = 0.0f) const noexcept;
     [[nodiscard]] std::string_view debugName() const noexcept { return m_debugName; }
 
     void setVisible(bool visible) noexcept { m_visible = visible; }
@@ -151,6 +159,8 @@ private:
     bool m_visible = true;
     ModelAssetMetrics m_metrics{};
     ModelAnimator m_animator;
+    animation::model::ModelKeyframePlayer m_keyframePlayer;
+    std::vector<Transform> m_poseBuffer;
 };
 
 class ModelSystem final {
@@ -181,6 +191,7 @@ private:
     [[nodiscard]] const ModelAssetSpec* findSpec(ModelAssetId assetId) const noexcept;
     [[nodiscard]] std::shared_ptr<SharedAssetData> loadAsset(const ModelAssetSpec& spec);
     [[nodiscard]] static ModelAssetMetrics computeMetrics(Model& model) noexcept;
+    [[nodiscard]] static animation::model::ModelRigBinding buildRigBinding(const Model& model) noexcept;
     static void unloadAsset(SharedAssetData& asset) noexcept;
     void pruneInstances();
     [[nodiscard]] std::shared_ptr<ModelInstance> findInstance(u64 instanceId) const;

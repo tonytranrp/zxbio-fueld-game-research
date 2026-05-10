@@ -12,20 +12,21 @@ namespace biofuel::systems::model {
 namespace {
 
 constexpr ModelAnimationStateSpec MENU_HANDS_STATES[] = {
-    {.name = "idle", .clipIndex = -1, .loop = true, .returnState = {}, .durationSeconds = 0.0f},
-    {.name = "action", .clipIndex = -1, .loop = false, .returnState = "idle", .durationSeconds = 0.95f},
+    {.name = "idle", .clipIndex = -1, .loop = true, .returnState = {}, .durationSeconds = 2.80f},
+    {.name = "action", .clipIndex = -1, .loop = false, .returnState = "idle", .durationSeconds = 2.40f},
 };
 
 constexpr ModelAssetSpec BUILT_IN_MODELS[] = {
     {
         .id = ModelAssetId::MenuTransitionHands,
         .debugName = "Menu Transition Hands",
-        .assetPath = "assets/models/menu_transition_hands/low_poly_hands.glb",
+        .assetPath = "assets/models/menu_transition_hands/rigged_hand.glb",
         .shaderName = "menu_hands",
         .shaderVertexPath = "assets/shaders/menu_hands.vs",
         .shaderFragmentPath = "assets/shaders/menu_hands.fs",
         .preloadOnStartup = true,
         .loadAnimations = false,
+        .keyframeClipFactory = animation::model::buildMenuHandKeyframeClips,
         .defaultIdleState = "idle",
         .animationStates = MENU_HANDS_STATES,
         .animationStateCount = static_cast<i32>(std::size(MENU_HANDS_STATES)),
@@ -108,9 +109,16 @@ void ModelAnimator::update(Model& model, const ModelAnimation* clips, const i32 
     m_stateElapsed += dt;
     m_transitionElapsed = std::min(m_transitionElapsed + dt, m_transitionDuration);
     const f32 duration = std::max(resolveDurationSeconds(*state, clipCount, clips), 0.0f);
-    m_stateProgress = (duration > 0.0f)
-        ? std::clamp(m_stateElapsed / duration, 0.0f, 1.0f)
-        : 0.0f;
+    if (duration > 0.0f) {
+        if (state->loop) {
+            const f32 normalized = std::fmod(std::max(m_stateElapsed, 0.0f), duration) / duration;
+            m_stateProgress = std::clamp(normalized, 0.0f, 1.0f);
+        } else {
+            m_stateProgress = std::clamp(m_stateElapsed / duration, 0.0f, 1.0f);
+        }
+    } else {
+        m_stateProgress = 0.0f;
+    }
 
     if (state->clipIndex >= 0 && state->clipIndex < clipCount && clips != nullptr) {
         const ModelAnimation& clip = clips[state->clipIndex];
@@ -231,7 +239,10 @@ ModelInstance::ModelInstance(
     }
 
     m_metrics = m_sharedAsset->metrics;
-    const bool needsIndependentModel = m_sharedAsset->animationCount > 0;
+    const bool needsIndependentModel =
+        m_sharedAsset->animationCount > 0 ||
+        m_sharedAsset->prototype.boneCount > 0 ||
+        !m_sharedAsset->keyframeClips.empty();
     if (needsIndependentModel) {
         m_ownedModel = LoadModel(m_sharedAsset->spec.assetPath.data());
         if (m_ownedModel.meshCount <= 0) {
@@ -257,6 +268,11 @@ ModelInstance::ModelInstance(
         m_sharedAsset->spec.defaultIdleState,
         m_sharedAsset->animationCount
     );
+
+    if (!m_sharedAsset->keyframeClips.empty() && m_model != nullptr && m_model->boneCount > 0) {
+        m_keyframePlayer.configure(m_sharedAsset->rigBinding, m_sharedAsset->keyframeClips);
+        m_poseBuffer.resize(static_cast<size_t>(m_model->boneCount));
+    }
 }
 
 ModelInstance::~ModelInstance() noexcept {
@@ -291,6 +307,7 @@ void ModelInstance::resetAnimation() noexcept {
         m_sharedAsset->spec.defaultIdleState,
         m_sharedAsset->animationCount
     );
+    m_keyframePlayer.reset();
 }
 
 void ModelInstance::update(const f32 dt) noexcept {
@@ -299,6 +316,27 @@ void ModelInstance::update(const f32 dt) noexcept {
     }
 
     m_animator.update(*m_model, m_sharedAsset->animations, m_sharedAsset->animationCount, dt);
+
+    if (!m_keyframePlayer.empty() && !m_poseBuffer.empty()) {
+        m_keyframePlayer.syncState(
+            m_animator.currentState(),
+            m_animator.stateProgress(),
+            m_animator.transitionProgress());
+
+        m_keyframePlayer.apply(
+            std::span<const Transform>(m_sharedAsset->prototype.bindPose, static_cast<size_t>(m_sharedAsset->prototype.boneCount)),
+            std::span<Transform>(m_poseBuffer.data(), m_poseBuffer.size()));
+
+        Transform* framePoses[] = { m_poseBuffer.data() };
+        ModelAnimation scratch{
+            .boneCount = m_model->boneCount,
+            .frameCount = 1,
+            .bones = m_model->bones,
+            .framePoses = framePoses,
+            .name = {'K', 'E', 'Y', 'F', 'R', 'A', 'M', 'E', '\0'},
+        };
+        UpdateModelAnimation(*m_model, scratch, 0);
+    }
 }
 
 void ModelInstance::draw(const ModelRenderState& state) const noexcept {
@@ -307,6 +345,10 @@ void ModelInstance::draw(const ModelRenderState& state) const noexcept {
     }
 
     DrawModelEx(*m_model, state.position, state.rotationAxis, state.rotationDegrees, state.scale, state.tint);
+}
+
+f32 ModelInstance::keyframeScalar(const std::string_view channelName, const f32 fallback) const noexcept {
+    return m_keyframePlayer.scalar(channelName, fallback);
 }
 
 void ModelInstance::applyShaderToMaterials(Model& model, const Shader shader) noexcept {
@@ -480,6 +522,7 @@ std::shared_ptr<SharedAssetData> ModelSystem::loadAsset(const ModelAssetSpec& sp
 
     asset->metrics = computeMetrics(asset->prototype);
     ModelInstance::applyNormalization(asset->prototype, asset->metrics);
+    asset->rigBinding = buildRigBinding(asset->prototype);
 
     if (!spec.shaderName.empty()) {
         auto& shaderManager = utils::render::ShaderManager::instance();
@@ -505,9 +548,29 @@ std::shared_ptr<SharedAssetData> ModelSystem::loadAsset(const ModelAssetSpec& sp
         }
     }
 
+    if (spec.keyframeClipFactory != nullptr) {
+        asset->keyframeClips = spec.keyframeClipFactory();
+    }
+
     asset->prototypeLoaded = true;
     spdlog::info("ModelSystem: preloaded model '{}'", spec.debugName);
     return asset;
+}
+
+animation::model::ModelRigBinding ModelSystem::buildRigBinding(const Model& model) noexcept {
+    animation::model::ModelRigBinding binding;
+    if (model.boneCount <= 0 || model.bones == nullptr) {
+        return binding;
+    }
+
+    binding.boneNames.reserve(static_cast<size_t>(model.boneCount));
+    for (i32 boneIndex = 0; boneIndex < model.boneCount; ++boneIndex) {
+        const std::string boneName = model.bones[boneIndex].name;
+        binding.boneIndices.emplace(boneName, boneIndex);
+        binding.boneNames.push_back(boneName);
+    }
+
+    return binding;
 }
 
 ModelAssetMetrics ModelSystem::computeMetrics(Model& model) noexcept {

@@ -19,10 +19,11 @@ AnimationController/screen/
 
 It does not own raw model loading. Instead it:
 
-1. requests a typed model instance from `ModelSystem`,
+1. requests typed model instances from `ModelSystem`,
 2. drives portal timing and dimension-shift choreography,
-3. aligns the hand presentation camera, and
-4. applies effect-specific shader uniforms before drawing.
+3. consumes authored keyframed rig playback from the model layer,
+4. aligns the hand presentation camera, and
+5. applies effect-specific shader uniforms before drawing.
 
 Asset lifetime, shader pairing, and model registration live below it in `Systems/Model`.
 

@@ -1,6 +1,6 @@
 # MainMenu
 
-Title screen with a raymarched shader backdrop, staged intro animation, horizontal carousel menu, and cascading dismiss animation.
+Title screen with a raymarched shader backdrop, staged intro animation, horizontal carousel menu, and a cascading dismiss that hands off into the rigged hand / dimension-shift sequence.
 
 ## Current contents
 
@@ -27,7 +27,7 @@ The screen lifecycle:
 
 1. **`onEnter()`** — Resets all state, configures the `ScreenBackdropController` with the main menu voxel raymarch shader, starts waiting for crossfade to complete
 2. **`onUpdate()`** — Advances backdrop time, menu slide, and dismiss animation; kicks off staged intro when the background reveal crosses the sync threshold
-3. **`onRender()`** — Renders shader backdrop, then conditionally draws title block, subtitle, hints, horizontal carousel menu, and footer — each respecting intro phase, dismiss progress, and fade multipliers
+3. **`onRender()`** — Renders shader backdrop, the `MenuTransitionHands` effect when dismissing, then conditionally draws title block, subtitle, hints, horizontal carousel menu, and footer — each respecting intro phase, dismiss progress, and fade multipliers
 4. **`onInput()`** — ESC opens pause popup; LEFT/RIGHT navigates the horizontal carousel; ENTER or mouse click activates the selected item
 
 ### Dismiss animation
@@ -47,6 +47,7 @@ Each element staggers by `0.06s`. Each takes `0.40s` to complete. Input is block
 
 - `Screen` / `ScreenManager` for lifecycle and navigation
 - `ScreenBackdropController` for the shader backdrop with reveal/brightness
+- `MenuTransitionHands` for the rigged hand transition sequence
 - `MenuHelper` for horizontal carousel rendering, navigation, and hit-testing
 - `Easing` for intro/dismiss/menu-slide easing functions
 

@@ -23,13 +23,27 @@ public:
     [[nodiscard]] bool active() const noexcept { return m_active && m_loaded; }
 
 private:
+    struct HandRenderPose {
+        Vector3 position{0.0f, 0.0f, 0.0f};
+        Quaternion orientation{0.0f, 0.0f, 0.0f, 1.0f};
+        Vector3 scale{1.0f, 1.0f, 1.0f};
+        Color auraTint{88, 136, 220, 180};
+        Color baseTint{232, 238, 255, 220};
+    };
+
     [[nodiscard]] static f32 saturate(f32 value) noexcept;
     [[nodiscard]] static f32 easeOutCubic(f32 value) noexcept;
     [[nodiscard]] static f32 easeInOutCubic(f32 value) noexcept;
+    [[nodiscard]] static f32 easeInOutSine(f32 value) noexcept;
+    [[nodiscard]] HandRenderPose buildHandPose(
+        const systems::model::ModelInstance& instance,
+        f32 sideSign,
+        f32 phaseOffset) const noexcept;
+    void drawHand(const systems::model::ModelInstance& instance, const HandRenderPose& pose) const noexcept;
 
     void updateCamera(const utils::render::component::ShaderCameraState& shaderCamera) noexcept;
     void cacheUniformLocations(Shader shader) const noexcept;
-    void applyShaderUniforms() const noexcept;
+    void applyShaderUniforms(const systems::model::ModelInstance& instance, f32 sideSign) const noexcept;
     Camera3D m_camera{
         .position = Vector3{0.0f, 0.15f, 2.55f},
         .target = Vector3{0.0f, 0.0f, 0.0f},
@@ -38,7 +52,8 @@ private:
         .projection = CAMERA_PERSPECTIVE,
     };
 
-    std::shared_ptr<systems::model::ModelInstance> m_instance;
+    std::shared_ptr<systems::model::ModelInstance> m_leftInstance;
+    std::shared_ptr<systems::model::ModelInstance> m_rightInstance;
     bool m_loaded = false;
     bool m_active = false;
     f32 m_elapsed = 0.0f;
@@ -55,6 +70,7 @@ private:
     mutable i32 m_colorALoc = -1;
     mutable i32 m_colorBLoc = -1;
     mutable i32 m_rimColorLoc = -1;
+    mutable i32 m_sideLoc = -1;
     mutable u32 m_cachedShaderId = 0;
 };
 

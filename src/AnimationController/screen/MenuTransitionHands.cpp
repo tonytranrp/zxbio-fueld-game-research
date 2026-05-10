@@ -10,14 +10,12 @@ namespace biofuel::animation::screen {
 
 namespace {
 
-constexpr f32 HAND_APPEAR_DELAY = 0.08f;
-constexpr f32 HAND_APPEAR_DURATION = 1.45f;
-constexpr f32 HAND_SETTLE_DURATION = 2.6f;
-constexpr f32 HAND_IDLE_GESTURE_SPEED = 1.65f;
+constexpr f32 HAND_LAUNCH_DELAY = 0.16f;
+constexpr f32 HAND_SETTLE_DURATION = 3.1f;
 constexpr f32 HAND_PI = 3.14159265f;
 
-[[nodiscard]] f32 saturateValue(const f32 value) noexcept {
-    return std::clamp(value, 0.0f, 1.0f);
+[[nodiscard]] constexpr Quaternion identityQuaternion() noexcept {
+    return Quaternion{0.0f, 0.0f, 0.0f, 1.0f};
 }
 
 } // namespace
@@ -27,18 +25,21 @@ void MenuTransitionHands::load() {
         return;
     }
 
-    auto instance = Data::models().createInstance(ASSET_ID);
-    if (!instance || !instance->ready()) {
-        spdlog::warn("MenuTransitionHands: model instance unavailable");
+    auto leftInstance = Data::models().createInstance(ASSET_ID);
+    auto rightInstance = Data::models().createInstance(ASSET_ID);
+    if (!leftInstance || !rightInstance || !leftInstance->ready() || !rightInstance->ready()) {
+        spdlog::warn("MenuTransitionHands: model instances unavailable");
         return;
     }
 
-    m_instance = std::move(instance);
-    const auto& metrics = m_instance->metrics();
-    m_baseScale = 1.15f * metrics.unitScale;
-    m_fingerStartY = metrics.localBounds.min.y + metrics.size.y * 0.40f;
-    m_fingerEndY = metrics.localBounds.min.y + metrics.size.y * 0.92f;
-    m_instance->setAnimationState("idle");
+    m_leftInstance = std::move(leftInstance);
+    m_rightInstance = std::move(rightInstance);
+    const auto& metrics = m_leftInstance->metrics();
+    m_baseScale = 1.05f * metrics.unitScale;
+    m_fingerStartY = metrics.localBounds.min.y + metrics.size.y * 0.38f;
+    m_fingerEndY = metrics.localBounds.min.y + metrics.size.y * 0.95f;
+    m_leftInstance->setAnimationState("idle");
+    m_rightInstance->setAnimationState("idle");
     m_loaded = true;
 }
 
@@ -47,7 +48,8 @@ void MenuTransitionHands::unload() noexcept {
         return;
     }
 
-    m_instance.reset();
+    m_leftInstance.reset();
+    m_rightInstance.reset();
     m_loaded = false;
     m_baseScale = 1.0f;
     reset();
@@ -67,11 +69,20 @@ void MenuTransitionHands::reset() noexcept {
     m_colorALoc = -1;
     m_colorBLoc = -1;
     m_rimColorLoc = -1;
+    m_sideLoc = -1;
     m_cachedShaderId = 0;
     m_camera.target = Vector3{0.0f, 0.0f, 0.0f};
     m_camera.up = Vector3{0.0f, 1.0f, 0.0f};
     m_camera.fovy = 30.0f;
     m_camera.projection = CAMERA_PERSPECTIVE;
+    if (m_leftInstance) {
+        m_leftInstance->resetAnimation();
+        m_leftInstance->setAnimationState("idle");
+    }
+    if (m_rightInstance) {
+        m_rightInstance->resetAnimation();
+        m_rightInstance->setAnimationState("idle");
+    }
 }
 
 void MenuTransitionHands::start() noexcept {
@@ -81,8 +92,11 @@ void MenuTransitionHands::start() noexcept {
 
     m_active = true;
     m_elapsed = 0.0f;
-    if (m_instance) {
-        m_instance->playAction("action", 0.12f);
+    if (m_leftInstance) {
+        m_leftInstance->playAction("action", 0.10f);
+    }
+    if (m_rightInstance) {
+        m_rightInstance->playAction("action", 0.18f);
     }
 }
 
@@ -102,66 +116,97 @@ void MenuTransitionHands::update(
 }
 
 void MenuTransitionHands::render() const noexcept {
-    if (!m_active || !m_loaded) {
+    if (!m_active || !m_loaded || !m_leftInstance || !m_rightInstance) {
         return;
     }
 
-    const f32 appearT = saturate((m_elapsed - HAND_APPEAR_DELAY) / HAND_APPEAR_DURATION);
-    const f32 settleT = saturate(m_elapsed / HAND_SETTLE_DURATION);
-    const f32 appear = easeOutCubic(appearT);
-    const f32 settle = easeInOutCubic(settleT);
-    const f32 shift = easeInOutCubic(m_dimensionShift);
-    const auto& animator = m_instance->animator();
-    const bool actionState = (animator.currentState() == "action");
-    const f32 stateT = animator.stateProgress();
-    const f32 transitionT = animator.transitionProgress();
-    const f32 actionArc = actionState ? std::sin(stateT * HAND_PI) : 0.0f;
-    const f32 actionStrength = actionArc * (0.7f + 0.3f * transitionT);
-    const f32 idleStrength = actionState ? 0.0f : 0.16f;
-    const f32 gesture = (std::sin(m_elapsed * HAND_IDLE_GESTURE_SPEED) * 0.5f + 0.5f)
-        * (0.45f + idleStrength * 0.55f) + actionStrength * 0.28f;
-    const f32 floatOffset = std::sin(m_elapsed * 1.2f) * (0.018f + actionStrength * 0.018f);
-    const f32 reachForward = actionStrength * 0.20f;
-    const f32 lift = actionStrength * 0.10f;
-    const f32 spread = actionStrength * 0.12f;
-
-    const Vector3 position = {
-        m_cameraYaw * (0.32f + spread * 0.18f),
-        -1.32f + appear * 0.28f + floatOffset + shift * 0.04f + lift,
-        0.16f - appear * 0.12f - shift * 0.08f + gesture * 0.03f - reachForward
-    };
-    const f32 scaleValue = m_baseScale * (1.05f + settle * 0.08f + actionStrength * 0.10f);
-    const Vector3 scale = {
-        scaleValue * (1.0f + spread * 0.10f),
-        scaleValue * (1.0f - actionStrength * 0.05f),
-        scaleValue
-    };
-    const Vector3 rotationAxis = {0.36f, 1.0f, 0.0f};
-    const f32 yawDegrees = -m_cameraYaw * 55.0f + std::sin(m_elapsed * 0.85f) * 4.0f - 7.0f
-        + actionStrength * 8.5f;
-    const f32 auraAlpha = 70.0f + appear * 65.0f + shift * 35.0f + actionStrength * 52.0f;
-    const f32 baseAlpha = 125.0f + appear * 95.0f + actionStrength * 26.0f;
-
-    applyShaderUniforms();
+    const HandRenderPose leftPose = buildHandPose(*m_leftInstance, -1.0f, 0.0f);
+    const HandRenderPose rightPose = buildHandPose(*m_rightInstance, 1.0f, 0.12f);
 
     BeginMode3D(m_camera);
-    m_instance->draw(systems::model::ModelRenderState{
-        .position = position,
-        .rotationAxis = rotationAxis,
-        .scale = Vector3{scale.x * 1.06f, scale.y * 1.06f, scale.z * 1.06f},
-        .rotationDegrees = yawDegrees,
-        .tint = Color{88, 136, 220, static_cast<u8>(std::clamp(auraAlpha, 0.0f, 255.0f))},
-        .visible = true,
-    });
-    m_instance->draw(systems::model::ModelRenderState{
-        .position = position,
-        .rotationAxis = rotationAxis,
-        .scale = scale,
-        .rotationDegrees = yawDegrees,
-        .tint = Color{232, 238, 255, static_cast<u8>(std::clamp(baseAlpha, 0.0f, 255.0f))},
-        .visible = true,
-    });
+    drawHand(*m_leftInstance, leftPose);
+    drawHand(*m_rightInstance, rightPose);
     EndMode3D();
+}
+
+MenuTransitionHands::HandRenderPose MenuTransitionHands::buildHandPose(
+    const systems::model::ModelInstance& instance,
+    const f32 sideSign,
+    const f32 phaseOffset) const noexcept
+{
+    const auto& keyframe = instance.keyframeState();
+    const f32 shift = easeInOutCubic(m_dimensionShift);
+    const f32 settle = easeInOutCubic(saturate((m_elapsed - phaseOffset) / HAND_SETTLE_DURATION));
+    const f32 delayT = saturate((m_elapsed - phaseOffset - HAND_LAUNCH_DELAY) / 0.42f);
+    const f32 anticipation = easeInOutSine(delayT);
+    const f32 awareness = instance.keyframeScalar("awareness", 0.0f);
+    const f32 auraBias = instance.keyframeScalar("aura_bias", 0.15f);
+    const f32 portalBias = instance.keyframeScalar("portal_bias", 0.20f);
+    const f32 floatLift = std::sin((m_elapsed + phaseOffset) * 1.15f) * 0.012f;
+
+    HandRenderPose pose;
+    pose.position = Vector3{
+        sideSign * (0.46f + keyframe.rootTranslation.x * (0.92f + 0.08f * awareness)) + m_cameraYaw * 0.18f,
+        -0.74f + keyframe.rootTranslation.y * 0.78f + floatLift + shift * 0.05f - (1.0f - anticipation) * 0.06f,
+        0.18f + keyframe.rootTranslation.z * 0.48f - shift * 0.08f - awareness * 0.03f
+    };
+
+    const Quaternion baseOrientation = QuaternionFromEuler(
+        (-12.0f + awareness * 3.0f) * DEG2RAD,
+        sideSign * (-18.0f + settle * 12.0f + awareness * 6.0f) * DEG2RAD,
+        sideSign * (22.0f - awareness * 10.0f) * DEG2RAD
+    );
+    pose.orientation = QuaternionNormalize(QuaternionMultiply(baseOrientation, keyframe.rootRotation));
+
+    pose.scale = Vector3{
+        m_baseScale * keyframe.rootScale.x * sideSign,
+        m_baseScale * keyframe.rootScale.y,
+        m_baseScale * keyframe.rootScale.z
+    };
+
+    const f32 auraAlpha = 92.0f + auraBias * 95.0f + shift * 42.0f;
+    const f32 baseAlpha = 180.0f + auraBias * 48.0f + portalBias * 18.0f;
+    pose.auraTint = Color{
+        static_cast<u8>(82 + awareness * 44.0f),
+        static_cast<u8>(126 + auraBias * 38.0f),
+        static_cast<u8>(214 + portalBias * 30.0f),
+        static_cast<u8>(std::clamp(auraAlpha, 0.0f, 255.0f))
+    };
+    pose.baseTint = Color{
+        static_cast<u8>(220 + awareness * 18.0f),
+        static_cast<u8>(232 + auraBias * 14.0f),
+        static_cast<u8>(255),
+        static_cast<u8>(std::clamp(baseAlpha, 0.0f, 255.0f))
+    };
+    return pose;
+}
+
+void MenuTransitionHands::drawHand(
+    const systems::model::ModelInstance& instance,
+    const HandRenderPose& pose) const noexcept
+{
+    Vector3 axis = Vector3{0.0f, 1.0f, 0.0f};
+    f32 angle = 0.0f;
+    QuaternionToAxisAngle(pose.orientation, &axis, &angle);
+    const f32 angleDegrees = angle * RAD2DEG;
+
+    applyShaderUniforms(instance, (pose.scale.x < 0.0f) ? -1.0f : 1.0f);
+    instance.draw(systems::model::ModelRenderState{
+        .position = pose.position,
+        .rotationAxis = axis,
+        .scale = Vector3{pose.scale.x * 1.04f, pose.scale.y * 1.04f, pose.scale.z * 1.04f},
+        .rotationDegrees = angleDegrees,
+        .tint = pose.auraTint,
+        .visible = true,
+    });
+    instance.draw(systems::model::ModelRenderState{
+        .position = pose.position,
+        .rotationAxis = axis,
+        .scale = pose.scale,
+        .rotationDegrees = angleDegrees,
+        .tint = pose.baseTint,
+        .visible = true,
+    });
 }
 
 f32 MenuTransitionHands::saturate(const f32 value) noexcept {
@@ -180,19 +225,24 @@ f32 MenuTransitionHands::easeInOutCubic(const f32 value) noexcept {
         : (1.0f - std::pow(-2.0f * t + 2.0f, 3.0f) * 0.5f);
 }
 
+f32 MenuTransitionHands::easeInOutSine(const f32 value) noexcept {
+    const f32 t = saturate(value);
+    return -(std::cos(HAND_PI * t) - 1.0f) * 0.5f;
+}
+
 void MenuTransitionHands::updateCamera(
     const utils::render::component::ShaderCameraState& shaderCamera) noexcept
 {
     const f32 shift = easeInOutCubic(m_dimensionShift);
     m_camera.position = Vector3{
-        shaderCamera.yaw * 0.35f,
-        0.18f + shift * 0.03f,
-        3.65f - shift * 0.18f
+        shaderCamera.yaw * 0.30f,
+        0.08f + shift * 0.05f,
+        3.35f - shift * 0.22f
     };
     m_camera.target = Vector3{
-        shaderCamera.yaw * 0.42f,
-        -0.46f,
-        0.0f
+        shaderCamera.yaw * 0.35f,
+        -0.38f,
+        0.04f
     };
 }
 
@@ -208,30 +258,28 @@ void MenuTransitionHands::cacheUniformLocations(const Shader shader) const noexc
     m_colorALoc = utils::render::ShaderManager::getLocation(shader, "uColorA");
     m_colorBLoc = utils::render::ShaderManager::getLocation(shader, "uColorB");
     m_rimColorLoc = utils::render::ShaderManager::getLocation(shader, "uRimColor");
+    m_sideLoc = utils::render::ShaderManager::getLocation(shader, "uSideSign");
     m_cachedShaderId = shader.id;
 }
 
-void MenuTransitionHands::applyShaderUniforms() const noexcept {
-    if (!m_instance || !m_instance->ready()) {
-        return;
-    }
-
-    const Shader shader = m_instance->shader();
+void MenuTransitionHands::applyShaderUniforms(
+    const systems::model::ModelInstance& instance,
+    const f32 sideSign) const noexcept
+{
+    const Shader shader = instance.shader();
     if (!IsShaderValid(shader)) {
         return;
     }
 
     cacheUniformLocations(shader);
 
-    const f32 appearT = saturate((m_elapsed - HAND_APPEAR_DELAY) / HAND_APPEAR_DURATION);
-    const auto& animator = m_instance->animator();
-    const bool actionState = (animator.currentState() == "action");
-    const f32 actionArc = actionState ? std::sin(animator.stateProgress() * HAND_PI) : 0.0f;
-    const f32 portalStrength = std::max(easeOutCubic(appearT), m_dimensionShift)
-        + actionArc * (0.22f + 0.18f * saturateValue(animator.transitionProgress()));
-    const f32 colorA[3] = {0.24f, 0.34f, 0.56f};
-    const f32 colorB[3] = {0.88f, 0.93f, 1.0f};
-    const f32 rimColor[3] = {0.72f, 0.56f, 0.98f};
+    const f32 portalStrength = std::clamp(
+        instance.keyframeScalar("portal_bias", 0.18f) + easeInOutCubic(m_dimensionShift) * 0.55f,
+        0.0f,
+        1.45f);
+    const f32 colorA[3] = {0.20f, 0.28f, 0.44f};
+    const f32 colorB[3] = {0.90f, 0.95f, 1.00f};
+    const f32 rimColor[3] = {0.72f, 0.60f, 0.98f};
 
     utils::render::ShaderManager::setValue(shader, m_timeLoc, &m_elapsed, SHADER_UNIFORM_FLOAT);
     utils::render::ShaderManager::setValue(shader, m_portalStrengthLoc, &portalStrength, SHADER_UNIFORM_FLOAT);
@@ -240,6 +288,7 @@ void MenuTransitionHands::applyShaderUniforms() const noexcept {
     utils::render::ShaderManager::setValue(shader, m_colorALoc, colorA, SHADER_UNIFORM_VEC3);
     utils::render::ShaderManager::setValue(shader, m_colorBLoc, colorB, SHADER_UNIFORM_VEC3);
     utils::render::ShaderManager::setValue(shader, m_rimColorLoc, rimColor, SHADER_UNIFORM_VEC3);
+    utils::render::ShaderManager::setValue(shader, m_sideLoc, &sideSign, SHADER_UNIFORM_FLOAT);
 }
 
 } // namespace biofuel::animation::screen
