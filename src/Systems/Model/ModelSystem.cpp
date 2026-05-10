@@ -20,7 +20,7 @@ constexpr ModelAssetSpec BUILT_IN_MODELS[] = {
     {
         .id = ModelAssetId::MenuTransitionHands,
         .debugName = "Menu Transition Hands",
-        .assetPath = "assets/models/menu_transition_hands/rigged_hand.glb",
+        .assetPath = "assets/models/menu_transition_hands/wrad_arms.glb",
         .shaderName = "menu_hands",
         .shaderVertexPath = "assets/shaders/menu_hands.vs",
         .shaderFragmentPath = "assets/shaders/menu_hands.fs",
@@ -327,6 +327,18 @@ void ModelInstance::update(const f32 dt) noexcept {
             std::span<const Transform>(m_sharedAsset->prototype.bindPose, static_cast<size_t>(m_sharedAsset->prototype.boneCount)),
             std::span<Transform>(m_poseBuffer.data(), m_poseBuffer.size()));
 
+        for (const auto& [boneName, offset] : m_boneTranslationOffsets) {
+            const i32 boneIndex = m_sharedAsset->rigBinding.findBoneIndex(boneName);
+            if (boneIndex < 0 || boneIndex >= static_cast<i32>(m_poseBuffer.size())) {
+                continue;
+            }
+
+            auto& translation = m_poseBuffer[static_cast<size_t>(boneIndex)].translation;
+            translation.x += offset.x;
+            translation.y += offset.y;
+            translation.z += offset.z;
+        }
+
         Transform* framePoses[] = { m_poseBuffer.data() };
         ModelAnimation scratch{
             .boneCount = m_model->boneCount,
@@ -345,6 +357,18 @@ void ModelInstance::draw(const ModelRenderState& state) const noexcept {
     }
 
     DrawModelEx(*m_model, state.position, state.rotationAxis, state.rotationDegrees, state.scale, state.tint);
+}
+
+void ModelInstance::setBoneTranslationOffset(const std::string_view boneName, const Vector3 offset) {
+    if (boneName.empty()) {
+        return;
+    }
+
+    if (m_boneTranslationOffsets.empty()) {
+        m_boneTranslationOffsets.reserve(12);
+    }
+
+    m_boneTranslationOffsets[std::string{boneName}] = offset;
 }
 
 f32 ModelInstance::keyframeScalar(const std::string_view channelName, const f32 fallback) const noexcept {

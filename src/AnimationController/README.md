@@ -16,6 +16,8 @@ AnimationController/
 |   |-- MenuHandKeyframes.cpp
 |   `-- PremadeAnimations.hpp
 `-- screen/
+    |-- ModelControllerOverlay.hpp
+    |-- ModelControllerOverlay.cpp
     |-- MenuTransitionHands.hpp
     |-- MenuTransitionHands.cpp
     |-- ScreenBlurEffect.hpp
@@ -31,6 +33,7 @@ AnimationController/
 - `ModelKeyframe` adds a second focused generic subsystem for authored rig animation tracks (`f32`, `Vector3`, `Quaternion`)
 - `ScreenBlurEffect` is a screen-facing helper that captures, blurs, and tints the screen below a popup
 - `MenuTransitionHands` is a screen-facing transition effect that now consumes typed model instances from `ModelSystem`
+- `ModelControllerOverlay` is a dev-only runtime tuning overlay for model/control-point placement; enable it with `BIOFUEL_DEV_MODEL_CONTROLLER=ON`
 
 ## Style guidance
 
@@ -43,3 +46,4 @@ AnimationController/
 
 - the pause popup uses the animation runtime for panel slide-in/slide-out and uses `ScreenBlurEffect` for its blurred backdrop
 - the main menu transition uses `MenuTransitionHands` plus `ModelKeyframePlayer` for the rigged hand-and-portal presentation while model lifetime stays in `Systems/Model`
+- dev builds can enable `ModelControllerOverlay` to select model control points, drag XYZ gizmo arrows, and copy runtime offsets without rewriting source files

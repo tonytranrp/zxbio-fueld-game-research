@@ -22,6 +22,7 @@ Systems/Model/
 - support the first conservative animation graph: `idle -> action -> return`
 - bind authored model keyframe clips onto rigged models
 - apply per-instance bone poses without pushing raw Raylib calls into screens
+- allow dev-only runtime bone translation offsets for controller overlays
 
 ## Format policy
 
@@ -34,6 +35,7 @@ Systems/Model/
 - `ModelSystem` owns asset registration, shared loaded asset data, and event hooks
 - `ModelInstance` owns the concrete runtime model view used by a caller, including per-instance rig pose buffers when needed
 - screens and screen helpers do not own raw model loading or unloading
+- dev tools may apply temporary per-instance offsets through `ModelInstance`; those offsets are runtime-only and reset on launch
 
 ## Keyframed rig flow
 
@@ -42,6 +44,7 @@ Systems/Model/
 - `ModelAnimator` still owns the high-level state machine
 - `ModelKeyframePlayer` samples the active authored clip and applies the resulting pose to the instance model
 - screen helpers consume the resulting root offsets / scalar channels instead of manufacturing the motion from ad hoc pulse math
+- `ModelControllerOverlay` can add temporary offsets after the sampled pose so hand/camera placement can be tuned visually before constants are copied into authored code
 
 ## Trigger boundary
 
@@ -57,3 +60,7 @@ Systems/Model/
 5. Register the asset in the built-in registry in `ModelSystem.cpp`
 6. If it should preload during startup, set `preloadOnStartup = true`
 7. Use `Data::models().createInstance(...)` from the caller instead of raw Raylib model APIs
+
+## Dev model controller
+
+Configure with `-DBIOFUEL_DEV_MODEL_CONTROLLER=ON` to enable the runtime controller overlay. Keep `-DBIOFUEL_DEV_STARTUP_MENU_TRANSITION=OFF` when you want normal menu entry instead of auto-running the transition. The overlay lets callers expose points such as root position, camera target, or weighted hand/bone clusters; dragging the gizmo changes runtime offsets only, and pressing `C` copies the selected offset text for manual use in C++ keyframes or framing constants.

@@ -19,20 +19,20 @@ uniform float uTime;
 uniform float uPortalStrength;
 uniform float uFingerStartY;
 uniform float uFingerEndY;
-uniform float uSideSign;
 
 void main() {
     vec3 localPos = vertexPosition;
+    float sideSign = (abs(localPos.x) < 0.0001) ? 1.0 : sign(localPos.x);
 
     float fingerMask = smoothstep(uFingerStartY, uFingerEndY, localPos.y);
     float fingerBand = floor((abs(localPos.x) + 0.08) * 7.0);
     float energy = sin(uTime * 2.8 + fingerBand * 0.8 + localPos.y * 2.2) * 0.5 + 0.5;
-    float fingertipLift = fingerMask * (0.008 + 0.014 * energy) * uPortalStrength;
+    float fingertipLift = fingerMask * (0.002 + 0.004 * energy) * uPortalStrength;
     float palmMask = smoothstep(uFingerStartY - 0.22, uFingerStartY + 0.10, localPos.y);
-    float palmSway = sin(uTime * 1.7 + localPos.x * 2.0 + uSideSign * 0.7) * 0.012 * palmMask * uPortalStrength;
+    float palmSway = sin(uTime * 1.7 + localPos.x * 2.0 + sideSign * 0.7) * 0.003 * palmMask * uPortalStrength;
 
     localPos.z += fingertipLift + palmSway;
-    localPos.x += fingerMask * sin(uTime * 2.0 + localPos.y * 3.2) * 0.006 * uPortalStrength * uSideSign;
+    localPos.x += fingerMask * sin(uTime * 2.0 + localPos.y * 3.2) * 0.0015 * uPortalStrength * sideSign;
 
     vec4 worldPos = matModel * vec4(localPos, 1.0);
 

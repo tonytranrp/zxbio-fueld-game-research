@@ -3,6 +3,10 @@
 #include "Core/Types.hpp"
 #include "Systems/Model/ModelSystem.hpp"
 #include "Utils/render/Components/Camera/ShaderCamera.hpp"
+#ifdef BIOFUEL_DEV_MODEL_CONTROLLER
+#include "AnimationController/screen/ModelControllerOverlay.hpp"
+#include <array>
+#endif
 #include <raylib.h>
 #include <memory>
 
@@ -17,13 +21,13 @@ public:
     void reset() noexcept;
     void start() noexcept;
     void update(f32 dt, f32 dimensionShift, const utils::render::component::ShaderCameraState& shaderCamera) noexcept;
-    void render() const noexcept;
+    void render() noexcept;
 
     [[nodiscard]] bool ready() const noexcept { return m_loaded; }
     [[nodiscard]] bool active() const noexcept { return m_active && m_loaded; }
 
 private:
-    struct HandRenderPose {
+    struct TransitionRenderPose {
         Vector3 position{0.0f, 0.0f, 0.0f};
         Quaternion orientation{0.0f, 0.0f, 0.0f, 1.0f};
         Vector3 scale{1.0f, 1.0f, 1.0f};
@@ -32,18 +36,20 @@ private:
     };
 
     [[nodiscard]] static f32 saturate(f32 value) noexcept;
-    [[nodiscard]] static f32 easeOutCubic(f32 value) noexcept;
     [[nodiscard]] static f32 easeInOutCubic(f32 value) noexcept;
-    [[nodiscard]] static f32 easeInOutSine(f32 value) noexcept;
-    [[nodiscard]] HandRenderPose buildHandPose(
-        const systems::model::ModelInstance& instance,
-        f32 sideSign,
-        f32 phaseOffset) const noexcept;
-    void drawHand(const systems::model::ModelInstance& instance, const HandRenderPose& pose) const noexcept;
+    [[nodiscard]] TransitionRenderPose buildPose(const systems::model::ModelInstance& instance) const noexcept;
+    void drawHands(const systems::model::ModelInstance& instance, const TransitionRenderPose& pose) const noexcept;
 
     void updateCamera(const utils::render::component::ShaderCameraState& shaderCamera) noexcept;
     void cacheUniformLocations(Shader shader) const noexcept;
-    void applyShaderUniforms(const systems::model::ModelInstance& instance, f32 sideSign) const noexcept;
+    void applyShaderUniforms(const systems::model::ModelInstance& instance) const noexcept;
+#ifdef BIOFUEL_DEV_MODEL_CONTROLLER
+    using ControllerTargets = std::array<ModelControlTarget, 5>;
+    [[nodiscard]] ControllerTargets buildControllerTargets(const TransitionRenderPose& pose) noexcept;
+    void updateController(const TransitionRenderPose& pose) noexcept;
+    void renderController(const TransitionRenderPose& pose) noexcept;
+    void applyControllerOffsets() noexcept;
+#endif
     Camera3D m_camera{
         .position = Vector3{0.0f, 0.15f, 2.55f},
         .target = Vector3{0.0f, 0.0f, 0.0f},
@@ -52,8 +58,7 @@ private:
         .projection = CAMERA_PERSPECTIVE,
     };
 
-    std::shared_ptr<systems::model::ModelInstance> m_leftInstance;
-    std::shared_ptr<systems::model::ModelInstance> m_rightInstance;
+    std::shared_ptr<systems::model::ModelInstance> m_instance;
     bool m_loaded = false;
     bool m_active = false;
     f32 m_elapsed = 0.0f;
@@ -62,6 +67,14 @@ private:
     f32 m_baseScale = 1.0f;
     f32 m_fingerStartY = 0.0f;
     f32 m_fingerEndY = 1.0f;
+#ifdef BIOFUEL_DEV_MODEL_CONTROLLER
+    ModelControllerOverlay m_controller;
+    Vector3 m_rootOffset{0.0f, 0.0f, 0.0f};
+    Vector3 m_cameraPositionOffset{0.0f, 0.0f, 0.0f};
+    Vector3 m_cameraTargetOffset{0.0f, 0.0f, 0.0f};
+    Vector3 m_leftHandOffset{0.0f, 0.0f, 0.0f};
+    Vector3 m_rightHandOffset{0.0f, 0.0f, 0.0f};
+#endif
 
     mutable i32 m_timeLoc = -1;
     mutable i32 m_portalStrengthLoc = -1;
@@ -70,7 +83,6 @@ private:
     mutable i32 m_colorALoc = -1;
     mutable i32 m_colorBLoc = -1;
     mutable i32 m_rimColorLoc = -1;
-    mutable i32 m_sideLoc = -1;
     mutable u32 m_cachedShaderId = 0;
 };
 

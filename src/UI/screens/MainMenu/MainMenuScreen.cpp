@@ -76,6 +76,16 @@ void MainMenuScreen::onUpdate(const f32 dt) {
         advanceIntro(dt);
     }
 
+#ifdef BIOFUEL_DEV_STARTUP_MENU_TRANSITION
+    if (!isDismissing()
+        && !isTransitioning()
+        && backgroundRevealProgress() >= BG_TEXT_SYNC_THRESHOLD
+        && m_introPhase >= IntroPhase::MenuFade)
+    {
+        startDismiss();
+    }
+#endif
+
     if (m_cooldown > 0.0f) {
         m_cooldown -= dt;
     }

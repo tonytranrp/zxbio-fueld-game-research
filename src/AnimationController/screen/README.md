@@ -6,6 +6,8 @@ Screen-level visual helpers that participate directly in rendering.
 
 ```text
 AnimationController/screen/
+|-- ModelControllerOverlay.hpp
+|-- ModelControllerOverlay.cpp
 |-- MenuTransitionHands.hpp
 |-- MenuTransitionHands.cpp
 |-- ScreenBlurEffect.hpp
@@ -27,6 +29,22 @@ It does not own raw model loading. Instead it:
 
 Asset lifetime, shader pairing, and model registration live below it in `Systems/Model`.
 
+When `BIOFUEL_DEV_MODEL_CONTROLLER=ON`, `MenuTransitionHands` also exposes runtime-only control targets for the root pose, camera position/target, and `left.hand` / `right.hand` clusters. These targets are edited by `ModelControllerOverlay`; the edits are for visual tuning and reset on launch.
+
+## ModelControllerOverlay
+
+`ModelControllerOverlay` is a development-only screen helper for tuning model placement.
+
+It:
+
+1. receives editable control targets from screen effects or model consumers,
+2. projects them with `GetWorldToScreen()`,
+3. draws visible points plus red/green/blue XYZ gizmo arrows,
+4. applies runtime offsets while dragging, and
+5. copies the selected offset in C++ initializer form with `C`.
+
+For the menu hands, left-half mouse input owns the left hand-cluster control and right-half mouse input owns the right hand-cluster control. Each hand control applies a weighted forearm-chain offset instead of dragging individual finger roots, so controller edits are useful for framing without tearing the rig apart. The overlay does not load assets and does not write source files.
+
 ## ScreenBlurEffect
 
 `ScreenBlurEffect` is the current screen helper in this folder. It:
@@ -42,6 +60,7 @@ It resizes its render textures with the window and owns its own fade state, so p
 
 - `Renderer` for screen-size helpers and texture drawing
 - `ShaderManager` plus blur shader modules for uniform lookup and shader access
+- `ModelSystem` for typed model instances and runtime-only bone offsets used by dev controller targets
 - the screen stack so the popup can pass the previous screen into `render()`
 
 Keep this folder focused on screen-facing visual effects, not general animation math or raw asset lifetime.

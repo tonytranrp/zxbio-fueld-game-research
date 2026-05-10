@@ -5,7 +5,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 
 # ------------------------------------------------------------------------------
-# Shader source embedding — BUILD TIME, not configure time.
+# Shader source embedding - BUILD TIME, not configure time.
 # Editing a .glsl file and hitting Build (F7) in Visual Studio will now
 # regenerate ShaderSources.hpp and recompile dependent files automatically.
 # ------------------------------------------------------------------------------
@@ -82,9 +82,21 @@ if(BIOFUEL_DEV_STARTUP_PAUSE_POPUP)
     target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_STARTUP_PAUSE_POPUP)
 endif()
 
+# Development compile-time flag: set to ON to auto-trigger the main-menu hand transition
+option(BIOFUEL_DEV_STARTUP_MENU_TRANSITION "Dev mode: auto-run the main-menu hand transition after load" OFF)
+if(BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
+endif()
+
+# Development compile-time flag: set to ON to enable in-game model transform controls
+option(BIOFUEL_DEV_MODEL_CONTROLLER "Dev mode: enable model controller overlay for runtime tuning" OFF)
+if(BIOFUEL_DEV_MODEL_CONTROLLER)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_MODEL_CONTROLLER)
+endif()
+
 # ------------------------------------------------------------------------------
 # Optional shader validation with glslc (Vulkan SDK / shaderc)
-# Non-fatal — warns if glslc not found, proceeds without validation.
+# Non-fatal - warns if glslc not found, proceeds without validation.
 # ------------------------------------------------------------------------------
 if(WIN32)
     set(NULL_DEVICE "NUL")
@@ -101,7 +113,7 @@ if(GLSLC)
         )
     endforeach()
 else()
-    message(STATUS "glslc not found — shader validation skipped. Install Vulkan SDK for shader validation.")
+    message(STATUS "glslc not found - shader validation skipped. Install Vulkan SDK for shader validation.")
 endif()
 
 # Platform-specific link libraries

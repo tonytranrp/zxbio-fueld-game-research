@@ -137,6 +137,7 @@ public:
     void resetAnimation() noexcept;
     void update(f32 dt) noexcept;
     void draw(const ModelRenderState& state) const noexcept;
+    void setBoneTranslationOffset(std::string_view boneName, Vector3 offset);
 
 private:
     friend class ModelSystem;
@@ -161,6 +162,7 @@ private:
     ModelAnimator m_animator;
     animation::model::ModelKeyframePlayer m_keyframePlayer;
     std::vector<Transform> m_poseBuffer;
+    std::unordered_map<std::string, Vector3> m_boneTranslationOffsets;
 };
 
 class ModelSystem final {

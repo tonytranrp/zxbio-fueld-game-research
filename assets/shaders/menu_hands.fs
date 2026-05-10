@@ -20,12 +20,13 @@ void main() {
     vec3 viewDir = normalize(-fragPosition);
     float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.7);
 
-    float energy = sin(fragPosition.y * 8.0 - uTime * 2.6 + fragPosition.x * 3.8) * 0.5 + 0.5;
-    float fingerGlow = mix(0.0, 1.0, fragFingerMask) * (0.24 + 0.76 * uPortalStrength);
+    float energy = sin(fragPosition.y * 6.0 - uTime * 1.2 + fragPosition.x * 2.4) * 0.5 + 0.5;
+    float fingerGlow = mix(0.0, 1.0, fragFingerMask) * (0.12 + 0.28 * uPortalStrength);
     float sheen = pow(max(dot(normalize(vec3(0.4, 0.8, 0.5)), normal), 0.0), 10.0);
-    vec3 base = mix(uColorA, uColorB, energy * 0.62 + fingerGlow * 0.26);
-    vec3 rim = uRimColor * fresnel * (0.4 + 0.9 * uPortalStrength);
-    vec3 color = base * (0.80 + energy * 0.24 + sheen * 0.18) + rim;
+    vec3 base = mix(uColorA, uColorB, energy * 0.22 + fingerGlow * 0.08);
+    vec3 body = mix(base, vec3(0.28, 0.78, 1.00), 0.04 + fragFingerMask * 0.02);
+    vec3 rim = uRimColor * fresnel * (0.06 + 0.14 * uPortalStrength);
+    vec3 color = body * (0.96 + sheen * 0.10) + rim;
 
     finalColor = vec4(color, colDiffuse.a);
 }
