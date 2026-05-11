@@ -13,7 +13,7 @@ namespace biofuel::ui {
 // Singleton
 // ------------------------------------------------------------------------------
 
-ScreenManager& ScreenManager::instance() {
+ScreenManager& ScreenManager::instance() noexcept {
     static ScreenManager instance;
     return instance;
 }
@@ -57,7 +57,7 @@ void ScreenManager::push(std::unique_ptr<Screen> screen) {
     screen->m_transitionProgress = 0.0f;
 
     Data::eventBus().trigger(event::animation::ScreenTransitionStartedEvent{
-        .screenName = "Screen",
+        .screenName = screen->getName(),
         .isEntering = true
     });
 
@@ -79,7 +79,7 @@ void ScreenManager::pop() {
     m_screens.back()->m_transitionProgress = 0.0f;
 
     Data::eventBus().trigger(event::animation::ScreenTransitionStartedEvent{
-        .screenName = "Screen",
+        .screenName = m_screens.back()->getName(),
         .isEntering = false
     });
 }
@@ -124,7 +124,18 @@ void ScreenManager::queueReplace(std::unique_ptr<Screen> screen) {
     m_pendingScreen = std::move(screen);
 }
 
+void ScreenManager::queuePop() {
+    m_pendingPop = true;
+}
+
 void ScreenManager::processPendingActions() {
+    // Pop takes priority — process before push/replace
+    if (m_pendingPop) {
+        m_pendingPop = false;
+        pop();
+        return;
+    }
+
     if (m_pendingAction == PendingAction::None) return;
     if (!m_pendingScreen) return;
 
@@ -255,7 +266,7 @@ void ScreenManager::update(f32 dt) {
                 if (screen->m_transitionState == Screen::TransitionState::TransitionIn) {
                     screen->m_transitionState = Screen::TransitionState::None;
                     Data::eventBus().trigger(event::animation::ScreenTransitionCompletedEvent{
-                        .screenName = "Screen",
+                        .screenName = screen->getName(),
                         .isEntering = true
                     });
                 }

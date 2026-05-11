@@ -2,6 +2,7 @@
 
 #include "UI/Screen.hpp"
 #include "MainMenuTypes.hpp"
+#include "Systems/Idle/IdleTrigger.hpp"
 #include "AnimationController/screen/ScreenBackdropController.hpp"
 #include "AnimationController/screen/MenuTransitionHands.hpp"
 #include "Utils/render/Components/Camera/CameraComponent.hpp"
@@ -18,9 +19,12 @@ class MainMenuScreen final : public Screen {
 public:
     void onEnter() override;
     void onExit() override;
+    void onResume() override;
     void onUpdate(f32 dt) override;
     void onRender() override;
     void onInput() override;
+
+    [[nodiscard]] std::string_view getName() const noexcept override { return "MainMenuScreen"; }
 
 private:
     // ---- Menu items ----
@@ -101,6 +105,9 @@ private:
     static constexpr f32 CAMERA_SWEEP_DURATION = 2.0f;     // right→left duration
     static constexpr f32 CAMERA_RETURN_DURATION = 1.5f;    // left→center duration
 
+    // ---- Backdrop config helper ----
+    [[nodiscard]] animation::screen::ScreenBackdropConfig backdropConfig(Color fallback) const noexcept;
+
     // Camera animation phase tracker
     enum class CameraPhase { Idle, SweepToLeft, ReturnToCenter, Done };
 
@@ -132,6 +139,16 @@ private:
     animation::screen::ScreenBackdropController m_backdrop;
     animation::screen::MenuTransitionHands m_transitionHands;
 
+    // Idle detection → pushes IdleScreen
+    systems::idle::IdleTrigger m_idleTrigger{5.0f};
+
+    // Idle transition state
+    f32 m_idleTransitionDim = 0.0f;
+    bool m_idleTransitionActive = false;
+
+    void startIdleTransition();
+    void updateIdleTransition(f32 dt);
+
     [[nodiscard]] f32 backgroundRevealProgress() const noexcept;
 
     // ---- Intro animation helpers ----
@@ -142,7 +159,8 @@ private:
     [[nodiscard]] i32 inferMenuDirection(i32 oldIndex, i32 newIndex) const noexcept;
 
     // ---- Dismiss animation ----
-    void startDismiss();
+    void startDismiss();         // game transition (New Game/Continue) — shows hands
+    void startIdleDismiss();     // idle transition — text only, no hands
     void updateDismiss(f32 dt) noexcept;
     [[nodiscard]] bool isDismissing() const noexcept;
 

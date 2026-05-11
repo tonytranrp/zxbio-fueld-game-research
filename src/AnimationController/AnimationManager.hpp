@@ -13,7 +13,7 @@ namespace biofuel::animation {
 // ------------------------------------------------------------------------------
 class AnimationManager {
 public:
-    [[nodiscard]] static AnimationManager& instance();
+    [[nodiscard]] static AnimationManager& instance() noexcept;
 
     void init();
     void shutdown();
@@ -28,7 +28,7 @@ public:
             std::is_same_v<T, Rectangle>,
             "AnimationManager only supports Animation<f32>, Animation<Color>, "
             "Animation<Vector2>, Animation<Rectangle>");
-        m_animations.emplace_back(std::move(anim));
+        m_animations.emplace_back(std::make_unique<AnimationWrapper<T>>(std::move(anim)));
     }
 
     void add(std::unique_ptr<Animation<f32>> anim);

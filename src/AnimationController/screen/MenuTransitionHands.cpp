@@ -1,6 +1,7 @@
 #include "MenuTransitionHands.hpp"
 #include "Data/Data.hpp"
 #include "Utils/render/ShaderManager.hpp"
+#include "AnimationController/animation/Easing.hpp"
 #include <algorithm>
 #include <cmath>
 #include <span>
@@ -122,7 +123,7 @@ void MenuTransitionHands::unload() noexcept {
 }
 
 void MenuTransitionHands::reset() noexcept {
-    m_active = false;
+    m_phase = Phase::Idle;
     m_elapsed = 0.0f;
     m_dimensionShift = 0.0f;
     m_cameraYaw = 0.0f;
@@ -162,7 +163,7 @@ void MenuTransitionHands::start() noexcept {
         return;
     }
 
-    m_active = true;
+    m_phase = Phase::Playing;
     m_elapsed = 0.0f;
     m_instance->playAction("action", 0.12f);
 }
@@ -172,12 +173,18 @@ void MenuTransitionHands::update(
     const f32 dimensionShift,
     const utils::render::component::ShaderCameraState& shaderCamera) noexcept
 {
-    if (!m_active || !m_loaded || !m_instance) {
+    if (m_phase == Phase::Idle || !m_loaded || !m_instance) {
         return;
     }
 
     m_elapsed += dt;
-    m_dimensionShift = std::max(m_dimensionShift, saturate(dimensionShift));
+
+    // Auto-transition: Playing → Complete after action clip finishes
+    if (m_phase == Phase::Playing && m_elapsed >= ACTION_DURATION) {
+        m_phase = Phase::Complete;
+    }
+
+    m_dimensionShift = std::max(m_dimensionShift, std::clamp(dimensionShift, 0.0f, 1.0f));
     m_cameraYaw = shaderCamera.yaw;
     updateCamera(shaderCamera);
 #ifdef BIOFUEL_DEV_MODEL_CONTROLLER
@@ -188,7 +195,7 @@ void MenuTransitionHands::update(
 }
 
 void MenuTransitionHands::render() noexcept {
-    if (!m_active || !m_loaded || !m_instance) {
+    if (!isRendering() || !m_loaded || !m_instance) {
         return;
     }
 
@@ -211,7 +218,7 @@ MenuTransitionHands::TransitionRenderPose MenuTransitionHands::buildPose(
     const systems::model::ModelInstance& instance) const noexcept
 {
     const auto& keyframe = instance.keyframeState();
-    const f32 shift = easeInOutCubic(m_dimensionShift);
+    const f32 shift = animation::Easing::easeInOutCubic(m_dimensionShift);
     const f32 awareness = instance.keyframeScalar("awareness", 0.0f);
     const f32 auraBias = instance.keyframeScalar("aura_bias", 0.12f);
     const f32 portalBias = instance.keyframeScalar("portal_bias", 0.20f);
@@ -293,21 +300,10 @@ void MenuTransitionHands::drawHands(
     });
 }
 
-f32 MenuTransitionHands::saturate(const f32 value) noexcept {
-    return std::clamp(value, 0.0f, 1.0f);
-}
-
-f32 MenuTransitionHands::easeInOutCubic(const f32 value) noexcept {
-    const f32 t = saturate(value);
-    return (t < 0.5f)
-        ? (4.0f * t * t * t)
-        : (1.0f - std::pow(-2.0f * t + 2.0f, 3.0f) * 0.5f);
-}
-
 void MenuTransitionHands::updateCamera(
     const utils::render::component::ShaderCameraState& shaderCamera) noexcept
 {
-    const f32 shift = easeInOutCubic(m_dimensionShift);
+    const f32 shift = animation::Easing::easeInOutCubic(m_dimensionShift);
     m_camera.position = Vector3{
         shaderCamera.yaw * CAMERA_YAW_POSITION_WEIGHT,
         BASE_CAMERA_POSITION.y + shift * CAMERA_SHIFT_Y_WEIGHT,
@@ -445,7 +441,7 @@ void MenuTransitionHands::applyShaderUniforms(const systems::model::ModelInstanc
     cacheUniformLocations(shader);
 
     const f32 portalStrength = std::clamp(
-        instance.keyframeScalar("portal_bias", 0.18f) + easeInOutCubic(m_dimensionShift) * 0.50f,
+        instance.keyframeScalar("portal_bias", 0.18f) + animation::Easing::easeInOutCubic(m_dimensionShift) * 0.50f,
         0.0f,
         1.45f
     );

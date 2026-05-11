@@ -167,7 +167,7 @@ private:
 
 class ModelSystem final {
 public:
-    [[nodiscard]] static ModelSystem& instance();
+    [[nodiscard]] static ModelSystem& instance() noexcept;
 
     void init();
     void shutdown();

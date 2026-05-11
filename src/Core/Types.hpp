@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
+#include <functional>
 
 namespace biofuel {
 
@@ -19,5 +21,16 @@ using u64 = std::uint64_t;
 
 using f32 = float;
 using f64 = double;
+
+// ------------------------------------------------------------------------------
+// Transparent hash for heterogeneous string/string_view map lookups.
+// Usage: std::unordered_map<std::string, T, TransparentHash, std::equal_to<>>
+// ------------------------------------------------------------------------------
+struct TransparentHash {
+    using is_transparent = void;
+    [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept {
+        return std::hash<std::string_view>{}(sv);
+    }
+};
 
 } // namespace biofuel

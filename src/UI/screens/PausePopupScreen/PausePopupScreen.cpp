@@ -1,5 +1,6 @@
 #include "PausePopupScreen.hpp"
 #include "UI/ScreenManager.hpp"
+#include "UI/ScreenFwd.hpp"
 #include "Utils/render/Render.hpp"
 #include "Data/Data.hpp"
 #include "AnimationController/AnimationManager.hpp"
@@ -39,28 +40,18 @@ void PausePopupScreen::onEnter() {
     m_blurEffect.init(sw, sh);
     m_blurEffect.startBlurIn(BLUR_CONFIG);
 
-    Data::eventBus().trigger(event::animation::ScreenTransitionStartedEvent{
-        .screenName = "PausePopupScreen",
-        .isEntering = true
-    });
-
     startSlideIn();
 }
 
 void PausePopupScreen::onExit() {
     m_blurEffect.shutdown();
-
-    Data::eventBus().trigger(event::animation::ScreenTransitionCompletedEvent{
-        .screenName = "PausePopupScreen",
-        .isEntering = false
-    });
 }
 
 void PausePopupScreen::onUpdate(const f32 dt) {
     if (m_wantsPop) {
         m_wantsPop = false;
         if (auto* sm = manager()) {
-            sm->pop();
+            sm->queuePop();
             if (m_quitting) {
                 sm->requestQuit();
             }
@@ -252,3 +243,7 @@ void PausePopupScreen::activateSelected() {
 }
 
 } // namespace biofuel::ui::screens
+
+std::unique_ptr<biofuel::ui::Screen> biofuel::ui::screens::makePausePopup() {
+    return std::make_unique<biofuel::ui::screens::PausePopupScreen>();
+}

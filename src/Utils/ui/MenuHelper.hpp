@@ -8,6 +8,22 @@
 namespace biofuel::utils::ui {
 
 // ------------------------------------------------------------------------------
+// InputCooldown — Reusable input debounce timer
+// ------------------------------------------------------------------------------
+struct InputCooldown {
+    f32 remaining = 0.0f;
+    f32 delay = 0.12f;
+
+    void update(f32 dt) noexcept {
+        if (remaining > 0.0f) { remaining -= dt; }
+    }
+
+    [[nodiscard]] bool ready() const noexcept { return remaining <= 0.0f; }
+    void reset() noexcept { remaining = delay; }
+    void reset(f32 customDelay) noexcept { delay = customDelay; remaining = delay; }
+};
+
+// ------------------------------------------------------------------------------
 // MenuItem - A single entry in a vertical menu list
 // ------------------------------------------------------------------------------
 struct MenuItem {

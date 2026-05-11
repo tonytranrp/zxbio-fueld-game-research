@@ -3,12 +3,17 @@
 #include "Utils/render/ShaderManager.hpp"
 #include "Utils/render/Shader/LoadingPreludeModule.hpp"
 #include "Utils/render/Shader/MenuOptionModule.hpp"
+#include "Utils/audio/AudioManager.hpp"
 #include "Data/Data.hpp"
 #include "UI/ScreenManager.hpp"
 #include "UI/screens/LoadingScreen/LoadingScreen.hpp"
 #include "Systems/Input/InputSystem.hpp"
 #include "AnimationController/AnimationManager.hpp"
 #include <raylib.h>
+
+#ifdef _WIN32
+#include "Systems/Window/DragHandler.hpp"
+#endif
 
 namespace biofuel {
 
@@ -40,6 +45,9 @@ void Application::init() {
     }
 
     InitWindow(m_config.width, m_config.height, m_config.title.c_str());
+#ifdef _WIN32
+    setupWindowDragTimer();
+#endif
     auto& shaderManager = utils::render::ShaderManager::instance();
     shaderManager.init();
     shaderManager.loadFromMemory(
@@ -71,9 +79,13 @@ void Application::shutdown() {
     Data::screens().shutdown();
     Data::models().shutdown();
     animation::AnimationManager::instance().shutdown();
+    utils::audio::AudioManager::instance().shutdown();
     utils::render::ShaderManager::instance().shutdown();
     Data::fonts().shutdown();
     Data::events().shutdown();
+#ifdef _WIN32
+    killWindowDragTimer();
+#endif
     CloseWindow();
     m_initialized = false;
     m_running = false;
@@ -123,6 +135,10 @@ void Application::processInput() {
 void Application::update(const f32 dt) {
     animation::AnimationManager::instance().update(dt);
     Data::models().update(dt);
+    utils::audio::AudioManager::instance().update();
+#ifdef _WIN32
+    flushDragMove();
+#endif
     Data::screens().update(dt);
 }
 
@@ -149,5 +165,21 @@ void Application::render() {
 
     Renderer::endFrame();
 }
+
+#ifdef _WIN32
+
+void Application::setupWindowDragTimer() {
+    biofuel::systems::window::DragHandler::install(GetWindowHandle());
+}
+
+void Application::killWindowDragTimer() {
+    biofuel::systems::window::DragHandler::uninstall();
+}
+
+void Application::flushDragMove() {
+    biofuel::systems::window::DragHandler::flush();
+}
+
+#endif
 
 } // namespace biofuel

@@ -1,4 +1,5 @@
 #include "ShaderManager.hpp"
+#include <cstring>
 #include <spdlog/spdlog.h>
 
 namespace biofuel::utils::render {
@@ -7,7 +8,7 @@ namespace biofuel::utils::render {
 // Singleton
 // ------------------------------------------------------------------------------
 
-ShaderManager& ShaderManager::instance() {
+ShaderManager& ShaderManager::instance() noexcept {
     static ShaderManager instance;
     return instance;
 }
@@ -134,10 +135,18 @@ i32 ShaderManager::getLocation(Shader shader, std::string_view uniformName) noex
     if (!IsShaderValid(shader)) {
         return -1;
     }
-    // All uniform names in this codebase come from constexpr string_view literals
-    // (e.g. "uCameraYaw"), which are null-terminated by construction.
-    // Using .data() avoids a heap-allocating std::string copy.
-    return GetShaderLocation(shader, uniformName.data());
+    // Safely null-terminate: uniform names are short (< 64 chars), so a
+    // stack buffer avoids both the heap allocation of std::string and the
+    // UB risk of assuming string_view::data() is null-terminated (B037).
+    char buf[64];
+    if (uniformName.size() < sizeof(buf)) {
+        std::memcpy(buf, uniformName.data(), uniformName.size());
+        buf[uniformName.size()] = '\0';
+        return GetShaderLocation(shader, buf);
+    }
+    // Fallback for unexpectedly long names
+    const std::string owned{uniformName};
+    return GetShaderLocation(shader, owned.c_str());
 }
 
 void ShaderManager::setValue(Shader shader, i32 loc, const void* value, i32 uniformType) noexcept {

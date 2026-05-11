@@ -389,7 +389,7 @@ void ModelInstance::applyNormalization(Model& model, const ModelAssetMetrics& me
     model.transform = MatrixTranslate(-metrics.center.x, -metrics.center.y, -metrics.center.z);
 }
 
-ModelSystem& ModelSystem::instance() {
+ModelSystem& ModelSystem::instance() noexcept {
     static ModelSystem system;
     return system;
 }

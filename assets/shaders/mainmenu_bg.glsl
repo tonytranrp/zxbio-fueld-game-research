@@ -15,6 +15,7 @@ uniform float uDimensionShift = 0.0;
 uniform float uCameraOffsetX = 0.0;
 uniform float uCameraOffsetY = 0.0;
 uniform float uCameraYaw = 0.0;
+uniform float uIdleDim = 0.0;
 
 out vec4 finalColor;
 
@@ -71,6 +72,12 @@ float cosmicSparkles(vec2 uv, float shift) {
 
 void main()
 {
+    // Early-out when idle screen is fully dimmed — skip all raymarching
+    if (uIdleDim >= 1.0) {
+        finalColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
     vec2 R = iResolution.xy;
     float reveal = clamp(uRevealProgress, 0.0, 1.0);
     float revealEase = reveal * reveal * (3.0 - 2.0 * reveal);
@@ -245,4 +252,5 @@ void main()
     revealMask = mix(revealMask, 1.0, shiftEase);
 
     finalColor = vec4(col * revealMask * uBrightness, 1.0);
+    finalColor.rgb *= (1.0 - uIdleDim);
 }

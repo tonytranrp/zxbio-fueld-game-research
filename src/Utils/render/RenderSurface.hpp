@@ -28,6 +28,12 @@ public:
 
         release();
         m_target = LoadRenderTexture(width, height);
+        if (m_target.id == 0) {
+            // GPU allocation failed — leave surface in invalid state
+            m_width = 0;
+            m_height = 0;
+            return;
+        }
         m_width = width;
         m_height = height;
     }

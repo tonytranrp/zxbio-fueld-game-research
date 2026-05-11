@@ -22,6 +22,7 @@ namespace biofuel::utils::render::shader {
 //   uBrightness      (float) — overall brightness envelope during screen intro
 //   uRevealProgress  (float) — background landing progress (0.0 → 1.0)
 //   uDimensionShift  (float) — warp-through effect after UI dismiss (0.0 → 1.0)
+//   uIdleDim         (float) — idle screen fade (0.0 = normal, 1.0 = dim)
 //
 // Component-managed uniforms (set by CameraComponent):
 //   uCameraOffsetX   (float) — via Components/Camera/CameraComponent

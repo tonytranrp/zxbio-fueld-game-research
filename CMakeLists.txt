@@ -28,6 +28,8 @@ if(MSVC)
     # Maximize speed
     add_compile_options($<$<CONFIG:Release>:/O2>)
     add_compile_options($<$<CONFIG:Release>:/Ob2>)
+    # Eliminate unreferenced global/static data
+    add_compile_options($<$<CONFIG:Release>:/Gw>)
 endif()
 
 # ------------------------------------------------------------------------------
@@ -55,16 +57,16 @@ include(${CPM_DOWNLOAD_LOCATION})
 # Fetch Dependencies
 # ------------------------------------------------------------------------------
 
-# Raylib - 2D/3D game library (minimal build)
+# Raylib - 2D/3D game library (shared library for smaller EXE)
+set(BUILD_SHARED_LIBS ON)
 CPMAddPackage(
     NAME raylib
     URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
     OPTIONS
         "BUILD_EXAMPLES OFF"
         "BUILD_GAMES OFF"
-        "SHARED OFF"
-        "STATIC ON"
 )
+set(BUILD_SHARED_LIBS OFF)
 
 # entt - Entity Component System (header-only)
 CPMAddPackage(
@@ -74,23 +76,8 @@ CPMAddPackage(
         "ENTT_BUILD_TESTING OFF"
 )
 
-# nlohmann/json - JSON parsing (header-only)
-CPMAddPackage(
-    NAME nlohmann_json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-    OPTIONS
-        "JSON_BuildTests OFF"
-        "JSON_Install OFF"
-)
-
-# taskflow - Parallel task scheduling (header-only)
-CPMAddPackage(
-    NAME Taskflow
-    URL https://github.com/taskflow/taskflow/archive/refs/tags/v3.7.0.tar.gz
-    OPTIONS
-        "TF_BUILD_TESTS OFF"
-        "TF_BUILD_EXAMPLES OFF"
-)
+# nlohmann/json and Taskflow are removed — neither is used by any code.
+# Re-add when gameplay data loading or parallel task scheduling is implemented.
 
 # spdlog - Logging (header-only mode)
 CPMAddPackage(

@@ -25,6 +25,8 @@ public:
     void onRender() override;
     void onInput() override;
 
+    [[nodiscard]] std::string_view getName() const noexcept override { return "LoadingScreen"; }
+
 private:
     static constexpr f32 MIN_DISPLAY_SECONDS = 3.0f;
     static constexpr f32 DOTS_INTERVAL = 0.4f;

@@ -50,8 +50,11 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render/Shader
+        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/audio
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/font
         ${CMAKE_CURRENT_SOURCE_DIR}/Systems
+        ${CMAKE_CURRENT_SOURCE_DIR}/Systems/Window
+        ${CMAKE_CURRENT_SOURCE_DIR}/Systems/Idle
         ${CMAKE_CURRENT_SOURCE_DIR}/UI
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens/LoadingScreen
@@ -62,16 +65,18 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController/screen
         ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController/animation
         ${entt_SOURCE_DIR}/src
-        ${Taskflow_SOURCE_DIR}
-        ${Taskflow_SOURCE_DIR}/include
 )
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         raylib
-        nlohmann_json::nlohmann_json
         spdlog::spdlog
 )
+
+# High warning level for our code only (not third-party libraries)
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+endif()
 
 # spdlog header-only mode for faster compile
 target_compile_definitions(${PROJECT_NAME} PRIVATE SPDLOG_HEADER_ONLY)
@@ -122,6 +127,15 @@ if(APPLE)
 elseif(UNIX AND NOT APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE m dl pthread rt X11)
 endif()
+
+# Copy raylib DLL to output directory so the EXE can find it at runtime
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:raylib>"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+    COMMENT "Copying raylib.dll to output directory"
+)
 
 # Copy assets to build directory on build
 add_custom_command(

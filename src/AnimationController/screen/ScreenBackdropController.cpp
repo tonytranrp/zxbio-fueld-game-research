@@ -31,6 +31,10 @@ void ScreenBackdropController::reset() noexcept {
     m_revealElapsed = 0.0f;
 }
 
+void ScreenBackdropController::restartReveal() noexcept {
+    m_revealElapsed = 0.0f;
+}
+
 void ScreenBackdropController::update(const f32 dt) noexcept {
     m_time += dt;
     m_revealElapsed += dt;
@@ -91,15 +95,14 @@ void ScreenBackdropController::setFloat(std::string_view uniformName, const f32 
     if (!m_shaderReady) {
         return;
     }
-    // Check cache first to avoid per-frame GL lookups
+    // Transparent find — no allocation on cache hit
     i32 loc = -1;
-    const std::string key{uniformName};
-    auto it = m_uniformCache.find(key);
+    auto it = m_uniformCache.find(uniformName);
     if (it != m_uniformCache.end()) {
         loc = it->second;
     } else {
         loc = utils::render::ShaderManager::getLocation(m_shader, uniformName);
-        m_uniformCache.emplace(key, loc);
+        m_uniformCache.emplace(std::string{uniformName}, loc);
     }
     utils::render::ShaderManager::setValue(m_shader, loc, &value, SHADER_UNIFORM_FLOAT);
 }

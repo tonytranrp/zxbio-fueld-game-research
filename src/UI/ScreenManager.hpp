@@ -16,7 +16,7 @@ class Screen;
 // ------------------------------------------------------------------------------
 class ScreenManager {
 public:
-    [[nodiscard]] static ScreenManager& instance();
+    [[nodiscard]] static ScreenManager& instance() noexcept;
 
     void init();
     void shutdown();
@@ -30,6 +30,7 @@ public:
     // Deferred operations — safe to call from onUpdate() during update loop
     void queuePush(std::unique_ptr<Screen> screen);
     void queueReplace(std::unique_ptr<Screen> screen);
+    void queuePop();
 
     // Per-frame delegation
     void update(f32 dt);
@@ -66,6 +67,7 @@ private:
     enum class PendingAction { None, Push, Replace };
     PendingAction m_pendingAction = PendingAction::None;
     std::unique_ptr<Screen> m_pendingScreen;
+    bool m_pendingPop = false;
 
     void processPendingActions();
     void releaseTransitionTextures() noexcept;

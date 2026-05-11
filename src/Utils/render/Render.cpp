@@ -43,7 +43,8 @@ void Renderer::drawText(std::string_view text, i32 x, i32 y, i32 fontSize, Color
     if (const char* cstr = nullTerminate(text, buf)) {
         ::DrawText(cstr, x, y, fontSize, color);
     } else {
-        ::DrawText(std::string{text}.c_str(), x, y, fontSize, color);
+        const std::string ownedText{text};
+        ::DrawText(ownedText.c_str(), x, y, fontSize, color);
     }
 }
 
@@ -130,6 +131,8 @@ void Renderer::drawFullscreen(Color color) {
 void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, Color tint) {
     DrawTextureRec(
         texture,
+        // Negative height flips Y — OpenGL render textures are vertically
+        // inverted relative to screen coordinates. This is Raylib convention.
         Rectangle{
             0.0f,
             0.0f,
@@ -170,7 +173,8 @@ i32 Renderer::measureText(std::string_view text, i32 fontSize) noexcept {
     if (const char* cstr = nullTerminate(text, buf)) {
         return MeasureText(cstr, fontSize);
     }
-    return MeasureText(std::string{text}.c_str(), fontSize);
+    const std::string ownedText{text};
+    return MeasureText(ownedText.c_str(), fontSize);
 }
 
 i32 Renderer::measureText(Font font, std::string_view text, i32 fontSize, const f32 spacing) noexcept {

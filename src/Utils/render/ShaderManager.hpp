@@ -9,21 +9,12 @@
 
 namespace biofuel::utils::render {
 
-// ---- Transparent hash for heterogeneous string/string_view lookups ----
-// Enables unordered_map::find(string_view) without creating a temp std::string.
-struct StringHash {
-    using is_transparent = void;
-    [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept {
-        return std::hash<std::string_view>{}(sv);
-    }
-};
-
 // ------------------------------------------------------------------------------
 // ShaderManager - Loads, caches, and provides Raylib Shader objects by name.
 // ------------------------------------------------------------------------------
 class ShaderManager {
 public:
-    [[nodiscard]] static ShaderManager& instance();
+    [[nodiscard]] static ShaderManager& instance() noexcept;
 
     void init();
     void shutdown();
@@ -65,7 +56,7 @@ private:
     // Unload existing shader by name if present. Used by both load() and loadFromMemory().
     void unloadExisting(std::string_view name);
 
-    std::unordered_map<std::string, Shader, StringHash, std::equal_to<>> m_shaders;
+    std::unordered_map<std::string, Shader, TransparentHash, std::equal_to<>> m_shaders;
 };
 
 } // namespace biofuel::utils::render

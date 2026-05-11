@@ -48,6 +48,14 @@ void ScreenBlurEffect::cancel() noexcept {
     m_tintAlpha = 0;
     m_blurRadius = 0.0f;
     m_elapsed = 0.0f;
+    // Reset cached uniform locations so they're re-resolved next use (B053)
+    m_cachedTexelLocH = -1;
+    m_cachedRadiusLocH = -1;
+    m_cachedTexelLocV = -1;
+    m_cachedRadiusLocV = -1;
+    m_cachedDesaturationLoc = -1;
+    m_cachedVignetteLoc = -1;
+    m_cachedDimLoc = -1;
 }
 
 bool ScreenBlurEffect::isActive() const noexcept {
@@ -195,7 +203,8 @@ void ScreenBlurEffect::ensureTextures(const i32 width, const i32 height) {
 
     if (width == m_cachedWidth &&
         height == m_cachedHeight &&
-        captureScale == m_cachedCaptureScale &&
+        captureScale - m_cachedCaptureScale < 0.001f &&
+        captureScale - m_cachedCaptureScale > -0.001f &&
         m_captureSurface.valid() &&
         m_blurSurfaceA.valid() &&
         m_blurSurfaceB.valid()) {

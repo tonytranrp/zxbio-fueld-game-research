@@ -12,9 +12,27 @@
 
 namespace biofuel::animation::screen {
 
+// ------------------------------------------------------------------------------
+// MenuTransitionHands — 3D hand model overlay for New Game / Continue transitions.
+//
+// Phase machine:
+//   Idle → (start) → Playing → (anim done, 2.52s) → Complete (holds final frame)
+//
+// Renders during Playing and Complete. Stays in Complete until reset() or
+// unload() is called by the owning screen's lifecycle.
+// ------------------------------------------------------------------------------
 class MenuTransitionHands final {
 public:
+    enum class Phase : u8 {
+        Idle,       // loaded, not active — no rendering
+        Playing,    // "action" animation running — full render
+        Complete,   // animation finished, holding final frame — full render
+    };
+public:
     static constexpr systems::model::ModelAssetId ASSET_ID = systems::model::ModelAssetId::MenuTransitionHands;
+
+    // Animation timing constants
+    static constexpr f32 ACTION_DURATION = 2.52f;   // "action" anim clip length
 
     void load();
     void unload() noexcept;
@@ -24,7 +42,8 @@ public:
     void render() noexcept;
 
     [[nodiscard]] bool ready() const noexcept { return m_loaded; }
-    [[nodiscard]] bool active() const noexcept { return m_active && m_loaded; }
+    [[nodiscard]] Phase phase() const noexcept { return m_phase; }
+    [[nodiscard]] bool isRendering() const noexcept { return m_phase == Phase::Playing || m_phase == Phase::Complete; }
 
 private:
     struct TransitionRenderPose {
@@ -35,8 +54,6 @@ private:
         Color baseTint{232, 238, 255, 220};
     };
 
-    [[nodiscard]] static f32 saturate(f32 value) noexcept;
-    [[nodiscard]] static f32 easeInOutCubic(f32 value) noexcept;
     [[nodiscard]] TransitionRenderPose buildPose(const systems::model::ModelInstance& instance) const noexcept;
     void drawHands(const systems::model::ModelInstance& instance, const TransitionRenderPose& pose) const noexcept;
 
@@ -60,7 +77,7 @@ private:
 
     std::shared_ptr<systems::model::ModelInstance> m_instance;
     bool m_loaded = false;
-    bool m_active = false;
+    Phase m_phase = Phase::Idle;
     f32 m_elapsed = 0.0f;
     f32 m_dimensionShift = 0.0f;
     f32 m_cameraYaw = 0.0f;

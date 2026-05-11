@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Core/Types.hpp"
+#include "Utils/render/ShaderManager.hpp"
 #include <raylib.h>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <functional>
 
 namespace biofuel::animation::screen {
 
@@ -23,6 +25,7 @@ class ScreenBackdropController {
 public:
     void configure(const ScreenBackdropConfig& config) noexcept;
     void reset() noexcept;
+    void restartReveal() noexcept;
     void update(f32 dt) noexcept;
     void render(f32 transitionAlpha) const;
 
@@ -48,8 +51,10 @@ private:
     mutable i32 m_revealLoc = -1;
     mutable bool m_shaderReady = false;
 
-    // Cached arbitrary uniform locations (for setFloat calls)
-    mutable std::unordered_map<std::string, i32> m_uniformCache;
+    // Cached arbitrary uniform locations (for setFloat calls).
+    // Uses transparent hash so find(string_view) avoids heap allocation.
+    mutable std::unordered_map<std::string, i32,
+        TransparentHash, std::equal_to<>> m_uniformCache;
 
     f32 m_time = 0.0f;
     f32 m_revealElapsed = 0.0f;

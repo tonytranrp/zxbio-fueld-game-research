@@ -3,7 +3,7 @@
 
 namespace biofuel::animation {
 
-AnimationManager& AnimationManager::instance() {
+AnimationManager& AnimationManager::instance() noexcept {
     static AnimationManager instance;
     return instance;
 }

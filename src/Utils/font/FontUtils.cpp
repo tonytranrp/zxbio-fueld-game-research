@@ -15,6 +15,7 @@ FontManager& FontManager::instance() noexcept {
 }
 
 void FontManager::load(std::string_view name, std::string_view path, i32 baseSize) {
+    m_shutDown = false;  // reset in case shutdown() was called before (B014)
     unload(name);
     Font font = LoadFontEx(std::string{path}.c_str(), baseSize, nullptr, 0);
     if (!IsFontValid(font)) {

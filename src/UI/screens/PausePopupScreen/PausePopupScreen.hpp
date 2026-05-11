@@ -21,6 +21,8 @@ public:
     void onRender() override;
     void onInput() override;
 
+    [[nodiscard]] std::string_view getName() const noexcept override { return "PausePopupScreen"; }
+
 private:
     static constexpr std::array<utils::ui::MenuItem, 2> s_items = {{
         {.label = "Resume",          .locked = false},

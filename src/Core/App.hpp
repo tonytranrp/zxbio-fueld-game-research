@@ -50,6 +50,12 @@ private:
     bool m_running = false;
 
     static constexpr f64 FIXED_DT = 1.0 / 60.0;
+
+#ifdef _WIN32
+    void setupWindowDragTimer();
+    void killWindowDragTimer();
+    static void flushDragMove();
+#endif
 };
 
 } // namespace biofuel

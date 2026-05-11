@@ -42,6 +42,7 @@ public:
 
     // ---- Accessors ----
     [[nodiscard]] ScreenManager* manager() const noexcept { return m_manager; }
+    [[nodiscard]] virtual std::string_view getName() const noexcept { return "Screen"; }
 
     [[nodiscard]] f32 transitionAlpha() const noexcept;
     [[nodiscard]] bool needsRemoval() const noexcept;

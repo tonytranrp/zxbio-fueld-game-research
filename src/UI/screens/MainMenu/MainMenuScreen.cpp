@@ -1,9 +1,13 @@
 #include "MainMenuScreen.hpp"
 #include "PausePopupScreen/PausePopupScreen.hpp"
+#include "../IdleScreen/IdleScreen.hpp"
 #include "UI/ScreenManager.hpp"
+#include "UI/ScreenFwd.hpp"
 #include "Utils/render/Render.hpp"
 #include "Utils/render/Shader/MainMenuBgModule.hpp"
+#include "Utils/audio/AudioManager.hpp"
 #include <raylib.h>
+#include <algorithm>
 #include <cmath>
 #include <memory>
 
@@ -27,19 +31,19 @@ void MainMenuScreen::onEnter() {
     m_hintsFade.elapsed = 0.0f;
     m_menuFade.elapsed = 0.0f;
 
-    m_backdrop.configure(animation::screen::ScreenBackdropConfig{
-        .shaderName = utils::render::shader::MainMenuBgModule::NAME,
-        .fallbackColor = COLOR_BG,
-        .revealDelay = BG_REVEAL_DELAY,
-        .revealDuration = BG_REVEAL_DURATION,
-        .brightnessFloor = 0.0f,
-        .brightnessCeiling = 1.0f,
-        .transitionWeight = 0.45f,
-        .revealWeight = 0.55f,
-    });
+    m_backdrop.configure(backdropConfig(COLOR_BG));
     m_backdrop.reset();
     m_transitionHands.load();
     m_transitionHands.reset();
+
+    // ---- Idle detection ----
+    m_idleTrigger.reset();
+    m_idleTrigger.setCallback([this] { startIdleTransition(); });
+    m_idleTransitionDim = 0.0f;
+    m_idleTransitionActive = false;
+
+    // Preload idle screen music
+    IdleScreen::preloadAssets();
 
 #ifdef BIOFUEL_DEV_STARTUP_PAUSE_POPUP
     if (auto* sm = manager()) {
@@ -50,6 +54,7 @@ void MainMenuScreen::onEnter() {
 
 void MainMenuScreen::onExit() {
     m_transitionHands.unload();
+    utils::audio::AudioManager::instance().stopMusic();
 }
 
 void MainMenuScreen::onUpdate(const f32 dt) {
@@ -93,6 +98,12 @@ void MainMenuScreen::onUpdate(const f32 dt) {
     if (m_introPhase >= IntroPhase::TitleFade) {
         m_titlePulse += dt;
     }
+
+    // ---- Idle detection (only when screen is fully interactive) ----
+    m_idleTrigger.update(dt, !isDismissing() && m_introPhase == IntroPhase::Done && !m_idleTransitionActive);
+
+    // Idle → IdleScreen transition
+    updateIdleTransition(dt);
 }
 
 void MainMenuScreen::startIntro() {
@@ -155,7 +166,7 @@ void MainMenuScreen::onRender() {
     m_backdrop.render(transitionAlpha());
     m_transitionHands.render();
 
-    // ---- Compute dismiss offsets per element ----
+    // ---- Compute dismiss offsets per element (merge idle + click dismiss) ----
     const f32 titleDismiss  = m_dismiss.progress(UIDismissState::ELEM_TITLE);
     const f32 hintsDismiss  = m_dismiss.progress(UIDismissState::ELEM_HINTS);
     const f32 menuDismiss   = m_dismiss.progress(UIDismissState::ELEM_MENU);
@@ -247,9 +258,20 @@ void MainMenuScreen::onRender() {
             footerColor
         );
     }
+
+    // ---- Idle transition shader dim ----
+    m_backdrop.setFloat("uIdleDim", m_idleTransitionDim);
 }
 
 void MainMenuScreen::onInput() {
+    // Reset idle timer on any mouse movement or key press
+    {
+        const Vector2 mouseDelta = GetMouseDelta();
+        if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f || GetKeyPressed() != 0) {
+            m_idleTrigger.onInput();
+        }
+    }
+
     if (isDismissing()) {
         return;
     }
@@ -379,6 +401,18 @@ void MainMenuScreen::startDismiss() {
     m_dismiss.active = true;
     m_dismiss.elapsed = 0.0f;
     m_transitionHands.start();
+
+    // Reset idle so starting a game doesn't trigger an idle transition
+    m_idleTrigger.onInput();
+}
+
+void MainMenuScreen::startIdleDismiss() {
+    if (m_dismiss.active) {
+        return;
+    }
+    m_dismiss.active = true;
+    m_dismiss.elapsed = 0.0f;
+    // No hands — idle is a quiet text-only transition
 }
 
 void MainMenuScreen::updateDismiss(const f32 dt) noexcept {
@@ -398,7 +432,10 @@ bool MainMenuScreen::isDismissing() const noexcept {
 
 void MainMenuScreen::updateDimensionShift(const f32 dt) noexcept {
     if (!m_dismiss.isDone()) {
-        return;  // only start after dismiss fully completes
+        return;
+    }
+    if (m_idleTransitionActive) {
+        return;  // idle transitions don't warp the shader
     }
     if (m_dimensionShift >= 1.0f) {
         return;  // already at maximum
@@ -457,4 +494,80 @@ void MainMenuScreen::advanceCameraSequence() noexcept {
     }
 }
 
+// ------------------------------------------------------------------------------
+// Idle Transition
+// ------------------------------------------------------------------------------
+
+void MainMenuScreen::startIdleTransition() {
+    if (m_idleTransitionActive) return;
+    startIdleDismiss();
+    m_idleTransitionActive = true;
+}
+
+void MainMenuScreen::updateIdleTransition(f32 dt) {
+    if (!m_idleTransitionActive) return;
+
+    // Fade shader to black during dismiss
+    if (m_idleTransitionDim < 1.0f) {
+        static constexpr f32 DIM_SPEED = 1.0f / 0.6f;
+        m_idleTransitionDim = std::min(1.0f, m_idleTransitionDim + dt * DIM_SPEED);
+    }
+
+    // Once text has slid off and shader is fully dimmed, push IdleScreen
+    if (m_dismiss.isDone() && m_idleTransitionDim >= 1.0f) {
+        m_idleTransitionActive = false;
+        if (auto* sm = manager()) {
+            sm->queuePush(std::make_unique<IdleScreen>());
+        }
+    }
+}
+
+// ------------------------------------------------------------------------------
+// onResume — Called when IdleScreen is popped
+// ------------------------------------------------------------------------------
+
+void MainMenuScreen::onResume() {
+    // Reset dismiss state so text slides back
+    m_dismiss.active = false;
+    m_dismiss.elapsed = 0.0f;
+    m_idleTransitionDim = 0.0f;
+    m_idleTransitionActive = false;
+
+    // Undo any dimension shift / camera leak from the idle transition gap
+    m_dimensionShift = 0.0f;
+    m_cameraComponent.reset();
+    m_cameraPhase = CameraPhase::Idle;
+
+    // Fade shader back in with circular reveal
+    m_backdrop.restartReveal();
+
+    // Reset idle timer so it doesn't fire immediately on return
+    m_idleTrigger.onInput();
+}
+
+// ------------------------------------------------------------------------------
+// Backdrop Config Helper
+// ------------------------------------------------------------------------------
+
+animation::screen::ScreenBackdropConfig MainMenuScreen::backdropConfig(Color fallback) const noexcept {
+    return animation::screen::ScreenBackdropConfig{
+        .shaderName = utils::render::shader::MainMenuBgModule::NAME,
+        .fallbackColor = fallback,
+        .revealDelay = BG_REVEAL_DELAY,
+        .revealDuration = BG_REVEAL_DURATION,
+        .brightnessFloor = 0.0f,
+        .brightnessCeiling = 1.0f,
+        .transitionWeight = 0.45f,
+        .revealWeight = 0.55f,
+    };
+}
+
 } // namespace biofuel::ui::screens
+
+// ------------------------------------------------------------------------------
+// Factory
+// ------------------------------------------------------------------------------
+
+std::unique_ptr<biofuel::ui::Screen> biofuel::ui::screens::makeMainMenu() {
+    return std::make_unique<MainMenuScreen>();
+}

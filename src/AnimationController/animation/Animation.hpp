@@ -226,8 +226,9 @@ private:
     [[nodiscard]] f32 currentRaw() const noexcept {
         if constexpr (std::is_same_v<T, f32>) {
             return m_current;
+        } else {
+            return 0.0f;
         }
-        return 0.0f;
     }
 
     std::string m_name;

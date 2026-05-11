@@ -1,6 +1,7 @@
 #include "LoadingScreen.hpp"
 #include "MainMenu/MainMenuScreen.hpp"
 #include "UI/ScreenManager.hpp"
+#include "UI/ScreenFwd.hpp"
 #include "Utils/render/Render.hpp"
 #include "Utils/render/ShaderManager.hpp"
 #include "Utils/render/Shader/BlurCompositeModule.hpp"
@@ -10,6 +11,7 @@
 #include "Utils/render/Shader/LoadingPreludeModule.hpp"
 #include "Utils/render/Shader/MainMenuBgModule.hpp"
 #include "Utils/render/Shader/MenuOptionModule.hpp"
+#include "Utils/audio/AudioManager.hpp"
 #include "Data/Data.hpp"
 #include "AnimationController/AnimationManager.hpp"
 #include <raylib.h>
@@ -63,6 +65,9 @@ void LoadingScreen::buildTasks() {
     }});
     m_tasks.add({"Initializing model system...", 0.4f, []() {
         Data::models().init();
+    }});
+    m_tasks.add({"Initializing audio device...", 0.5f, []() {
+        biofuel::utils::audio::AudioManager::instance().init();
     }});
 
     using namespace utils::render::shader;
@@ -231,9 +236,12 @@ void LoadingScreen::onRender() {
 
 void LoadingScreen::onInput() {
     if (m_allowSkip && !m_transitioned) {
-        if (GetKeyPressed() != 0 ||
-            IsMouseButtonPressed(MOUSE_BUTTON_LEFT) ||
-            IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        // Use state-polling (IsKeyDown/IsMouseButtonDown) instead of
+        // queue-draining (GetKeyPressed) — InputSystem::poll() already
+        // consumes the key queue before onInput() runs (B005).
+        if (IsKeyDown(KEY_SPACE) || IsKeyDown(KEY_ENTER) ||
+            IsMouseButtonDown(MOUSE_BUTTON_LEFT) ||
+            IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
             m_transitioned = true;
             transitionToNext();
         }
@@ -242,8 +250,16 @@ void LoadingScreen::onInput() {
 
 void LoadingScreen::transitionToNext() {
     if (auto* sm = manager()) {
-        sm->queueReplace(std::make_unique<MainMenuScreen>());
+        sm->queueReplace(ui::screens::makeMainMenu());
     }
 }
 
 } // namespace biofuel::ui::screens
+
+// ------------------------------------------------------------------------------
+// Factory
+// ------------------------------------------------------------------------------
+
+std::unique_ptr<biofuel::ui::Screen> biofuel::ui::screens::makeLoading(i32 w, i32 h, i32 fps) {
+    return std::make_unique<LoadingScreen>(w, h, fps);
+}
