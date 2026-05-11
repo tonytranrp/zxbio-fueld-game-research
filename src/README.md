@@ -18,13 +18,13 @@ src/
 
 ## Ownership by folder
 
-- `Core/` - app bootstrap, main loop, project types, loading task queue
+- `Core/` - app bootstrap, main loop, project types (including `TransparentHash`), loading task queue
 - `Data/` - event manager, event definitions, global access bridge
-- `Systems/` - runtime systems; right now this is mainly input polling
+- `Systems/` - runtime systems: idle detection, input polling, model management, window drag handler
 - `Systems/Model/` - typed runtime model assets, instances, preload flow, and conservative model animation state
-- `UI/` - screen stack and concrete screens
-- `AnimationController/` - generic animation runtime and screen blur effect
-- `Utils/` - concrete shared helpers for rendering, fonts, and UI menus
+- `UI/` - screen stack, screen factory (`ScreenFwd.hpp`), and concrete screens
+- `AnimationController/` - generic animation runtime and screen visual effects
+- `Utils/` - concrete shared helpers for audio, fonts, rendering, shaders, and UI menus
 
 ## Repo rules that matter most
 
@@ -63,3 +63,4 @@ Do not introduce templates by default. Use them only when they remove real dupli
 ### Generated content
 
 Do not treat `build/`, `out/`, or `src/build/` as source folders. They can exist locally, but they are generated outputs and should not drive architecture or README content.
+, or `src/build/` as source folders. They can exist locally, but they are generated outputs and should not drive architecture or README content.

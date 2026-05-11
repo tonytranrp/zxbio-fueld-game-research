@@ -16,6 +16,17 @@ Data/event/
 `-- window/
 ```
 
+## Event domains
+
+| Domain | File | Purpose |
+|---|---|---|
+| `animation/` | `AnimationEvents.hpp` | Screen transition started/completed (carries `screenName` from `Screen::getName()`) |
+| `input/` | `InputEvents.hpp` | Keyboard and mouse button events |
+| `model/` | `ModelEvents.hpp` | Model lifecycle and animation events |
+| `mouse/` | `MouseEvents.hpp` | Mouse movement, wheel, and position events |
+| `screen/` | `ScreenEvents.hpp` | Screen stack navigation events |
+| `window/` | `WindowEvents.hpp` | Window resize, focus, and close events |
+
 ## Rules
 
 - event structs are plain data in `.hpp` files

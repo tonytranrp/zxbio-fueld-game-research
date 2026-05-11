@@ -16,7 +16,7 @@ UI/screens/LoadingScreen/
 The screen lifecycle:
 
 1. **`onEnter()`** - Configures the `ScreenBackdropController` with the loading prelude shader, builds the dynamic initialization queue from startup systems plus registered preload assets, and resets animation state.
-2. **`onUpdate()`** - Processes one `LoadingTask` per frame, smoothly lerps the display progress toward actual progress, and auto-transitions to `MainMenuScreen` when all tasks complete and the minimum display time has elapsed.
+2. **`onUpdate()`** - Processes one `LoadingTask` per frame, smoothly lerps the display progress toward actual progress, and auto-transitions to `MainMenuScreen` (via `queueReplace(ui::screens::makeMainMenu())`) when all tasks complete and the minimum display time has elapsed.
 3. **`onRender()`** - Renders the shader backdrop, dark panel, title, progress bar, current task text, skip hint, and footer.
 4. **`onInput()`** - Any key or mouse click skips the remaining minimum time once tasks are finished.
 

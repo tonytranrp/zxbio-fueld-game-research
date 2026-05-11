@@ -43,11 +43,23 @@ When "New Game" or "Continue" is activated, a staggered cascade dismisses all UI
 
 Each element staggers by `0.06s`. Each takes `0.40s` to complete. Input is blocked during the dismiss. Elements are skipped entirely once progress ≥ 1.0.
 
+### Idle transition
+
+After 30s of inactivity, `IdleTrigger` fires and the screen pushes `IdleScreen`:
+
+1. `m_idleTransitionActive` guards prevent dimension-shift updates during the push
+2. Hands are dismissed via `startIdleDismiss()` — no 3D model, just a quick fade
+3. On resume (`onResume()`), dimension shift, camera, and phase state are all reset
+
+Idle music is preloaded in `onEnter()` via `IdleScreen::preloadAssets()`.
+
 ## Dependencies
 
 - `Screen` / `ScreenManager` for lifecycle and navigation
 - `ScreenBackdropController` for the shader backdrop with reveal/brightness
 - `MenuTransitionHands` for the rigged hand transition sequence
+- `IdleTrigger` for inactivity detection
+- `IdleScreen` for the idle overlay (pushed on trigger, preloaded via `preloadAssets()`)
 - `MenuHelper` for horizontal carousel rendering, navigation, and hit-testing
 - `Easing` for intro/dismiss/menu-slide easing functions
 

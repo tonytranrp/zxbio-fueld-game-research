@@ -50,7 +50,9 @@ Templates are allowed when they remove real shared duplication or belong to an e
 - high-level project intent: [Agents.md](./Agents.md)
 - source layout and local coding rules: [src/README.md](./src/README.md)
 - screen system: [src/UI/README.md](./src/UI/README.md)
+- systems overview: [src/Systems/README.md](./src/Systems/README.md)
 - render and shader utilities: [src/Utils/render/README.md](./src/Utils/render/README.md)
+- event system: [src/Data/event/README.md](./src/Data/event/README.md)
 
 ## Research reference
 
@@ -67,4 +69,6 @@ The research set under `Research/` is still the main source for balance inputs a
 - other Raylib-supported model formats are allowed, but not first-class in the current pipeline
 - runtime model loading stays Raylib-first
 - if custom glTF import control is needed later, the preferred future parser direction is `fastgltf`
+- for offline asset optimization, `meshoptimizer` / `gltfpack` is the preferred path
+ future parser direction is `fastgltf`
 - for offline asset optimization, `meshoptimizer` / `gltfpack` is the preferred path

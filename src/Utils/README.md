@@ -6,8 +6,9 @@
 
 | Folder | Purpose |
 |---|---|
+| `audio/` | music and sound loading, playback, singleton manager |
 | `render/` | draw helpers, shader access, shader modules |
-| `ui/` | reusable menu rendering and hit-testing |
+| `ui/` | reusable menu rendering, hit-testing, input cooldowns |
 | `font/` | font loading and caching |
 
 ## Rules

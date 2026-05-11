@@ -15,7 +15,7 @@ Core/
 ## Responsibilities
 
 - `Application` is the single owner of the Raylib window and the main loop
-- `Types.hpp` defines project aliases such as `i32`, `f32`, and `u8`
+- `Types.hpp` defines project aliases such as `i32`, `f32`, and `u8`, plus shared utilities like `TransparentHash` for string-view-compatible container lookups
 - `LoadingTaskQueue` provides sequential startup work with weighted progress for `LoadingScreen`
 
 ## Rules

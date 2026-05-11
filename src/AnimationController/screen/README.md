@@ -17,7 +17,16 @@ AnimationController/screen/
 
 ## MenuTransitionHands
 
-`MenuTransitionHands` is a screen-facing effect helper for the main-menu transition.
+`MenuTransitionHands` is a screen-facing effect helper for the main-menu transition (New Game / Continue).
+
+**Phase system:**
+```
+Idle → (start) → Playing → (anim done, 2.52s) → Complete (holds final frame)
+```
+
+- `Playing` — action animation running, full 3D render
+- `Complete` — animation finished, renders the final frame indefinitely until `reset()` or `unload()` is called by the owning screen's lifecycle
+- No auto-deactivation — hands stay visible for the full transition duration (dismiss + dimension shift + camera sweep)
 
 It does not own raw model loading. Instead it:
 
