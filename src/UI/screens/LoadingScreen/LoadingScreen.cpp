@@ -12,8 +12,10 @@
 #include "Utils/render/Shader/MainMenuBgModule.hpp"
 #include "Utils/render/Shader/MenuOptionModule.hpp"
 #include "Utils/audio/AudioManager.hpp"
+#include "Utils/video/VideoManager.hpp"
 #include "Data/Data.hpp"
 #include "AnimationController/AnimationManager.hpp"
+#include "IdleScreen/IdleScreen.hpp"
 #include <raylib.h>
 #include <string>
 
@@ -41,6 +43,8 @@ LoadingScreen::LoadingScreen(i32 width, i32 height, i32 targetFps)
     , m_appTargetFps(targetFps) {}
 
 void LoadingScreen::buildTasks() {
+    m_tasks.clear();
+
     m_tasks.add({"Configuring input...", 0.3f, []() {
         SetExitKey(KEY_NULL);
     }});
@@ -68,6 +72,9 @@ void LoadingScreen::buildTasks() {
     }});
     m_tasks.add({"Initializing audio device...", 0.5f, []() {
         biofuel::utils::audio::AudioManager::instance().init();
+    }});
+    m_tasks.add({"Initializing video system...", 0.4f, []() {
+        biofuel::utils::video::VideoManager::instance().init();
     }});
 
     using namespace utils::render::shader;
@@ -126,6 +133,13 @@ void LoadingScreen::buildTasks() {
 }
 
 void LoadingScreen::onEnter() {
+    m_elapsed = 0.0f;
+    m_displayProgress = 0.0f;
+    m_actualProgress = 0.0f;
+    m_tasksDone = false;
+    m_allowSkip = false;
+    m_transitioned = false;
+
     m_backdrop.configure(animation::screen::ScreenBackdropConfig{
         .shaderName = utils::render::shader::LoadingPreludeModule::NAME,
         .fallbackColor = Color{12, 14, 20, 255},
@@ -250,7 +264,13 @@ void LoadingScreen::onInput() {
 
 void LoadingScreen::transitionToNext() {
     if (auto* sm = manager()) {
+#ifdef BIOFUEL_DEV_STARTUP_IDLE_VIDEO
+        auto idle = std::make_unique<IdleScreen>();
+        idle->setIdleVideo(IdleScreen::idleVideoPath());
+        sm->queueReplace(std::move(idle));
+#else
         sm->queueReplace(ui::screens::makeMainMenu());
+#endif
     }
 }
 

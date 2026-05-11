@@ -15,7 +15,7 @@ UI/screens/LoadingScreen/
 
 The screen lifecycle:
 
-1. **`onEnter()`** - Configures the `ScreenBackdropController` with the loading prelude shader, builds the dynamic initialization queue from startup systems plus registered preload assets, and resets animation state.
+1. **`onEnter()`** - Resets loading progress, configures the `ScreenBackdropController` with the loading prelude shader, and rebuilds the dynamic initialization queue from startup systems plus registered preload assets.
 2. **`onUpdate()`** - Processes one `LoadingTask` per frame, smoothly lerps the display progress toward actual progress, and auto-transitions to `MainMenuScreen` (via `queueReplace(ui::screens::makeMainMenu())`) when all tasks complete and the minimum display time has elapsed.
 3. **`onRender()`** - Renders the shader backdrop, dark panel, title, progress bar, current task text, skip hint, and footer.
 4. **`onInput()`** - Any key or mouse click skips the remaining minimum time once tasks are finished.
@@ -40,11 +40,12 @@ Each task reports its name and weight. Model tasks show the current asset name s
 - `ScreenBackdropController` for the shader backdrop
 - `ShaderManager` and embedded screen shader modules
 - `ModelSystem` for typed model registration and preload work
-- `ScreenManager` for transition to `MainMenuScreen`
+- `ScreenManager` for transition to `MainMenuScreen` or the idle-video dev screen
 
 ## Coding standards
 
 - No helper types live in this screen header; keep the class self-contained
 - Use `constexpr` for timing constants and layout dimensions
 - Build tasks in `buildTasks()`, called from `onEnter()`
+- `buildTasks()` clears the queue first, so re-entering the screen cannot duplicate stale tasks
 - Defer navigation via `queueReplace()` to avoid re-entrancy during update

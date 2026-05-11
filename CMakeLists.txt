@@ -19,16 +19,12 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # Compiler Optimizations (Release only)
 # ------------------------------------------------------------------------------
 if(MSVC)
-    # Whole program optimization + link-time code generation
     add_compile_options($<$<CONFIG:Release>:/GL>)
     add_link_options($<$<CONFIG:Release>:/LTCG>)
-    # Remove dead code
     add_link_options($<$<CONFIG:Release>:/OPT:REF>)
     add_link_options($<$<CONFIG:Release>:/OPT:ICF>)
-    # Maximize speed
     add_compile_options($<$<CONFIG:Release>:/O2>)
     add_compile_options($<$<CONFIG:Release>:/Ob2>)
-    # Eliminate unreferenced global/static data
     add_compile_options($<$<CONFIG:Release>:/Gw>)
 endif()
 
@@ -76,7 +72,7 @@ CPMAddPackage(
         "ENTT_BUILD_TESTING OFF"
 )
 
-# nlohmann/json and Taskflow are removed — neither is used by any code.
+# nlohmann/json and Taskflow are removed - neither is used by any code.
 # Re-add when gameplay data loading or parallel task scheduling is implemented.
 
 # spdlog - Logging (header-only mode)

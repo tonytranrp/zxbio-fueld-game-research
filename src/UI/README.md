@@ -24,9 +24,13 @@ UI/
     |   |-- MainMenuScreen.hpp
     |   |-- MainMenuScreen.cpp
     |   `-- README.md
-    `-- PausePopupScreen/
-        |-- PausePopupScreen.hpp
-        |-- PausePopupScreen.cpp
+    |-- PausePopupScreen/
+    |   |-- PausePopupScreen.hpp
+    |   |-- PausePopupScreen.cpp
+    |   `-- README.md
+    `-- VideoScreen/
+        |-- VideoScreen.hpp
+        |-- VideoScreen.cpp
         `-- README.md
 ```
 
@@ -63,11 +67,4 @@ UI/
 6. Add your maker function to `ScreenFwd.hpp` and define it in your `.cpp`
 7. Add `.../UI/screens/YourScreen` to the include directories in `src/CMakeLists.txt`
 
-**Screen factory (`ScreenFwd.hpp`)** provides forward-declared maker functions (`makeMainMenu()`, `makeLoading()`, `makeIdle()`, `makePausePopup()`) so screens can create each other without `#include`-ing full screen headers.
-ew screen
-
-1. Create `src/UI/screens/YourScreen/` directory
-2. If you have helper types, create `YourScreenTypes.hpp` first
-3. Write `YourScreen.hpp` and `YourScreen.cpp` — inherit from `Screen`, mark `final`
-4. Add a `README.md` documenting the screen's flow, types, dependencies, and standards
-5. Add `.../UI/screens/YourScreen` to the include directories in `src/CMakeLists.txt`
+**Screen factory (`ScreenFwd.hpp`)** provides forward-declared maker functions (`makeMainMenu()`, `makeLoading()`, `makeIdle()`, `makePausePopup()`, `makeVideoScreen()`) so screens can create each other without `#include`-ing full screen headers.

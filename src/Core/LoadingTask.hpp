@@ -3,6 +3,7 @@
 #include "Core/Types.hpp"
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace biofuel {
@@ -22,6 +23,13 @@ struct LoadingTask {
 // ------------------------------------------------------------------------------
 class LoadingTaskQueue {
 public:
+    void clear() noexcept {
+        m_tasks.clear();
+        m_currentIndex = -1;
+        m_completedWeight = 0.0f;
+        m_totalWeight = 0.0f;
+    }
+
     void add(LoadingTask task) {
         m_totalWeight += task.weight;
         m_tasks.push_back(std::move(task));
@@ -39,7 +47,9 @@ public:
             m_currentIndex = 0;
         }
 
-        m_tasks[m_currentIndex].work();
+        if (m_tasks[m_currentIndex].work) {
+            m_tasks[m_currentIndex].work();
+        }
         m_completedWeight += m_tasks[m_currentIndex].weight;
         ++m_currentIndex;
     }

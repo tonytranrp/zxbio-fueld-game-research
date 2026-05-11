@@ -517,7 +517,9 @@ void MainMenuScreen::updateIdleTransition(f32 dt) {
     if (m_dismiss.isDone() && m_idleTransitionDim >= 1.0f) {
         m_idleTransitionActive = false;
         if (auto* sm = manager()) {
-            sm->queuePush(std::make_unique<IdleScreen>());
+            auto idle = std::make_unique<IdleScreen>();
+            idle->setIdleVideo(IdleScreen::idleVideoPath());
+            sm->queuePush(std::move(idle));
         }
     }
 }

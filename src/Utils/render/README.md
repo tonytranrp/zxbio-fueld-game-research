@@ -35,6 +35,7 @@ Utils/render/
 - text drawing and text measurement
 - rectangle and sprite drawing
 - full-screen fill drawing
+- full-screen regular texture drawing
 - render-texture-to-screen drawing
 - screen width and height queries
 - small RAII helpers for shader mode and texture mode pairing

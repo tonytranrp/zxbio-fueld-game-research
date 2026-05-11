@@ -37,6 +37,9 @@ CMakeUserPresets.json
 # Logs
 *.log
 
+# Local-only video test assets. Commit only project-owned/redistributable clips.
+assets/video/*.mp4
+
 # Personal tooling (CommandCode, Sisyphus)
 .commandcode/
 .sisyphus/

@@ -16,6 +16,8 @@
 #include "UI/ScreenManager.hpp"
 #include "Utils/font/FontUtils.hpp"
 
+#include "event/video/VideoEvents.hpp"
+
 namespace biofuel {
 
 // ------------------------------------------------------------------------------

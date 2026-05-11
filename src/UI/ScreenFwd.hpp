@@ -21,6 +21,7 @@ std::unique_ptr<Screen> makeMainMenu();
 std::unique_ptr<Screen> makeLoading(i32 width, i32 height, i32 targetFps);
 std::unique_ptr<Screen> makeIdle();
 std::unique_ptr<Screen> makePausePopup();
+std::unique_ptr<Screen> makeVideoScreen(std::string_view videoName);
 
 } // namespace screens
 } // namespace biofuel::ui

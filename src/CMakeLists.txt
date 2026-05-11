@@ -21,7 +21,6 @@ endforeach()
 
 set(GENERATED_SHADER_HEADER "${GENERATED_DIR}/ShaderSources.hpp")
 
-# Build-time command: regenerate header whenever any .glsl changes
 add_custom_command(
     OUTPUT ${GENERATED_SHADER_HEADER}
     COMMAND ${CMAKE_COMMAND}
@@ -35,13 +34,11 @@ add_custom_command(
     COMMENT "Embedding shader sources into ShaderSources.hpp"
 )
 
-# Dummy target so the executable can depend on the generated header
 add_custom_target(GenerateShaderSources DEPENDS ${GENERATED_SHADER_HEADER})
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 add_dependencies(${PROJECT_NAME} GenerateShaderSources)
 
-# Header-only library include paths (CPM sets these variables)
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${GENERATED_DIR}
@@ -51,6 +48,7 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render/Shader
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/audio
+        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/video
         ${CMAKE_CURRENT_SOURCE_DIR}/Utils/font
         ${CMAKE_CURRENT_SOURCE_DIR}/Systems
         ${CMAKE_CURRENT_SOURCE_DIR}/Systems/Window
@@ -73,30 +71,38 @@ target_link_libraries(${PROJECT_NAME}
         spdlog::spdlog
 )
 
-# High warning level for our code only (not third-party libraries)
+find_program(FFMPEG_EXECUTABLE ffmpeg)
+if(FFMPEG_EXECUTABLE)
+    message(STATUS "ffmpeg found: ${FFMPEG_EXECUTABLE}")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_FFMPEG_EXECUTABLE="${FFMPEG_EXECUTABLE}")
+else()
+    message(STATUS "ffmpeg not found at configure time - runtime video will search PATH")
+endif()
+
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /W4)
 endif()
 
-# spdlog header-only mode for faster compile
 target_compile_definitions(${PROJECT_NAME} PRIVATE SPDLOG_HEADER_ONLY)
 
-# Development compile-time flag: set to ON to start directly on PausePopupScreen
 option(BIOFUEL_DEV_STARTUP_PAUSE_POPUP "Dev mode: start on pause popup for shader testing" OFF)
 if(BIOFUEL_DEV_STARTUP_PAUSE_POPUP)
     target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_STARTUP_PAUSE_POPUP)
 endif()
 
-# Development compile-time flag: set to ON to auto-trigger the main-menu hand transition
 option(BIOFUEL_DEV_STARTUP_MENU_TRANSITION "Dev mode: auto-run the main-menu hand transition after load" OFF)
 if(BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
     target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
 endif()
 
-# Development compile-time flag: set to ON to enable in-game model transform controls
 option(BIOFUEL_DEV_MODEL_CONTROLLER "Dev mode: enable model controller overlay for runtime tuning" OFF)
 if(BIOFUEL_DEV_MODEL_CONTROLLER)
     target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_MODEL_CONTROLLER)
+endif()
+
+option(BIOFUEL_DEV_STARTUP_IDLE_VIDEO "Dev mode: start directly on idle video screen" OFF)
+if(BIOFUEL_DEV_STARTUP_IDLE_VIDEO)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_STARTUP_IDLE_VIDEO)
 endif()
 
 # ------------------------------------------------------------------------------
@@ -121,14 +127,12 @@ else()
     message(STATUS "glslc not found - shader validation skipped. Install Vulkan SDK for shader validation.")
 endif()
 
-# Platform-specific link libraries
 if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
 elseif(UNIX AND NOT APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE m dl pthread rt X11)
 endif()
 
-# Copy raylib DLL to output directory so the EXE can find it at runtime
 add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -137,7 +141,6 @@ add_custom_command(
     COMMENT "Copying raylib.dll to output directory"
 )
 
-# Copy assets to build directory on build
 add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

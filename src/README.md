@@ -63,4 +63,3 @@ Do not introduce templates by default. Use them only when they remove real dupli
 ### Generated content
 
 Do not treat `build/`, `out/`, or `src/build/` as source folders. They can exist locally, but they are generated outputs and should not drive architecture or README content.
-, or `src/build/` as source folders. They can exist locally, but they are generated outputs and should not drive architecture or README content.

@@ -128,6 +128,17 @@ void Renderer::drawFullscreen(Color color) {
     drawRect(0, 0, screenWidth(), screenHeight(), color);
 }
 
+void Renderer::drawFullscreenTexture(Texture2D texture, Color tint) {
+    DrawTexturePro(
+        texture,
+        Rectangle{0.0f, 0.0f, static_cast<f32>(texture.width), static_cast<f32>(texture.height)},
+        Rectangle{0.0f, 0.0f, static_cast<f32>(screenWidth()), static_cast<f32>(screenHeight())},
+        Vector2{0.0f, 0.0f},
+        0.0f,
+        tint
+    );
+}
+
 void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, Color tint) {
     DrawTextureRec(
         texture,

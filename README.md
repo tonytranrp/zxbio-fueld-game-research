@@ -32,7 +32,9 @@ cmake --build build --config Debug
 cmake --build build --config Release
 ```
 
-The root CMake project fetches Raylib, EnTT, nlohmann/json, Taskflow, and spdlog through CPM. Not every fetched package is used by gameplay code yet.
+The root CMake project fetches Raylib, EnTT, and spdlog through CPM.
+
+MP4 idle-video playback uses a local `ffmpeg.exe` install on Windows. CMake records the executable when it is available, and runtime falls back to searching `PATH`. Local MP4 files under `assets/video/` are ignored by default unless a clip is project-owned and safe to redistribute.
 
 ## Coding direction
 
@@ -69,6 +71,4 @@ The research set under `Research/` is still the main source for balance inputs a
 - other Raylib-supported model formats are allowed, but not first-class in the current pipeline
 - runtime model loading stays Raylib-first
 - if custom glTF import control is needed later, the preferred future parser direction is `fastgltf`
-- for offline asset optimization, `meshoptimizer` / `gltfpack` is the preferred path
- future parser direction is `fastgltf`
 - for offline asset optimization, `meshoptimizer` / `gltfpack` is the preferred path

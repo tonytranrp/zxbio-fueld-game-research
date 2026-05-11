@@ -4,6 +4,7 @@
 #include "Utils/render/Shader/LoadingPreludeModule.hpp"
 #include "Utils/render/Shader/MenuOptionModule.hpp"
 #include "Utils/audio/AudioManager.hpp"
+#include "Utils/video/VideoManager.hpp"
 #include "Data/Data.hpp"
 #include "UI/ScreenManager.hpp"
 #include "UI/screens/LoadingScreen/LoadingScreen.hpp"
@@ -79,6 +80,7 @@ void Application::shutdown() {
     Data::screens().shutdown();
     Data::models().shutdown();
     animation::AnimationManager::instance().shutdown();
+    utils::video::VideoManager::instance().shutdown();
     utils::audio::AudioManager::instance().shutdown();
     utils::render::ShaderManager::instance().shutdown();
     Data::fonts().shutdown();
@@ -136,6 +138,7 @@ void Application::update(const f32 dt) {
     animation::AnimationManager::instance().update(dt);
     Data::models().update(dt);
     utils::audio::AudioManager::instance().update();
+    utils::video::VideoManager::instance().update();
 #ifdef _WIN32
     flushDragMove();
 #endif
