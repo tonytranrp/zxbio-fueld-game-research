@@ -3,6 +3,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
 )
+list(FILTER SOURCES EXCLUDE REGEX "/build/")
 
 # ------------------------------------------------------------------------------
 # Shader source embedding - BUILD TIME, not configure time.
@@ -20,6 +21,10 @@ foreach(NAME ${SHADER_NAMES})
 endforeach()
 
 set(GENERATED_SHADER_HEADER "${GENERATED_DIR}/ShaderSources.hpp")
+set(GENERATED_TYPED_EVENT_REGISTRY "${GENERATED_DIR}/engine/runtime/typed/generated/GeneratedEventRegistry.hpp")
+set(GENERATED_TYPED_SERVICE_REGISTRY "${GENERATED_DIR}/engine/runtime/typed/generated/GeneratedServiceRegistry.hpp")
+set(GENERATED_TYPED_ASSET_REGISTRY "${GENERATED_DIR}/engine/runtime/typed/generated/GeneratedAssetRegistry.hpp")
+set(GENERATED_TYPED_SHADER_REGISTRY "${GENERATED_DIR}/engine/runtime/typed/generated/GeneratedShaderRegistry.hpp")
 
 add_custom_command(
     OUTPUT ${GENERATED_SHADER_HEADER}
@@ -36,32 +41,37 @@ add_custom_command(
 
 add_custom_target(GenerateShaderSources DEPENDS ${GENERATED_SHADER_HEADER})
 
+add_custom_command(
+    OUTPUT
+        ${GENERATED_TYPED_EVENT_REGISTRY}
+        ${GENERATED_TYPED_SERVICE_REGISTRY}
+        ${GENERATED_TYPED_ASSET_REGISTRY}
+        ${GENERATED_TYPED_SHADER_REGISTRY}
+    COMMAND ${CMAKE_COMMAND}
+        -D SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        -D OUTPUT_DIR="${GENERATED_DIR}"
+        -P "${CMAKE_SOURCE_DIR}/cmake/GenerateTypedRegistries.cmake"
+    DEPENDS
+        "${CMAKE_SOURCE_DIR}/cmake/GenerateTypedRegistries.cmake"
+        ${SOURCES}
+    COMMENT "Generating typed module registries"
+)
+
+add_custom_target(GenerateTypedRegistries
+    DEPENDS
+        ${GENERATED_TYPED_EVENT_REGISTRY}
+        ${GENERATED_TYPED_SERVICE_REGISTRY}
+        ${GENERATED_TYPED_ASSET_REGISTRY}
+        ${GENERATED_TYPED_SHADER_REGISTRY}
+)
+
 add_executable(${PROJECT_NAME} ${SOURCES})
-add_dependencies(${PROJECT_NAME} GenerateShaderSources)
+add_dependencies(${PROJECT_NAME} GenerateShaderSources GenerateTypedRegistries)
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${GENERATED_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/Core
-        ${CMAKE_CURRENT_SOURCE_DIR}/Utils
-        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render
-        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/render/Shader
-        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/audio
-        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/video
-        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/font
-        ${CMAKE_CURRENT_SOURCE_DIR}/Systems
-        ${CMAKE_CURRENT_SOURCE_DIR}/Systems/Window
-        ${CMAKE_CURRENT_SOURCE_DIR}/Systems/Idle
-        ${CMAKE_CURRENT_SOURCE_DIR}/UI
-        ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens
-        ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens/LoadingScreen
-        ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens/MainMenu
-        ${CMAKE_CURRENT_SOURCE_DIR}/UI/screens/PausePopupScreen
-        ${CMAKE_CURRENT_SOURCE_DIR}/Data
-        ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController
-        ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController/screen
-        ${CMAKE_CURRENT_SOURCE_DIR}/AnimationController/animation
         ${entt_SOURCE_DIR}/src
 )
 
@@ -79,8 +89,34 @@ else()
     message(STATUS "ffmpeg not found at configure time - runtime video will search PATH")
 endif()
 
-if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+option(BIOFUEL_STRICT_COMPILE_CHECKS "Enable stricter compiler diagnostics for BiofuelGame." ON)
+option(BIOFUEL_WARNINGS_AS_ERRORS "Treat BiofuelGame compiler warnings as errors." ON)
+
+if(BIOFUEL_STRICT_COMPILE_CHECKS)
+    if(MSVC)
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            /W4
+            /permissive-
+            /Zc:__cplusplus
+            /Zc:preprocessor
+            /Zc:inline
+            /Zc:throwingNew
+            /EHsc
+            /sdl
+            $<$<BOOL:${BIOFUEL_WARNINGS_AS_ERRORS}>:/WX>
+        )
+    else()
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wshadow
+            -Wconversion
+            -Wsign-conversion
+            -Wnon-virtual-dtor
+            $<$<BOOL:${BIOFUEL_WARNINGS_AS_ERRORS}>:-Werror>
+        )
+    endif()
 endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE SPDLOG_HEADER_ONLY)
