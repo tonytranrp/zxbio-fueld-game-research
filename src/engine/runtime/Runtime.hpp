@@ -30,6 +30,9 @@ public:
     [[nodiscard]] static auto& animation() { return service<::biofuel::engine::runtime::typed::AnimationService>(); }
     [[nodiscard]] static auto& events() { return service<::biofuel::engine::runtime::typed::EventService>(); }
     [[nodiscard]] static auto& render() { return service<::biofuel::engine::runtime::typed::RenderService>(); }
+#ifdef BIOFUEL_ENABLE_HAND_TRACKING
+    [[nodiscard]] static auto& handTracking() { return service<::biofuel::engine::runtime::typed::HandTrackingService>(); }
+#endif
 };
 
 } // namespace biofuel::engine::runtime

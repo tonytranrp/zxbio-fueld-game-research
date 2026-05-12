@@ -76,6 +76,9 @@ void Application::shutdown() {
     ::biofuel::engine::debug::MemoryTelemetry::snapshot("app.shutdown.begin");
     auto& services = ::biofuel::engine::runtime::Runtime::services();
     services.get<::biofuel::engine::runtime::typed::ScreenService>().shutdown();
+#ifdef BIOFUEL_ENABLE_HAND_TRACKING
+    services.get<::biofuel::engine::runtime::typed::HandTrackingService>().shutdown();
+#endif
     services.get<::biofuel::engine::runtime::typed::ModelService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::AnimationService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::VideoService>().shutdown();
@@ -140,6 +143,9 @@ void Application::update(const f32 dt) {
     services.get<::biofuel::engine::runtime::typed::ModelService>().update(dt);
     services.get<::biofuel::engine::runtime::typed::AudioService>().update();
     services.get<::biofuel::engine::runtime::typed::VideoService>().update();
+#ifdef BIOFUEL_ENABLE_HAND_TRACKING
+    services.get<::biofuel::engine::runtime::typed::HandTrackingService>().update(dt);
+#endif
 #ifdef _WIN32
     flushDragMove();
 #endif

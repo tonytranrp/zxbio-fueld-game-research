@@ -82,6 +82,39 @@ target_link_libraries(${PROJECT_NAME}
         spdlog::spdlog
 )
 
+if(BIOFUEL_ENABLE_HAND_TRACKING)
+    set(HAND_TRACKING_PYTHON_ROOT "${CMAKE_BINARY_DIR}/python/hand_tracking")
+    if(WIN32)
+        set(HAND_TRACKING_PYTHON_EXECUTABLE "${HAND_TRACKING_PYTHON_ROOT}/.venv/Scripts/python.exe")
+    else()
+        set(HAND_TRACKING_PYTHON_EXECUTABLE "${HAND_TRACKING_PYTHON_ROOT}/.venv/bin/python")
+    endif()
+
+    add_custom_target(SetupHandTrackingPython
+        COMMAND ${CMAKE_COMMAND}
+            -D OUTPUT_DIR="${HAND_TRACKING_PYTHON_ROOT}"
+            -D REQUIREMENTS_FILE="${CMAKE_SOURCE_DIR}/tools/python/biofuel_hand_tracking/requirements.txt"
+            -P "${CMAKE_SOURCE_DIR}/cmake/SetupHandTrackingPython.cmake"
+        DEPENDS
+            "${CMAKE_SOURCE_DIR}/tools/python/biofuel_hand_tracking/requirements.txt"
+            "${CMAKE_SOURCE_DIR}/cmake/SetupHandTrackingPython.cmake"
+        COMMENT "Provisioning build-local Python 3.12 hand-tracking runtime"
+    )
+    add_dependencies(${PROJECT_NAME} SetupHandTrackingPython)
+
+    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${asio_SOURCE_DIR}/asio/include")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        BIOFUEL_ENABLE_HAND_TRACKING
+        ASIO_STANDALONE
+        ASIO_NO_DEPRECATED
+        BIOFUEL_HAND_TRACKING_PYTHON_EXECUTABLE="${HAND_TRACKING_PYTHON_EXECUTABLE}"
+    )
+    if(WIN32)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE _WIN32_WINNT=0x0601 WIN32_LEAN_AND_MEAN NOMINMAX)
+        target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
+    endif()
+endif()
+
 find_program(FFMPEG_EXECUTABLE ffmpeg)
 if(FFMPEG_EXECUTABLE)
     message(STATUS "ffmpeg found: ${FFMPEG_EXECUTABLE}")
@@ -197,3 +230,15 @@ add_custom_command(
         ${CMAKE_SOURCE_DIR}/assets
         $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
 )
+
+if(BIOFUEL_ENABLE_HAND_TRACKING)
+    add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/python/hand_tracking
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/tools/python/biofuel_hand_tracking
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/python/hand_tracking
+        COMMENT "Copying Python hand-tracking worker to output directory"
+    )
+endif()

@@ -5,6 +5,7 @@
 
 # Build trees and generated output
 build/
+build-*/
 out/
 src/build/
 bin/
@@ -36,6 +37,8 @@ CMakeUserPresets.json
 
 # Logs
 *.log
+__pycache__/
+*.pyc
 
 # Local-only video test assets. Commit only project-owned/redistributable clips.
 assets/video/*.mp4

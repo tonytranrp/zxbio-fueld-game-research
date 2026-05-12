@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(BIOFUEL_ENABLE_HAND_TRACKING "Enable optional Python/MediaPipe hand tracking runtime." OFF)
+
 # ------------------------------------------------------------------------------
 # Build Output Directories
 # ------------------------------------------------------------------------------
@@ -93,6 +95,14 @@ CPMAddPackage(
         "SPDLOG_INSTALL OFF"
         "SPDLOG_FMT_EXTERNAL OFF"
 )
+
+if(BIOFUEL_ENABLE_HAND_TRACKING)
+    CPMAddPackage(
+        NAME asio
+        URL https://github.com/chriskohlhoff/asio/archive/refs/tags/asio-1-30-2.tar.gz
+        DOWNLOAD_ONLY YES
+    )
+endif()
 
 # ------------------------------------------------------------------------------
 # Source Code

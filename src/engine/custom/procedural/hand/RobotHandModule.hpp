@@ -77,6 +77,10 @@ public:
         ProceduralHandRenderer<RobotHandStyle>::render(hand, renderContext(), palette(HandSide::Right), options);
     }
 
+    void renderTracked(const TrackedRobotHandPose& pose, const RobotHandRenderOptions options) noexcept {
+        ProceduralHandRenderer<RobotHandStyle>::renderTracked(pose, renderContext(), palette(pose.side), options);
+    }
+
     [[nodiscard]] AnimationController& animation() noexcept {
         return m_animation;
     }
