@@ -14,6 +14,8 @@ game/presentation/idle/
 
 `IdleTrigger` is a self-contained idle timer that any screen can own. It does not trigger idle transitions itself — it only tracks inactivity and reports readiness. The owning screen decides what to do with that signal.
 
+## How to use it
+
 ```cpp
 systems::idle::IdleTrigger m_idleTrigger;
 // ...

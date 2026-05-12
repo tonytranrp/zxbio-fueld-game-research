@@ -29,3 +29,18 @@ game/models/
 4. If the asset is rigged and should use authored motion, add a keyframe clip factory under `engine/animation/`.
 5. Register the asset in the built-in registry in `ModelSystem.cpp`.
 6. Use `Runtime::model().createInstance(...)` from the caller.
+
+```cpp
+auto instance = biofuel::engine::runtime::Runtime::model().createInstance(ModelAssetId::Harvester);
+if (instance && instance->ready()) {
+    instance->setAnimationState("idle");
+}
+```
+
+## Coding standards
+
+- Keep raw `LoadModel()` and `UnloadModel()` calls inside `ModelSystem`.
+- Use `ModelAssetSpec` for registration instead of ad hoc screen loading.
+- Keep model IDs stable once gameplay or save data depends on them.
+- Put reusable keyframe clip code in `engine/animation/`.
+- Put procedural model generation in `engine/custom/procedural/`.

@@ -1,12 +1,52 @@
-# Procedural Robot Hand Module
+# engine/custom/procedural/hand
 
-This module provides the reusable engine side of the Debug hand lab:
+The procedural robot-hand engine module lives here. It provides the reusable
+hand rig, materials, mesh rendering, animation hooks, and live hand-tracking
+retargeting used by the Debug hand lab.
 
-- typed left/right robot-hand specs
-- JSON-overridable rig dimensions and material tuning
-- FABRIK IK and joint-limit helpers
-- typed animation clips and playback controller
-- procedural texture generation plus optional PNG texture overrides
-- cached Raylib model/mesh resources for primitive hand parts
+## Current contents
 
-Game code should keep UI, camera, and tool workflow decisions outside this folder. The hand module should stay reusable and not depend on concrete screens.
+```text
+engine/custom/procedural/hand/
+|-- HandTypes.hpp
+|-- ProceduralHand.hpp
+|-- RobotHandPreset.hpp/.cpp
+|-- RobotHandMaterials.hpp
+|-- RobotHandModule.hpp
+|-- RobotHandRenderer.hpp
+|-- TrackedRobotHand.hpp
+`-- HandTrackingRetarget.hpp
+```
+
+## Responsibilities
+
+- Typed left/right robot-hand specs.
+- JSON-overridable rig dimensions and material tuning.
+- Procedural texture and generated mesh consumption.
+- FABRIK IK and joint-limit integration.
+- Renderer-facing hand pose and material state.
+- Camera-hand landmark retargeting into `TrackedRobotHandPose`.
+- Two-hand, session-local calibration through the physics mapping layer.
+
+## How to use it
+
+Debug or gameplay code should configure the module, feed it mapped/tracked
+poses, and render the resulting hands. It should not duplicate hand-generation
+math.
+
+```cpp
+HandTrackingRetargeter mapper;
+mapper.beginSession(width, height, MirrorPolicy::Selfie, StageLayoutPolicy::Shared);
+
+MappedTrackedHands mapped = mapper.map(frame, dt);
+trackedLeft.apply(mapped.leftPose);
+renderer.draw(trackedLeft, renderState);
+```
+
+## Coding standards
+
+- Keep UI, camera orbit controls, and tool workflow in game screens.
+- Keep detector IPC in `engine/vision/hand_tracking/`.
+- Keep generic calibration and pose math in `engine/custom/procedural/physics/`.
+- Prefer typed hand-side, rig, and material structs over loose booleans/strings.
+- Do not persist calibration here until a real save/profile system owns it.

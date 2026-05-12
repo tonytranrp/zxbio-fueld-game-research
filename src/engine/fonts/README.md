@@ -1,26 +1,32 @@
 # engine/fonts
 
-Font loading and caching helpers.
+Font loading and caching helpers live here.
 
 ## Current contents
 
 ```text
 engine/fonts/
-|-- FontUtils.hpp
-`-- FontUtils.cpp
+|-- FontUtils.hpp/.cpp
+|-- FontServiceModule.hpp
+`-- README.md
 ```
 
-## FontManager
+## How to use it
 
-`FontManager` is a small singleton that:
+Use the font manager when a screen or renderer needs a cached font by name:
 
-- loads fonts by caller-chosen name
-- unloads and replaces fonts safely
-- returns loaded fonts by name
-- falls back to `GetFontDefault()` when a lookup misses
+```cpp
+auto& fonts = biofuel::engine::runtime::Runtime::service<typed::FontService>();
+fonts.load("pixel", "assets/fonts/pixel.ttf", 18);
+Font font = fonts.get("pixel");
+```
 
-## Guidance
+If a lookup misses, the manager falls back to `GetFontDefault()` so rendering
+can continue.
 
-- prefer `std::string_view` at the call boundary
-- keep font ownership inside the manager
-- use this manager only for cached font resources, not as a general dependency hub
+## Coding standards
+
+- Prefer `std::string_view` at the call boundary.
+- Keep Raylib `Font` ownership inside the manager.
+- Register the service through `FontServiceModule.hpp`.
+- Do not use the font manager as a general dependency hub.

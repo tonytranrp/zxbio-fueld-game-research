@@ -21,6 +21,8 @@ game/presentation/widgets/
 
 ### InputCooldown
 
+### How to use it
+
 ```cpp
 game::presentation::widgets::InputCooldown m_cooldown;
 // In onEnter():

@@ -1,24 +1,50 @@
-# DevHandLabScreen
+# game/screens/dev_hand_lab
 
 Debug-only full-screen screen for the live procedural robot-hand view.
 
-- Opens from the main menu with `Ctrl+H` by replacing the menu screen.
-- Returns to a fresh main menu with `ESC`.
-- Can be opened after normal loading with `BIOFUEL_DEV_STARTUP_HAND_LAB=ON`.
-- Renders only its own clean studio scene; no screen below it is visible.
-- Uses `engine/custom/procedural` for typed rig, IK, animation, cached mesh rendering, materials, and JSON presets.
-- When built with `BIOFUEL_ENABLE_HAND_TRACKING=ON`, the screen automatically
-  starts the managed Python tracker, enables the live preview, and retargets
-  MediaPipe hand landmarks into the procedural robot hands.
-- The live camera overlay draws MediaPipe landmark lines over the preview while
-  the same landmarks drive the robot-hand model.
-- The robot hand follows wrist/palm translation, finger pose, and approximate
-  depth from apparent palm size, with smoothing and soft separation between two
-  tracked hands. Retargeting and visible-volume bounds live in
-  `engine/custom/procedural/hand/HandTrackingRetarget.hpp`, not in the screen.
-- `C` restarts tracking, `V` toggles preview, `X` stops tracking, `K`
-  recalibrates the current hand position/depth as neutral, and `RMB` / mouse
-  wheel still orbit and zoom the 3D view.
+## Current contents
 
-Release builds do not register this screen unless Debug/dev screen registration
-is explicitly enabled elsewhere.
+```text
+game/screens/dev_hand_lab/
+|-- DevHandLabScreen.hpp/.cpp
+|-- DevHandLabScreenModule.hpp
+|-- HandLabTypes.hpp
+`-- README.md
+```
+
+## Responsibilities
+
+- Opens from the main menu with `Ctrl+H`.
+- Returns to a fresh main menu with `ESC`.
+- Can start after loading with `BIOFUEL_DEV_STARTUP_HAND_LAB=ON`.
+- Renders its own clean studio scene and camera preview.
+- Draws mirrored MediaPipe landmark overlays.
+- Displays the two-hand guided calibration UI.
+- Owns camera orbit/zoom tool controls for this dev view.
+
+## Engine boundaries
+
+This screen consumes engine systems; it should not own detector or mapping
+logic. The reusable pieces live here:
+
+- `engine/vision/hand_tracking/`: Python worker, IPC, snapshots, preview frames.
+- `engine/custom/procedural/physics/`: camera-to-stage calibration and pose math.
+- `engine/custom/procedural/hand/`: robot-hand rig, renderer, and retargeter.
+
+## Controls
+
+| Input | Action |
+| --- | --- |
+| `C` | Restart tracking |
+| `V` | Toggle preview |
+| `X` | Stop tracking |
+| `K` | Restart guided two-hand calibration |
+| `RMB` drag | Orbit camera |
+| Mouse wheel | Zoom camera |
+
+## Coding standards
+
+- Keep screen code focused on UI workflow and rendering.
+- Do not add reusable math here; move it to engine procedural or vision modules.
+- Keep debug-only behavior guarded by registration/build flags.
+- Prefer typed helper structs in `HandLabTypes.hpp` for screen-local state.

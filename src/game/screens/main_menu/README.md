@@ -29,3 +29,11 @@ When New Game or Continue is activated, the UI dismisses and the main-menu shade
 - `IdleTrigger` and `IdleScreen` for idle video behavior
 - `MenuHelper` for horizontal carousel rendering and input
 - `Easing` for intro, dismiss, menu-slide, and camera easing
+
+## Coding standards
+
+- Keep menu options and layout state in typed local structs.
+- Put reusable widgets in `game/presentation/widgets/`.
+- Put shader module definitions in `engine/graphics/shaders/`.
+- Do not load GLB or procedural hand resources directly in this screen.
+- Use queued screen operations for transitions started during update.
