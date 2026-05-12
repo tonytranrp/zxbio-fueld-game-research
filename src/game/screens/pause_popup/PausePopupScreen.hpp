@@ -49,7 +49,7 @@ private:
         .tintColor = {.r = 15, .g = 15, .b = 25, .a = 0},
         .maxTintAlpha = 108,
         .fadeInDuration = 0.32f,
-        .fadeOutDuration = 0.26f,
+        .fadeOutDuration = SLIDE_DURATION,
         .blurRadius = 2.7f,
         .captureScale = 0.42f,
         .desaturation = 0.22f,

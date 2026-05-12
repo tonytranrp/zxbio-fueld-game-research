@@ -1,4 +1,6 @@
 #include "VideoManager.hpp"
+#include "VideoBufferPolicy.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/runtime/typed/Events.hpp"
 #include <algorithm>
 #include <atomic>
@@ -32,10 +34,12 @@ constexpr i32 AUDIO_SAMPLE_RATE = 44100;
 constexpr i32 AUDIO_CHANNELS = 2;
 constexpr i32 AUDIO_BITS = 16;
 constexpr i32 AUDIO_FRAMES_PER_CHUNK = 4096;
-constexpr std::size_t MAX_VIDEO_FRAMES = 8;
-constexpr std::size_t MAX_AUDIO_CHUNKS = 32;
-constexpr std::size_t MIN_VIDEO_PREFILL_FRAMES = 4;
-constexpr std::size_t MIN_AUDIO_PREFILL_CHUNKS = 4;
+constexpr auto IDLE_VIDEO_BUFFER_POLICY =
+    VideoBufferPolicy<::biofuel::engine::runtime::typed::video::IdleAmbient>::value;
+constexpr std::size_t MAX_VIDEO_FRAMES = IDLE_VIDEO_BUFFER_POLICY.maxVideoFrames;
+constexpr std::size_t MAX_AUDIO_CHUNKS = IDLE_VIDEO_BUFFER_POLICY.maxAudioChunks;
+constexpr std::size_t MIN_VIDEO_PREFILL_FRAMES = IDLE_VIDEO_BUFFER_POLICY.minVideoPrefillFrames;
+constexpr std::size_t MIN_AUDIO_PREFILL_CHUNKS = IDLE_VIDEO_BUFFER_POLICY.minAudioPrefillChunks;
 constexpr i32 MAX_AUDIO_PUMPS_PER_UPDATE = 4;
 constexpr f64 PREFILL_TIMEOUT_SECONDS = 1.0;
 
@@ -357,6 +361,7 @@ public:
             std::scoped_lock lock{m_mutex};
             m_videoFrames.clear();
             m_audioChunks.clear();
+            updateTelemetryLocked();
         }
     }
 
@@ -442,9 +447,6 @@ private:
     }
 
     void videoReaderLoop() {
-        const std::size_t frameBytes =
-            static_cast<std::size_t>(VIDEO_WIDTH) * static_cast<std::size_t>(VIDEO_HEIGHT) * 4U;
-
         while (!m_stop.load(std::memory_order_relaxed)) {
             while (!m_stop.load(std::memory_order_relaxed)) {
                 {
@@ -455,8 +457,8 @@ private:
                 }
                 Sleep(1);
             }
-            std::vector<unsigned char> frame(frameBytes);
-            if (!m_videoProcess.readExact(frame.data(), frameBytes, m_stop)) {
+            std::vector<unsigned char> frame(FRAME_BYTES);
+            if (!m_videoProcess.readExact(frame.data(), FRAME_BYTES, m_stop)) {
                 break;
             }
             if (m_paused.load(std::memory_order_relaxed)) {
@@ -464,6 +466,7 @@ private:
             }
             std::scoped_lock lock{m_mutex};
             m_videoFrames.push_back(std::move(frame));
+            updateTelemetryLocked();
         }
 
         if (!m_looping && !m_stop.load(std::memory_order_relaxed)) {
@@ -488,6 +491,7 @@ private:
             }
             std::scoped_lock lock{m_mutex};
             m_audioChunks.push_back(std::move(chunk));
+            updateTelemetryLocked();
         }
     }
 
@@ -499,6 +503,7 @@ private:
 
         frame = std::move(m_videoFrames.front());
         m_videoFrames.pop_front();
+        updateTelemetryLocked();
         return true;
     }
 
@@ -534,6 +539,7 @@ private:
         const auto& chunk = m_audioChunks.front();
         std::memcpy(m_audioScratch.data(), chunk.data(), m_audioScratch.size());
         m_audioChunks.pop_front();
+        updateTelemetryLocked();
         return true;
     }
 
@@ -570,10 +576,23 @@ private:
     std::atomic<bool> m_completed{false};
 
     mutable std::mutex m_mutex;
+    static constexpr std::size_t FRAME_BYTES =
+        static_cast<std::size_t>(VIDEO_WIDTH) * static_cast<std::size_t>(VIDEO_HEIGHT) * 4U;
     std::deque<std::vector<unsigned char>> m_videoFrames;
     std::vector<unsigned char> m_audioScratch;
     std::deque<std::vector<unsigned char>> m_audioChunks;
     f64 m_nextFrameTime = 0.0;
+
+    void updateTelemetryLocked() const noexcept {
+        ::biofuel::engine::debug::MemoryTelemetry::set(
+            ::biofuel::engine::debug::ResourceKind::VideoFrameQueue,
+            static_cast<i64>(m_videoFrames.size()),
+            static_cast<i64>(m_videoFrames.size() * FRAME_BYTES));
+        ::biofuel::engine::debug::MemoryTelemetry::set(
+            ::biofuel::engine::debug::ResourceKind::AudioChunkQueue,
+            static_cast<i64>(m_audioChunks.size()),
+            static_cast<i64>(m_audioChunks.size() * m_audioScratch.size()));
+    }
 };
 
 #else

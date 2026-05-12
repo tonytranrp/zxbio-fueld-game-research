@@ -24,7 +24,6 @@ public:
         "assets/video/ssstik.io_1778485755339.mp4";
 
     [[nodiscard]] static std::string idleVideoPath();
-    static void preloadAssets();
 
     explicit IdleScreen(std::string_view videoName = {}) : m_idleVideoName(videoName) {}
 

@@ -209,6 +209,4 @@ private:
     ModelKeyframeState m_state;
 };
 
-[[nodiscard]] std::vector<KeyframeClip> buildMenuHandKeyframeClips();
-
 } // namespace biofuel::engine::animation::model

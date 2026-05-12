@@ -1,9 +1,13 @@
 #include "MainMenuScreen.hpp"
 #include "MainMenuScreenModule.hpp"
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+#include "game/screens/dev_hand_lab/DevHandLabScreen.hpp"
+#endif
 #include "game/screens/pause_popup/PausePopupScreen.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
 #include "engine/ui/ScreenManager.hpp"
 #include "engine/ui/typed/RenderPipeline.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/graphics/Render.hpp"
 #include "engine/graphics/shaders/MainMenuBgModule.hpp"
@@ -29,24 +33,6 @@ struct RenderElementExecutor<mainmenu::BackdropElement, ::biofuel::game::screens
         screen.m_backdrop.setFloat("uIdleDim", screen.m_idleTransitionDim);
         screen.m_cameraComponent.apply(screen.m_backdrop.shader());
         screen.m_backdrop.render(context.transitionAlpha);
-    }
-};
-
-template<>
-struct RenderElementExecutor<mainmenu::ModelOverlayElement, ::biofuel::game::screens::MainMenuScreen> {
-    static void render(::biofuel::game::screens::MainMenuScreen& screen, RenderContext&) {
-        screen.m_transitionHands.render();
-    }
-};
-
-template<>
-struct RenderElementExecutor<mainmenu::ModelControllerOverlayElement, ::biofuel::game::screens::MainMenuScreen> {
-    static void render(::biofuel::game::screens::MainMenuScreen& screen, RenderContext&) {
-#ifdef BIOFUEL_DEV_MODEL_CONTROLLER
-        screen.m_transitionHands.renderControllerOverlay();
-#else
-        (void)screen;
-#endif
     }
 };
 
@@ -211,8 +197,6 @@ void MainMenuScreen::onEnter() {
 
     m_backdrop.configure(backdropConfig(COLOR_BG));
     m_backdrop.reset();
-    m_transitionHands.load();
-    m_transitionHands.reset();
 
     // ---- Idle detection ----
     m_idleTrigger.reset();
@@ -220,9 +204,7 @@ void MainMenuScreen::onEnter() {
     m_idleTransitionDim = 0.0f;
     m_idleTransitionActive = false;
     m_revealBackdropOnResume = false;
-
-    // Preload idle screen music
-    IdleScreen::preloadAssets();
+    m_reportedStableMemory = false;
 
 #ifdef BIOFUEL_DEV_STARTUP_PAUSE_POPUP
     if (auto* sm = manager()) {
@@ -232,7 +214,6 @@ void MainMenuScreen::onEnter() {
 }
 
 void MainMenuScreen::onExit() {
-    m_transitionHands.unload();
     ::biofuel::engine::runtime::Runtime::audio().stopMusic();
 }
 
@@ -242,7 +223,6 @@ void MainMenuScreen::onUpdate(const f32 dt) {
     updateDismiss(dt);
     updateDimensionShift(dt);
     m_cameraComponent.update(dt);
-    m_transitionHands.update(dt, m_dimensionShift, m_cameraComponent.controller().current());
     m_menuFxTime += dt;
     // Prevent precision loss after extended play — wrap at ~16 min
     if (m_menuFxTime > 1000.0f) {
@@ -258,6 +238,10 @@ void MainMenuScreen::onUpdate(const f32 dt) {
 
     if (m_introPhase != IntroPhase::Done) {
         advanceIntro(dt);
+        if (m_introPhase == IntroPhase::Done && !m_reportedStableMemory) {
+            m_reportedStableMemory = true;
+            ::biofuel::engine::debug::MemoryTelemetry::snapshot("main_menu.stable");
+        }
     }
 
 #ifdef BIOFUEL_DEV_STARTUP_MENU_TRANSITION
@@ -352,6 +336,15 @@ void MainMenuScreen::onInput() {
     if (isDismissing()) {
         return;
     }
+
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+    if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_H)) {
+        if (auto* sm = manager(); sm != nullptr && !sm->isTransitioning()) {
+            sm->queueReplace<DevHandLabScreen>();
+        }
+        return;
+    }
+#endif
 
     if (IsKeyPressed(KEY_ESCAPE)) {
         if (auto* sm = manager(); sm != nullptr && !sm->isTransitioning()) {
@@ -477,7 +470,6 @@ void MainMenuScreen::startDismiss() {
     }
     m_dismiss.active = true;
     m_dismiss.elapsed = 0.0f;
-    m_transitionHands.start();
 
     // Reset idle so starting a game doesn't trigger an idle transition
     m_idleTrigger.onInput();

@@ -14,7 +14,6 @@
 namespace biofuel::game::models {
 
 enum class ModelAssetId : u32 {
-    MenuTransitionHands = 0,
 };
 
 struct ModelAnimationStateSpec {
@@ -35,6 +34,8 @@ struct ModelAssetSpec {
     std::string_view shaderVertexPath;
     std::string_view shaderFragmentPath;
     bool preloadOnStartup = false;
+    bool singleResidentInstance = false;
+    bool releasePrototypeAfterInstance = false;
     bool loadAnimations = false;
     KeyframeClipFactory keyframeClipFactory = nullptr;
     std::string_view defaultIdleState;
@@ -68,7 +69,9 @@ struct SharedAssetData {
     ModelAssetMetrics metrics{};
     Shader shader{};
     ::biofuel::engine::animation::model::ModelRigBinding rigBinding{};
+    std::vector<Transform> bindPoseCopy;
     std::vector<::biofuel::engine::animation::model::KeyframeClip> keyframeClips;
+    i64 estimatedBytes = 0;
 };
 
 class ModelAnimator final {
@@ -163,6 +166,7 @@ private:
     Model m_staticModelView{};
     bool m_ownsModel = false;
     bool m_visible = true;
+    bool m_telemetryCounted = false;
     ModelAssetMetrics m_metrics{};
     ModelAnimator m_animator;
     ::biofuel::engine::animation::model::ModelKeyframePlayer m_keyframePlayer;
@@ -202,6 +206,8 @@ private:
     static void unloadAsset(SharedAssetData& asset) noexcept;
     void pruneInstances();
     [[nodiscard]] std::shared_ptr<ModelInstance> findInstance(u64 instanceId) const;
+    [[nodiscard]] std::shared_ptr<ModelInstance> findLiveInstance(ModelAssetId assetId) const;
+    static void unloadPrototype(SharedAssetData& asset) noexcept;
     void onSetState(const ::biofuel::engine::events::model::ModelSetStateEvent& event);
     void onPlayAction(const ::biofuel::engine::events::model::ModelPlayActionEvent& event);
 

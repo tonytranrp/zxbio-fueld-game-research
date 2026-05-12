@@ -1,4 +1,5 @@
 #include "AnimationManager.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include <spdlog/spdlog.h>
 
 namespace biofuel::engine::animation {
@@ -38,6 +39,10 @@ void AnimationManager::prune() {
     );
     const auto removed = before - m_animations.size();
     if (removed > 0) {
+        ::biofuel::engine::debug::MemoryTelemetry::remove(
+            ::biofuel::engine::debug::ResourceKind::Animation,
+            static_cast<i64>(removed),
+            0);
         spdlog::trace("AnimationManager pruned {} animation(s)", removed);
     }
 }
@@ -61,15 +66,19 @@ void AnimationManager::cancelAll(const std::string& name) {
 // ---- Explicit template instantiations ----
 void AnimationManager::add(std::unique_ptr<Animation<f32>> anim) {
     m_animations.emplace_back(std::make_unique<AnimationWrapper<f32>>(std::move(anim)));
+    ::biofuel::engine::debug::MemoryTelemetry::add(::biofuel::engine::debug::ResourceKind::Animation, 1, 0);
 }
 void AnimationManager::add(std::unique_ptr<Animation<Color>> anim) {
     m_animations.emplace_back(std::make_unique<AnimationWrapper<Color>>(std::move(anim)));
+    ::biofuel::engine::debug::MemoryTelemetry::add(::biofuel::engine::debug::ResourceKind::Animation, 1, 0);
 }
 void AnimationManager::add(std::unique_ptr<Animation<Vector2>> anim) {
     m_animations.emplace_back(std::make_unique<AnimationWrapper<Vector2>>(std::move(anim)));
+    ::biofuel::engine::debug::MemoryTelemetry::add(::biofuel::engine::debug::ResourceKind::Animation, 1, 0);
 }
 void AnimationManager::add(std::unique_ptr<Animation<Rectangle>> anim) {
     m_animations.emplace_back(std::make_unique<AnimationWrapper<Rectangle>>(std::move(anim)));
+    ::biofuel::engine::debug::MemoryTelemetry::add(::biofuel::engine::debug::ResourceKind::Animation, 1, 0);
 }
 
 } // namespace biofuel::engine::animation

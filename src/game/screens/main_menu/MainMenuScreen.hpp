@@ -5,7 +5,6 @@
 #include "MainMenuTypes.hpp"
 #include "game/presentation/idle/IdleTrigger.hpp"
 #include "game/presentation/effects/ScreenBackdropController.hpp"
-#include "game/presentation/effects/MenuTransitionHands.hpp"
 #include "engine/graphics/components/Camera/CameraComponent.hpp"
 #include <raylib.h>
 #include <array>
@@ -143,7 +142,6 @@ private:
     TextFade m_menuFade{0.2f, 0.45f};
 
     game::presentation::effects::ScreenBackdropController m_backdrop;
-    game::presentation::effects::MenuTransitionHands m_transitionHands;
 
     // Idle detection → pushes IdleScreen
     game::presentation::idle::IdleTrigger m_idleTrigger{5.0f};
@@ -152,6 +150,7 @@ private:
     f32 m_idleTransitionDim = 0.0f;
     bool m_idleTransitionActive = false;
     bool m_revealBackdropOnResume = false;
+    bool m_reportedStableMemory = false;
 
     void startIdleTransition();
     void updateIdleTransition(f32 dt);
@@ -166,7 +165,7 @@ private:
     [[nodiscard]] i32 inferMenuDirection(i32 oldIndex, i32 newIndex) const noexcept;
 
     // ---- Dismiss animation ----
-    void startDismiss();         // game transition (New Game/Continue) — shows hands
+    void startDismiss();         // game transition (New Game/Continue)
     void startIdleDismiss();     // idle transition — text only, no hands
     void updateDismiss(f32 dt) noexcept;
     [[nodiscard]] bool isDismissing() const noexcept;

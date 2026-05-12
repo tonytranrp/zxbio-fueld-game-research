@@ -78,6 +78,7 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         raylib
+        nlohmann_json::nlohmann_json
         spdlog::spdlog
 )
 
@@ -102,6 +103,7 @@ if(BIOFUEL_STRICT_COMPILE_CHECKS)
             /Zc:inline
             /Zc:throwingNew
             /EHsc
+            /FS
             /sdl
             $<$<BOOL:${BIOFUEL_WARNINGS_AS_ERRORS}>:/WX>
         )
@@ -120,6 +122,9 @@ if(BIOFUEL_STRICT_COMPILE_CHECKS)
 endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE SPDLOG_HEADER_ONLY)
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    $<$<CONFIG:Debug>:BIOFUEL_ENABLE_DEV_SCREENS>
+)
 
 option(BIOFUEL_DEV_STARTUP_PAUSE_POPUP "Dev mode: start on pause popup for shader testing" OFF)
 if(BIOFUEL_DEV_STARTUP_PAUSE_POPUP)
@@ -131,9 +136,14 @@ if(BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
     target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
 endif()
 
-option(BIOFUEL_DEV_MODEL_CONTROLLER "Dev mode: enable model controller overlay for runtime tuning" OFF)
-if(BIOFUEL_DEV_MODEL_CONTROLLER)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEV_MODEL_CONTROLLER)
+option(BIOFUEL_DEV_STARTUP_HAND_LAB "Dev mode: start directly on the procedural hand lab after loading" OFF)
+if(BIOFUEL_DEV_STARTUP_HAND_LAB)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:BIOFUEL_DEV_STARTUP_HAND_LAB>)
+endif()
+
+option(BIOFUEL_DEBUG_MEMORY_STATS "Debug mode: show memory/resource telemetry overlay." OFF)
+if(BIOFUEL_DEBUG_MEMORY_STATS)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE BIOFUEL_DEBUG_MEMORY_STATS)
 endif()
 
 option(BIOFUEL_DEV_STARTUP_IDLE_VIDEO "Dev mode: start directly on idle video screen" OFF)
@@ -167,6 +177,10 @@ if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
 elseif(UNIX AND NOT APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE m dl pthread rt X11)
+endif()
+
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Psapi)
 endif()
 
 add_custom_command(

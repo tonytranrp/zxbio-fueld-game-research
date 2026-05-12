@@ -3,6 +3,7 @@
 #include "engine/ui/ScreenManager.hpp"
 #include "engine/ui/typed/RenderPipeline.hpp"
 #include "engine/graphics/Render.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/animation/AnimationManager.hpp"
 #include "engine/animation/PremadeAnimations.hpp"
@@ -166,6 +167,7 @@ namespace biofuel::game::screens {
 // ------------------------------------------------------------------------------
 
 void PausePopupScreen::onEnter() {
+    ::biofuel::engine::debug::MemoryTelemetry::snapshot("pause.open.begin");
     m_selected = 0;
     m_cooldown = 0.0f;
 
@@ -182,12 +184,33 @@ void PausePopupScreen::onEnter() {
     const i32 sh = ::biofuel::engine::graphics::Renderer::screenHeight();
     m_blurEffect.init(sw, sh, BLUR_CONFIG);
     m_blurEffect.startBlurIn(BLUR_CONFIG);
+    if (auto* sm = manager()) {
+        struct CaptureRequest {
+            ::biofuel::engine::ui::ScreenManager* manager = nullptr;
+            ::biofuel::engine::ui::Screen* screen = nullptr;
+        };
+
+        CaptureRequest request{
+            .manager = sm,
+            .screen = sm->currentScreen(),
+        };
+        m_blurEffect.warmCache(
+            [](void* userData, ::biofuel::engine::graphics::RenderSurface& target) {
+                auto* capture = static_cast<CaptureRequest*>(userData);
+                if (capture == nullptr || capture->manager == nullptr) {
+                    return;
+                }
+                capture->manager->captureScreen(capture->screen, target);
+            },
+            &request);
+    }
 
     startSlideIn();
 }
 
 void PausePopupScreen::onExit() {
     m_blurEffect.shutdown();
+    ::biofuel::engine::debug::MemoryTelemetry::snapshot("pause.close.exit");
 }
 
 void PausePopupScreen::onUpdate(const f32 dt) {
@@ -233,6 +256,10 @@ void PausePopupScreen::onInput() {
     // ESC dismisses via slide-out
     if (IsKeyPressed(KEY_ESCAPE) && !m_animatingOut) {
         startSlideOut();
+        return;
+    }
+
+    if (m_animatingOut) {
         return;
     }
 
@@ -306,6 +333,7 @@ void PausePopupScreen::startSlideOut() {
     }
 
     m_animatingOut = true;
+    m_animatingIn = false;
 
     // Start blur fade-out — synchronized with panel slide
     m_blurEffect.startBlurOut(BLUR_CONFIG);
@@ -313,10 +341,11 @@ void PausePopupScreen::startSlideOut() {
     auto& mgr = ::biofuel::engine::runtime::Runtime::animation();
     mgr.cancelAll("pause_in_slide");
 
-    // Panel: continues leftward off-screen (0.0 → -1.0)
+    // Panel continues leftward from its current point, avoiding a snap if
+    // ESC is pressed while the popup is still sliding in.
     auto slideAnim = ::biofuel::engine::animation::PremadeAnimations::makeFloatLerp(
         "pause_out_slide",
-        0.0f, -1.0f, SLIDE_DURATION,
+        m_panelSlidePct, -1.0f, SLIDE_DURATION,
         ::biofuel::engine::animation::Easing::easeOutQuad
     );
     slideAnim->onUpdate([this](::biofuel::engine::animation::Animation<f32>* a) {

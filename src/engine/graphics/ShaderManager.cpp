@@ -1,4 +1,5 @@
 #include "ShaderManager.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include <cstring>
 #include <spdlog/spdlog.h>
 
@@ -25,6 +26,10 @@ void ShaderManager::shutdown() {
     for (auto& [name, shader] : m_shaders) {
         if (IsShaderValid(shader)) {
             UnloadShader(shader);
+            ::biofuel::engine::debug::MemoryTelemetry::remove(
+                ::biofuel::engine::debug::ResourceKind::Shader,
+                1,
+                0);
         }
     }
     m_shaders.clear();
@@ -53,6 +58,10 @@ void ShaderManager::load(std::string_view name, std::string_view vertPath, std::
 
     spdlog::info("ShaderManager: loaded shader '{}'", name);
     m_shaders.emplace(std::string{name}, shader);
+    ::biofuel::engine::debug::MemoryTelemetry::add(
+        ::biofuel::engine::debug::ResourceKind::Shader,
+        1,
+        0);
 }
 
 void ShaderManager::loadFromMemory(std::string_view name, const char* vertCode, const char* fragCode) {
@@ -67,6 +76,10 @@ void ShaderManager::loadFromMemory(std::string_view name, const char* vertCode, 
 
     spdlog::info("ShaderManager: compiled shader '{}' from memory", name);
     m_shaders.emplace(std::string{name}, shader);
+    ::biofuel::engine::debug::MemoryTelemetry::add(
+        ::biofuel::engine::debug::ResourceKind::Shader,
+        1,
+        0);
 }
 
 // ------------------------------------------------------------------------------
@@ -79,6 +92,10 @@ void ShaderManager::unloadExisting(std::string_view name) {
     if (it != m_shaders.end()) {
         if (IsShaderValid(it->second)) {
             UnloadShader(it->second);
+            ::biofuel::engine::debug::MemoryTelemetry::remove(
+                ::biofuel::engine::debug::ResourceKind::Shader,
+                1,
+                0);
         }
         m_shaders.erase(it);
     }
@@ -93,6 +110,10 @@ void ShaderManager::unload(std::string_view name) {
     if (it != m_shaders.end()) {
         if (IsShaderValid(it->second)) {
             UnloadShader(it->second);
+            ::biofuel::engine::debug::MemoryTelemetry::remove(
+                ::biofuel::engine::debug::ResourceKind::Shader,
+                1,
+                0);
         }
         m_shaders.erase(it);
         spdlog::info("ShaderManager: unloaded shader '{}'", name);

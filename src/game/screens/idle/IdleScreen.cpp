@@ -4,6 +4,7 @@
 #include "engine/ui/typed/RenderPipeline.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/graphics/Render.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/graphics/shaders/MainMenuBgModule.hpp"
 #include "engine/audio/AudioManager.hpp"
 #include "engine/video/VideoManager.hpp"
@@ -77,30 +78,8 @@ std::string IdleScreen::idleVideoPath() {
     return std::string{VIDEO_PATH};
 }
 
-void IdleScreen::preloadAssets() {
-    auto& audio = ::biofuel::engine::runtime::Runtime::audio();
-    if (!audio.hasMusic(MUSIC_PATH)) {
-        audio.loadMusic(MUSIC_PATH, MUSIC_PATH);
-    }
-
-    const std::string videoPath = idleVideoPath();
-    if (videoPath.empty()) {
-        spdlog::warn("IdleScreen: no local MP4 found under assets/video");
-        return;
-    }
-
-    auto& vm = ::biofuel::engine::runtime::Runtime::video();
-    vm.init();
-    if (!vm.hasVideo(videoPath) && !vm.hasError(videoPath)) {
-        vm.loadVideo(videoPath, videoPath);
-        if (vm.hasVideo(videoPath)) {
-            vm.setLooping(videoPath, true);
-            vm.setVolume(videoPath, 1.0f);
-        }
-    }
-}
-
 void IdleScreen::onEnter() {
+    ::biofuel::engine::debug::MemoryTelemetry::snapshot("idle.open.begin");
     m_inputDelay = 0.0f;
     m_inputReady = false;
     m_videoMode = false;
@@ -133,11 +112,14 @@ void IdleScreen::onExit() {
         if (vm.isPlaying(m_idleVideoName) || vm.isPaused(m_idleVideoName)) {
             vm.stop(m_idleVideoName);
         }
+        vm.unloadVideo(m_idleVideoName);
         m_videoMode = false;
+        ::biofuel::engine::debug::MemoryTelemetry::snapshot("idle.close.video");
         return;
     }
 
     ::biofuel::engine::runtime::Runtime::audio().stopMusic();
+    ::biofuel::engine::debug::MemoryTelemetry::snapshot("idle.close.fallback");
 }
 
 void IdleScreen::onUpdate(const f32 dt) {

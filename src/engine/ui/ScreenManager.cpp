@@ -2,9 +2,11 @@
 #include "Screen.hpp"
 #include "engine/graphics/Render.hpp"
 #include "engine/graphics/ShaderManager.hpp"
+#include "engine/graphics/TransientResourceCache.hpp"
 #include "engine/graphics/shaders/CrossfadeModule.hpp"
 #include "engine/graphics/shaders/TypedShaderModule.hpp"
 #include "engine/animation/Easing.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include <spdlog/spdlog.h>
 
@@ -28,10 +30,12 @@ void ScreenManager::init() {
 }
 
 void ScreenManager::shutdown() {
+    ::biofuel::engine::debug::MemoryTelemetry::snapshot("screen.shutdown.begin");
     clear();
     disconnectOverrideSinks();
 
     releaseTransitionTextures();
+    ::biofuel::engine::graphics::TransientResourceCache::instance().releaseAll();
     // m_crossfadeShader is owned by ShaderManager — do NOT UnloadShader here.
     // ShaderManager::shutdown() handles unloading all shaders in its map.
     // Calling UnloadShader directly would double-free the shader's locs array
@@ -224,12 +228,6 @@ void ScreenManager::preloadCrossfadeShader() {
     ensureCrossfadeShader();
 }
 
-void ScreenManager::preloadTransitionTextures() {
-    const i32 sw = ::biofuel::engine::graphics::Renderer::screenWidth();
-    const i32 sh = ::biofuel::engine::graphics::Renderer::screenHeight();
-    ensureTransitionTextures(sw, sh);
-}
-
 // ------------------------------------------------------------------------------
 // Crossfade Transition Rendering
 // ------------------------------------------------------------------------------
@@ -320,6 +318,8 @@ void ScreenManager::renderCrossfade(typed::ScreenSlot& outgoing, typed::ScreenSl
 // ------------------------------------------------------------------------------
 
 void ScreenManager::update(f32 dt) {
+    ::biofuel::engine::graphics::TransientResourceCache::instance().update(GetTime());
+
     // Update screens top-to-bottom
     bool updateBelow = true;
     for (auto it = m_screens.rbegin(); it != m_screens.rend(); ++it) {
@@ -380,6 +380,10 @@ void ScreenManager::update(f32 dt) {
 
     // Process any deferred push/replace from onUpdate() calls above
     processPendingActions();
+
+    if (!isTransitioning()) {
+        releaseTransitionTextures();
+    }
 }
 
 void ScreenManager::render() {

@@ -39,6 +39,7 @@ void ScreenBackdropController::configure(const ScreenBackdropConfig& config) noe
 
 void ScreenBackdropController::reset() noexcept {
     m_time = 0.0f;
+    m_timeOrigin = GetTime();
     m_revealElapsed = 0.0f;
 }
 
@@ -84,8 +85,9 @@ void ScreenBackdropController::render(const f32 transitionAlpha) const {
         1.0f
     );
 
+    const f32 time = shaderTime();
     ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::IResolution>(m_shader, m_resolutionLoc, resolution);
-    ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::ITime>(m_shader, m_timeLoc, &m_time);
+    ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::ITime>(m_shader, m_timeLoc, &time);
     ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::Brightness>(m_shader, m_brightnessLoc, &brightness);
     ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::RevealProgress>(m_shader, m_revealLoc, &reveal);
 
@@ -126,6 +128,14 @@ Shader ScreenBackdropController::shader() const noexcept {
 bool ScreenBackdropController::ready() const noexcept {
     ensureShader();
     return m_shaderReady;
+}
+
+f32 ScreenBackdropController::shaderTime() const noexcept {
+    const f64 elapsed = GetTime() - m_timeOrigin;
+    if (elapsed >= 0.0) {
+        return static_cast<f32>(elapsed);
+    }
+    return m_time;
 }
 
 void ScreenBackdropController::ensureShader() const {

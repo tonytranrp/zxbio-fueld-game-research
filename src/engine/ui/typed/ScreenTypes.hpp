@@ -13,9 +13,13 @@ enum class ScreenId : u8 {
     PausePopup,
     Idle,
     Video,
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+    DevHandLab,
+#endif
+    Count,
 };
 
-static constexpr u8 SCREEN_ID_COUNT = 6;
+static constexpr u8 SCREEN_ID_COUNT = static_cast<u8>(ScreenId::Count);
 
 [[nodiscard]] constexpr u8 screenIdIndex(const ScreenId id) noexcept {
     return static_cast<u8>(id);

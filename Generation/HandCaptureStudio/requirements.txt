@@ -1,7 +1,0 @@
-numpy==1.19.5
-opencv-python==4.2.0.34
-pillow==7.2.0
-torch==1.7.1+cpu
-torchvision==0.8.2+cpu
-scipy==1.5.4
-chumpy==0.70

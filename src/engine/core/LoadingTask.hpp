@@ -30,6 +30,10 @@ public:
         m_totalWeight = 0.0f;
     }
 
+    void reserve(const size_t taskCount) {
+        m_tasks.reserve(taskCount);
+    }
+
     void add(LoadingTask task) {
         m_totalWeight += task.weight;
         m_tasks.push_back(std::move(task));

@@ -51,6 +51,7 @@ private:
     bool m_tasksDone = false;
     bool m_allowSkip = false;
     bool m_transitioned = false;
+    bool m_reportedStartupMemory = false;
     game::presentation::effects::ScreenBackdropController m_backdrop;
 
     void buildTasks();

@@ -1,12 +1,13 @@
 #include "ModelSystem.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/runtime/Runtime.hpp"
-#include "engine/runtime/typed/Assets.hpp"
 #include "engine/events/model/ModelEvents.hpp"
 #include "engine/runtime/typed/Events.hpp"
-#include "engine/graphics/shaders/TypedShaderModule.hpp"
 #include "engine/graphics/ShaderManager.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <filesystem>
 #include <spdlog/spdlog.h>
 #include <raymath.h>
 
@@ -14,27 +15,7 @@ namespace biofuel::game::models {
 
 namespace {
 
-constexpr ModelAnimationStateSpec MENU_HANDS_STATES[] = {
-    {.name = "idle", .clipIndex = -1, .loop = true, .returnState = {}, .durationSeconds = 2.80f},
-    {.name = "action", .clipIndex = -1, .loop = false, .returnState = "idle", .durationSeconds = 2.40f},
-};
-
-constexpr ModelAssetSpec BUILT_IN_MODELS[] = {
-    {
-        .id = ModelAssetId::MenuTransitionHands,
-        .debugName = "Menu Transition Hands",
-        .assetPath = "assets/models/menu_transition_hands/wrad_arms.glb",
-        .shaderName = "menu_hands",
-        .shaderVertexPath = "assets/shaders/menu_hands.vs",
-        .shaderFragmentPath = "assets/shaders/menu_hands.fs",
-        .preloadOnStartup = true,
-        .loadAnimations = false,
-        .keyframeClipFactory = ::biofuel::engine::animation::model::buildMenuHandKeyframeClips,
-        .defaultIdleState = "idle",
-        .animationStates = MENU_HANDS_STATES,
-        .animationStateCount = static_cast<i32>(std::size(MENU_HANDS_STATES)),
-    },
-};
+constexpr std::array<ModelAssetSpec, 0> BUILT_IN_MODELS{};
 
 } // namespace
 
@@ -286,6 +267,12 @@ ModelInstance::~ModelInstance() noexcept {
         m_ownedModel = {};
         m_model = nullptr;
     }
+    if (m_telemetryCounted) {
+        ::biofuel::engine::debug::MemoryTelemetry::remove(
+            ::biofuel::engine::debug::ResourceKind::ModelInstance,
+            1,
+            0);
+    }
 }
 
 Shader ModelInstance::shader() const noexcept {
@@ -328,8 +315,15 @@ void ModelInstance::update(const f32 dt) noexcept {
             m_animator.stateProgress(),
             m_animator.transitionProgress());
 
+        const std::span<const Transform> bindPose =
+            !m_sharedAsset->bindPoseCopy.empty()
+                ? std::span<const Transform>(m_sharedAsset->bindPoseCopy.data(), m_sharedAsset->bindPoseCopy.size())
+                : std::span<const Transform>(
+                    m_sharedAsset->prototype.bindPose,
+                    static_cast<size_t>(m_sharedAsset->prototype.boneCount));
+
         m_keyframePlayer.apply(
-            std::span<const Transform>(m_sharedAsset->prototype.bindPose, static_cast<size_t>(m_sharedAsset->prototype.boneCount)),
+            bindPose,
             std::span<Transform>(m_poseBuffer.data(), m_poseBuffer.size()));
 
         for (const auto& [boneName, offset] : m_boneTranslationOffsets) {
@@ -448,6 +442,13 @@ void ModelSystem::update(const f32 dt) {
 }
 
 std::shared_ptr<ModelInstance> ModelSystem::createInstance(const ModelAssetId assetId) {
+    if (const ModelAssetSpec* spec = findSpec(assetId);
+        spec != nullptr && spec->singleResidentInstance) {
+        if (auto instance = findLiveInstance(assetId)) {
+            return instance;
+        }
+    }
+
     if (!preload(assetId)) {
         return nullptr;
     }
@@ -471,6 +472,15 @@ std::shared_ptr<ModelInstance> ModelSystem::createInstance(const ModelAssetId as
     }
 
     m_instances[instanceId] = instance;
+    ::biofuel::engine::debug::MemoryTelemetry::add(
+        ::biofuel::engine::debug::ResourceKind::ModelInstance,
+        1,
+        0);
+    instance->m_telemetryCounted = true;
+
+    if (assetIt->second->spec.releasePrototypeAfterInstance && instance->ready()) {
+        unloadPrototype(*assetIt->second);
+    }
     return instance;
 }
 
@@ -551,20 +561,24 @@ std::shared_ptr<SharedAssetData> ModelSystem::loadAsset(const ModelAssetSpec& sp
     asset->metrics = computeMetrics(asset->prototype);
     ModelInstance::applyNormalization(asset->prototype, asset->metrics);
     asset->rigBinding = buildRigBinding(asset->prototype);
+    if (asset->prototype.bindPose != nullptr && asset->prototype.boneCount > 0) {
+        asset->bindPoseCopy.assign(
+            asset->prototype.bindPose,
+            asset->prototype.bindPose + asset->prototype.boneCount);
+    }
+    {
+        std::error_code error;
+        const auto bytes = std::filesystem::file_size(std::filesystem::path{spec.assetPath}, error);
+        asset->estimatedBytes = error ? 0 : static_cast<i64>(bytes);
+    }
 
     if (!spec.shaderName.empty()) {
         auto& shaderManager = ::biofuel::engine::runtime::Runtime::shader();
         if (!shaderManager.has(spec.shaderName)) {
-            if (spec.shaderName == ::biofuel::engine::runtime::typed::ShaderAsset<::biofuel::engine::runtime::typed::shader::MenuHands>::Name) {
-                ::biofuel::engine::runtime::typed::Shaders::load<::biofuel::engine::runtime::typed::shader::MenuHands>(shaderManager);
-            } else {
-                shaderManager.load(spec.shaderName, spec.shaderVertexPath, spec.shaderFragmentPath);
-            }
+            shaderManager.load(spec.shaderName, spec.shaderVertexPath, spec.shaderFragmentPath);
         }
 
-        asset->shader = (spec.shaderName == ::biofuel::engine::runtime::typed::ShaderAsset<::biofuel::engine::runtime::typed::shader::MenuHands>::Name)
-            ? ::biofuel::engine::runtime::typed::Shaders::get<::biofuel::engine::runtime::typed::shader::MenuHands>(shaderManager)
-            : shaderManager.tryGet(spec.shaderName);
+        asset->shader = shaderManager.tryGet(spec.shaderName);
         if (asset->shader.id == 0) {
             spdlog::warn("ModelSystem: shader '{}' failed for '{}'", spec.shaderName, spec.debugName);
         } else {
@@ -587,6 +601,10 @@ std::shared_ptr<SharedAssetData> ModelSystem::loadAsset(const ModelAssetSpec& sp
     }
 
     asset->prototypeLoaded = true;
+    ::biofuel::engine::debug::MemoryTelemetry::add(
+        ::biofuel::engine::debug::ResourceKind::ModelAsset,
+        1,
+        asset->estimatedBytes);
     spdlog::info("ModelSystem: preloaded model '{}'", spec.debugName);
     return asset;
 }
@@ -641,11 +659,23 @@ void ModelSystem::unloadAsset(SharedAssetData& asset) noexcept {
         asset.animationCount = 0;
     }
 
-    if (asset.prototypeLoaded) {
-        UnloadModel(asset.prototype);
-        asset.prototype = {};
-        asset.prototypeLoaded = false;
+    unloadPrototype(asset);
+    asset.bindPoseCopy.clear();
+    asset.keyframeClips.clear();
+}
+
+void ModelSystem::unloadPrototype(SharedAssetData& asset) noexcept {
+    if (!asset.prototypeLoaded) {
+        return;
     }
+
+    UnloadModel(asset.prototype);
+    asset.prototype = {};
+    asset.prototypeLoaded = false;
+    ::biofuel::engine::debug::MemoryTelemetry::remove(
+        ::biofuel::engine::debug::ResourceKind::ModelAsset,
+        1,
+        asset.estimatedBytes);
 }
 
 void ModelSystem::pruneInstances() {
@@ -664,6 +694,16 @@ std::shared_ptr<ModelInstance> ModelSystem::findInstance(const u64 instanceId) c
         return nullptr;
     }
     return it->second.lock();
+}
+
+std::shared_ptr<ModelInstance> ModelSystem::findLiveInstance(const ModelAssetId assetId) const {
+    for (const auto& [_, weakInstance] : m_instances) {
+        auto instance = weakInstance.lock();
+        if (instance && instance->assetId() == assetId && instance->ready()) {
+            return instance;
+        }
+    }
+    return nullptr;
 }
 
 void ModelSystem::onSetState(const ::biofuel::engine::events::model::ModelSetStateEvent& event) {

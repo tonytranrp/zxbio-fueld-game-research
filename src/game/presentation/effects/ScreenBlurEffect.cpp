@@ -1,6 +1,7 @@
 #include "ScreenBlurEffect.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/graphics/Render.hpp"
+#include "engine/graphics/TransientResourceCache.hpp"
 #include "engine/graphics/shaders/BlurCompositeModule.hpp"
 #include "engine/graphics/shaders/BlurHModule.hpp"
 #include "engine/graphics/shaders/BlurVModule.hpp"
@@ -32,9 +33,13 @@ void ScreenBlurEffect::init(const i32 width, const i32 height, const BlurConfig&
 }
 
 void ScreenBlurEffect::shutdown() {
-    m_captureSurface.release();
-    m_blurSurfaceA.release();
-    m_blurSurfaceB.release();
+    auto& cache = ::biofuel::engine::graphics::TransientResourceCache::instance();
+    cache.releaseSurface(CAPTURE_CACHE_KEY, CACHE_TTL_SECONDS);
+    cache.releaseSurface(BLUR_A_CACHE_KEY, CACHE_TTL_SECONDS);
+    cache.releaseSurface(BLUR_B_CACHE_KEY, CACHE_TTL_SECONDS);
+    m_captureSurface = nullptr;
+    m_blurSurfaceA = nullptr;
+    m_blurSurfaceB = nullptr;
     invalidateCache();
     m_cachedWidth = 0;
     m_cachedHeight = 0;
@@ -104,6 +109,20 @@ f32 ScreenBlurEffect::currentBlurRadius() const noexcept {
     return m_blurRadius;
 }
 
+void ScreenBlurEffect::warmCache(CaptureCallback capturePrevious, void* userData) {
+    if (capturePrevious == nullptr) {
+        return;
+    }
+
+    const i32 sw = ::biofuel::engine::graphics::Renderer::screenWidth();
+    const i32 sh = ::biofuel::engine::graphics::Renderer::screenHeight();
+    ensureTextures(sw, sh);
+
+    if (!m_blurCacheValid) {
+        rebuildBlurCache(capturePrevious, userData);
+    }
+}
+
 void ScreenBlurEffect::update(const f32 dt) {
     const i32 sw = ::biofuel::engine::graphics::Renderer::screenWidth();
     const i32 sh = ::biofuel::engine::graphics::Renderer::screenHeight();
@@ -123,7 +142,7 @@ void ScreenBlurEffect::update(const f32 dt) {
     }
 
     const f32 t = (m_duration > 0.0f) ? (m_elapsed / m_duration) : 1.0f;
-    const f32 eased = easeOutQuad(t);
+    const f32 eased = smoothStep(t);
     const f32 tintValue = std::clamp(m_from + (m_to - m_from) * eased, 0.0f, 255.0f);
     m_tintAlpha = static_cast<u8>(tintValue);
     m_blurRadius = std::max(0.0f, m_fromBlurRadius + (m_toBlurRadius - m_fromBlurRadius) * eased);
@@ -169,7 +188,7 @@ void ScreenBlurEffect::render(CaptureCallback capturePrevious, void* userData) {
         : 0.0f;
     const u8 blurAlpha = static_cast<u8>(std::clamp(blurRatio * 255.0f, 0.0f, 255.0f));
     if (blurAlpha > 0) {
-        Renderer::drawRenderTexture(m_blurSurfaceA.texture(), 0, 0, sw, sh, Color{255, 255, 255, blurAlpha});
+        Renderer::drawRenderTexture(blurSurfaceA().texture(), 0, 0, sw, sh, Color{255, 255, 255, blurAlpha});
     }
 
     if (m_tintAlpha > 0) {
@@ -188,38 +207,38 @@ void ScreenBlurEffect::rebuildBlurCache(CaptureCallback capturePrevious, void* u
     const i32 sw = Renderer::screenWidth();
     const i32 sh = Renderer::screenHeight();
 
-    capturePrevious(userData, m_captureSurface);
+    capturePrevious(userData, captureSurface());
 
     auto& shaderManager = ::biofuel::engine::runtime::Runtime::shader();
     const bool canBlur = ::biofuel::engine::runtime::typed::Shaders::loaded<::biofuel::engine::runtime::typed::shader::BlurH>(shaderManager) &&
         ::biofuel::engine::runtime::typed::Shaders::loaded<::biofuel::engine::runtime::typed::shader::BlurV>(shaderManager) &&
-        m_blurSurfaceA.valid() &&
-        m_blurSurfaceB.valid();
+        blurSurfaceA().valid() &&
+        blurSurfaceB().valid();
 
     if (canBlur) {
         {
-            ScopedTextureMode textureScope(m_blurSurfaceA.target());
+            ScopedTextureMode textureScope(blurSurfaceA().target());
             ClearBackground(BLANK);
             Renderer::drawRenderTexture(
-                m_captureSurface.texture(),
+                captureSurface().texture(),
                 0,
                 0,
-                m_blurSurfaceA.width(),
-                m_blurSurfaceA.height(),
+                blurSurfaceA().width(),
+                blurSurfaceA().height(),
                 WHITE
             );
         }
 
         Shader blurH = ::biofuel::engine::runtime::typed::Shaders::get<::biofuel::engine::runtime::typed::shader::BlurH>(shaderManager);
         Shader blurV = ::biofuel::engine::runtime::typed::Shaders::get<::biofuel::engine::runtime::typed::shader::BlurV>(shaderManager);
-        Texture2D source = m_blurSurfaceA.texture();
+        Texture2D source = blurSurfaceA().texture();
         const i32 blurPasses = std::clamp(m_config.blurPassCount, 1, 4);
         const f32 cacheRadius = m_config.blurRadius;
 
         for (i32 i = 0; i < blurPasses; ++i) {
-            blurPass(blurH, source, m_blurSurfaceB.target(), cacheRadius, true);
-            blurPass(blurV, m_blurSurfaceB.texture(), m_blurSurfaceA.target(), cacheRadius, false);
-            source = m_blurSurfaceA.texture();
+            blurPass(blurH, source, blurSurfaceB().target(), cacheRadius, true);
+            blurPass(blurV, blurSurfaceB().texture(), blurSurfaceA().target(), cacheRadius, false);
+            source = blurSurfaceA().texture();
         }
 
         if (::biofuel::engine::runtime::typed::Shaders::loaded<::biofuel::engine::runtime::typed::shader::BlurComposite>(shaderManager)) {
@@ -241,27 +260,27 @@ void ScreenBlurEffect::rebuildBlurCache(CaptureCallback capturePrevious, void* u
                 composite, m_cachedDimLoc, &m_config.dimStrength);
 
             {
-                ScopedTextureMode textureScope(m_blurSurfaceB.target());
+                ScopedTextureMode textureScope(blurSurfaceB().target());
                 ClearBackground(BLANK);
                 ScopedShaderMode shaderScope(composite);
-                Renderer::drawRenderTexture(source, 0, 0, m_blurSurfaceB.width(), m_blurSurfaceB.height(), WHITE);
+                Renderer::drawRenderTexture(source, 0, 0, blurSurfaceB().width(), blurSurfaceB().height(), WHITE);
             }
             {
-                ScopedTextureMode textureScope(m_blurSurfaceA.target());
+                ScopedTextureMode textureScope(blurSurfaceA().target());
                 ClearBackground(BLANK);
-                Renderer::drawRenderTexture(m_blurSurfaceB.texture(), 0, 0, m_blurSurfaceA.width(), m_blurSurfaceA.height(), WHITE);
+                Renderer::drawRenderTexture(blurSurfaceB().texture(), 0, 0, blurSurfaceA().width(), blurSurfaceA().height(), WHITE);
             }
         } else {
-            if (source.id != m_blurSurfaceA.texture().id) {
-                ScopedTextureMode textureScope(m_blurSurfaceA.target());
+            if (source.id != blurSurfaceA().texture().id) {
+                ScopedTextureMode textureScope(blurSurfaceA().target());
                 ClearBackground(BLANK);
                 Renderer::drawRenderTexture(source, 0, 0, sw, sh, WHITE);
             }
         }
     } else {
-        ScopedTextureMode textureScope(m_blurSurfaceA.target());
+        ScopedTextureMode textureScope(blurSurfaceA().target());
         ClearBackground(BLANK);
-        Renderer::drawRenderTexture(m_captureSurface.texture(), 0, 0, sw, sh, WHITE);
+        Renderer::drawRenderTexture(captureSurface().texture(), 0, 0, sw, sh, WHITE);
     }
 
     m_blurCacheValid = true;
@@ -276,15 +295,19 @@ void ScreenBlurEffect::ensureTextures(const i32 width, const i32 height) {
         height == m_cachedHeight &&
         captureScale - m_cachedCaptureScale < 0.001f &&
         captureScale - m_cachedCaptureScale > -0.001f &&
-        m_captureSurface.valid() &&
-        m_blurSurfaceA.valid() &&
-        m_blurSurfaceB.valid()) {
+        m_captureSurface != nullptr &&
+        m_blurSurfaceA != nullptr &&
+        m_blurSurfaceB != nullptr &&
+        m_captureSurface->valid() &&
+        m_blurSurfaceA->valid() &&
+        m_blurSurfaceB->valid()) {
         return;
     }
 
-    m_captureSurface.ensureSize(width, height);
-    m_blurSurfaceA.ensureSize(scaledWidth, scaledHeight);
-    m_blurSurfaceB.ensureSize(scaledWidth, scaledHeight);
+    auto& cache = ::biofuel::engine::graphics::TransientResourceCache::instance();
+    m_captureSurface = &cache.acquireSurface(CAPTURE_CACHE_KEY, width, height);
+    m_blurSurfaceA = &cache.acquireSurface(BLUR_A_CACHE_KEY, scaledWidth, scaledHeight);
+    m_blurSurfaceB = &cache.acquireSurface(BLUR_B_CACHE_KEY, scaledWidth, scaledHeight);
     invalidateCache();
     m_cachedWidth = width;
     m_cachedHeight = height;
@@ -347,8 +370,9 @@ void ScreenBlurEffect::resetAnimation(const f32 from, const f32 to, const f32 du
     m_elapsed = 0.0f;
 }
 
-f32 ScreenBlurEffect::easeOutQuad(const f32 t) const noexcept {
-    return t * (2.0f - t);
+f32 ScreenBlurEffect::smoothStep(const f32 t) const noexcept {
+    const f32 clamped = std::clamp(t, 0.0f, 1.0f);
+    return clamped * clamped * (3.0f - 2.0f * clamped);
 }
 
 } // namespace biofuel::game::presentation::effects

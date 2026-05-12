@@ -1,6 +1,7 @@
 #include "App.hpp"
 #include "engine/graphics/Render.hpp"
 #include "engine/graphics/ShaderManager.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/graphics/shaders/LoadingPreludeModule.hpp"
 #include "engine/graphics/shaders/MenuOptionModule.hpp"
 #include "engine/audio/AudioManager.hpp"
@@ -72,6 +73,7 @@ void Application::shutdown() {
         return;
     }
 
+    ::biofuel::engine::debug::MemoryTelemetry::snapshot("app.shutdown.begin");
     auto& services = ::biofuel::engine::runtime::Runtime::services();
     services.get<::biofuel::engine::runtime::typed::ScreenService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::ModelService>().shutdown();
@@ -85,6 +87,7 @@ void Application::shutdown() {
     killWindowDragTimer();
 #endif
     CloseWindow();
+    ::biofuel::engine::debug::MemoryTelemetry::snapshot("app.shutdown.end");
     m_initialized = false;
     m_running = false;
 }
@@ -162,6 +165,15 @@ void Application::render() {
             Renderer::screenWidth(), screenH, GetFPS()),
         overlayX + 6, overlayY + 1, 14, {108, 112, 126, 255}
     );
+#ifdef BIOFUEL_DEBUG_MEMORY_STATS
+    const auto processMemory = ::biofuel::engine::debug::MemoryTelemetry::processMemory();
+    Renderer::drawText(
+        TextFormat("RAM: %.1f MiB | Private: %.1f MiB",
+            static_cast<double>(processMemory.workingSetBytes) / (1024.0 * 1024.0),
+            static_cast<double>(processMemory.privateBytes) / (1024.0 * 1024.0)),
+        overlayX + 6, overlayY - 20, 14, {108, 112, 126, 255}
+    );
+#endif
 #endif
 
     Renderer::endFrame();

@@ -4,38 +4,25 @@ This folder stores authored runtime model assets for the game.
 
 ## Runtime format policy
 
-- `.glb` is the standard runtime format for this repo
-- other Raylib-supported model formats are allowed when needed
-- only `.glb` is first-class in the current docs, examples, and testing
+- `.glb` is the standard runtime format for this repo.
+- Other Raylib-supported model formats are allowed when needed.
+- Procedural geometry, such as the Debug hand lab, does not belong here.
 
 ## Folder rules
 
-- each runtime model lives in its own subfolder
-- that subfolder should contain the model file and a local `README.md`
-- the local `README.md` should record attribution, source URL, license, and any preprocessing notes
+- Each runtime model lives in its own subfolder.
+- That subfolder should contain the model file and a local `README.md`.
+- The local `README.md` should record attribution, source URL, license, and preprocessing notes.
 
 Example:
 
 ```text
 assets/models/
-`-- menu_transition_hands/
-    |-- rigged_hand.glb
+`-- harvester_popout/
+    |-- harvester.glb
     `-- README.md
 ```
 
 ## Registration rule
 
-If a model is used by the runtime, especially in startup-preloaded UI or screen flows, it must be registered in `src/Systems/Model/ModelSystem.cpp` through the typed model registry.
-
-That registry is the source of truth for:
-
-- debug/display name
-- model path
-- optional shader pairing
-- preload-on-startup behavior
-- optional animation-state metadata
-- optional authored keyframe clip factory for rigged assets
-
-## Shaders
-
-Model-local shaders still live in `assets/shaders/`, not inside the model folder. The model registry pairs them with the correct asset.
+Runtime models must be registered in `src/game/models/ModelSystem.cpp` through the typed model registry. The registry owns debug name, model path, optional shader pairing, preload behavior, animation metadata, and optional keyframe clip factories.

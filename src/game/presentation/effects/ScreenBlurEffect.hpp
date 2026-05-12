@@ -3,6 +3,7 @@
 #include "engine/core/Types.hpp"
 #include "engine/graphics/RenderSurface.hpp"
 #include <raylib.h>
+#include <string_view>
 
 namespace biofuel::engine::ui {
     class Screen;
@@ -41,6 +42,7 @@ public:
     [[nodiscard]] u8 currentTintAlpha() const noexcept;
     [[nodiscard]] f32 currentBlurRadius() const noexcept;
 
+    void warmCache(CaptureCallback capturePrevious, void* userData);
     void update(f32 dt);
     void render(CaptureCallback capturePrevious, void* userData);
 
@@ -52,15 +54,23 @@ private:
     };
 
     void resetAnimation(f32 from, f32 to, f32 duration) noexcept;
-    [[nodiscard]] f32 easeOutQuad(f32 t) const noexcept;
+    [[nodiscard]] f32 smoothStep(f32 t) const noexcept;
     void ensureTextures(i32 width, i32 height);
     void invalidateCache() noexcept;
     void rebuildBlurCache(CaptureCallback capturePrevious, void* userData);
     void blurPass(Shader shader, Texture2D source, RenderTexture2D dest, f32 radius, bool horizontal);
+    [[nodiscard]] ::biofuel::engine::graphics::RenderSurface& captureSurface() noexcept { return *m_captureSurface; }
+    [[nodiscard]] ::biofuel::engine::graphics::RenderSurface& blurSurfaceA() noexcept { return *m_blurSurfaceA; }
+    [[nodiscard]] ::biofuel::engine::graphics::RenderSurface& blurSurfaceB() noexcept { return *m_blurSurfaceB; }
 
-    ::biofuel::engine::graphics::RenderSurface m_captureSurface;
-    ::biofuel::engine::graphics::RenderSurface m_blurSurfaceA;
-    ::biofuel::engine::graphics::RenderSurface m_blurSurfaceB;
+    inline static constexpr f32 CACHE_TTL_SECONDS = 2.0f;
+    inline static constexpr std::string_view CAPTURE_CACHE_KEY = "pause.blur.capture";
+    inline static constexpr std::string_view BLUR_A_CACHE_KEY = "pause.blur.a";
+    inline static constexpr std::string_view BLUR_B_CACHE_KEY = "pause.blur.b";
+
+    ::biofuel::engine::graphics::RenderSurface* m_captureSurface = nullptr;
+    ::biofuel::engine::graphics::RenderSurface* m_blurSurfaceA = nullptr;
+    ::biofuel::engine::graphics::RenderSurface* m_blurSurfaceB = nullptr;
 
     BlurConfig m_config{};
     State m_state = State::Idle;

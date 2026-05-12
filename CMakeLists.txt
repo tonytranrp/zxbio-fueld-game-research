@@ -72,8 +72,17 @@ CPMAddPackage(
         "ENTT_BUILD_TESTING OFF"
 )
 
-# nlohmann/json and Taskflow are removed - neither is used by any code.
-# Re-add when gameplay data loading or parallel task scheduling is implemented.
+# nlohmann/json - typed runtime config and preset loading.
+CPMAddPackage(
+    NAME nlohmann_json
+    URL https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz
+    OPTIONS
+        "JSON_BuildTests OFF"
+        "JSON_Install OFF"
+)
+
+# Taskflow is removed - it is not used by any code.
+# Re-add when parallel task scheduling is implemented.
 
 # spdlog - Logging (header-only mode)
 CPMAddPackage(

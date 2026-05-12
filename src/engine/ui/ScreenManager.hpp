@@ -88,7 +88,6 @@ public:
 
     // Crossfade transition preloading — called during LoadingScreen init tasks
     void preloadCrossfadeShader();
-    void preloadTransitionTextures();
 
     ScreenManager(const ScreenManager&) = delete;
     ScreenManager& operator=(const ScreenManager&) = delete;

@@ -35,7 +35,7 @@ struct TransitionPolicy<::biofuel::game::screens::PausePopupScreen> {
 template<>
 struct StackPolicy<::biofuel::game::screens::PausePopupScreen> {
     static constexpr StackPolicyData VALUE{
-        .renderBelow = false,
+        .renderBelow = true,
         .updateBelow = false,
         .inputBelow = false,
     };

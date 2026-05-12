@@ -1,4 +1,5 @@
 #include "AudioManager.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include <algorithm>
 
 namespace biofuel::engine::audio {
@@ -50,12 +51,21 @@ void AudioManager::loadSound(std::string_view name, std::string_view path) {
     const std::string filePath(path);
     Sound s = LoadSound(filePath.c_str());
     m_sounds.emplace(key, s);
+    ::biofuel::engine::debug::MemoryTelemetry::add(
+        ::biofuel::engine::debug::ResourceKind::AudioAsset,
+        1,
+        static_cast<i64>(s.frameCount) * static_cast<i64>(s.stream.channels) * static_cast<i64>(s.stream.sampleSize / 8));
     applySfxVolume(key);
 }
 
 void AudioManager::unloadSound(std::string_view name) {
     const std::string key(name);
     if (auto it = m_sounds.find(key); it != m_sounds.end()) {
+        const Sound sound = it->second;
+        ::biofuel::engine::debug::MemoryTelemetry::remove(
+            ::biofuel::engine::debug::ResourceKind::AudioAsset,
+            1,
+            static_cast<i64>(sound.frameCount) * static_cast<i64>(sound.stream.channels) * static_cast<i64>(sound.stream.sampleSize / 8));
         UnloadSound(it->second);
         m_sounds.erase(it);
     }
@@ -63,6 +73,10 @@ void AudioManager::unloadSound(std::string_view name) {
 
 void AudioManager::unloadAllSounds() noexcept {
     for (auto& [_, s] : m_sounds) {
+        ::biofuel::engine::debug::MemoryTelemetry::remove(
+            ::biofuel::engine::debug::ResourceKind::AudioAsset,
+            1,
+            static_cast<i64>(s.frameCount) * static_cast<i64>(s.stream.channels) * static_cast<i64>(s.stream.sampleSize / 8));
         UnloadSound(s);
     }
     m_sounds.clear();
@@ -106,6 +120,10 @@ void AudioManager::loadMusic(std::string_view name, std::string_view path) {
     Music m = LoadMusicStream(filePath.c_str());
     m.looping = true;
     m_musicTracks.emplace(key, m);
+    ::biofuel::engine::debug::MemoryTelemetry::add(
+        ::biofuel::engine::debug::ResourceKind::AudioAsset,
+        1,
+        0);
 }
 
 void AudioManager::unloadMusic(std::string_view name) {
@@ -115,6 +133,10 @@ void AudioManager::unloadMusic(std::string_view name) {
             StopMusicStream(it->second);
             m_currentMusic.clear();
         }
+        ::biofuel::engine::debug::MemoryTelemetry::remove(
+            ::biofuel::engine::debug::ResourceKind::AudioAsset,
+            1,
+            0);
         UnloadMusicStream(it->second);
         m_musicTracks.erase(it);
     }
@@ -126,6 +148,10 @@ void AudioManager::unloadAllMusic() noexcept {
         m_currentMusic.clear();
     }
     for (auto& [_, m] : m_musicTracks) {
+        ::biofuel::engine::debug::MemoryTelemetry::remove(
+            ::biofuel::engine::debug::ResourceKind::AudioAsset,
+            1,
+            0);
         UnloadMusicStream(m);
     }
     m_musicTracks.clear();

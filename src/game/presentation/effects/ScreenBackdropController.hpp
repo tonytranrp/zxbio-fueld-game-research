@@ -42,6 +42,7 @@ public:
 
 private:
     void ensureShader() const;
+    [[nodiscard]] f32 shaderTime() const noexcept;
 
     ScreenBackdropConfig m_config{};
     mutable Shader m_shader{};
@@ -57,6 +58,7 @@ private:
         TransparentHash, std::equal_to<>> m_uniformCache;
 
     f32 m_time = 0.0f;
+    f64 m_timeOrigin = 0.0;
     f32 m_revealElapsed = 0.0f;
 };
 

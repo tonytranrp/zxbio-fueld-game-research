@@ -16,9 +16,13 @@
 #include "engine/video/VideoManager.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/runtime/typed/Assets.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/graphics/shaders/TypedShaderModule.hpp"
 #include "engine/animation/AnimationManager.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
+#if defined(BIOFUEL_ENABLE_DEV_SCREENS) && defined(BIOFUEL_DEV_STARTUP_HAND_LAB)
+#include "game/screens/dev_hand_lab/DevHandLabScreen.hpp"
+#endif
 #include <raylib.h>
 #include <string>
 
@@ -167,6 +171,7 @@ LoadingScreen::LoadingScreen(i32 width, i32 height, i32 targetFps)
 
 void LoadingScreen::buildTasks() {
     m_tasks.clear();
+    m_tasks.reserve(24);
 
     m_tasks.add({"Configuring input...", 0.3f, []() {
         SetExitKey(KEY_NULL);
@@ -243,9 +248,6 @@ void LoadingScreen::buildTasks() {
     m_tasks.add({"Caching transition shader...", 1.0f, []() {
         ::biofuel::engine::runtime::Runtime::screen().preloadCrossfadeShader();
     }});
-    m_tasks.add({"Allocating render buffers...", 1.5f, []() {
-        ::biofuel::engine::runtime::Runtime::screen().preloadTransitionTextures();
-    }});
 }
 
 void LoadingScreen::onEnter() {
@@ -255,6 +257,7 @@ void LoadingScreen::onEnter() {
     m_tasksDone = false;
     m_allowSkip = false;
     m_transitioned = false;
+    m_reportedStartupMemory = false;
 
     m_backdrop.configure(game::presentation::effects::ScreenBackdropConfig{
         .shaderName = ::biofuel::engine::graphics::shader::LoadingPreludeModule::NAME,
@@ -300,6 +303,10 @@ void LoadingScreen::onUpdate(const f32 dt) {
     }
 
     if (m_tasksDone && m_displayProgress >= 1.0f && m_elapsed >= MIN_DISPLAY_SECONDS && !m_transitioned) {
+        if (!m_reportedStartupMemory) {
+            m_reportedStartupMemory = true;
+            ::biofuel::engine::debug::MemoryTelemetry::snapshot("startup.complete");
+        }
         m_transitioned = true;
         transitionToNext();
     }
@@ -334,7 +341,9 @@ void LoadingScreen::onInput() {
 
 void LoadingScreen::transitionToNext() {
     if (auto* sm = manager()) {
-#ifdef BIOFUEL_DEV_STARTUP_IDLE_VIDEO
+#if defined(BIOFUEL_ENABLE_DEV_SCREENS) && defined(BIOFUEL_DEV_STARTUP_HAND_LAB)
+        sm->queueReplace<DevHandLabScreen>();
+#elif defined(BIOFUEL_DEV_STARTUP_IDLE_VIDEO)
         sm->queueReplace<IdleScreen>(IdleScreen::idleVideoPath());
 #else
         sm->queueReplace<MainMenuScreen>();

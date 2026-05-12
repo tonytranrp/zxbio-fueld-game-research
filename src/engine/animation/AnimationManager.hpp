@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/animation/Animation.hpp"
+#include "engine/debug/MemoryTelemetry.hpp"
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -29,6 +30,10 @@ public:
             "AnimationManager only supports Animation<f32>, Animation<Color>, "
             "Animation<Vector2>, Animation<Rectangle>");
         m_animations.emplace_back(std::make_unique<AnimationWrapper<T>>(std::move(anim)));
+        ::biofuel::engine::debug::MemoryTelemetry::add(
+            ::biofuel::engine::debug::ResourceKind::Animation,
+            1,
+            0);
     }
 
     void add(std::unique_ptr<Animation<f32>> anim);
