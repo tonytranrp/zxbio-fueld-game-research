@@ -2,18 +2,25 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
 import queue
 import socket
-import struct
 import sys
 import threading
 import time
 from typing import Any
 
 from protocol import hand_from_result, pack_frame, pack_preview
+
+
+@dataclass(frozen=True)
+class CameraSnapshot:
+    sequence: int
+    monotonic_ms: int
+    frame: Any
 
 
 class WorkerState:
@@ -27,6 +34,10 @@ class WorkerState:
         self.latest_preview: bytes | None = None
         self.latest_preview_sequence = 0
         self.preview_lock = threading.Lock()
+        self.latest_camera_frame: Any | None = None
+        self.latest_camera_sequence = 0
+        self.latest_camera_time_ms = 0
+        self.camera_lock = threading.Lock()
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -54,7 +65,65 @@ def parent_alive(parent_pid: int) -> bool:
         return False
 
 
-def choose_camera_mode(capture: Any, config: dict[str, Any]) -> tuple[int, int, int]:
+def camera_indices(config: dict[str, Any], requested_index: int) -> list[int]:
+    camera_config = config.get("camera", {})
+    indices = [requested_index]
+    for value in camera_config.get("candidate_indices", [0, 1, 2, 3]):
+        try:
+            index = int(value)
+        except (TypeError, ValueError):
+            continue
+        if index not in indices:
+            indices.append(index)
+    return indices
+
+
+def camera_backends(config: dict[str, Any]) -> list[tuple[str, int]]:
+    import cv2
+
+    camera_config = config.get("camera", {})
+    names = camera_config.get("backends")
+    if not names:
+        names = ["dshow", "default", "msmf"] if os.name == "nt" else ["default"]
+
+    values: list[tuple[str, int]] = []
+    for raw_name in names:
+        name = str(raw_name).lower()
+        if name == "default":
+            values.append(("default", 0))
+        elif name == "dshow" and hasattr(cv2, "CAP_DSHOW"):
+            values.append(("dshow", int(cv2.CAP_DSHOW)))
+        elif name == "msmf" and hasattr(cv2, "CAP_MSMF"):
+            values.append(("msmf", int(cv2.CAP_MSMF)))
+        elif name == "v4l2" and hasattr(cv2, "CAP_V4L2"):
+            values.append(("v4l2", int(cv2.CAP_V4L2)))
+    return values or [("default", 0)]
+
+
+def open_camera(config: dict[str, Any], requested_index: int) -> tuple[Any, int, str]:
+    import cv2
+
+    for index in camera_indices(config, requested_index):
+        for backend_name, backend_id in camera_backends(config):
+            capture = cv2.VideoCapture(index) if backend_id == 0 else cv2.VideoCapture(index, backend_id)
+            if capture.isOpened():
+                return capture, index, backend_name
+            capture.release()
+    raise RuntimeError(f"Could not open any configured camera index near {requested_index}")
+
+
+def read_camera_frame(capture: Any, attempts: int = 30, delay_seconds: float = 0.05) -> Any | None:
+    for _ in range(max(1, attempts)):
+        ok, frame = capture.read()
+        if ok and frame is not None and frame.size > 0:
+            return frame
+        time.sleep(delay_seconds)
+    return None
+
+
+def choose_camera_mode(capture: Any, config: dict[str, Any]) -> tuple[tuple[int, int, int], Any | None]:
+    import cv2
+
     candidates = config.get("camera", {}).get("candidate_modes", [])
     if not candidates:
         candidates = [
@@ -62,24 +131,26 @@ def choose_camera_mode(capture: Any, config: dict[str, Any]) -> tuple[int, int, 
             {"width": 640, "height": 480, "fps": 30},
         ]
     best = (640, 480, 30)
+    warmup_frame = None
     for candidate in candidates:
         width = int(candidate.get("width", 640))
         height = int(candidate.get("height", 480))
         fps = int(candidate.get("fps", 30))
-        capture.set(3, width)
-        capture.set(4, height)
-        capture.set(5, fps)
-        ok, frame = capture.read()
-        if ok and frame is not None and frame.size > 0:
-            actual_width = int(capture.get(3)) or width
-            actual_height = int(capture.get(4)) or height
-            actual_fps = int(capture.get(5)) or fps
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        capture.set(cv2.CAP_PROP_FPS, fps)
+        frame = read_camera_frame(capture, attempts=8, delay_seconds=0.04)
+        if frame is not None:
+            actual_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)) or width
+            actual_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT)) or height
+            actual_fps = int(capture.get(cv2.CAP_PROP_FPS)) or fps
             best = (actual_width, actual_height, actual_fps)
+            warmup_frame = frame
             break
-    capture.set(3, best[0])
-    capture.set(4, best[1])
-    capture.set(5, best[2])
-    return best
+    capture.set(cv2.CAP_PROP_FRAME_WIDTH, best[0])
+    capture.set(cv2.CAP_PROP_FRAME_HEIGHT, best[1])
+    capture.set(cv2.CAP_PROP_FPS, best[2])
+    return best, warmup_frame
 
 
 def control_server(state: WorkerState) -> None:
@@ -151,27 +222,108 @@ def encode_preview(frame: Any, config: dict[str, Any]) -> bytes | None:
     import cv2
 
     preview_config = config.get("preview", {})
-    max_width = int(preview_config.get("max_width", 480))
-    quality = int(preview_config.get("jpeg_quality", 72))
+    max_width = max(1, int(preview_config.get("max_width", 480)))
+    quality = min(100, max(1, int(preview_config.get("jpeg_quality", 72))))
     output = frame
     height, width = frame.shape[:2]
+    if width <= 0 or height <= 0:
+        return None
     if width > max_width:
         scale = max_width / float(width)
-        output = cv2.resize(frame, (max_width, int(height * scale)))
+        output = cv2.resize(frame, (max_width, max(1, int(round(height * scale)))))
     ok, encoded = cv2.imencode(".jpg", output, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
     if not ok:
         return None
     return encoded.tobytes()
 
 
+def set_latest_camera_frame(state: WorkerState, frame: Any, sequence: int) -> None:
+    now_ms = int(time.monotonic() * 1000)
+    with state.camera_lock:
+        state.latest_camera_frame = frame
+        state.latest_camera_sequence = sequence
+        state.latest_camera_time_ms = now_ms
+
+
+def latest_camera_frame(state: WorkerState) -> CameraSnapshot | None:
+    with state.camera_lock:
+        if state.latest_camera_frame is None:
+            return None
+        return CameraSnapshot(
+            sequence=state.latest_camera_sequence,
+            monotonic_ms=state.latest_camera_time_ms,
+            frame=state.latest_camera_frame,
+        )
+
+
+def clear_camera_frame(state: WorkerState) -> None:
+    with state.camera_lock:
+        state.latest_camera_frame = None
+        state.latest_camera_sequence = 0
+        state.latest_camera_time_ms = 0
+
+
+def set_latest_preview(state: WorkerState, sequence: int, frame: Any) -> None:
+    jpeg = encode_preview(frame, state.config)
+    if jpeg is None:
+        return
+    with state.preview_lock:
+        state.latest_preview = jpeg
+        state.latest_preview_sequence = sequence
+
+
+def interval_seconds(config: dict[str, Any], section: str) -> float | None:
+    value = config.get(section, {}).get("max_fps", "camera")
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {"", "camera", "auto", "adaptive"}:
+        return None
+    try:
+        max_fps = float(value)
+    except (TypeError, ValueError):
+        return None
+    if max_fps <= 0.0:
+        return None
+    return 1.0 / max(1.0, max_fps)
+
+
+def tracking_interval_seconds(config: dict[str, Any]) -> float:
+    return interval_seconds(config, "mediapipe") or 0.0
+
+
+def camera_capture_loop(state: WorkerState, capture: Any, first_sequence: int) -> None:
+    sequence = first_sequence
+    while state.tracking_event.is_set() and not state.stop_event.is_set():
+        ok, frame = capture.read()
+        if not ok or frame is None or frame.size == 0:
+            time.sleep(0.01)
+            continue
+
+        set_latest_camera_frame(state, frame, sequence)
+        sequence += 1
+
+
+def preview_encode_loop(state: WorkerState) -> None:
+    last_preview_time = 0.0
+    last_preview_sequence = -1
+    while state.tracking_event.is_set() and not state.stop_event.is_set():
+        if state.preview_enabled:
+            snapshot = latest_camera_frame(state)
+            if snapshot is not None:
+                sequence = snapshot.sequence
+                now = time.monotonic()
+                interval = interval_seconds(state.config, "preview")
+                paced = interval is None or now - last_preview_time >= interval
+                if sequence != last_preview_sequence and paced:
+                    set_latest_preview(state, sequence, snapshot.frame)
+                    last_preview_sequence = sequence
+                    last_preview_time = now
+                    continue
+        time.sleep(0.002)
+
+
 def tracking_loop(state: WorkerState) -> None:
     import cv2
-    import mediapipe as mp
-
-    BaseOptions = mp.tasks.BaseOptions
-    GestureRecognizer = mp.tasks.vision.GestureRecognizer
-    GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
-    VisionRunningMode = mp.tasks.vision.RunningMode
 
     sequence = 0
 
@@ -186,18 +338,60 @@ def tracking_loop(state: WorkerState) -> None:
                 command = state.command_queue.get_nowait()
 
             capture = None
+            camera_thread = None
+            preview_thread = None
             try:
                 camera_config = state.config.get("camera", {})
                 mp_config = state.config.get("mediapipe", {})
                 camera_index = int(command.get("camera_index", camera_config.get("index", 0)))
                 gesture_threshold = float(mp_config.get("gesture_score_threshold", 0.0))
-                capture = cv2.VideoCapture(camera_index)
-                if not capture.isOpened():
-                    state.tracking_event.clear()
-                    time.sleep(0.5)
-                    continue
+                handedness_threshold = float(mp_config.get("handedness_score_threshold", 0.0))
+                handedness_margin_threshold = float(mp_config.get("handedness_margin_threshold", 0.0))
+                capture, active_camera_index, active_backend = open_camera(state.config, camera_index)
+                print(
+                    f"hand-tracking camera opened: index={active_camera_index} backend={active_backend}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
-                choose_camera_mode(capture, state.config)
+                _, warmup_frame = choose_camera_mode(capture, state.config)
+                if warmup_frame is None:
+                    warmup_frame = read_camera_frame(capture)
+                if warmup_frame is None:
+                    raise RuntimeError("Camera opened but did not deliver frames")
+
+                clear_camera_frame(state)
+                set_latest_camera_frame(state, warmup_frame, 0)
+                frame_height, frame_width = warmup_frame.shape[:2]
+                udp.sendto(
+                    pack_frame(
+                        sequence=sequence,
+                        timestamp_ms=int(time.time() * 1000),
+                        camera_width=int(frame_width),
+                        camera_height=int(frame_height),
+                        hands=[],
+                    ),
+                    (state.args.udp_host, int(state.args.udp_port)),
+                )
+                if state.preview_enabled:
+                    set_latest_preview(state, sequence, warmup_frame)
+                sequence += 1
+                camera_thread = threading.Thread(
+                    target=camera_capture_loop,
+                    args=(state, capture, 1),
+                    daemon=True,
+                )
+                camera_thread.start()
+                preview_thread = threading.Thread(target=preview_encode_loop, args=(state,), daemon=True)
+                preview_thread.start()
+
+                import mediapipe as mp
+
+                BaseOptions = mp.tasks.BaseOptions
+                GestureRecognizer = mp.tasks.vision.GestureRecognizer
+                GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
+                VisionRunningMode = mp.tasks.vision.RunningMode
+
                 options = GestureRecognizerOptions(
                     base_options=BaseOptions(model_asset_path=str(Path(state.args.model).resolve())),
                     running_mode=VisionRunningMode.VIDEO,
@@ -210,23 +404,45 @@ def tracking_loop(state: WorkerState) -> None:
                 with GestureRecognizer.create_from_options(options) as recognizer:
                     started_ms = int(time.monotonic() * 1000)
                     last_frame_ms = -1
+                    last_camera_sequence = -1
+                    last_tracking_time = 0.0
                     while state.tracking_event.is_set() and not state.stop_event.is_set():
-                        ok, frame = capture.read()
-                        if not ok or frame is None:
-                            time.sleep(0.02)
+                        snapshot = latest_camera_frame(state)
+                        if snapshot is None:
+                            time.sleep(0.005)
                             continue
-                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                        camera_sequence = snapshot.sequence
+                        if camera_sequence == last_camera_sequence:
+                            time.sleep(0.002)
+                            continue
+
+                        now = time.monotonic()
+                        min_interval = tracking_interval_seconds(state.config)
+                        if min_interval > 0.0 and now - last_tracking_time < min_interval:
+                            time.sleep(min_interval - (now - last_tracking_time))
+                            continue
+
+                        last_camera_sequence = camera_sequence
+                        last_tracking_time = time.monotonic()
+                        rgb = cv2.cvtColor(snapshot.frame, cv2.COLOR_BGR2RGB)
                         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-                        frame_ms = int(time.monotonic() * 1000) - started_ms
+                        frame_ms = max(0, snapshot.monotonic_ms - started_ms)
                         if frame_ms <= last_frame_ms:
                             frame_ms = last_frame_ms + 1
                         last_frame_ms = frame_ms
                         result = recognizer.recognize_for_video(mp_image, frame_ms)
                         hands = [
-                            hand_from_result(result, index, gesture_threshold)
+                            hand_from_result(
+                                result,
+                                index,
+                                gesture_threshold,
+                                handedness_threshold,
+                                handedness_margin_threshold,
+                            )
                             for index in range(min(len(result.hand_landmarks), 2))
                         ]
-                        frame_height, frame_width = frame.shape[:2]
+                        frame_height, frame_width = snapshot.frame.shape[:2]
                         packet = pack_frame(
                             sequence=sequence,
                             timestamp_ms=int(time.time() * 1000),
@@ -236,21 +452,20 @@ def tracking_loop(state: WorkerState) -> None:
                         )
                         udp.sendto(packet, (state.args.udp_host, int(state.args.udp_port)))
 
-                        if state.preview_enabled:
-                            jpeg = encode_preview(frame, state.config)
-                            if jpeg is not None:
-                                with state.preview_lock:
-                                    state.latest_preview = jpeg
-                                    state.latest_preview_sequence = sequence
-
                         sequence += 1
             except Exception as exc:  # noqa: BLE001 - keep worker alive after camera/model faults.
                 print(f"hand-tracking worker error: {exc}", file=sys.stderr, flush=True)
                 state.tracking_event.clear()
                 time.sleep(0.5)
             finally:
+                state.tracking_event.clear()
+                if preview_thread is not None:
+                    preview_thread.join(timeout=1.0)
+                if camera_thread is not None:
+                    camera_thread.join(timeout=1.0)
                 if capture is not None:
                     capture.release()
+                clear_camera_frame(state)
 
 
 def parent_monitor(state: WorkerState) -> None:

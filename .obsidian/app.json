@@ -7,5 +7,25 @@
   "promptDelete": false,
   "showLineNumber": false,
   "strictLineBreaks": false,
-  "useMarkdownLinks": false
+  "useMarkdownLinks": false,
+  "userIgnoreFilters": [
+    ".cargo-target/",
+    ".commandcode/",
+    ".git/",
+    ".idea/",
+    ".sisyphus/",
+    ".vs/",
+    ".vscode/",
+    "Testing/",
+    "bin/",
+    "build/",
+    "build-*/",
+    "build-handtracking/",
+    "generated/",
+    "lib/",
+    "out/",
+    "src/build/",
+    "src/engine/physics/rapier_bridge/target/",
+    "vendor/"
+  ]
 }

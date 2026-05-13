@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/Types.hpp"
+#include "engine/core/units/EngineUnits.hpp"
 #include <array>
 #include <optional>
 #include <string>
@@ -41,6 +42,18 @@ struct HandTrackingLandmark {
     f32 x = 0.0f;
     f32 y = 0.0f;
     f32 z = 0.0f;
+
+    [[nodiscard]] constexpr ::biofuel::engine::core::units::NormalizedCameraCoord3D
+    toNormalizedCameraCoord() const noexcept
+    {
+        return ::biofuel::engine::core::units::NormalizedCameraCoord3D{x, y, z};
+    }
+
+    [[nodiscard]] static constexpr HandTrackingLandmark fromNormalizedCameraCoord(
+        const ::biofuel::engine::core::units::NormalizedCameraCoord3D coord) noexcept
+    {
+        return HandTrackingLandmark{.x = coord.x, .y = coord.y, .z = coord.z};
+    }
 };
 
 struct HandTrackingHand {
@@ -70,7 +83,10 @@ struct HandTrackingFrame {
 
 struct HandTrackingPreviewFrame {
     u64 sequence = 0U;
+    u16 width = 0U;
+    u16 height = 0U;
     std::vector<u8> jpegBytes{};
+    std::vector<u8> rgbaBytes{};
 };
 
 struct HandTrackingStatus {

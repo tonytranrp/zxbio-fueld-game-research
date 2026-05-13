@@ -21,12 +21,24 @@ struct HandTrackingRetargetSettings {
     f32 minimumScale = 0.75f;
     f32 maximumScale = 3.20f;
     f32 smoothingResponse = 18.0f;
-    f32 minimumPalmSeparation = 0.04f;
+    f32 ambiguousSmoothingResponse = 8.0f;
+    f32 fastSmoothingResponse = 34.0f;
+    f32 poseFastMotionDistance = 0.18f;
+    f32 trackingDropoutGraceSeconds = 0.14f;
+    f32 stageDepthResponse = 1.55f;
+    f32 stageDepthMargin = 0.035f;
+    f32 absoluteLandmarkProjection = 0.72f;
+    f32 cameraThroughDepthScale = 1.18f;
+    f32 maximumLocalDepth = 0.22f;
+    f32 minimumPalmSeparation = 0.012f;
     f32 minimumTrackingConfidence = 0.18f;
     f32 minimumCalibrationConfidence = 0.30f;
     f32 handednessLockConfidence = 0.58f;
-    f32 calibrationPositionJitter = 0.026f;
-    f32 calibrationSpanJitter = 0.028f;
+    f32 calibrationPositionJitter = 0.036f;
+    f32 calibrationSpanJitter = 0.036f;
+    f32 adaptiveCalibrationResponse = 1.35f;
+    f32 adaptiveCalibrationEdgeMargin = 0.035f;
+    f32 adaptiveCalibrationMinimumConfidence = 0.62f;
     ::biofuel::engine::custom::procedural::pose::PoseBounds visibleBounds{
         .min = Vector3{-0.82f, -0.24f, -0.46f},
         .max = Vector3{0.82f, 0.56f, 0.46f},
@@ -52,6 +64,7 @@ using PalmLandmarks = HandLandmarkSet<0U, 5U, 9U, 13U, 17U>;
 
 struct ImageHandMetrics {
     Vector2 palmCenter{0.0f, 0.0f};
+    f32 palmLength = 0.0f;
     f32 palmSpan = 0.0f;
     f32 palmDepth = 0.0f;
 };
@@ -112,6 +125,8 @@ public:
         m_results.leftPose.valid = false;
         m_results.rightPose.valid = false;
         m_results.mappingState = m_wizard.active ? MappingState::Calibrating : MappingState::Idle;
+        m_leftMissingSeconds = 0.0f;
+        m_rightMissingSeconds = 0.0f;
     }
 
     void setSettings(const HandTrackingRetargetSettings settings) noexcept {
@@ -201,7 +216,9 @@ public:
             .activeHand = CalibrationHandPhase::Left,
             .step = CalibrationWizardStep::Center,
             .holdSeconds = 0.0f,
-            .requiredHoldSeconds = 1.35f,
+            .requiredHoldSeconds =
+                ::biofuel::engine::custom::procedural::pose::calibrationRequiredHoldSeconds(
+                    CalibrationWizardStep::Center),
             .targetAcquired = false,
             .targetError = 1.0f,
         };
@@ -219,6 +236,7 @@ public:
         m_leftCalibration.profile.valid = true;
         m_rightCalibration.profile.valid = true;
         m_calibration = combinedCalibrationProfile();
+        ::biofuel::engine::custom::procedural::pose::sanitizeCalibrationProfile(m_calibration);
         m_calibration.valid = true;
         m_wizard.active = false;
         m_wizard.activeHand = CalibrationHandPhase::Complete;
@@ -234,11 +252,12 @@ public:
     [[nodiscard]] ::biofuel::engine::vision::hand_tracking::HandTrackingLandmark displayLandmark(
         const ::biofuel::engine::vision::hand_tracking::HandTrackingLandmark landmark) const noexcept
     {
-        ::biofuel::engine::vision::hand_tracking::HandTrackingLandmark result = landmark;
+        auto normalized = landmark.toNormalizedCameraCoord();
         if (m_frameSpace.mirror == MirrorPolicy::Selfie) {
-            result.x = 1.0f - result.x;
+            normalized.x = 1.0f - normalized.x;
         }
-        return result;
+        return ::biofuel::engine::vision::hand_tracking::HandTrackingLandmark::fromNormalizedCameraCoord(
+            normalized);
     }
 
     [[nodiscard]] MappedTrackedHands map(
@@ -274,7 +293,10 @@ public:
         }
 
         const CalibrationHandSelection selection = trackedHands(frame);
-        const usize activeHands = selectedHandCount(selection);
+        const f32 safeDt = std::min(std::max(dt, 0.0f), 0.05f);
+        const bool retainLeft = canRetainPose(selection.left, previousLeft, m_leftMissingSeconds, safeDt);
+        const bool retainRight = canRetainPose(selection.right, previousRight, m_rightMissingSeconds, safeDt);
+        const usize activeHands = selectedHandCount(selection) + (retainLeft ? 1U : 0U) + (retainRight ? 1U : 0U);
         const StageVolume stageVolume =
             ::biofuel::engine::custom::procedural::pose::makeStageVolume(
                 m_settings.visibleBounds,
@@ -283,27 +305,27 @@ public:
         m_results.visibleStageBounds = stageVolume.full;
 
         if (selection.left != nullptr) {
+            refineCalibrationProfile(HandSide::Left, *selection.left, safeDt);
             const PoseBounds bounds = resolveBoundsForHand(stageVolume, HandSide::Left, activeHands);
             m_results.leftPose = buildPose(*selection.left, HandSide::Left, bounds);
+            m_leftMissingSeconds = 0.0f;
+        } else {
+            retainMissingPose(m_results.leftPose, previousLeft, m_leftMissingSeconds, safeDt);
         }
         if (selection.right != nullptr) {
+            refineCalibrationProfile(HandSide::Right, *selection.right, safeDt);
             const PoseBounds bounds = resolveBoundsForHand(stageVolume, HandSide::Right, activeHands);
             m_results.rightPose = buildPose(*selection.right, HandSide::Right, bounds);
+            m_rightMissingSeconds = 0.0f;
+        } else {
+            retainMissingPose(m_results.rightPose, previousRight, m_rightMissingSeconds, safeDt);
         }
 
         if (m_results.leftPose.valid && previousLeft.valid) {
-            ::biofuel::engine::custom::procedural::pose::PoseStabilizer::apply(
-                m_results.leftPose.landmarks,
-                previousLeft.landmarks,
-                dt,
-                m_settings.smoothingResponse);
+            smoothPoseToward(m_results.leftPose, previousLeft, safeDt);
         }
         if (m_results.rightPose.valid && previousRight.valid) {
-            ::biofuel::engine::custom::procedural::pose::PoseStabilizer::apply(
-                m_results.rightPose.landmarks,
-                previousRight.landmarks,
-                dt,
-                m_settings.smoothingResponse);
+            smoothPoseToward(m_results.rightPose, previousRight, safeDt);
         }
 
         separateHands();
@@ -361,6 +383,10 @@ private:
         return std::max(std::max(wristToMiddle, indexToPinky * 0.82f), 0.025f);
     }
 
+    [[nodiscard]] static f32 imagePalmLength(const HandTrackingHand& hand) noexcept {
+        return std::max(distance2(imagePoint(hand.imageLandmarks[0]), imagePoint(hand.imageLandmarks[9])), 0.025f);
+    }
+
     [[nodiscard]] static f32 imagePalmDepth(const HandTrackingHand& hand) noexcept {
         f32 sum = 0.0f;
         for (const usize index : PalmLandmarks::indices) {
@@ -372,6 +398,7 @@ private:
     [[nodiscard]] ImageHandMetrics imageMetrics(const HandTrackingHand& hand) const noexcept {
         return ImageHandMetrics{
             .palmCenter = imagePalmCenter(hand),
+            .palmLength = imagePalmLength(hand),
             .palmSpan = imagePalmSpan(hand),
             .palmDepth = imagePalmDepth(hand),
         };
@@ -402,6 +429,8 @@ private:
             ::biofuel::engine::custom::procedural::pose::nextCalibrationStep(m_wizard.step);
         if (next != CalibrationWizardStep::Complete) {
             m_wizard.step = next;
+            m_wizard.requiredHoldSeconds =
+                ::biofuel::engine::custom::procedural::pose::calibrationRequiredHoldSeconds(m_wizard.step);
             resetCalibrationStepAccumulator(activeSlot);
             syncWizardProgress();
             return;
@@ -418,6 +447,8 @@ private:
 
         m_wizard.activeHand = nextPhase;
         m_wizard.step = CalibrationWizardStep::Center;
+        m_wizard.requiredHoldSeconds =
+            ::biofuel::engine::custom::procedural::pose::calibrationRequiredHoldSeconds(m_wizard.step);
         resetCalibrationStepAccumulator(activeCalibrationSlot());
         syncWizardProgress();
     }
@@ -545,6 +576,36 @@ private:
 
     [[nodiscard]] static usize selectedHandCount(const CalibrationHandSelection selection) noexcept {
         return (selection.left != nullptr ? 1U : 0U) + (selection.right != nullptr ? 1U : 0U);
+    }
+
+    [[nodiscard]] bool canRetainPose(
+        const HandTrackingHand* observedHand,
+        const TrackedRobotHandPose& previousPose,
+        const f32 missingSeconds,
+        const f32 dt) const noexcept
+    {
+        return observedHand == nullptr
+            && previousPose.valid
+            && missingSeconds + dt <= m_settings.trackingDropoutGraceSeconds;
+    }
+
+    void retainMissingPose(
+        TrackedRobotHandPose& pose,
+        const TrackedRobotHandPose& previousPose,
+        f32& missingSeconds,
+        const f32 dt) const noexcept
+    {
+        missingSeconds = std::min(m_settings.trackingDropoutGraceSeconds + dt, missingSeconds + dt);
+        if (!previousPose.valid || missingSeconds > m_settings.trackingDropoutGraceSeconds) {
+            return;
+        }
+
+        pose = previousPose;
+        const f32 remaining =
+            m_settings.trackingDropoutGraceSeconds <= 0.0f
+                ? 0.0f
+                : 1.0f - missingSeconds / m_settings.trackingDropoutGraceSeconds;
+        pose.confidence *= std::clamp(remaining, 0.0f, 1.0f);
     }
 
     [[nodiscard]] static CalibrationHandSelection selectHandCandidates(
@@ -695,6 +756,8 @@ private:
         case CalibrationWizardStep::Center:
             slot.profile.center = palm;
             slot.profile.referencePalmSpan = palmSpan;
+            slot.profile.nearPalmSpan = std::max(palmSpan * 1.18f, palmSpan + 0.026f);
+            slot.profile.farPalmSpan = std::max(palmSpan * 0.82f, 0.040f);
             break;
         case CalibrationWizardStep::Left:
             slot.profile.left = palm;
@@ -729,6 +792,85 @@ private:
         case CalibrationWizardStep::Inactive:
         case CalibrationWizardStep::Complete:
             break;
+        }
+    }
+
+    void refineCalibrationProfile(
+        const HandSide side,
+        const HandTrackingHand& hand,
+        const f32 dt) noexcept
+    {
+        if (hand.handednessScore < m_settings.adaptiveCalibrationMinimumConfidence) {
+            return;
+        }
+
+        HandCalibrationSlot& slot = side == HandSide::Left ? m_leftCalibration : m_rightCalibration;
+        if (!slot.profile.valid || !slot.profile.frameSpace.valid()) {
+            return;
+        }
+
+        const ImageHandMetrics metrics = imageMetrics(hand);
+        if (metrics.palmCenter.x < -0.08f || metrics.palmCenter.x > 1.08f
+            || metrics.palmCenter.y < -0.08f || metrics.palmCenter.y > 1.08f) {
+            return;
+        }
+
+        const f32 alpha = 1.0f - std::exp(-std::max(m_settings.adaptiveCalibrationResponse, 0.0f) * std::max(dt, 0.0f));
+        const f32 margin = std::max(m_settings.adaptiveCalibrationEdgeMargin, 0.0f);
+        bool changed = false;
+
+        auto expandMin = [alpha, &changed](f32& edge, const f32 observed) noexcept {
+            const f32 target = std::min(edge, observed);
+            if (target < edge) {
+                edge = edge + (target - edge) * alpha;
+                changed = true;
+            }
+        };
+        auto expandMax = [alpha, &changed](f32& edge, const f32 observed) noexcept {
+            const f32 target = std::max(edge, observed);
+            if (target > edge) {
+                edge = edge + (target - edge) * alpha;
+                changed = true;
+            }
+        };
+
+        if (metrics.palmCenter.x <= slot.profile.left.x + margin) {
+            expandMin(
+                slot.profile.left.x,
+                ::biofuel::engine::custom::procedural::pose::clamp01(metrics.palmCenter.x - margin * 0.35f));
+        }
+        if (metrics.palmCenter.x >= slot.profile.right.x - margin) {
+            expandMax(
+                slot.profile.right.x,
+                ::biofuel::engine::custom::procedural::pose::clamp01(metrics.palmCenter.x + margin * 0.35f));
+        }
+        if (metrics.palmCenter.y <= slot.profile.top.y + margin) {
+            expandMin(
+                slot.profile.top.y,
+                ::biofuel::engine::custom::procedural::pose::clamp01(metrics.palmCenter.y - margin * 0.35f));
+        }
+        if (metrics.palmCenter.y >= slot.profile.bottom.y - margin) {
+            expandMax(
+                slot.profile.bottom.y,
+                ::biofuel::engine::custom::procedural::pose::clamp01(metrics.palmCenter.y + margin * 0.35f));
+        }
+
+        if (metrics.palmSpan >= slot.profile.nearPalmSpan * 0.94f) {
+            expandMax(slot.profile.nearPalmSpan, std::min(metrics.palmSpan, 0.50f));
+        }
+        if (metrics.palmSpan <= slot.profile.farPalmSpan * 1.06f) {
+            expandMin(slot.profile.farPalmSpan, std::max(metrics.palmSpan, 0.04f));
+        }
+
+        if (!changed) {
+            return;
+        }
+
+        ::biofuel::engine::custom::procedural::pose::sanitizeCalibrationProfile(slot.profile);
+        if (m_leftCalibration.profile.valid && m_rightCalibration.profile.valid) {
+            m_calibration = combinedCalibrationProfile();
+            ::biofuel::engine::custom::procedural::pose::sanitizeCalibrationProfile(m_calibration);
+            m_calibration.valid = true;
         }
     }
 
@@ -772,19 +914,42 @@ private:
         return profile.frameSpace.valid() ? profile : m_calibration;
     }
 
+    void smoothPoseToward(
+        TrackedRobotHandPose& pose,
+        const TrackedRobotHandPose& previousPose,
+        const f32 dt) const noexcept
+    {
+        if (!pose.valid || !previousPose.valid) {
+            return;
+        }
+
+        const f32 motion = Vector3Distance(posePalmCenter(pose), posePalmCenter(previousPose));
+        const f32 motionT = std::clamp(
+            motion / std::max(m_settings.poseFastMotionDistance, 0.001f),
+            0.0f,
+            1.0f);
+        f32 response = m_settings.ambiguousSmoothingResponse
+            + (m_settings.fastSmoothingResponse - m_settings.ambiguousSmoothingResponse) * motionT;
+        if (pose.confidence >= m_settings.handednessLockConfidence) {
+            response = std::max(response, m_settings.smoothingResponse);
+        }
+
+        ::biofuel::engine::custom::procedural::pose::PoseStabilizer::apply(
+            pose.landmarks,
+            previousPose.landmarks,
+            dt,
+            response);
+    }
+
     [[nodiscard]] TrackedRobotHandPose buildPose(
         const HandTrackingHand& hand,
         const HandSide side,
         const PoseBounds bounds) const noexcept
     {
-        const CalibrationSessionProfile& profile = calibrationProfileForSide(side);
+        const CalibrationSessionProfile& sideProfile = calibrationProfileForSide(side);
+        const CalibrationSessionProfile& spatialProfile = spatialCalibrationProfile();
         const ImageHandMetrics metrics = imageMetrics(hand);
-        const f32 stageDepth = ::biofuel::engine::custom::procedural::pose::remapClamped(
-            metrics.palmSpan,
-            profile.farPalmSpan,
-            profile.nearPalmSpan,
-            bounds.min.z + 0.08f,
-            bounds.max.z - 0.08f);
+        const f32 stageDepth = mapStageDepth(sideProfile, bounds, metrics);
 
         TrackedRobotHandPose pose{
             .valid = true,
@@ -793,37 +958,104 @@ private:
             .landmarks = {},
         };
         for (usize index = 0U; index < pose.landmarks.size(); ++index) {
-            pose.landmarks[index] = mapImageLandmark(profile, bounds, stageDepth, metrics.palmDepth, hand.imageLandmarks[index]);
+            pose.landmarks[index] =
+                mapImageLandmark(spatialProfile, sideProfile, bounds, stageDepth, metrics, hand.imageLandmarks[index]);
         }
         fitVisible(pose, bounds);
         return pose;
     }
 
-    [[nodiscard]] Vector3 mapImageLandmark(
+    [[nodiscard]] const CalibrationSessionProfile& spatialCalibrationProfile() const noexcept {
+        return m_calibration.valid ? m_calibration : m_leftCalibration.profile;
+    }
+
+    [[nodiscard]] f32 mapStageDepth(
+        const CalibrationSessionProfile& profile,
+        const PoseBounds bounds,
+        const ImageHandMetrics metrics) const noexcept
+    {
+        const f32 depthMin = bounds.min.z + std::max(m_settings.stageDepthMargin, 0.0f);
+        const f32 depthMax = bounds.max.z - std::max(m_settings.stageDepthMargin, 0.0f);
+        const f32 rawT = ::biofuel::engine::custom::procedural::pose::remapClamped(
+            metrics.palmSpan,
+            profile.farPalmSpan,
+            profile.nearPalmSpan,
+            0.0f,
+            1.0f);
+        const f32 expandedT = std::clamp(
+            0.5f + (rawT - 0.5f) * std::max(m_settings.stageDepthResponse, 0.01f),
+            0.0f,
+            1.0f);
+        return depthMin + (depthMax - depthMin) * expandedT;
+    }
+
+    [[nodiscard]] f32 localLandmarkScale(
+        const CalibrationSessionProfile& profile,
+        const ImageHandMetrics metrics) const noexcept
+    {
+        const f32 rawScale = m_settings.targetPalmLength / std::max(metrics.palmLength, 0.001f);
+        const f32 referenceScale = m_settings.targetPalmLength / std::max(profile.referencePalmSpan, 0.001f);
+        const f32 minimumFactor = std::max(m_settings.minimumScale, 0.01f);
+        const f32 maximumFactor = std::max(m_settings.maximumScale, minimumFactor);
+        const f32 minimumScale = referenceScale * minimumFactor;
+        const f32 maximumScale = referenceScale * maximumFactor;
+        return std::clamp(rawScale, minimumScale, maximumScale);
+    }
+
+    [[nodiscard]] Vector3 mapPalmAnchor(
         const CalibrationSessionProfile& profile,
         const PoseBounds bounds,
         const f32 stageDepth,
-        const f32 palmDepth,
-        const HandTrackingLandmark value) const noexcept
+        const Vector2 palmCenter) const noexcept
     {
-        const HandTrackingLandmark displayValue = displayLandmark(value);
-        const Vector2 displayPoint{displayValue.x, displayValue.y};
         const auto warp =
-            ::biofuel::engine::custom::procedural::pose::calibrationImageWarpAt(profile, displayPoint);
+            ::biofuel::engine::custom::procedural::pose::calibrationImageWarpAt(profile, palmCenter);
         const f32 x = ::biofuel::engine::custom::procedural::pose::remapUnclamped(
-            displayValue.x,
+            palmCenter.x,
             warp.leftX,
             warp.rightX,
             bounds.min.x + 0.04f,
             bounds.max.x - 0.04f);
         const f32 y = ::biofuel::engine::custom::procedural::pose::remapUnclamped(
-            displayValue.y,
+            palmCenter.y,
             warp.topY,
             warp.bottomY,
             bounds.max.y - 0.04f,
             bounds.min.y + 0.04f);
-        const f32 zOffset = std::clamp((palmDepth - value.z) * 0.72f, -0.15f, 0.15f);
-        return Vector3{x, y, stageDepth + zOffset};
+        return Vector3{x, y, stageDepth};
+    }
+
+    [[nodiscard]] Vector3 mapImageLandmark(
+        const CalibrationSessionProfile& spatialProfile,
+        const CalibrationSessionProfile& scaleProfile,
+        const PoseBounds bounds,
+        const f32 stageDepth,
+        const ImageHandMetrics metrics,
+        const HandTrackingLandmark value) const noexcept
+    {
+        const HandTrackingLandmark displayValue = displayLandmark(value);
+        const Vector3 anchor = mapPalmAnchor(spatialProfile, bounds, stageDepth, metrics.palmCenter);
+        const f32 localScale = localLandmarkScale(scaleProfile, metrics);
+        const f32 aspectScale = m_frameSpace.valid() ? m_frameSpace.aspectRatio() : 1.0f;
+        const f32 xOffset = (displayValue.x - metrics.palmCenter.x) * aspectScale * localScale;
+        const f32 yOffset = -(displayValue.y - metrics.palmCenter.y) * localScale;
+        const f32 maximumDepth = std::max(m_settings.maximumLocalDepth, 0.01f);
+        const f32 zOffset = std::clamp(
+            (displayValue.z - metrics.palmDepth) * localScale * m_settings.cameraThroughDepthScale,
+            -maximumDepth,
+            maximumDepth);
+        const Vector3 local{anchor.x + xOffset, anchor.y + yOffset, anchor.z + zOffset};
+        const Vector3 projected = mapPalmAnchor(
+            spatialProfile,
+            bounds,
+            stageDepth,
+            Vector2{displayValue.x, displayValue.y});
+        const f32 projection = std::clamp(m_settings.absoluteLandmarkProjection, 0.0f, 1.0f);
+        return Vector3{
+            local.x + (projected.x - local.x) * projection,
+            local.y + (projected.y - local.y) * projection,
+            local.z,
+        };
     }
 
     [[nodiscard]] HandSide resolveSide(const HandTrackingHand& hand) const noexcept {
@@ -878,6 +1110,8 @@ private:
     CalibrationWizardState m_wizard{};
     MappedTrackedHands m_results{};
     bool m_sessionStarted = false;
+    f32 m_leftMissingSeconds = 0.0f;
+    f32 m_rightMissingSeconds = 0.0f;
 };
 
 using HandTrackingRetargeter = TrackedPoseMapper;

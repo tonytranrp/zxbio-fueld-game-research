@@ -18,8 +18,9 @@ game/screens/dev_hand_lab/
 - Returns to a fresh main menu with `ESC`.
 - Can start after loading with `BIOFUEL_DEV_STARTUP_HAND_LAB=ON`.
 - Renders its own clean studio scene and camera preview.
+- Shows a Rapier-backed cube/grab sandbox with bounded prop recovery.
 - Draws mirrored MediaPipe landmark overlays.
-- Displays the guided left-hand/right-hand calibration UI.
+- Displays the quick guided left-hand/right-hand calibration UI.
 - Owns camera orbit/zoom tool controls for this dev view.
 
 ## Engine boundaries
@@ -29,7 +30,9 @@ logic. The reusable pieces live here:
 
 - `engine/vision/hand_tracking/`: Python worker, IPC, snapshots, preview frames.
 - `engine/custom/procedural/pose/`: camera-to-stage calibration and pose math.
-- `engine/custom/procedural/hand/`: robot-hand rig, renderer, and retargeter.
+- `engine/custom/procedural/hand/`: robot-hand rig, renderer, retargeter, and
+  Rapier hand interaction controller.
+- `engine/physics/`: Rapier 3D world, shape roles, contacts, and grab events.
 
 ## Controls
 
@@ -38,7 +41,8 @@ logic. The reusable pieces live here:
 | `C` | Restart tracking |
 | `V` | Toggle preview |
 | `X` | Stop tracking |
-| `K` | Restart guided per-hand calibration |
+| `K` | Restart quick guided per-hand calibration |
+| Pinch thumb/index around cube | Grab/release physics cube |
 | `RMB` drag | Orbit camera |
 | Mouse wheel | Zoom camera |
 

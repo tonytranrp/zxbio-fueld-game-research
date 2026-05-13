@@ -15,6 +15,7 @@
 #include "engine/audio/AudioManager.hpp"
 #include "engine/video/VideoManager.hpp"
 #include "engine/runtime/Runtime.hpp"
+#include "engine/runtime/typed/AssetCatalog.hpp"
 #include "engine/runtime/typed/Assets.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/graphics/shaders/TypedShaderModule.hpp"
@@ -171,7 +172,8 @@ LoadingScreen::LoadingScreen(i32 width, i32 height, i32 targetFps)
 
 void LoadingScreen::buildTasks() {
     m_tasks.clear();
-    m_tasks.reserve(24);
+    m_tasks.reserve(16U + ::biofuel::engine::runtime::typed::AssetCatalog<
+        ::biofuel::engine::runtime::typed::EngineStartupCatalog>::Assets::size);
 
     m_tasks.add({"Configuring input...", 0.3f, []() {
         SetExitKey(KEY_NULL);

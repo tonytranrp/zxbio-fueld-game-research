@@ -23,8 +23,13 @@ and mapping model:
 - `CalibrationHandPhase`
 - `CalibrationWizardState`
 - `CalibrationSessionProfile`
-- per-hand calibration steps, corner-aware camera warp helpers, pose smoothing,
-  visibility fitting, and separation helpers
+- quick per-hand calibration steps, synthesized edge/corner camera warp helpers,
+  pose smoothing, visibility fitting, and separation helpers
+
+`StageLayoutPolicy::Adaptive` keeps both hands in the shared calibrated stage
+space and relies on soft separation only when palms collide. Use
+`StageLayoutPolicy::FixedLanes` when a tool deliberately wants hard left/right
+lanes.
 
 Screens should consume mapped state and display calibration UI. They should not
 own calibration math.
@@ -34,7 +39,7 @@ using pose::CalibrationHandPhase;
 using pose::CalibrationWizardStep;
 
 if (wizard.activeHand == CalibrationHandPhase::Right
-    && wizard.step == CalibrationWizardStep::TopRight) {
+    && wizard.step == CalibrationWizardStep::Bottom) {
     DrawText(calibrationPrompt(wizard.activeHand, wizard.step).data(), x, y, size, color);
 }
 ```
@@ -47,4 +52,10 @@ if (wizard.activeHand == CalibrationHandPhase::Right
 - Clamp unsafe data at the boundary, but keep useful unclamped helpers for range
   mapping where intentional.
 - Keep calibration sequences and target tolerances here, not in debug screens.
+- Prefer short guided calibration plus engine-side adaptive refinement over long
+  one-time calibration surveys.
+- Do not use adaptive layout to shrink a hand into a lane; finger and palm
+  geometry should be preserved by the hand retargeter.
+- Preserve camera-space relationships between hands. Separate per-hand
+  calibration should not make a shared gesture split apart in stage space.
 - Do not include game screens or UI widgets here.

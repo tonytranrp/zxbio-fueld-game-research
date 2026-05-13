@@ -1,6 +1,7 @@
 #include "App.hpp"
 #include "engine/graphics/Render.hpp"
 #include "engine/graphics/ShaderManager.hpp"
+#include "engine/debug/DebugOverlayService.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/graphics/shaders/LoadingPreludeModule.hpp"
 #include "engine/graphics/shaders/MenuOptionModule.hpp"
@@ -75,6 +76,7 @@ void Application::shutdown() {
 
     ::biofuel::engine::debug::MemoryTelemetry::snapshot("app.shutdown.begin");
     auto& services = ::biofuel::engine::runtime::Runtime::services();
+    services.get<::biofuel::engine::runtime::typed::DebugOverlayService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::AnimationService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::ScreenService>().shutdown();
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
@@ -160,29 +162,12 @@ void Application::render() {
     Renderer::beginFrame(BLACK);
     ::biofuel::engine::runtime::Runtime::screen().render();
 
-    // Debug overlay (hidden in release builds)
-#ifndef NDEBUG
-    const i32 screenH = Renderer::screenHeight();
-    const i32 overlayX = 14;
-    const i32 overlayY = screenH - 34;
-    const i32 overlayW = 182;
-    const i32 overlayH = 22;
-    Renderer::drawRect(overlayX, overlayY - 2, overlayW, overlayH, {10, 12, 18, 118});
-    Renderer::drawText(
-        TextFormat("Window: %dx%d | FPS: %d",
-            Renderer::screenWidth(), screenH, GetFPS()),
-        overlayX + 6, overlayY + 1, 14, {108, 112, 126, 255}
-    );
-#ifdef BIOFUEL_DEBUG_MEMORY_STATS
-    const auto processMemory = ::biofuel::engine::debug::MemoryTelemetry::processMemory();
-    Renderer::drawText(
-        TextFormat("RAM: %.1f MiB | Private: %.1f MiB",
-            static_cast<double>(processMemory.workingSetBytes) / (1024.0 * 1024.0),
-            static_cast<double>(processMemory.privateBytes) / (1024.0 * 1024.0)),
-        overlayX + 6, overlayY - 20, 14, {108, 112, 126, 255}
-    );
-#endif
-#endif
+    ::biofuel::engine::runtime::Runtime::debugOverlay().render(
+        ::biofuel::engine::debug::DebugOverlayContext{
+            .screenWidth = Renderer::screenWidth(),
+            .screenHeight = Renderer::screenHeight(),
+            .frameTime = GetFrameTime(),
+        });
 
     Renderer::endFrame();
 }

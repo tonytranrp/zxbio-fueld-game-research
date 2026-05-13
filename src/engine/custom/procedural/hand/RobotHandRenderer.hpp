@@ -197,7 +197,7 @@ private:
         const f32 palmDepth = std::clamp(palmWidth * 0.20f, 0.018f, 0.040f);
 
         context.meshes.draw(cube, Vector3Add(center, Vector3{0.0f, -0.006f, 0.006f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{palmWidth * 0.72f, palmHeight * 0.68f, palmDepth}, palette.shell, textureFor(context, palette, RobotHandMaterialSlot::Shell));
-        context.meshes.draw(cube, Vector3Add(center, Vector3{0.0f, palmHeight * 0.10f, -palmDepth * 0.72f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{palmWidth * 0.52f, palmHeight * 0.34f, 0.008f}, palette.palmPanel, textureFor(context, palette, RobotHandMaterialSlot::PalmPanel));
+        context.meshes.draw(cube, Vector3Add(center, Vector3{0.0f, palmHeight * 0.10f, palmDepth * 0.72f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{palmWidth * 0.52f, palmHeight * 0.34f, 0.008f}, palette.palmPanel, textureFor(context, palette, RobotHandMaterialSlot::PalmPanel));
         context.meshes.draw(cube, Vector3Add(wrist, Vector3{0.0f, -0.024f, 0.0f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{palmWidth * 0.55f, 0.030f, palmDepth * 1.15f}, palette.joint, textureFor(context, palette, RobotHandMaterialSlot::Joint));
     }
 
@@ -299,8 +299,8 @@ private:
         context.meshes.draw(cube, Vector3Add(palmCenter, Vector3{0.0f, -0.062f, 0.0f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.286f, 0.020f, 0.082f}, palette.joint, textureFor(context, palette, RobotHandMaterialSlot::Joint));
         context.meshes.draw(cube, Vector3Add(palmCenter, Vector3{-0.108f, 0.0f, -0.001f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.020f, 0.122f, 0.082f}, palette.jointEdge, textureFor(context, palette, RobotHandMaterialSlot::JointEdge));
         context.meshes.draw(cube, Vector3Add(palmCenter, Vector3{0.108f, 0.0f, -0.001f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.020f, 0.122f, 0.082f}, palette.jointEdge, textureFor(context, palette, RobotHandMaterialSlot::JointEdge));
-        context.meshes.draw(cube, Vector3Add(palmCenter, Vector3{0.0f, 0.004f, -0.040f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.182f, 0.058f, 0.010f}, palette.palmPanel, textureFor(context, palette, RobotHandMaterialSlot::PalmPanel));
-        context.meshes.draw(cube, Vector3Add(palmCenter, Vector3{0.0f, 0.046f, -0.047f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.226f, 0.010f, 0.012f}, palette.accent, textureFor(context, palette, RobotHandMaterialSlot::Accent));
+        context.meshes.draw(cube, Vector3Add(palmCenter, Vector3{0.0f, 0.004f, 0.040f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.182f, 0.058f, 0.010f}, palette.palmPanel, textureFor(context, palette, RobotHandMaterialSlot::PalmPanel));
+        context.meshes.draw(cube, Vector3Add(palmCenter, Vector3{0.0f, 0.046f, 0.047f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.226f, 0.010f, 0.012f}, palette.accent, textureFor(context, palette, RobotHandMaterialSlot::Accent));
     }
 
     template<typename THandTag>
@@ -315,7 +315,7 @@ private:
             const usize base = 2U + static_cast<usize>(finger.id) * ProceduralHand<THandTag>::JOINTS_PER_FINGER;
             const usize tip = base + ProceduralHand<THandTag>::JOINTS_PER_FINGER - 1U;
             context.meshes.draw(cube, joints[tip], Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.045f, 0.032f, 0.030f}, palette.shell, textureFor(context, palette, RobotHandMaterialSlot::Shell));
-            context.meshes.draw(cube, Vector3Add(joints[tip], Vector3{0.0f, 0.012f, -0.018f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.030f, 0.010f, 0.007f}, palette.accent, textureFor(context, palette, RobotHandMaterialSlot::Accent));
+            context.meshes.draw(cube, Vector3Add(joints[tip], Vector3{0.0f, 0.012f, 0.018f}), Vector3{0.0f, 1.0f, 0.0f}, 0.0f, Vector3{0.030f, 0.010f, 0.007f}, palette.accent, textureFor(context, palette, RobotHandMaterialSlot::Accent));
         }
     }
 

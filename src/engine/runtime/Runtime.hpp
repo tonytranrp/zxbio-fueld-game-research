@@ -31,6 +31,7 @@ public:
     [[nodiscard]] static auto& physics() { return service<::biofuel::engine::runtime::typed::PhysicsService>(); }
     [[nodiscard]] static auto& events() { return service<::biofuel::engine::runtime::typed::EventService>(); }
     [[nodiscard]] static auto& render() { return service<::biofuel::engine::runtime::typed::RenderService>(); }
+    [[nodiscard]] static auto& debugOverlay() { return service<::biofuel::engine::runtime::typed::DebugOverlayService>(); }
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     [[nodiscard]] static auto& handTracking() { return service<::biofuel::engine::runtime::typed::HandTrackingService>(); }
 #endif

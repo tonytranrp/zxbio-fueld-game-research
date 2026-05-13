@@ -9,6 +9,7 @@ small because everything in the project can include it.
 engine/core/
 |-- Types.hpp
 |-- LoadingTask.hpp
+|-- units/
 `-- typed/
 ```
 
@@ -32,9 +33,20 @@ queue.add({"Compile shaders", 2.0f, [] { Runtime::shader().init(); }});
 queue.processNext();
 ```
 
+Use `core/units` wrappers at subsystem boundaries:
+
+```cpp
+using namespace biofuel::engine::core::units;
+
+WorldMeters2D world = toWorldMeters(ScreenPixels2D{96.0f, 64.0f}, PixelToMeterScale{32.0f});
+TileCoord tile = toTileCoord(ScreenPixels2D{96.0f, 64.0f}, TileSizePixels{32.0f});
+```
+
 ## Coding standards
 
 - Keep this folder dependency-light.
 - No Raylib ownership, services, events, or screen types belong in `core/`.
+- Unit wrappers may expose explicit Raylib interop helpers, but they must not own
+  Raylib resources.
 - Prefer simple structs and free-standing aliases over broad utility classes.
 - Anything that needs a subsystem include should live outside `core/`.

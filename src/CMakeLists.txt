@@ -223,6 +223,7 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     add_executable(BiofuelPhysicsSmokeTest
         "${CMAKE_SOURCE_DIR}/tests/physics/PhysicsSmoke.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/EventManager.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/engine/custom/procedural/hand/HandPhysicsInteraction.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/physics/PhysicsSystem.cpp"
     )
     add_dependencies(BiofuelPhysicsSmokeTest GenerateTypedRegistries)
@@ -239,6 +240,37 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
             biofuel_rapier_bridge_cxx
     )
     add_test(NAME BiofuelPhysicsSmoke COMMAND BiofuelPhysicsSmokeTest)
+
+    add_executable(BiofuelHandRetargetSmokeTest
+        "${CMAKE_SOURCE_DIR}/tests/procedural/HandRetargetSmoke.cpp"
+    )
+    target_include_directories(BiofuelHandRetargetSmokeTest
+        PRIVATE
+            ${GENERATED_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${entt_SOURCE_DIR}/src
+    )
+    target_link_libraries(BiofuelHandRetargetSmokeTest
+        PRIVATE
+            raylib
+    )
+    add_test(NAME BiofuelHandRetargetSmoke COMMAND BiofuelHandRetargetSmokeTest)
+
+    add_executable(BiofuelEngineUsabilitySmokeTest
+        "${CMAKE_SOURCE_DIR}/tests/engine/EngineUsabilitySmoke.cpp"
+    )
+    add_dependencies(BiofuelEngineUsabilitySmokeTest GenerateShaderSources GenerateTypedRegistries)
+    target_include_directories(BiofuelEngineUsabilitySmokeTest
+        PRIVATE
+            ${GENERATED_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${entt_SOURCE_DIR}/src
+    )
+    target_link_libraries(BiofuelEngineUsabilitySmokeTest
+        PRIVATE
+            raylib
+    )
+    add_test(NAME BiofuelEngineUsabilitySmoke COMMAND BiofuelEngineUsabilitySmokeTest)
 endif()
 
 add_custom_command(

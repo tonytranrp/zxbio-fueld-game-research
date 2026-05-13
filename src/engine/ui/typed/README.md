@@ -26,10 +26,13 @@ engine/ui/typed/
 ```cpp
 template<>
 struct ScreenSpec<FarmScreen> {
-    static constexpr ScreenId Id = ScreenId::Farm;
-    static constexpr std::string_view Name = "Farm";
-    static constexpr TransitionPolicyData Transition{};
-    static constexpr StackPolicyData Stack{};
+    static constexpr ScreenId ID = ScreenId::Farm;
+    static constexpr std::string_view NAME = "FarmScreen";
+};
+
+template<>
+struct RenderLayers<FarmScreen> {
+    using Type = RenderLayerList<FarmScreen, RenderElementList<FarmHudElement>>;
 };
 ```
 
@@ -37,6 +40,13 @@ struct ScreenSpec<FarmScreen> {
 
 `RenderPipeline<TScreen>` runs named render layers and elements. Layer names can
 be toggled through screen override events, which is useful for debug tools.
+
+`ScreenValidation.hpp` checks registered screens at compile time:
+
+- screen IDs and names must be present and unique.
+- render layers must use `RenderLayerList<TScreen, ...>`.
+- named render layers/elements must have non-empty `NAME` values.
+- every registered screen must be represented by the policy switch helpers.
 
 ## Coding standards
 

@@ -1,4 +1,5 @@
 #include "engine/events/EventManager.hpp"
+#include "engine/custom/procedural/hand/HandPhysicsInteraction.hpp"
 #include "engine/physics/PhysicsSystem.hpp"
 #include <array>
 #include <cstdlib>
@@ -18,6 +19,9 @@ bool check(bool condition, const char* message) {
 
 int main() {
     using namespace ::biofuel::engine::physics;
+    using ::biofuel::engine::custom::procedural::hand::HandPhysicsInteraction3D;
+    using ::biofuel::engine::custom::procedural::hand::HandSide;
+    using ::biofuel::engine::custom::procedural::hand::TrackedRobotHandPose;
 
     ::biofuel::engine::events::EventManager::instance().init();
 
@@ -77,6 +81,38 @@ int main() {
     ok = check(!world2D.raycast(Vector2{0.0f, 2.0f}, Vector2{0.0f, -1.0f}, 0.0f).has_value(), "2D zero-distance raycast hit") && ok;
     ok = check(!world3D.raycast(Vector3{0.0f, 2.0f, 0.0f}, Vector3{0.0f, -1.0f, 0.0f}, 0.0f).has_value(), "3D zero-distance raycast hit") && ok;
     ok = check(sawContact, "No physics contacts were captured") && ok;
+
+    HandPhysicsInteraction3D interaction;
+    interaction.init(world3D);
+    TrackedRobotHandPose grabPose{
+        .valid = true,
+        .side = HandSide::Left,
+        .confidence = 1.0f,
+        .landmarks = {},
+    };
+    const Vector3 cubeCenter = interaction.state().cubeCenter;
+    for (Vector3& landmark : grabPose.landmarks) {
+        landmark = cubeCenter;
+    }
+    grabPose.landmarks[0] = Vector3{cubeCenter.x, cubeCenter.y - 0.030f, cubeCenter.z};
+    grabPose.landmarks[4] = Vector3{cubeCenter.x - 0.038f, cubeCenter.y + 0.015f, cubeCenter.z};
+    grabPose.landmarks[8] = Vector3{cubeCenter.x + 0.038f, cubeCenter.y + 0.015f, cubeCenter.z};
+    grabPose.landmarks[5] = Vector3{cubeCenter.x - 0.050f, cubeCenter.y, cubeCenter.z};
+    grabPose.landmarks[9] = Vector3{cubeCenter.x, cubeCenter.y, cubeCenter.z};
+    grabPose.landmarks[13] = Vector3{cubeCenter.x + 0.035f, cubeCenter.y, cubeCenter.z};
+    grabPose.landmarks[17] = Vector3{cubeCenter.x + 0.070f, cubeCenter.y, cubeCenter.z};
+    interaction.update(world3D, &grabPose, nullptr, 1.0f / 60.0f);
+    ok = check(interaction.state().grabbed, "hand physics interaction did not grab the cube") && ok;
+
+    for (Vector3& landmark : grabPose.landmarks) {
+        landmark = Vector3{5.0f, 5.0f, 5.0f};
+    }
+    grabPose.landmarks[4] = Vector3{5.0f, 5.0f, 5.0f};
+    grabPose.landmarks[8] = Vector3{5.035f, 5.0f, 5.0f};
+    interaction.update(world3D, &grabPose, nullptr, 1.0f / 60.0f);
+    ok = check(interaction.state().cubeCenter.x < 0.8f, "grabbed cube escaped interaction volume") && ok;
+    ok = check(interaction.state().cubeCenter.y < 0.6f, "grabbed cube escaped vertical interaction volume") && ok;
+    interaction.shutdown(world3D);
 
     physics.shutdown();
     ::biofuel::engine::events::EventManager::instance().shutdown();

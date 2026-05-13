@@ -48,6 +48,20 @@ using ::biofuel::engine::custom::procedural::pose::StageLayoutPolicy;
         : previewWidth * 0.5625f;
     return Rectangle{panel.x, panel.y + 38.0f, previewWidth, previewHeight};
 }
+
+void drawPreviewMessage(
+    const Rectangle preview,
+    const std::string_view primary,
+    const std::string_view secondary,
+    const Color color) noexcept
+{
+    const i32 x = static_cast<i32>(preview.x + 16.0f);
+    const i32 y = static_cast<i32>(preview.y + preview.height * 0.5f - (secondary.empty() ? 7.0f : 17.0f));
+    Renderer::drawText(primary, x, y, 13, color);
+    if (!secondary.empty()) {
+        Renderer::drawText(secondary, x, y + 18, 12, Color{158, 184, 178, 255});
+    }
+}
 #endif
 
 } // namespace
@@ -62,6 +76,7 @@ void DevHandLabScreen::onEnter() {
         .distance = 2.35f,
     };
     resetHands();
+    m_handPhysics.init(::biofuel::engine::runtime::Runtime::physics().world3D());
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     resetTrackingCalibration();
     startHandTrackingWithPreview();
@@ -70,6 +85,7 @@ void DevHandLabScreen::onEnter() {
 }
 
 void DevHandLabScreen::onExit() {
+    m_handPhysics.shutdown(::biofuel::engine::runtime::Runtime::physics().world3D());
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     ::biofuel::engine::runtime::Runtime::handTracking().stop();
     unloadPreviewTexture();
@@ -81,6 +97,7 @@ void DevHandLabScreen::onExit() {
 void DevHandLabScreen::onUpdate(const f32 dt) {
     updateHandTracking(dt);
     m_handEngine.solve(m_leftHand, m_rightHand, m_preset.ik);
+    updateHandPhysics(dt);
     applyCamera();
 }
 
@@ -118,6 +135,7 @@ void DevHandLabScreen::onRender() {
 
     BeginMode3D(m_camera);
     drawFloorGrid();
+    drawPhysicsProps();
 
     const RobotHandRenderOptions renderOptions{
         .showBones = false,
@@ -197,7 +215,7 @@ void DevHandLabScreen::updateCameraInput() noexcept {
 void DevHandLabScreen::updateHandTracking(const f32 dt) noexcept {
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     auto& tracking = ::biofuel::engine::runtime::Runtime::handTracking();
-    updatePreviewTexture(dt);
+    updatePreviewTexture();
     if (!tracking.running() || tracking.status().secondsSinceLastFrame > 0.35f) {
         m_trackedLeft.valid = false;
         m_trackedRight.valid = false;
@@ -238,27 +256,55 @@ void DevHandLabScreen::resetTrackingCalibration() noexcept {
     m_trackingMapped = {};
 }
 
-void DevHandLabScreen::updatePreviewTexture(const f32 dt) noexcept {
-    constexpr f32 PREVIEW_UPLOAD_INTERVAL_SECONDS = 1.0f / 12.0f;
+void DevHandLabScreen::updatePreviewTexture() noexcept {
     auto& tracking = ::biofuel::engine::runtime::Runtime::handTracking();
     const auto status = tracking.status();
     if (!status.previewEnabled) {
-        m_previewUploadCooldown = 0.0f;
         return;
     }
-    const auto preview = tracking.latestPreviewFrame();
-    if (!preview || preview->jpegBytes.empty() || preview->sequence == m_previewTextureSequence) {
+    const auto preview = tracking.latestPreviewFrameAfter(m_previewTextureSequence);
+    if (!preview) {
         return;
     }
-    if (m_previewUploadCooldown > 0.0f) {
-        m_previewUploadCooldown = std::max(0.0f, m_previewUploadCooldown - dt);
-        return;
-    }
-    m_previewUploadCooldown = PREVIEW_UPLOAD_INTERVAL_SECONDS;
-    if (preview->jpegBytes.size() > static_cast<usize>(std::numeric_limits<i32>::max())) {
+    const bool hasRgbaPreview = !preview->rgbaBytes.empty() && preview->width > 0U && preview->height > 0U;
+    const bool hasJpegPreview = !preview->jpegBytes.empty();
+    if (!hasRgbaPreview && !hasJpegPreview) {
         return;
     }
 
+    if (hasRgbaPreview) {
+        const i32 width = static_cast<i32>(preview->width);
+        const i32 height = static_cast<i32>(preview->height);
+        const usize requiredBytes = static_cast<usize>(width) * static_cast<usize>(height) * 4U;
+        if (preview->rgbaBytes.size() < requiredBytes) {
+            return;
+        }
+        if (m_previewTexture.id != 0U && m_previewTexture.width == width && m_previewTexture.height == height) {
+            UpdateTexture(m_previewTexture, preview->rgbaBytes.data());
+            m_previewTextureSequence = preview->sequence;
+            return;
+        }
+
+        Image image{
+            .data = const_cast<u8*>(preview->rgbaBytes.data()),
+            .width = width,
+            .height = height,
+            .mipmaps = 1,
+            .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+        };
+        Texture2D texture = LoadTextureFromImage(image);
+        if (texture.id == 0U) {
+            return;
+        }
+        unloadPreviewTexture();
+        m_previewTexture = texture;
+        m_previewTextureSequence = preview->sequence;
+        return;
+    }
+
+    if (preview->jpegBytes.size() > static_cast<usize>(std::numeric_limits<i32>::max())) {
+        return;
+    }
     Image image = LoadImageFromMemory(".jpg", preview->jpegBytes.data(), static_cast<i32>(preview->jpegBytes.size()));
     if (image.data == nullptr) {
         return;
@@ -270,7 +316,6 @@ void DevHandLabScreen::updatePreviewTexture(const f32 dt) noexcept {
         m_previewTextureSequence = preview->sequence;
         return;
     }
-
     Texture2D texture = LoadTextureFromImage(image);
     UnloadImage(image);
     if (texture.id == 0U) {
@@ -285,8 +330,7 @@ void DevHandLabScreen::unloadPreviewTexture() noexcept {
     if (m_previewTexture.id != 0U) {
         UnloadTexture(m_previewTexture);
         m_previewTexture = Texture2D{};
-        m_previewTextureSequence = 0U;
-        m_previewUploadCooldown = 0.0f;
+        m_previewTextureSequence = std::numeric_limits<u64>::max();
     }
 }
 
@@ -321,6 +365,16 @@ void DevHandLabScreen::reloadPreset() noexcept {
     m_handEngine.applyPreset(m_preset);
 }
 
+void DevHandLabScreen::updateHandPhysics(const f32 dt) noexcept {
+#ifdef BIOFUEL_ENABLE_HAND_TRACKING
+    const TrackedHandPose* left = m_trackedLeft.valid ? &m_trackedLeft : nullptr;
+    const TrackedHandPose* right = m_trackedRight.valid ? &m_trackedRight : nullptr;
+    m_handPhysics.update(::biofuel::engine::runtime::Runtime::physics().world3D(), left, right, dt);
+#else
+    m_handPhysics.update(::biofuel::engine::runtime::Runtime::physics().world3D(), nullptr, nullptr, dt);
+#endif
+}
+
 void DevHandLabScreen::drawStudio() const noexcept {
     DrawRectangleGradientV(0, 0, Renderer::screenWidth(), Renderer::screenHeight(), Color{5, 10, 13, 255}, Color{10, 27, 24, 255});
     DrawCircleGradient(
@@ -330,6 +384,29 @@ void DevHandLabScreen::drawStudio() const noexcept {
         Color{22, 104, 66, 72},
         Color{5, 10, 13, 0});
     DrawRectangle(0, Renderer::screenHeight() - 108, Renderer::screenWidth(), 108, Color{2, 6, 8, 132});
+}
+
+void DevHandLabScreen::drawPhysicsProps() const noexcept {
+    const auto& state = m_handPhysics.state();
+    if (state.touchShelfValid) {
+        const Vector3 shelfSize = Vector3Scale(state.touchShelfHalfExtents, 2.0f);
+        DrawCubeV(state.touchShelfCenter, shelfSize, Color{22, 43, 40, 210});
+        DrawCubeWiresV(state.touchShelfCenter, shelfSize, Color{86, 188, 139, 135});
+    }
+
+    if (!state.cubeValid) {
+        return;
+    }
+
+    const Vector3 size = Vector3Scale(state.cubeHalfExtents, 2.0f);
+    const Color cubeColor = state.grabbed ? Color{255, 198, 86, 255} : Color{118, 212, 164, 255};
+    const Color wireColor = state.grabbed ? Color{255, 238, 174, 255} : Color{202, 246, 221, 255};
+    DrawCubeV(state.cubeCenter, size, cubeColor);
+    DrawCubeWiresV(state.cubeCenter, size, wireColor);
+
+    if (state.grabbed) {
+        DrawSphere(state.grabPoint, 0.022f, Color{255, 242, 176, 210});
+    }
 }
 
 void DevHandLabScreen::drawFloorGrid() const noexcept {
@@ -348,7 +425,7 @@ void DevHandLabScreen::drawStatusHud() const noexcept {
     DrawRectangle(18, Renderer::screenHeight() - 56, 590, 36, Color{3, 8, 10, 176});
     DrawRectangleLines(18, Renderer::screenHeight() - 56, 590, 36, Color{64, 190, 118, 155});
 
-    char line[256]{};
+    char line[320]{};
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     const auto& tracking = ::biofuel::engine::runtime::Runtime::handTracking();
     const auto status = tracking.status();
@@ -363,13 +440,19 @@ void DevHandLabScreen::drawStatusHud() const noexcept {
         }
     }
     const bool calibrating = m_handRetargeter.calibrationState().active;
-    std::snprintf(line, sizeof(line), "ESC | C start | V preview | X stop | K calibrate | %.*s | %.1f pps | %s | %.*s",
+    const auto& physicsState = m_handPhysics.state();
+    const std::string_view grabState = physicsState.grabbed
+        ? (physicsState.grabbedBy == HandSide::Left ? "grab left" : "grab right")
+        : "cube idle";
+    std::snprintf(line, sizeof(line), "ESC | C start | V preview | X stop | K calibrate | %.*s | %.1f pps | %s | %.*s | %.*s",
         static_cast<int>(::biofuel::engine::vision::hand_tracking::toString(status.state).size()),
         ::biofuel::engine::vision::hand_tracking::toString(status.state).data(),
         static_cast<double>(status.packetsPerSecond),
         calibrating ? "Calibrating" : "Mapped",
         static_cast<int>(gesture.size()),
-        gesture.data());
+        gesture.data(),
+        static_cast<int>(grabState.size()),
+        grabState.data());
 #else
     std::snprintf(line, sizeof(line), "ESC menu | hand tracking build option OFF | RMB orbit | wheel zoom");
 #endif
@@ -394,7 +477,7 @@ void DevHandLabScreen::drawLiveTrackingOverlay() const noexcept {
         static_cast<int>(::biofuel::engine::vision::hand_tracking::toString(status.state).size()),
         ::biofuel::engine::vision::hand_tracking::toString(status.state).data(),
         static_cast<double>(status.secondsSinceLastFrame),
-        wizard.active ? "guided calibration running" : "selfie mirror mapped");
+        wizard.active ? "quick calibration running" : "selfie mirror mapped");
     Renderer::drawText(line, static_cast<i32>(panel.x + 12.0f), static_cast<i32>(panel.y + 12.0f), 13, Color{226, 244, 236, 255});
 
     DrawRectangleRec(preview, Color{9, 16, 19, 255});
@@ -412,8 +495,14 @@ void DevHandLabScreen::drawLiveTrackingOverlay() const noexcept {
             drawCalibrationGuide(preview);
         }
     } else {
-        const char* prompt = status.previewEnabled ? "Camera preview waiting..." : "Press C to start camera preview";
-        Renderer::drawText(prompt, static_cast<i32>(preview.x + 16.0f), static_cast<i32>(preview.y + preview.height * 0.5f - 7.0f), 13, Color{191, 210, 204, 255});
+        using ::biofuel::engine::vision::hand_tracking::HandTrackingConnectionState;
+        if (status.state == HandTrackingConnectionState::Error) {
+            drawPreviewMessage(preview, "Camera preview failed", status.message, Color{244, 159, 140, 255});
+        } else if (status.previewEnabled) {
+            drawPreviewMessage(preview, "Camera preview warming up...", status.message, Color{191, 210, 204, 255});
+        } else {
+            drawPreviewMessage(preview, "Press C to start camera preview", {}, Color{191, 210, 204, 255});
+        }
     }
 }
 

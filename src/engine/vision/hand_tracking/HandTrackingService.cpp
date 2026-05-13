@@ -3,12 +3,14 @@
 #include "engine/runtime/typed/Events.hpp"
 #include "engine/events/hand_tracking/HandTrackingEventModule.hpp"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <spdlog/spdlog.h>
 #include <thread>
 #include <utility>
@@ -50,7 +52,15 @@ constexpr u16 UDP_PORT = 40241U;
 constexpr u16 CONTROL_PORT = 40242U;
 constexpr u16 PREVIEW_PORT = 40243U;
 constexpr f32 FRAME_STALE_SECONDS = 0.75f;
+constexpr f32 STARTUP_GRACE_SECONDS = 12.0f;
 constexpr f32 GESTURE_DEBOUNCE_SECONDS = 0.15f;
+constexpr f32 HAND_IDENTITY_LOCK_CONFIDENCE = 0.70f;
+constexpr f32 HAND_IDENTITY_RECOVERY_CONFIDENCE = 0.44f;
+constexpr f32 HAND_IDENTITY_MAX_DISTANCE_SQUARED = 0.055f;
+constexpr f32 LANDMARK_SMOOTH_MIN_RESPONSE = 9.0f;
+constexpr f32 LANDMARK_SMOOTH_BASE_RESPONSE = 16.0f;
+constexpr f32 LANDMARK_SMOOTH_FAST_RESPONSE = 34.0f;
+constexpr usize PREVIEW_MAX_PIXELS = 1920U * 1080U;
 
 [[nodiscard]] u64 nowEpochMs() noexcept {
     using Clock = std::chrono::system_clock;
@@ -232,11 +242,21 @@ public:
                     m_status.message = "Tracking packets are stale";
                     shouldPublishLostHands = true;
                 }
+                if (m_status.workerRunning && m_status.secondsSinceLastFrame > STARTUP_GRACE_SECONDS) {
+                    startupTimedOut = true;
+                    startupErrorMessage = "Tracking stream stalled. Press C to retry.";
+                    m_status.state = HandTrackingConnectionState::Error;
+                    m_status.message = startupErrorMessage;
+                    m_status.workerRunning = false;
+                }
             } else if (m_status.workerRunning && m_status.state == HandTrackingConnectionState::Starting) {
                 m_status.secondsSinceLastFrame = secondsSince(m_lastFrameSteady);
-                if (m_status.secondsSinceLastFrame > FRAME_STALE_SECONDS * 3.0f) {
+                if (m_status.secondsSinceLastFrame > 1.0f) {
+                    m_status.message = "Camera and MediaPipe model are warming up";
+                }
+                if (m_status.secondsSinceLastFrame > STARTUP_GRACE_SECONDS) {
                     startupTimedOut = true;
-                    startupErrorMessage = "No hand-tracking frames received after worker startup";
+                    startupErrorMessage = "Camera/model startup timed out. Press C to retry.";
                     m_status.state = HandTrackingConnectionState::Error;
                     m_status.message = startupErrorMessage;
                     m_status.workerRunning = false;
@@ -411,6 +431,14 @@ public:
         return m_latestPreview;
     }
 
+    [[nodiscard]] std::optional<HandTrackingPreviewFrame> latestPreviewFrameAfter(const u64 sequence) const {
+        std::scoped_lock lock(m_mutex);
+        if (!m_latestPreview || m_latestPreview->sequence == sequence) {
+            return std::nullopt;
+        }
+        return m_latestPreview;
+    }
+
 private:
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
 #pragma pack(push, 1)
@@ -578,6 +606,7 @@ private:
                     if (!readPreviewBytes(socket, frame.jpegBytes.data(), frame.jpegBytes.size(), m_previewRunning)) {
                         break;
                     }
+                    decodePreviewFrame(frame);
                     {
                         std::scoped_lock lock(m_mutex);
                         m_latestPreview = std::move(frame);
@@ -588,6 +617,34 @@ private:
             }
         }
         m_previewRunning.store(false);
+    }
+
+    static void decodePreviewFrame(HandTrackingPreviewFrame& frame) noexcept {
+        if (frame.jpegBytes.size() > static_cast<usize>(std::numeric_limits<i32>::max())) {
+            return;
+        }
+
+        Image image = LoadImageFromMemory(".jpg", frame.jpegBytes.data(), static_cast<i32>(frame.jpegBytes.size()));
+        if (image.data == nullptr) {
+            return;
+        }
+        ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+        const i32 width = image.width;
+        const i32 height = image.height;
+        if (width > 0 && height > 0 && width <= static_cast<i32>(std::numeric_limits<u16>::max())
+            && height <= static_cast<i32>(std::numeric_limits<u16>::max())) {
+            const usize byteCount = static_cast<usize>(width) * static_cast<usize>(height) * 4U;
+            if (byteCount / 4U > PREVIEW_MAX_PIXELS) {
+                UnloadImage(image);
+                return;
+            }
+            frame.rgbaBytes.resize(byteCount);
+            std::memcpy(frame.rgbaBytes.data(), image.data, byteCount);
+            frame.width = static_cast<u16>(width);
+            frame.height = static_cast<u16>(height);
+            frame.jpegBytes.clear();
+        }
+        UnloadImage(image);
     }
 
     [[nodiscard]] static std::optional<HandTrackingFrame> parsePacket(const std::array<u8, sizeof(RawPacket)>& buffer) {
@@ -762,34 +819,118 @@ private:
     }
 #endif
 
-    [[nodiscard]] static const HandTrackingHand* matchingPreviousHand(
+    struct PreviousHandMatch {
+        const HandTrackingHand* hand = nullptr;
+        usize index = 0U;
+        f32 distanceSquared = std::numeric_limits<f32>::max();
+    };
+
+    [[nodiscard]] static bool confidentHandedness(const HandTrackingHand& hand) noexcept {
+        return hand.handedness != HandTrackingHandedness::Unknown
+            && hand.handednessScore >= HAND_IDENTITY_LOCK_CONFIDENCE;
+    }
+
+    [[nodiscard]] static std::optional<PreviousHandMatch> matchingPreviousHand(
         const HandTrackingHand& current,
-        const HandTrackingFrame& previous) noexcept
+        const HandTrackingFrame& previous,
+        const std::array<bool, HandTrackingFrame::MAX_HANDS>& usedPrevious) noexcept
     {
         const Vector2 currentPalm = handPalmCenter2D(current);
-        const HandTrackingHand* best = nullptr;
-        f32 bestDistance = std::numeric_limits<f32>::max();
-        for (const HandTrackingHand& candidate : previous.hands) {
+        std::optional<PreviousHandMatch> best;
+        f32 bestScore = std::numeric_limits<f32>::max();
+        for (usize index = 0U; index < previous.hands.size(); ++index) {
+            if (usedPrevious[index]) {
+                continue;
+            }
+            const HandTrackingHand& candidate = previous.hands[index];
             if (!candidate.valid) {
                 continue;
             }
-            const bool sameKnownHand =
-                current.handedness != HandTrackingHandedness::Unknown
-                && candidate.handedness == current.handedness;
-            const bool bothUnknown =
-                current.handedness == HandTrackingHandedness::Unknown
-                && candidate.handedness == HandTrackingHandedness::Unknown;
-            if (!sameKnownHand && !bothUnknown) {
+            const f32 distance = distanceSquared2D(currentPalm, handPalmCenter2D(candidate));
+            if (distance > HAND_IDENTITY_MAX_DISTANCE_SQUARED) {
                 continue;
             }
 
-            const f32 distance = distanceSquared2D(currentPalm, handPalmCenter2D(candidate));
-            if (distance < bestDistance) {
-                best = &candidate;
-                bestDistance = distance;
+            f32 score = distance;
+            if (current.handedness != HandTrackingHandedness::Unknown
+                && candidate.handedness != HandTrackingHandedness::Unknown
+                && current.handedness != candidate.handedness) {
+                const bool strongConflict = confidentHandedness(current) && confidentHandedness(candidate);
+                score += strongConflict ? 0.08f : 0.012f;
+            } else if (current.handedness == candidate.handedness
+                && current.handedness != HandTrackingHandedness::Unknown) {
+                score *= 0.55f;
+            }
+
+            if (score < bestScore) {
+                bestScore = score;
+                best = PreviousHandMatch{
+                    .hand = &candidate,
+                    .index = index,
+                    .distanceSquared = distance,
+                };
             }
         }
         return best;
+    }
+
+    static void stabilizeHandIdentity(
+        HandTrackingHand& current,
+        const HandTrackingHand& previous,
+        const f32 distanceSquared) noexcept
+    {
+        if (previous.handedness == HandTrackingHandedness::Unknown) {
+            return;
+        }
+
+        const bool currentAmbiguous =
+            current.handedness == HandTrackingHandedness::Unknown
+            || current.handednessScore < HAND_IDENTITY_LOCK_CONFIDENCE;
+        const bool closeContinuation = distanceSquared <= HAND_IDENTITY_MAX_DISTANCE_SQUARED * 0.65f;
+        const bool recoverableConflict =
+            current.handedness != previous.handedness
+            && current.handednessScore < HAND_IDENTITY_LOCK_CONFIDENCE + 0.10f
+            && previous.handednessScore >= HAND_IDENTITY_RECOVERY_CONFIDENCE
+            && closeContinuation;
+
+        if (!currentAmbiguous && !recoverableConflict) {
+            return;
+        }
+
+        current.handedness = previous.handedness;
+        current.handednessScore = std::max(
+            current.handednessScore,
+            std::clamp(previous.handednessScore * 0.88f, HAND_IDENTITY_RECOVERY_CONFIDENCE, 1.0f));
+    }
+
+    [[nodiscard]] static f32 frameDeltaSeconds(
+        const HandTrackingFrame& current,
+        const HandTrackingFrame& previous) noexcept
+    {
+        if (current.timestampMs <= previous.timestampMs) {
+            return 1.0f / 30.0f;
+        }
+        const f32 seconds = static_cast<f32>(current.timestampMs - previous.timestampMs) / 1000.0f;
+        return std::clamp(seconds, 1.0f / 120.0f, 0.12f);
+    }
+
+    [[nodiscard]] static f32 landmarkSmoothingAlpha(
+        const HandTrackingHand& current,
+        const HandTrackingHand& previous,
+        const f32 distanceSquared,
+        const f32 dt) noexcept
+    {
+        const f32 palmMotion = std::sqrt(std::max(distanceSquared, 0.0f));
+        const f32 motionT = std::clamp((palmMotion - 0.010f) / 0.070f, 0.0f, 1.0f);
+        f32 response = LANDMARK_SMOOTH_BASE_RESPONSE
+            + (LANDMARK_SMOOTH_FAST_RESPONSE - LANDMARK_SMOOTH_BASE_RESPONSE) * motionT;
+        if (current.handedness == HandTrackingHandedness::Unknown
+            || current.handednessScore < HAND_IDENTITY_RECOVERY_CONFIDENCE
+            || previous.handednessScore < HAND_IDENTITY_RECOVERY_CONFIDENCE) {
+            response = LANDMARK_SMOOTH_MIN_RESPONSE;
+        }
+        const f32 alpha = 1.0f - std::exp(-response * dt);
+        return std::clamp(alpha, 0.08f, 0.92f);
     }
 
     [[nodiscard]] HandTrackingFrame smoothFrame(const HandTrackingFrame& raw) const {
@@ -802,19 +943,23 @@ private:
             return raw;
         }
 
-        constexpr f32 alpha = 0.45f;
+        const f32 frameDt = frameDeltaSeconds(raw, *previous);
         HandTrackingFrame result = raw;
+        std::array<bool, HandTrackingFrame::MAX_HANDS> usedPrevious{};
         for (auto& hand : result.hands) {
             if (!hand.valid) {
                 continue;
             }
-            const HandTrackingHand* previousHand = matchingPreviousHand(hand, *previous);
-            if (previousHand == nullptr) {
+            const auto match = matchingPreviousHand(hand, *previous, usedPrevious);
+            if (!match || match->hand == nullptr) {
                 continue;
             }
+            usedPrevious[match->index] = true;
+            stabilizeHandIdentity(hand, *match->hand, match->distanceSquared);
+            const f32 alpha = landmarkSmoothingAlpha(hand, *match->hand, match->distanceSquared, frameDt);
             for (usize index = 0U; index < HandTrackingHand::LANDMARK_COUNT; ++index) {
-                hand.imageLandmarks[index] = lerpLandmark(previousHand->imageLandmarks[index], hand.imageLandmarks[index], alpha);
-                hand.worldLandmarks[index] = lerpLandmark(previousHand->worldLandmarks[index], hand.worldLandmarks[index], alpha);
+                hand.imageLandmarks[index] = lerpLandmark(match->hand->imageLandmarks[index], hand.imageLandmarks[index], alpha);
+                hand.worldLandmarks[index] = lerpLandmark(match->hand->worldLandmarks[index], hand.worldLandmarks[index], alpha);
             }
         }
         return result;
@@ -970,6 +1115,10 @@ std::optional<HandTrackingFrame> HandTrackingService::latestFrame() const {
 
 std::optional<HandTrackingPreviewFrame> HandTrackingService::latestPreviewFrame() const {
     return m_impl->latestPreviewFrame();
+}
+
+std::optional<HandTrackingPreviewFrame> HandTrackingService::latestPreviewFrameAfter(const u64 sequence) const {
+    return m_impl->latestPreviewFrameAfter(sequence);
 }
 
 } // namespace biofuel::engine::vision::hand_tracking

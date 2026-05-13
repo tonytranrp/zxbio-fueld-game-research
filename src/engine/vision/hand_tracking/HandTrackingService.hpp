@@ -37,6 +37,7 @@ public:
     [[nodiscard]] HandTrackingStatus status() const;
     [[nodiscard]] std::optional<HandTrackingFrame> latestFrame() const;
     [[nodiscard]] std::optional<HandTrackingPreviewFrame> latestPreviewFrame() const;
+    [[nodiscard]] std::optional<HandTrackingPreviewFrame> latestPreviewFrameAfter(u64 sequence) const;
 
 private:
     class Impl;

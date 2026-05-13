@@ -11,7 +11,7 @@ engine/custom/procedural/
 |-- core/       shared procedural types
 |-- animation/  procedural rig animation helpers
 |-- ik/         FABRIK and joint-limit helpers
-|-- hand/       robot hand rig, retargeting, rendering, presets
+|-- hand/       robot hand rig, retargeting, rendering, physics interaction
 |-- pose/       pose smoothing, fitting, separation, calibration mapping
 |-- materials/  generated texture/material cache
 |-- mesh/       generated mesh/model cache
@@ -25,7 +25,8 @@ engine/custom/procedural/
 
 The robot-hand module owns rig dimensions, IK solving, typed animation clips,
 material palettes, JSON presets, procedural/PNG texture support, cached
-generated meshes, rendering, and hand-tracking retargeting.
+generated meshes, rendering, hand-tracking retargeting, and Rapier-backed
+prop interaction helpers.
 
 Shared pose math, such as camera-frame mapping, two-hand calibration, smoothing,
 pose separation, and visible-volume fitting, lives under `pose/`. Screens

@@ -95,15 +95,24 @@ def _landmark_list(values: Iterable[object]) -> list[Landmark]:
     return result[:LANDMARK_COUNT]
 
 
-def hand_from_result(result: object, index: int, gesture_score_threshold: float = 0.0) -> HandResult:
+def hand_from_result(
+    result: object,
+    index: int,
+    gesture_score_threshold: float = 0.0,
+    handedness_score_threshold: float = 0.0,
+    handedness_margin_threshold: float = 0.0,
+) -> HandResult:
     hand = HandResult()
     hand.valid = True
     handedness_categories = result.handedness[index] if index < len(result.handedness) else []
     gesture_categories = result.gestures[index] if index < len(result.gestures) else []
     if handedness_categories:
         top = handedness_categories[0]
-        hand.handedness = handedness_id(top.category_name)
         hand.handedness_score = _score(top.score)
+        runner_up_score = _score(handedness_categories[1].score) if len(handedness_categories) > 1 else 0.0
+        margin = hand.handedness_score - runner_up_score
+        if hand.handedness_score >= handedness_score_threshold and margin >= handedness_margin_threshold:
+            hand.handedness = handedness_id(top.category_name)
     if gesture_categories:
         top = gesture_categories[0]
         hand.gesture_score = _score(top.score)

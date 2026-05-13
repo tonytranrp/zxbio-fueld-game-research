@@ -1,9 +1,12 @@
 #pragma once
 
 #include "engine/core/Types.hpp"
+#include "engine/core/units/EngineUnits.hpp"
 #include <raylib.h>
 
 namespace biofuel::engine::physics {
+
+using PixelToMeterScale = ::biofuel::engine::core::units::PixelToMeterScale;
 
 enum class PhysicsWorldKind : u8 {
     World2D,
@@ -20,6 +23,14 @@ enum class PhysicsBodyKind : u8 {
 enum class PhysicsContactPhase : u8 {
     Started,
     Ended,
+};
+
+enum class PhysicsShapeRole : u8 {
+    Unknown,
+    StaticScene,
+    DynamicProp,
+    KinematicInteractor,
+    Sensor,
 };
 
 struct PhysicsBody2D {
@@ -131,26 +142,6 @@ struct PhysicsContactEvent {
     PhysicsContactPhase phase = PhysicsContactPhase::Started;
     u64 colliderA = 0U;
     u64 colliderB = 0U;
-};
-
-struct PixelToMeterScale {
-    f32 pixelsPerMeter = 32.0f;
-
-    [[nodiscard]] constexpr f32 pixelsToMeters(const f32 pixels) const noexcept {
-        return pixelsPerMeter <= 0.0f ? pixels : pixels / pixelsPerMeter;
-    }
-
-    [[nodiscard]] constexpr f32 metersToPixels(const f32 meters) const noexcept {
-        return pixelsPerMeter <= 0.0f ? meters : meters * pixelsPerMeter;
-    }
-
-    [[nodiscard]] constexpr Vector2 pixelsToMeters(const Vector2 pixels) const noexcept {
-        return Vector2{pixelsToMeters(pixels.x), pixelsToMeters(pixels.y)};
-    }
-
-    [[nodiscard]] constexpr Vector2 metersToPixels(const Vector2 meters) const noexcept {
-        return Vector2{metersToPixels(meters.x), metersToPixels(meters.y)};
-    }
 };
 
 } // namespace biofuel::engine::physics

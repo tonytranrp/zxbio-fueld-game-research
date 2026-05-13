@@ -8,7 +8,7 @@ Typed runtime service, event, asset, and shader declarations live here.
 engine/runtime/typed/
 |-- ServiceBase.hpp / ServiceDeclare.hpp / Services.hpp / ServiceTags.hpp
 |-- EventBase.hpp / EventDeclare.hpp / Events.hpp / EventTags.hpp
-|-- AssetBase.hpp / AssetDeclare.hpp / Assets.hpp
+|-- AssetBase.hpp / AssetDeclare.hpp / AssetCatalog.hpp / Assets.hpp
 `-- ShaderDeclare.hpp
 ```
 
@@ -38,9 +38,28 @@ BIOFUEL_EVENT_SPEC(farm::FarmTick, "farm.tick");
 BIOFUEL_EVENT_MODULE(FarmEventModule, AppEventRegistry, farm::FarmTick)
 ```
 
+## How to group assets
+
+Use asset catalogs when a screen or feature wants one readable list of related
+typed assets without replacing generated registries.
+
+```cpp
+struct FarmPrototypeCatalog;
+
+template<>
+struct AssetCatalog<FarmPrototypeCatalog> {
+    using Assets = biofuel::typed::Registry<
+        VideoEntry<video::IdleAmbient>,
+        SoundEntry<sound::MenuMove>>;
+};
+
+static_assert(validateAssetCatalog<FarmPrototypeCatalog>());
+```
+
 ## Coding standards
 
 - Tags are empty types; payloads and backends carry the data.
 - Registry membership is compile-time and explicit.
 - Runtime users should not include generated registry headers directly.
+- Catalog entries must point at already registered typed assets or shaders.
 - Labels use stable lowercase dotted names.

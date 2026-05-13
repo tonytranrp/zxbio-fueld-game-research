@@ -1,7 +1,8 @@
 # engine/physics
 
 Rapier-backed rigid-body physics lives here. This folder owns real collision,
-rigid body simulation, raycasts, and contact events for both 2D and 3D worlds.
+rigid body simulation, raycasts, shape roles, and contact events for both 2D
+and 3D worlds.
 
 ## Current contents
 
@@ -33,7 +34,12 @@ physics.world3D().attachCuboid(body, {
 ```
 
 Physics uses meter-style world units. Pixel screens should use
-`PixelToMeterScale` at the boundary instead of tuning Rapier in raw pixels.
+`engine/core/units` wrappers plus `PixelToMeterScale` at the boundary instead
+of tuning Rapier in raw pixels.
+Reusable interaction systems can tag bodies with `PhysicsShapeRole` when they
+publish higher-level shape lifecycle or grab events.
+For hand-driven props, keep camera/gesture interpretation outside the physics
+service and feed Rapier bounded kinematic interactors plus dynamic props.
 
 ## Coding standards
 
@@ -41,4 +47,6 @@ Physics uses meter-style world units. Pixel screens should use
 - Expose typed C++ handles and descriptors, not raw Rust or Rapier types.
 - Step physics once from the fixed update path.
 - Poll contacts after stepping; do not query per entity during rendering.
+- Use kinematic bodies for player/tool-driven interactors and dynamic bodies
+  for props that Rapier should move.
 - Add new shapes deliberately and keep 2D/3D APIs dimension-specific.

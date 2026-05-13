@@ -63,7 +63,7 @@ struct CalibrationHandProgress {
     bool targetAcquired = false;
     bool sampleCaptured = false;
     f32 holdSeconds = 0.0f;
-    f32 requiredHoldSeconds = 1.25f;
+    f32 requiredHoldSeconds = 0.45f;
     f32 targetError = 1.0f;
     CalibrationCaptureStatus status = CalibrationCaptureStatus::Missing;
 };
@@ -103,7 +103,7 @@ struct CalibrationWizardState {
     CalibrationHandPhase activeHand = CalibrationHandPhase::Left;
     CalibrationWizardStep step = CalibrationWizardStep::Inactive;
     f32 holdSeconds = 0.0f;
-    f32 requiredHoldSeconds = 1.25f;
+    f32 requiredHoldSeconds = 0.45f;
     bool targetAcquired = false;
     f32 targetError = 1.0f;
     CalibrationHandProgress left{};
@@ -203,7 +203,7 @@ struct CalibrationImageWarp {
     case CalibrationWizardStep::Left: return CalibrationWizardStep::Right;
     case CalibrationWizardStep::Right: return CalibrationWizardStep::Top;
     case CalibrationWizardStep::Top: return CalibrationWizardStep::Bottom;
-    case CalibrationWizardStep::Bottom: return CalibrationWizardStep::TopLeft;
+    case CalibrationWizardStep::Bottom: return CalibrationWizardStep::Complete;
     case CalibrationWizardStep::TopLeft: return CalibrationWizardStep::TopRight;
     case CalibrationWizardStep::TopRight: return CalibrationWizardStep::BottomLeft;
     case CalibrationWizardStep::BottomLeft: return CalibrationWizardStep::BottomRight;
@@ -228,7 +228,7 @@ struct CalibrationImageWarp {
 }
 
 [[nodiscard]] inline u8 calibrationStepCount() noexcept {
-    return 11U;
+    return 5U;
 }
 
 [[nodiscard]] inline u8 calibrationStepOrdinal(const CalibrationWizardStep step) noexcept {
@@ -238,12 +238,12 @@ struct CalibrationImageWarp {
     case CalibrationWizardStep::Right: return 3U;
     case CalibrationWizardStep::Top: return 4U;
     case CalibrationWizardStep::Bottom: return 5U;
-    case CalibrationWizardStep::TopLeft: return 6U;
-    case CalibrationWizardStep::TopRight: return 7U;
-    case CalibrationWizardStep::BottomLeft: return 8U;
-    case CalibrationWizardStep::BottomRight: return 9U;
-    case CalibrationWizardStep::Near: return 10U;
-    case CalibrationWizardStep::Far: return 11U;
+    case CalibrationWizardStep::TopLeft:
+    case CalibrationWizardStep::TopRight:
+    case CalibrationWizardStep::BottomLeft:
+    case CalibrationWizardStep::BottomRight:
+    case CalibrationWizardStep::Near:
+    case CalibrationWizardStep::Far:
     case CalibrationWizardStep::Inactive:
     case CalibrationWizardStep::Complete:
         break;
@@ -331,6 +331,28 @@ struct CalibrationImageWarp {
     return "waiting";
 }
 
+[[nodiscard]] inline f32 calibrationRequiredHoldSeconds(const CalibrationWizardStep step) noexcept {
+    switch (step) {
+    case CalibrationWizardStep::Center: return 0.46f;
+    case CalibrationWizardStep::Left:
+    case CalibrationWizardStep::Right:
+    case CalibrationWizardStep::Top:
+    case CalibrationWizardStep::Bottom:
+        return 0.38f;
+    case CalibrationWizardStep::TopLeft:
+    case CalibrationWizardStep::TopRight:
+    case CalibrationWizardStep::BottomLeft:
+    case CalibrationWizardStep::BottomRight:
+    case CalibrationWizardStep::Near:
+    case CalibrationWizardStep::Far:
+        return 0.42f;
+    case CalibrationWizardStep::Inactive:
+    case CalibrationWizardStep::Complete:
+        break;
+    }
+    return 0.45f;
+}
+
 [[nodiscard]] inline Vector2 calibrationTarget(const CalibrationWizardStep step) noexcept {
     switch (step) {
     case CalibrationWizardStep::Center: return Vector2{0.50f, 0.55f};
@@ -354,17 +376,17 @@ struct CalibrationImageWarp {
 
 [[nodiscard]] inline f32 calibrationTargetRadius(const CalibrationWizardStep step) noexcept {
     switch (step) {
-    case CalibrationWizardStep::Center: return 0.105f;
+    case CalibrationWizardStep::Center: return 0.135f;
     case CalibrationWizardStep::Left:
     case CalibrationWizardStep::Right:
     case CalibrationWizardStep::Top:
     case CalibrationWizardStep::Bottom:
-        return 0.095f;
+        return 0.125f;
     case CalibrationWizardStep::TopLeft:
     case CalibrationWizardStep::TopRight:
     case CalibrationWizardStep::BottomLeft:
     case CalibrationWizardStep::BottomRight:
-        return 0.085f;
+        return 0.110f;
     case CalibrationWizardStep::Near:
     case CalibrationWizardStep::Far:
         return 0.170f;
@@ -433,11 +455,11 @@ struct CalibrationImageWarp {
         .left = fullBounds,
         .right = fullBounds,
     };
-    if (layout == StageLayoutPolicy::Shared || activeHands < 2U) {
+    if (layout == StageLayoutPolicy::Shared || layout == StageLayoutPolicy::Adaptive || activeHands < 2U) {
         return volume;
     }
 
-    const f32 gap = layout == StageLayoutPolicy::Adaptive ? 0.14f : 0.22f;
+    const f32 gap = 0.22f;
     const f32 centerX = (fullBounds.min.x + fullBounds.max.x) * 0.5f;
     volume.left.max.x = centerX - gap * 0.5f;
     volume.right.min.x = centerX + gap * 0.5f;
@@ -500,14 +522,10 @@ inline void sanitizeCalibrationProfile(CalibrationSessionProfile& profile) noexc
     profile.top.x = profile.center.x;
     profile.bottom.x = profile.center.x;
 
-    profile.topLeft.x = std::min(profile.topLeft.x, profile.left.x);
-    profile.bottomLeft.x = std::min(profile.bottomLeft.x, profile.left.x);
-    profile.topRight.x = std::max(profile.topRight.x, profile.right.x);
-    profile.bottomRight.x = std::max(profile.bottomRight.x, profile.right.x);
-    profile.topLeft.y = std::min(profile.topLeft.y, profile.top.y);
-    profile.topRight.y = std::min(profile.topRight.y, profile.top.y);
-    profile.bottomLeft.y = std::max(profile.bottomLeft.y, profile.bottom.y);
-    profile.bottomRight.y = std::max(profile.bottomRight.y, profile.bottom.y);
+    profile.topLeft = Vector2{profile.left.x, profile.top.y};
+    profile.topRight = Vector2{profile.right.x, profile.top.y};
+    profile.bottomLeft = Vector2{profile.left.x, profile.bottom.y};
+    profile.bottomRight = Vector2{profile.right.x, profile.bottom.y};
 
     const CalibrationAxisRange xRange = calibrationHorizontalRange(profile);
     if ((xRange.max - xRange.min) < minHorizontal) {
@@ -526,8 +544,8 @@ inline void sanitizeCalibrationProfile(CalibrationSessionProfile& profile) noexc
 
     if (profile.nearPalmSpan <= profile.farPalmSpan + 0.02f) {
         const f32 middle = std::max(profile.referencePalmSpan, 0.12f);
-        profile.nearPalmSpan = middle * 1.28f;
-        profile.farPalmSpan = middle * 0.72f;
+        profile.nearPalmSpan = middle * 1.18f;
+        profile.farPalmSpan = middle * 0.82f;
     }
     profile.referencePalmSpan = std::clamp(profile.referencePalmSpan, 0.05f, 0.42f);
     profile.nearPalmSpan = std::clamp(profile.nearPalmSpan, 0.07f, 0.50f);
