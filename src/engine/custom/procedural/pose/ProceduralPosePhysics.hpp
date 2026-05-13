@@ -7,7 +7,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
-namespace biofuel::engine::custom::procedural::physics {
+namespace biofuel::engine::custom::procedural::pose {
 
 struct PoseBounds {
     Vector3 min{-1.0f, -1.0f, -1.0f};
@@ -117,4 +117,4 @@ void separatePoses(
     translatePose(second, Vector3Scale(direction, push));
 }
 
-} // namespace biofuel::engine::custom::procedural::physics
+} // namespace biofuel::engine::custom::procedural::pose

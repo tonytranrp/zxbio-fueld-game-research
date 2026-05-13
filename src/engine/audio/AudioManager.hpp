@@ -77,6 +77,8 @@ private:
 
     void applySfxVolume(std::string_view name);
     void applyAllSfxVolumes() noexcept;
+    void applyMusicVolume(std::string_view name) noexcept;
+    void applyMasterVolume() noexcept;
 
     std::unordered_map<std::string, Sound, TransparentHash, std::equal_to<>> m_sounds;
     std::unordered_map<std::string, Music, TransparentHash, std::equal_to<>> m_musicTracks;
@@ -87,7 +89,6 @@ private:
     f32 m_masterVolume = 1.0f;
     f32 m_sfxVolume = 1.0f;
     f32 m_musicVolume = 1.0f;
-    f32 m_mutedVolume = 1.0f;
     bool m_muted = false;
     bool m_initialized = false;
 };

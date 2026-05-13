@@ -12,7 +12,7 @@ engine/custom/procedural/
 |-- animation/  procedural rig animation helpers
 |-- ik/         FABRIK and joint-limit helpers
 |-- hand/       robot hand rig, retargeting, rendering, presets
-|-- physics/    pose smoothing, fitting, separation, calibration mapping
+|-- pose/       pose smoothing, fitting, separation, calibration mapping
 |-- materials/  generated texture/material cache
 |-- mesh/       generated mesh/model cache
 |-- config/     reserved shared config loaders
@@ -28,7 +28,7 @@ material palettes, JSON presets, procedural/PNG texture support, cached
 generated meshes, rendering, and hand-tracking retargeting.
 
 Shared pose math, such as camera-frame mapping, two-hand calibration, smoothing,
-pose separation, and visible-volume fitting, lives under `physics/`. Screens
+pose separation, and visible-volume fitting, lives under `pose/`. Screens
 should display controls and overlays; they should not own this math.
 
 Preset defaults live in C++ specs and can be overridden by JSON files under

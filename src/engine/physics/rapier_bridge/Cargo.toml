@@ -1,0 +1,16 @@
+[package]
+name = "biofuel_rapier_bridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+cxx = "=1.0.194"
+rapier2d = "=0.32.0"
+rapier3d = "=0.32.0"
+
+[build-dependencies]
+cxx-build = "=1.0.194"

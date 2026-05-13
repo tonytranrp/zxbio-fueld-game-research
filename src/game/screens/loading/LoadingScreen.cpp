@@ -192,6 +192,9 @@ void LoadingScreen::buildTasks() {
     m_tasks.add({"Initializing animation system...", 0.5f, []() {
         ::biofuel::engine::runtime::Runtime::animation().init();
     }});
+    m_tasks.add({"Initializing physics engine...", 0.5f, []() {
+        ::biofuel::engine::runtime::Runtime::physics().init();
+    }});
     m_tasks.add({"Initializing shader system...", 0.3f, []() {
         ::biofuel::engine::runtime::Runtime::shader().init();
     }});

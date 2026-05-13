@@ -4,6 +4,8 @@ Research and implementation repo for a C++20 Raylib game about biofuel productio
 
 ## What is in this repo
 
+- `Project Hub.md` - Obsidian vault entry point for linked project notes
+- `Notes/` - Obsidian project maps, templates, and implementation journal
 - `Agents.md` - master project plan and long-form design notes
 - `Research/` - subject-matter research used to shape the game
 - `assets/` - authored runtime assets such as shaders, fonts, sprites, audio, and models
@@ -49,12 +51,13 @@ Templates are allowed when they remove real shared duplication or belong to an e
 
 ## Where to start
 
+- Obsidian vault hub: [Project Hub.md](./Project%20Hub.md)
 - high-level project intent: [Agents.md](./Agents.md)
 - source layout and local coding rules: [src/README.md](./src/README.md)
-- screen system: [src/UI/README.md](./src/UI/README.md)
-- systems overview: [src/Systems/README.md](./src/Systems/README.md)
-- render and shader utilities: [src/Utils/render/README.md](./src/Utils/render/README.md)
-- event system: [src/Data/event/README.md](./src/Data/event/README.md)
+- screen system: [src/engine/ui/README.md](./src/engine/ui/README.md)
+- game screens: [src/game/screens/README.md](./src/game/screens/README.md)
+- render and shader utilities: [src/engine/graphics/README.md](./src/engine/graphics/README.md)
+- event system: [src/engine/events/README.md](./src/engine/events/README.md)
 
 ## Research reference
 

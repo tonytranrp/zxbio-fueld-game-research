@@ -173,68 +173,84 @@ def tracking_loop(state: WorkerState) -> None:
     GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
     VisionRunningMode = mp.tasks.vision.RunningMode
 
-    udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sequence = 0
 
-    while not state.stop_event.is_set():
-        state.tracking_event.wait(0.1)
-        if not state.tracking_event.is_set() or state.stop_event.is_set():
-            continue
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+        while not state.stop_event.is_set():
+            state.tracking_event.wait(0.1)
+            if not state.tracking_event.is_set() or state.stop_event.is_set():
+                continue
 
-        command = {}
-        while not state.command_queue.empty():
-            command = state.command_queue.get_nowait()
+            command = {}
+            while not state.command_queue.empty():
+                command = state.command_queue.get_nowait()
 
-        camera_config = state.config.get("camera", {})
-        mp_config = state.config.get("mediapipe", {})
-        camera_index = int(command.get("camera_index", camera_config.get("index", 0)))
-        capture = cv2.VideoCapture(camera_index)
-        if not capture.isOpened():
-            state.tracking_event.clear()
-            time.sleep(0.5)
-            continue
-
-        width, height, _fps = choose_camera_mode(capture, state.config)
-        options = GestureRecognizerOptions(
-            base_options=BaseOptions(model_asset_path=str(Path(state.args.model).resolve())),
-            running_mode=VisionRunningMode.VIDEO,
-            num_hands=int(mp_config.get("num_hands", 2)),
-            min_hand_detection_confidence=float(mp_config.get("min_hand_detection_confidence", 0.5)),
-            min_hand_presence_confidence=float(mp_config.get("min_hand_presence_confidence", 0.5)),
-            min_tracking_confidence=float(mp_config.get("min_tracking_confidence", 0.5)),
-        )
-
-        with GestureRecognizer.create_from_options(options) as recognizer:
-            started_ms = int(time.monotonic() * 1000)
-            while state.tracking_event.is_set() and not state.stop_event.is_set():
-                ok, frame = capture.read()
-                if not ok or frame is None:
-                    time.sleep(0.02)
+            capture = None
+            try:
+                camera_config = state.config.get("camera", {})
+                mp_config = state.config.get("mediapipe", {})
+                camera_index = int(command.get("camera_index", camera_config.get("index", 0)))
+                gesture_threshold = float(mp_config.get("gesture_score_threshold", 0.0))
+                capture = cv2.VideoCapture(camera_index)
+                if not capture.isOpened():
+                    state.tracking_event.clear()
+                    time.sleep(0.5)
                     continue
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-                frame_ms = int(time.monotonic() * 1000) - started_ms
-                result = recognizer.recognize_for_video(mp_image, frame_ms)
-                hands = [hand_from_result(result, index) for index in range(min(len(result.hand_landmarks), 2))]
-                packet = pack_frame(
-                    sequence=sequence,
-                    timestamp_ms=int(time.time() * 1000),
-                    camera_width=int(width),
-                    camera_height=int(height),
-                    hands=hands,
+
+                choose_camera_mode(capture, state.config)
+                options = GestureRecognizerOptions(
+                    base_options=BaseOptions(model_asset_path=str(Path(state.args.model).resolve())),
+                    running_mode=VisionRunningMode.VIDEO,
+                    num_hands=int(mp_config.get("num_hands", 2)),
+                    min_hand_detection_confidence=float(mp_config.get("min_hand_detection_confidence", 0.5)),
+                    min_hand_presence_confidence=float(mp_config.get("min_hand_presence_confidence", 0.5)),
+                    min_tracking_confidence=float(mp_config.get("min_tracking_confidence", 0.5)),
                 )
-                udp.sendto(packet, (state.args.udp_host, int(state.args.udp_port)))
 
-                if state.preview_enabled:
-                    jpeg = encode_preview(frame, state.config)
-                    if jpeg is not None:
-                        with state.preview_lock:
-                            state.latest_preview = jpeg
-                            state.latest_preview_sequence = sequence
+                with GestureRecognizer.create_from_options(options) as recognizer:
+                    started_ms = int(time.monotonic() * 1000)
+                    last_frame_ms = -1
+                    while state.tracking_event.is_set() and not state.stop_event.is_set():
+                        ok, frame = capture.read()
+                        if not ok or frame is None:
+                            time.sleep(0.02)
+                            continue
+                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                        frame_ms = int(time.monotonic() * 1000) - started_ms
+                        if frame_ms <= last_frame_ms:
+                            frame_ms = last_frame_ms + 1
+                        last_frame_ms = frame_ms
+                        result = recognizer.recognize_for_video(mp_image, frame_ms)
+                        hands = [
+                            hand_from_result(result, index, gesture_threshold)
+                            for index in range(min(len(result.hand_landmarks), 2))
+                        ]
+                        frame_height, frame_width = frame.shape[:2]
+                        packet = pack_frame(
+                            sequence=sequence,
+                            timestamp_ms=int(time.time() * 1000),
+                            camera_width=int(frame_width),
+                            camera_height=int(frame_height),
+                            hands=hands,
+                        )
+                        udp.sendto(packet, (state.args.udp_host, int(state.args.udp_port)))
 
-                sequence += 1
+                        if state.preview_enabled:
+                            jpeg = encode_preview(frame, state.config)
+                            if jpeg is not None:
+                                with state.preview_lock:
+                                    state.latest_preview = jpeg
+                                    state.latest_preview_sequence = sequence
 
-        capture.release()
+                        sequence += 1
+            except Exception as exc:  # noqa: BLE001 - keep worker alive after camera/model faults.
+                print(f"hand-tracking worker error: {exc}", file=sys.stderr, flush=True)
+                state.tracking_event.clear()
+                time.sleep(0.5)
+            finally:
+                if capture is not None:
+                    capture.release()
 
 
 def parent_monitor(state: WorkerState) -> None:

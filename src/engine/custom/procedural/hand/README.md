@@ -26,7 +26,9 @@ engine/custom/procedural/hand/
 - FABRIK IK and joint-limit integration.
 - Renderer-facing hand pose and material state.
 - Camera-hand landmark retargeting into `TrackedRobotHandPose`.
-- Two-hand, session-local calibration through the physics mapping layer.
+- Per-hand, session-local calibration through the physics mapping layer.
+- Compile-time landmark sets for palm metrics and stable one-hand-per-side
+  selection before rendering.
 
 ## How to use it
 
@@ -36,7 +38,8 @@ math.
 
 ```cpp
 HandTrackingRetargeter mapper;
-mapper.beginSession(width, height, MirrorPolicy::Selfie, StageLayoutPolicy::Shared);
+mapper.beginSession(width, height, MirrorPolicy::Selfie, StageLayoutPolicy::Adaptive);
+mapper.startCalibration();
 
 MappedTrackedHands mapped = mapper.map(frame, dt);
 trackedLeft.apply(mapped.leftPose);
@@ -47,6 +50,10 @@ renderer.draw(trackedLeft, renderState);
 
 - Keep UI, camera orbit controls, and tool workflow in game screens.
 - Keep detector IPC in `engine/vision/hand_tracking/`.
-- Keep generic calibration and pose math in `engine/custom/procedural/physics/`.
+- Keep generic calibration and pose math in `engine/custom/procedural/pose/`.
+- Let the retargeter own hand selection, calibration phase advancement, and
+  conversion from calibrated profiles to `TrackedRobotHandPose`.
+- Keep finger solving typed by `FingerId` so future per-finger limits can be
+  added without changing call sites.
 - Prefer typed hand-side, rig, and material structs over loose booleans/strings.
 - Do not persist calibration here until a real save/profile system owns it.

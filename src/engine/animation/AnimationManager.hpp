@@ -29,11 +29,7 @@ public:
             std::is_same_v<T, Rectangle>,
             "AnimationManager only supports Animation<f32>, Animation<Color>, "
             "Animation<Vector2>, Animation<Rectangle>");
-        m_animations.emplace_back(std::make_unique<AnimationWrapper<T>>(std::move(anim)));
-        ::biofuel::engine::debug::MemoryTelemetry::add(
-            ::biofuel::engine::debug::ResourceKind::Animation,
-            1,
-            0);
+        appendTypedAnimation(std::move(anim));
     }
 
     void add(std::unique_ptr<Animation<f32>> anim);
@@ -85,7 +81,24 @@ private:
         [[nodiscard]] const std::string& name() const override { return anim->name(); }
     };
 
+    void beginDispatch() noexcept;
+    void endDispatch();
+    void flushDeferredChanges();
+    void appendAnimation(std::unique_ptr<IAnimation> anim);
+
+    template<typename T>
+    void appendTypedAnimation(std::unique_ptr<Animation<T>> anim) {
+        appendAnimation(std::make_unique<AnimationWrapper<T>>(std::move(anim)));
+        ::biofuel::engine::debug::MemoryTelemetry::add(
+            ::biofuel::engine::debug::ResourceKind::Animation,
+            1,
+            0);
+    }
+
     std::vector<std::unique_ptr<IAnimation>> m_animations;
+    std::vector<std::unique_ptr<IAnimation>> m_pendingAnimations;
+    u32 m_dispatchDepth = 0U;
+    bool m_pruneRequested = false;
 };
 
 } // namespace biofuel::engine::animation

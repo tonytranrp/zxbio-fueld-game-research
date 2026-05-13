@@ -11,6 +11,8 @@ src/build/
 bin/
 lib/
 generated/
+.cargo-target/
+src/engine/physics/rapier_bridge/target/
 Testing/
 CMakeFiles/
 CMakeCache.txt
@@ -23,6 +25,13 @@ Makefile
 
 # CMake and tool-generated local config
 CMakeUserPresets.json
+
+# Obsidian vault state that is user/window specific. Shared vault settings live
+# in .obsidian/*.json and project notes live in Notes/.
+.obsidian/workspace*.json
+.obsidian/cache/
+.obsidian/plugins/
+.obsidian/trash/
 
 # MSVC, link, and debug artifacts
 *.obj

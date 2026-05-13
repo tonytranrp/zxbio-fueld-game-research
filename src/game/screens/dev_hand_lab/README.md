@@ -19,7 +19,7 @@ game/screens/dev_hand_lab/
 - Can start after loading with `BIOFUEL_DEV_STARTUP_HAND_LAB=ON`.
 - Renders its own clean studio scene and camera preview.
 - Draws mirrored MediaPipe landmark overlays.
-- Displays the two-hand guided calibration UI.
+- Displays the guided left-hand/right-hand calibration UI.
 - Owns camera orbit/zoom tool controls for this dev view.
 
 ## Engine boundaries
@@ -28,7 +28,7 @@ This screen consumes engine systems; it should not own detector or mapping
 logic. The reusable pieces live here:
 
 - `engine/vision/hand_tracking/`: Python worker, IPC, snapshots, preview frames.
-- `engine/custom/procedural/physics/`: camera-to-stage calibration and pose math.
+- `engine/custom/procedural/pose/`: camera-to-stage calibration and pose math.
 - `engine/custom/procedural/hand/`: robot-hand rig, renderer, and retargeter.
 
 ## Controls
@@ -38,7 +38,7 @@ logic. The reusable pieces live here:
 | `C` | Restart tracking |
 | `V` | Toggle preview |
 | `X` | Stop tracking |
-| `K` | Restart guided two-hand calibration |
+| `K` | Restart guided per-hand calibration |
 | `RMB` drag | Orbit camera |
 | Mouse wheel | Zoom camera |
 

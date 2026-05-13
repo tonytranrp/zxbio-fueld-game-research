@@ -101,7 +101,7 @@ void ModelAnimator::update(Model& model, const ModelAnimation* clips, const i32 
             m_stateProgress = std::clamp(m_stateElapsed / duration, 0.0f, 1.0f);
         }
     } else {
-        m_stateProgress = 0.0f;
+        m_stateProgress = state->loop ? 0.0f : 1.0f;
     }
 
     if (state->clipIndex >= 0 && state->clipIndex < clipCount && clips != nullptr) {
@@ -129,7 +129,7 @@ void ModelAnimator::update(Model& model, const ModelAnimation* clips, const i32 
     }
 
     if (!state->loop) {
-        if (duration > 0.0f && m_stateElapsed >= duration) {
+        if (duration <= 0.0f || m_stateElapsed >= duration) {
             if (!m_pendingReturnState.empty()) {
                 setState(m_pendingReturnState, 0.14f);
                 m_pendingReturnState.clear();

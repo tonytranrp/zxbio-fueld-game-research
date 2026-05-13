@@ -276,6 +276,13 @@ bool navigateVerticalMenu(
     std::span<const MenuItem> items,
     const MenuLayout& layout)
 {
+    const i32 effectiveCount = !items.empty() ? static_cast<i32>(items.size()) : itemCount;
+    if (effectiveCount <= 0) {
+        selectedIndex = 0;
+        return false;
+    }
+    selectedIndex = wrapIndex(selectedIndex, effectiveCount);
+
     if (cooldownTimer > 0.0f) {
         cooldownTimer -= dt;
     }
@@ -303,11 +310,11 @@ bool navigateVerticalMenu(
     if (!items.empty()) {
         i32 cycleCount = 0;
         do {
-            selectedIndex = (selectedIndex + dir + itemCount) % itemCount;
+            selectedIndex = wrapIndex(selectedIndex + dir, effectiveCount);
             ++cycleCount;
-        } while (items[selectedIndex].locked && cycleCount < itemCount);
+        } while (items[selectedIndex].locked && cycleCount < effectiveCount);
     } else {
-        selectedIndex = (selectedIndex + dir + itemCount) % itemCount;
+        selectedIndex = wrapIndex(selectedIndex + dir, effectiveCount);
     }
 
     cooldownTimer = layout.keyRepeatDelay;
@@ -357,6 +364,13 @@ bool navigateHorizontalMenu(
     std::span<const MenuItem> items,
     const HorizontalMenuLayout& layout)
 {
+    const i32 effectiveCount = !items.empty() ? static_cast<i32>(items.size()) : itemCount;
+    if (effectiveCount <= 0) {
+        selectedIndex = 0;
+        return false;
+    }
+    selectedIndex = wrapIndex(selectedIndex, effectiveCount);
+
     if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
         if (items.empty() || !items[selectedIndex].locked) {
             return true;
@@ -380,11 +394,11 @@ bool navigateHorizontalMenu(
     if (!items.empty()) {
         i32 cycleCount = 0;
         do {
-            selectedIndex = wrapIndex(selectedIndex + dir, itemCount);
+            selectedIndex = wrapIndex(selectedIndex + dir, effectiveCount);
             ++cycleCount;
-        } while (items[selectedIndex].locked && cycleCount < itemCount);
+        } while (items[selectedIndex].locked && cycleCount < effectiveCount);
     } else {
-        selectedIndex = wrapIndex(selectedIndex + dir, itemCount);
+        selectedIndex = wrapIndex(selectedIndex + dir, effectiveCount);
     }
 
     cooldownTimer = layout.keyRepeatDelay;

@@ -17,7 +17,7 @@ engine/vision/
 `hand_tracking/` owns the managed Python worker bridge plus the C++ service for
 MediaPipe hand landmarks, gestures, and preview frames. Procedural retargeting
 uses those snapshots from `engine/custom/procedural/hand/` and
-`engine/custom/procedural/physics/`.
+`engine/custom/procedural/pose/`.
 
 ## Coding standards
 

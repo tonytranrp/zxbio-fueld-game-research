@@ -46,6 +46,7 @@ private:
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     Texture2D m_previewTexture{};
     u64 m_previewTextureSequence = 0U;
+    f32 m_previewUploadCooldown = 0.0f;
     TrackedHandPose m_trackedLeft{};
     TrackedHandPose m_trackedRight{};
     ::biofuel::engine::custom::procedural::hand::MappedTrackedHands m_trackingMapped{};
@@ -68,7 +69,7 @@ private:
     void drawCalibrationGuide(Rectangle previewBounds) const noexcept;
     void applyTrackedFrame(const ::biofuel::engine::vision::hand_tracking::HandTrackingFrame& frame, f32 dt) noexcept;
     void resetTrackingCalibration() noexcept;
-    void updatePreviewTexture() noexcept;
+    void updatePreviewTexture(f32 dt) noexcept;
     void unloadPreviewTexture() noexcept;
 #endif
 };

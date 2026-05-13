@@ -75,12 +75,13 @@ void Application::shutdown() {
 
     ::biofuel::engine::debug::MemoryTelemetry::snapshot("app.shutdown.begin");
     auto& services = ::biofuel::engine::runtime::Runtime::services();
+    services.get<::biofuel::engine::runtime::typed::AnimationService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::ScreenService>().shutdown();
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     services.get<::biofuel::engine::runtime::typed::HandTrackingService>().shutdown();
 #endif
     services.get<::biofuel::engine::runtime::typed::ModelService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::AnimationService>().shutdown();
+    services.get<::biofuel::engine::runtime::typed::PhysicsService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::VideoService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::AudioService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::ShaderService>().shutdown();
@@ -140,6 +141,7 @@ void Application::processInput() {
 void Application::update(const f32 dt) {
     auto& services = ::biofuel::engine::runtime::Runtime::services();
     services.get<::biofuel::engine::runtime::typed::AnimationService>().update(dt);
+    services.get<::biofuel::engine::runtime::typed::PhysicsService>().stepFixed(dt);
     services.get<::biofuel::engine::runtime::typed::ModelService>().update(dt);
     services.get<::biofuel::engine::runtime::typed::AudioService>().update();
     services.get<::biofuel::engine::runtime::typed::VideoService>().update();

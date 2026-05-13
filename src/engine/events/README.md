@@ -14,6 +14,7 @@ engine/events/
 |-- input/
 |-- model/
 |-- mouse/
+|-- physics/
 |-- screen/
 |-- video/
 `-- window/
@@ -28,6 +29,7 @@ engine/events/
 | `input/` | Keyboard and mouse button events |
 | `model/` | Model lifecycle and animation commands |
 | `mouse/` | Mouse movement, wheel, and position events |
+| `physics/` | Rapier contact start/end events |
 | `screen/` | Screen stack, transition, layer, and debug overrides |
 | `video/` | Video playback start, completion, and errors |
 | `window/` | Window resize, focus, and close events |

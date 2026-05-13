@@ -18,14 +18,14 @@ mechanical joints. New procedural rigs should describe joints with local typed
 limits and pass explicit chains into the solver.
 
 ```cpp
-IkChain chain = makeFingerChain(root, target);
-FabrikSolver::solve(chain, settings);
-applyJointLimits(chain, limits);
+std::array<Vector3, FingerChainSpec<FingerId::Index>::jointCount> chain = makeIndexFingerChain();
+auto result = FabrikSolver<FingerChainSpec<FingerId::Index>>::solve(chain, target, settings);
 ```
 
 ## Coding standards
 
 - Solvers should be deterministic and allocation-light.
 - Do not read input, camera, screen, or service state here.
+- Keep chain tags typed and compile-time checked.
 - Joint limits must be explicit and documented in degrees or radians.
 - Keep general IK utilities reusable by future rigs, not only robot hands.

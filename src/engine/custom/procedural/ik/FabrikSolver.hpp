@@ -10,6 +10,8 @@ namespace biofuel::engine::custom::procedural::ik {
 
 template<typename TChain, usize TMaxSegments = 8U>
 struct FabrikSolver {
+    static_assert(TMaxSegments + 1U >= TChain::jointCount, "FABRIK segment buffer is too small for this typed chain");
+
     static IkSolveResult solve(
         const std::span<Vector3> points,
         const Vector3 target,

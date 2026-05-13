@@ -1,7 +1,7 @@
 # engine
 
 Reusable runtime code lives here: app startup, core types, typed registries,
-events, graphics, media, animation, input, window helpers, UI stack,
+events, physics, graphics, media, animation, input, window helpers, UI stack,
 computer-vision integrations, and custom procedural systems.
 
 ## Folder map
@@ -12,6 +12,7 @@ engine/
 |-- core/       common aliases, loading tasks, typed registry primitives
 |-- runtime/    Runtime facade plus service/event/asset/shader registries
 |-- events/     event payloads and dispatcher bridge
+|-- physics/    Rapier-backed 2D/3D rigid-body simulation
 |-- graphics/   renderer, render surfaces, shaders, shader components
 |-- animation/  value animation and model keyframe playback
 |-- audio/      audio asset and playback service
@@ -39,6 +40,7 @@ Game code normally enters engine systems through the runtime facade:
 ```cpp
 auto& screens = biofuel::engine::runtime::Runtime::screen();
 auto& renderer = biofuel::engine::runtime::Runtime::render();
+auto& physics = biofuel::engine::runtime::Runtime::physics();
 ```
 
 Lower-level engine code should include the specific subsystem it needs rather

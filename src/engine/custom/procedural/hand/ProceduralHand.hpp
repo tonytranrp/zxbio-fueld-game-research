@@ -98,19 +98,7 @@ public:
     void solve(const ::biofuel::engine::custom::procedural::ik::IkSolveSettings settings) noexcept {
         m_world = m_rest;
         for (auto& finger : m_fingers) {
-            std::array<Vector3, JOINTS_PER_FINGER> chain{};
-            for (usize index = 0U; index < JOINTS_PER_FINGER; ++index) {
-                chain[index] = m_world[finger.joints[index]];
-            }
-
-            finger.solve = ::biofuel::engine::custom::procedural::ik::FabrikSolver<FingerChainSpec<FingerId::Index>>::solve(
-                std::span<Vector3>(chain.data(), chain.size()),
-                finger.target,
-                settings);
-
-            for (usize index = 0U; index < JOINTS_PER_FINGER; ++index) {
-                m_world[finger.joints[index]] = chain[index];
-            }
+            solveFinger(finger, settings);
         }
     }
 
@@ -157,6 +145,40 @@ private:
         return m_fingers[static_cast<usize>(finger)];
     }
 
+    void solveFinger(
+        FingerRuntime& finger,
+        const ::biofuel::engine::custom::procedural::ik::IkSolveSettings settings) noexcept
+    {
+        switch (finger.id) {
+        case FingerId::Thumb: solveFingerTyped<FingerId::Thumb>(finger, settings); return;
+        case FingerId::Index: solveFingerTyped<FingerId::Index>(finger, settings); return;
+        case FingerId::Middle: solveFingerTyped<FingerId::Middle>(finger, settings); return;
+        case FingerId::Ring: solveFingerTyped<FingerId::Ring>(finger, settings); return;
+        case FingerId::Pinky: solveFingerTyped<FingerId::Pinky>(finger, settings); return;
+        case FingerId::Count: break;
+        }
+    }
+
+    template<FingerId TFinger>
+    void solveFingerTyped(
+        FingerRuntime& finger,
+        const ::biofuel::engine::custom::procedural::ik::IkSolveSettings settings) noexcept
+    {
+        std::array<Vector3, JOINTS_PER_FINGER> chain{};
+        for (usize index = 0U; index < JOINTS_PER_FINGER; ++index) {
+            chain[index] = m_world[finger.joints[index]];
+        }
+
+        finger.solve = ::biofuel::engine::custom::procedural::ik::FabrikSolver<FingerChainSpec<TFinger>>::solve(
+            std::span<Vector3>(chain.data(), chain.size()),
+            finger.target,
+            settings);
+
+        for (usize index = 0U; index < JOINTS_PER_FINGER; ++index) {
+            m_world[finger.joints[index]] = chain[index];
+        }
+    }
+
     void buildRestPose() noexcept {
         m_rest[0] = m_origin;
         m_rest[1] = pointFromLocal(m_dimensions.palmJointOffset);
@@ -190,6 +212,14 @@ private:
         return Vector3Transform(local, wristMatrix());
     }
 
+    [[nodiscard]] static Vector3 safeNormalize(const Vector3 value, const Vector3 fallback) noexcept {
+        const f32 length = Vector3Length(value);
+        if (length <= 0.0001f) {
+            return fallback;
+        }
+        return Vector3Scale(value, 1.0f / length);
+    }
+
     void configureFinger(
         const FingerId finger,
         const Vector3 baseOffset,
@@ -207,7 +237,7 @@ private:
         const Vector3 mirroredBase{baseOffset.x * mirror, baseOffset.y, baseOffset.z};
         const Vector3 mirroredDirection{direction.x * mirror, direction.y, direction.z};
         const Vector3 start = pointFromLocal(mirroredBase);
-        const Vector3 dir = Vector3Normalize(directionFromLocal(mirroredDirection));
+        const Vector3 dir = safeNormalize(directionFromLocal(mirroredDirection), Vector3{0.0f, 1.0f, 0.0f});
         for (usize index = 0U; index < JOINTS_PER_FINGER; ++index) {
             const f32 distance = static_cast<f32>(index) * segmentLength;
             m_rest[base + index] = Vector3Add(start, Vector3Scale(dir, distance));

@@ -1,12 +1,12 @@
-# engine/custom/procedural/physics
+# engine/custom/procedural/pose
 
-Procedural pose physics and camera-to-stage mapping live here. This folder owns
+Procedural pose mapping and camera-to-stage calibration live here. This folder owns
 math that turns tracked or generated input into stage-space poses.
 
 ## Current contents
 
 ```text
-engine/custom/procedural/physics/
+engine/custom/procedural/pose/
 |-- ProceduralPosePhysics.hpp
 `-- TrackedPoseMapping.hpp
 ```
@@ -20,18 +20,22 @@ and mapping model:
 - `StageLayoutPolicy`
 - `CameraFrameSpace`
 - `StageVolume`
+- `CalibrationHandPhase`
 - `CalibrationWizardState`
 - `CalibrationSessionProfile`
-- pose smoothing, visibility fitting, and separation helpers
+- per-hand calibration steps, corner-aware camera warp helpers, pose smoothing,
+  visibility fitting, and separation helpers
 
 Screens should consume mapped state and display calibration UI. They should not
 own calibration math.
 
 ```cpp
-using physics::CalibrationWizardStep;
+using pose::CalibrationHandPhase;
+using pose::CalibrationWizardStep;
 
-if (wizard.step == CalibrationWizardStep::Near) {
-    DrawText(calibrationPrompt(wizard.step).data(), x, y, size, color);
+if (wizard.activeHand == CalibrationHandPhase::Right
+    && wizard.step == CalibrationWizardStep::TopRight) {
+    DrawText(calibrationPrompt(wizard.activeHand, wizard.step).data(), x, y, size, color);
 }
 ```
 
@@ -42,4 +46,5 @@ if (wizard.step == CalibrationWizardStep::Near) {
 - Keep calibration state session-local unless a persistence layer is added.
 - Clamp unsafe data at the boundary, but keep useful unclamped helpers for range
   mapping where intentional.
+- Keep calibration sequences and target tolerances here, not in debug screens.
 - Do not include game screens or UI widgets here.

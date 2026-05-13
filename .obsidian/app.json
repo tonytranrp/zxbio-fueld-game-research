@@ -1,0 +1,11 @@
+{
+  "alwaysUpdateLinks": true,
+  "attachmentFolderPath": "Notes/Attachments",
+  "defaultViewMode": "preview",
+  "newFileLocation": "folder",
+  "newFileFolderPath": "Notes/Inbox",
+  "promptDelete": false,
+  "showLineNumber": false,
+  "strictLineBreaks": false,
+  "useMarkdownLinks": false
+}

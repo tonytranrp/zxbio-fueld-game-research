@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(BiofuelGame VERSION 0.1.0 LANGUAGES CXX)
+include(CTest)
 
 # ------------------------------------------------------------------------------
 # C++ Standard
@@ -7,6 +8,13 @@ project(BiofuelGame VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(MSVC)
+    # Rust's MSVC toolchain links the dynamic release CRT even for debug Rust
+    # profiles. Use the same CRT from C++ targets to make static Rust libraries
+    # link cleanly in all configurations.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL" CACHE STRING "MSVC runtime library" FORCE)
+endif()
 
 option(BIOFUEL_ENABLE_HAND_TRACKING "Enable optional Python/MediaPipe hand tracking runtime." OFF)
 
@@ -94,6 +102,28 @@ CPMAddPackage(
         "SPDLOG_BUILD_EXAMPLE OFF"
         "SPDLOG_INSTALL OFF"
         "SPDLOG_FMT_EXTERNAL OFF"
+)
+
+# Corrosion - Cargo/Rust integration for the Rapier physics bridge.
+CPMAddPackage(
+    NAME Corrosion
+    URL https://github.com/corrosion-rs/corrosion/archive/refs/tags/v0.6.1.tar.gz
+    OPTIONS
+        "CORROSION_BUILD_TESTS OFF"
+)
+
+corrosion_import_crate(
+    MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/engine/physics/rapier_bridge/Cargo.toml"
+    LOCKED
+    CRATES biofuel_rapier_bridge
+    CRATE_TYPES staticlib
+)
+
+corrosion_add_cxxbridge(
+    biofuel_rapier_bridge_cxx
+    CRATE biofuel_rapier_bridge
+    REGEN_TARGET biofuel_rapier_bridge_cxx_regen
+    FILES lib.rs
 )
 
 if(BIOFUEL_ENABLE_HAND_TRACKING)

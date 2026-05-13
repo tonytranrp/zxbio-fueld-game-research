@@ -2,6 +2,7 @@
 
 #include "engine/core/Types.hpp"
 #include "Easing.hpp"
+#include <algorithm>
 #include <entt/signal/dispatcher.hpp>
 #include <raylib.h>
 #include <string>
@@ -56,11 +57,15 @@ struct Lerp<f32> {
 template<>
 struct Lerp<Color> {
     [[nodiscard]] static Color call(const Color& a, const Color& b, f32 t) noexcept {
+        const auto channel = [t](const u8 lhs, const u8 rhs) noexcept -> u8 {
+            const f32 value = Lerp<f32>::call(static_cast<f32>(lhs), static_cast<f32>(rhs), t);
+            return static_cast<u8>(std::clamp(value, 0.0f, 255.0f));
+        };
         return Color{
-            static_cast<u8>(Lerp<f32>::call(static_cast<f32>(a.r), static_cast<f32>(b.r), t)),
-            static_cast<u8>(Lerp<f32>::call(static_cast<f32>(a.g), static_cast<f32>(b.g), t)),
-            static_cast<u8>(Lerp<f32>::call(static_cast<f32>(a.b), static_cast<f32>(b.b), t)),
-            static_cast<u8>(Lerp<f32>::call(static_cast<f32>(a.a), static_cast<f32>(b.a), t)),
+            channel(a.r, b.r),
+            channel(a.g, b.g),
+            channel(a.b, b.b),
+            channel(a.a, b.a),
         };
     }
 };
@@ -127,7 +132,7 @@ public:
         , m_current{start}
         , m_duration{duration}
         , m_elapsed{0.0f}
-        , m_easing{easing}
+        , m_easing{easing != nullptr ? easing : Easing::linear}
         , m_dispatcher{dispatcher}
         , m_cancelled{false}
         , m_done{false}
@@ -148,7 +153,8 @@ public:
             m_done = true;
             m_current = m_reversing ? m_start : m_end;
         } else {
-            m_current = AnimationUtils::Lerp<T>::call(m_start, m_end, m_easing(rawT));
+            const f32 easedT = m_easing != nullptr ? m_easing(rawT) : Easing::linear(rawT);
+            m_current = AnimationUtils::Lerp<T>::call(m_start, m_end, easedT);
         }
 
         // Fire update callback
@@ -207,7 +213,7 @@ public:
     [[nodiscard]] f32 elapsed() const noexcept { return m_elapsed; }
 
     // ---- Setters for chaining ----
-    void setEasing(Easing::Fn fn) noexcept { m_easing = fn; }
+    void setEasing(Easing::Fn fn) noexcept { m_easing = fn != nullptr ? fn : Easing::linear; }
 
     Animation& onUpdate(UpdateCb cb) noexcept {
         m_onUpdate = std::move(cb);

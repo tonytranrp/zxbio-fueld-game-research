@@ -12,6 +12,7 @@
 #include "engine/graphics/Render.hpp"
 #include "engine/graphics/shaders/MainMenuBgModule.hpp"
 #include "engine/audio/AudioManager.hpp"
+#include "engine/input/InputServiceModule.hpp"
 #include <raylib.h>
 #include <algorithm>
 #include <cmath>
@@ -328,7 +329,11 @@ void MainMenuScreen::onInput() {
     // Reset idle timer on any mouse movement or key press
     {
         const Vector2 mouseDelta = GetMouseDelta();
-        if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f || GetKeyPressed() != 0) {
+        const bool keyboardActivity =
+            ::biofuel::engine::runtime::Runtime::services()
+                .get<::biofuel::engine::runtime::typed::InputService>()
+                .keyPressedThisPoll();
+        if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f || keyboardActivity) {
             m_idleTrigger.onInput();
         }
     }

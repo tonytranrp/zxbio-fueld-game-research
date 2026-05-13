@@ -33,7 +33,8 @@ cmake --build out/build/x64-Debug --config Debug --parallel
 - Landmark and gesture snapshots are binary UDP packets on port `40241`.
 - C++ sends JSON-line control commands over TCP port `40242`.
 - Dev preview frames use a TCP length-prefixed MJPEG stream on port `40243`.
-- Rendering and smoothing remain C++ side; Python only detects hands.
+- Packet validation, light landmark smoothing, gesture debouncing, and preview
+  thread ownership remain C++ side; Python only detects hands.
 
 When enabled, CMake fetches standalone Asio through CPM and provisions a
 build-local Python 3.12 environment with `uv`. The app never relies on system
@@ -70,12 +71,14 @@ if (auto frame = tracking.latestFrame()) {
 - Version: `1`
 - Payload: up to 2 hands, handedness, confidence, gesture, 21 image landmarks,
   and 21 world landmarks per hand.
-- C++ validates magic, version, packet size, and hand count before accepting a
-  snapshot.
+- C++ validates magic, version, packet size, enum values, score ranges, and hand
+  count before accepting a snapshot.
 
 ## Coding standards
 
 - Keep worker process ownership inside `HandTrackingService`.
+- Preview networking must be stoppable from the main thread; avoid blocking
+  reads that cannot observe the service's running flag.
 - Keep packet structs validated before exposing snapshots.
 - Do not put procedural mapping or screen overlay drawing in this folder.
 - Feature-guard runtime access with `BIOFUEL_ENABLE_HAND_TRACKING`.

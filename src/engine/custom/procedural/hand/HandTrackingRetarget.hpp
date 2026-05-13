@@ -2,7 +2,7 @@
 
 #include "engine/custom/procedural/hand/HandTypes.hpp"
 #include "engine/custom/procedural/hand/TrackedRobotHand.hpp"
-#include "engine/custom/procedural/physics/TrackedPoseMapping.hpp"
+#include "engine/custom/procedural/pose/TrackedPoseMapping.hpp"
 #include "engine/vision/hand_tracking/HandTrackingTypes.hpp"
 #include <algorithm>
 #include <array>
@@ -13,16 +13,21 @@
 namespace biofuel::engine::custom::procedural::hand {
 
 struct HandTrackingRetargetSettings {
-    ::biofuel::engine::custom::procedural::physics::MirrorPolicy mirrorPolicy =
-        ::biofuel::engine::custom::procedural::physics::MirrorPolicy::Selfie;
-    ::biofuel::engine::custom::procedural::physics::StageLayoutPolicy layoutPolicy =
-        ::biofuel::engine::custom::procedural::physics::StageLayoutPolicy::Shared;
+    ::biofuel::engine::custom::procedural::pose::MirrorPolicy mirrorPolicy =
+        ::biofuel::engine::custom::procedural::pose::MirrorPolicy::Selfie;
+    ::biofuel::engine::custom::procedural::pose::StageLayoutPolicy layoutPolicy =
+        ::biofuel::engine::custom::procedural::pose::StageLayoutPolicy::Adaptive;
     f32 targetPalmLength = 0.20f;
     f32 minimumScale = 0.75f;
     f32 maximumScale = 3.20f;
     f32 smoothingResponse = 18.0f;
     f32 minimumPalmSeparation = 0.04f;
-    ::biofuel::engine::custom::procedural::physics::PoseBounds visibleBounds{
+    f32 minimumTrackingConfidence = 0.18f;
+    f32 minimumCalibrationConfidence = 0.30f;
+    f32 handednessLockConfidence = 0.58f;
+    f32 calibrationPositionJitter = 0.026f;
+    f32 calibrationSpanJitter = 0.028f;
+    ::biofuel::engine::custom::procedural::pose::PoseBounds visibleBounds{
         .min = Vector3{-0.82f, -0.24f, -0.46f},
         .max = Vector3{0.82f, 0.56f, 0.46f},
     };
@@ -31,10 +36,24 @@ struct HandTrackingRetargetSettings {
 struct MappedTrackedHands {
     TrackedRobotHandPose leftPose{};
     TrackedRobotHandPose rightPose{};
-    ::biofuel::engine::custom::procedural::physics::MappingState mappingState =
-        ::biofuel::engine::custom::procedural::physics::MappingState::Idle;
-    ::biofuel::engine::custom::procedural::physics::CalibrationWizardState calibrationState{};
-    ::biofuel::engine::custom::procedural::physics::PoseBounds visibleStageBounds{};
+    ::biofuel::engine::custom::procedural::pose::MappingState mappingState =
+        ::biofuel::engine::custom::procedural::pose::MappingState::Idle;
+    ::biofuel::engine::custom::procedural::pose::CalibrationWizardState calibrationState{};
+    ::biofuel::engine::custom::procedural::pose::PoseBounds visibleStageBounds{};
+};
+
+template<usize... TIndices>
+struct HandLandmarkSet {
+    inline static constexpr std::array<usize, sizeof...(TIndices)> indices{{TIndices...}};
+    static constexpr usize count = sizeof...(TIndices);
+};
+
+using PalmLandmarks = HandLandmarkSet<0U, 5U, 9U, 13U, 17U>;
+
+struct ImageHandMetrics {
+    Vector2 palmCenter{0.0f, 0.0f};
+    f32 palmSpan = 0.0f;
+    f32 palmDepth = 0.0f;
 };
 
 class TrackedPoseMapper final {
@@ -48,8 +67,8 @@ class TrackedPoseMapper final {
     };
 
     struct HandCalibrationSlot {
-        ::biofuel::engine::custom::procedural::physics::CalibrationSessionProfile profile{};
-        ::biofuel::engine::custom::procedural::physics::CalibrationHandProgress progress{};
+        ::biofuel::engine::custom::procedural::pose::CalibrationSessionProfile profile{};
+        ::biofuel::engine::custom::procedural::pose::CalibrationHandProgress progress{};
         CalibrationSampleAccumulator sample{};
     };
 
@@ -65,16 +84,17 @@ class TrackedPoseMapper final {
     };
 
 public:
-    using MirrorPolicy = ::biofuel::engine::custom::procedural::physics::MirrorPolicy;
-    using StageLayoutPolicy = ::biofuel::engine::custom::procedural::physics::StageLayoutPolicy;
-    using CalibrationWizardState = ::biofuel::engine::custom::procedural::physics::CalibrationWizardState;
-    using CalibrationWizardStep = ::biofuel::engine::custom::procedural::physics::CalibrationWizardStep;
-    using CalibrationHandProgress = ::biofuel::engine::custom::procedural::physics::CalibrationHandProgress;
-    using CalibrationSessionProfile = ::biofuel::engine::custom::procedural::physics::CalibrationSessionProfile;
-    using CameraFrameSpace = ::biofuel::engine::custom::procedural::physics::CameraFrameSpace;
-    using MappingState = ::biofuel::engine::custom::procedural::physics::MappingState;
-    using StageVolume = ::biofuel::engine::custom::procedural::physics::StageVolume;
-    using PoseBounds = ::biofuel::engine::custom::procedural::physics::PoseBounds;
+    using MirrorPolicy = ::biofuel::engine::custom::procedural::pose::MirrorPolicy;
+    using StageLayoutPolicy = ::biofuel::engine::custom::procedural::pose::StageLayoutPolicy;
+    using CalibrationWizardState = ::biofuel::engine::custom::procedural::pose::CalibrationWizardState;
+    using CalibrationWizardStep = ::biofuel::engine::custom::procedural::pose::CalibrationWizardStep;
+    using CalibrationHandPhase = ::biofuel::engine::custom::procedural::pose::CalibrationHandPhase;
+    using CalibrationHandProgress = ::biofuel::engine::custom::procedural::pose::CalibrationHandProgress;
+    using CalibrationSessionProfile = ::biofuel::engine::custom::procedural::pose::CalibrationSessionProfile;
+    using CameraFrameSpace = ::biofuel::engine::custom::procedural::pose::CameraFrameSpace;
+    using MappingState = ::biofuel::engine::custom::procedural::pose::MappingState;
+    using StageVolume = ::biofuel::engine::custom::procedural::pose::StageVolume;
+    using PoseBounds = ::biofuel::engine::custom::procedural::pose::PoseBounds;
 
     void resetCalibration() noexcept {
         const CameraFrameSpace frameSpace = m_frameSpace;
@@ -149,6 +169,12 @@ public:
         m_settings.mirrorPolicy = mirrorPolicy;
         m_settings.layoutPolicy = layoutPolicy;
         m_calibration.frameSpace = m_frameSpace;
+        if (!m_leftCalibration.profile.frameSpace.valid() || changed) {
+            m_leftCalibration.profile.frameSpace = m_frameSpace;
+        }
+        if (!m_rightCalibration.profile.frameSpace.valid() || changed) {
+            m_rightCalibration.profile.frameSpace = m_frameSpace;
+        }
 
         if (!changed || !m_sessionStarted) {
             m_sessionStarted = true;
@@ -172,9 +198,10 @@ public:
         m_wizard = CalibrationWizardState{
             .active = true,
             .cameraChanged = false,
+            .activeHand = CalibrationHandPhase::Left,
             .step = CalibrationWizardStep::Center,
             .holdSeconds = 0.0f,
-            .requiredHoldSeconds = 1.25f,
+            .requiredHoldSeconds = 1.35f,
             .targetAcquired = false,
             .targetError = 1.0f,
         };
@@ -187,13 +214,14 @@ public:
     }
 
     void finishCalibration() noexcept {
-        ::biofuel::engine::custom::procedural::physics::sanitizeCalibrationProfile(m_leftCalibration.profile);
-        ::biofuel::engine::custom::procedural::physics::sanitizeCalibrationProfile(m_rightCalibration.profile);
+        ::biofuel::engine::custom::procedural::pose::sanitizeCalibrationProfile(m_leftCalibration.profile);
+        ::biofuel::engine::custom::procedural::pose::sanitizeCalibrationProfile(m_rightCalibration.profile);
         m_leftCalibration.profile.valid = true;
         m_rightCalibration.profile.valid = true;
         m_calibration = combinedCalibrationProfile();
         m_calibration.valid = true;
         m_wizard.active = false;
+        m_wizard.activeHand = CalibrationHandPhase::Complete;
         m_wizard.step = CalibrationWizardStep::Complete;
         m_wizard.holdSeconds = m_wizard.requiredHoldSeconds;
         m_wizard.targetAcquired = true;
@@ -245,37 +273,33 @@ public:
             return m_results;
         }
 
-        const usize activeHands = activeHandCount(frame);
+        const CalibrationHandSelection selection = trackedHands(frame);
+        const usize activeHands = selectedHandCount(selection);
         const StageVolume stageVolume =
-            ::biofuel::engine::custom::procedural::physics::makeStageVolume(
+            ::biofuel::engine::custom::procedural::pose::makeStageVolume(
                 m_settings.visibleBounds,
                 m_settings.layoutPolicy,
                 activeHands);
         m_results.visibleStageBounds = stageVolume.full;
 
-        for (const auto& hand : frame.hands) {
-            if (!hand.valid) {
-                continue;
-            }
-            const HandSide side = resolveSide(hand);
-            const PoseBounds bounds = resolveBoundsForHand(stageVolume, side, activeHands);
-            const TrackedRobotHandPose pose = buildPose(hand, side, bounds);
-            if (side == HandSide::Left) {
-                m_results.leftPose = pose;
-            } else {
-                m_results.rightPose = pose;
-            }
+        if (selection.left != nullptr) {
+            const PoseBounds bounds = resolveBoundsForHand(stageVolume, HandSide::Left, activeHands);
+            m_results.leftPose = buildPose(*selection.left, HandSide::Left, bounds);
+        }
+        if (selection.right != nullptr) {
+            const PoseBounds bounds = resolveBoundsForHand(stageVolume, HandSide::Right, activeHands);
+            m_results.rightPose = buildPose(*selection.right, HandSide::Right, bounds);
         }
 
         if (m_results.leftPose.valid && previousLeft.valid) {
-            ::biofuel::engine::custom::procedural::physics::PoseStabilizer::apply(
+            ::biofuel::engine::custom::procedural::pose::PoseStabilizer::apply(
                 m_results.leftPose.landmarks,
                 previousLeft.landmarks,
                 dt,
                 m_settings.smoothingResponse);
         }
         if (m_results.rightPose.valid && previousRight.valid) {
-            ::biofuel::engine::custom::procedural::physics::PoseStabilizer::apply(
+            ::biofuel::engine::custom::procedural::pose::PoseStabilizer::apply(
                 m_results.rightPose.landmarks,
                 previousRight.landmarks,
                 dt,
@@ -313,25 +337,22 @@ private:
         return Vector2{landmark.x, landmark.y};
     }
 
-    [[nodiscard]] static Vector3 vector3(const HandTrackingLandmark landmark) noexcept {
-        return Vector3{landmark.x, landmark.y, landmark.z};
-    }
-
     [[nodiscard]] Vector2 displayPoint(const HandTrackingLandmark landmark) const noexcept {
         const HandTrackingLandmark mirrored = displayLandmark(landmark);
         return Vector2{mirrored.x, mirrored.y};
     }
 
+    template<typename TLandmarkSet>
+    [[nodiscard]] Vector2 displayCentroid(const HandTrackingHand& hand) const noexcept {
+        Vector2 sum{0.0f, 0.0f};
+        for (const usize index : TLandmarkSet::indices) {
+            sum = add2(sum, displayPoint(hand.imageLandmarks[index]));
+        }
+        return scale2(sum, 1.0f / static_cast<f32>(TLandmarkSet::count));
+    }
+
     [[nodiscard]] Vector2 imagePalmCenter(const HandTrackingHand& hand) const noexcept {
-        return scale2(
-            add2(
-                add2(
-                    add2(
-                        add2(displayPoint(hand.imageLandmarks[0]), displayPoint(hand.imageLandmarks[5])),
-                        displayPoint(hand.imageLandmarks[9])),
-                    displayPoint(hand.imageLandmarks[13])),
-                displayPoint(hand.imageLandmarks[17])),
-            0.2f);
+        return displayCentroid<PalmLandmarks>(hand);
     }
 
     [[nodiscard]] static f32 imagePalmSpan(const HandTrackingHand& hand) noexcept {
@@ -341,28 +362,24 @@ private:
     }
 
     [[nodiscard]] static f32 imagePalmDepth(const HandTrackingHand& hand) noexcept {
-        return (hand.imageLandmarks[0].z
-            + hand.imageLandmarks[5].z
-            + hand.imageLandmarks[9].z
-            + hand.imageLandmarks[13].z
-            + hand.imageLandmarks[17].z) * 0.2f;
+        f32 sum = 0.0f;
+        for (const usize index : PalmLandmarks::indices) {
+            sum += hand.imageLandmarks[index].z;
+        }
+        return sum / static_cast<f32>(PalmLandmarks::count);
     }
 
-    [[nodiscard]] static Vector3 worldPalmCenter(const HandTrackingHand& hand) noexcept {
-        return Vector3Scale(
-            Vector3Add(
-                Vector3Add(
-                    Vector3Add(
-                        Vector3Add(vector3(hand.worldLandmarks[0]), vector3(hand.worldLandmarks[5])),
-                        vector3(hand.worldLandmarks[9])),
-                    vector3(hand.worldLandmarks[13])),
-                vector3(hand.worldLandmarks[17])),
-            0.2f);
+    [[nodiscard]] ImageHandMetrics imageMetrics(const HandTrackingHand& hand) const noexcept {
+        return ImageHandMetrics{
+            .palmCenter = imagePalmCenter(hand),
+            .palmSpan = imagePalmSpan(hand),
+            .palmDepth = imagePalmDepth(hand),
+        };
     }
 
     [[nodiscard]] static Vector3 posePalmCenter(const TrackedRobotHandPose& pose) noexcept {
         constexpr std::array<usize, 5U> palmIndices{{0U, 5U, 9U, 13U, 17U}};
-        return ::biofuel::engine::custom::procedural::physics::poseWeightedCenter(
+        return ::biofuel::engine::custom::procedural::pose::poseWeightedCenter(
             pose.landmarks,
             palmIndices);
     }
@@ -372,40 +389,90 @@ private:
         const f32 dt) noexcept
     {
         const CalibrationHandSelection selection = calibrationHands(frame);
-        updateCalibrationSlot(m_leftCalibration, selection.left, dt);
-        updateCalibrationSlot(m_rightCalibration, selection.right, dt);
+        HandCalibrationSlot& activeSlot = activeCalibrationSlot();
+        const HandTrackingHand* activeHand = calibrationHandForPhase(selection, m_wizard.activeHand);
+        updateCalibrationSlot(activeSlot, activeHand, dt);
         syncWizardProgress();
 
-        if (!m_leftCalibration.progress.sampleCaptured || !m_rightCalibration.progress.sampleCaptured) {
+        if (!activeSlot.progress.sampleCaptured) {
             return;
         }
 
         const CalibrationWizardStep next =
-            ::biofuel::engine::custom::procedural::physics::nextCalibrationStep(m_wizard.step);
-        if (next == CalibrationWizardStep::Complete) {
+            ::biofuel::engine::custom::procedural::pose::nextCalibrationStep(m_wizard.step);
+        if (next != CalibrationWizardStep::Complete) {
+            m_wizard.step = next;
+            resetCalibrationStepAccumulator(activeSlot);
+            syncWizardProgress();
+            return;
+        }
+
+        activeSlot.profile.valid = true;
+        ::biofuel::engine::custom::procedural::pose::sanitizeCalibrationProfile(activeSlot.profile);
+        const CalibrationHandPhase nextPhase =
+            ::biofuel::engine::custom::procedural::pose::nextCalibrationHandPhase(m_wizard.activeHand);
+        if (nextPhase == CalibrationHandPhase::Complete) {
             finishCalibration();
             return;
         }
 
-        m_wizard.step = next;
-        resetCalibrationAccumulator();
+        m_wizard.activeHand = nextPhase;
+        m_wizard.step = CalibrationWizardStep::Center;
+        resetCalibrationStepAccumulator(activeCalibrationSlot());
         syncWizardProgress();
     }
 
-    [[nodiscard]] static bool validCalibrationHand(const HandTrackingHand& hand) noexcept {
-        if (!hand.valid || hand.handednessScore < 0.30f) {
+    [[nodiscard]] HandCalibrationSlot& activeCalibrationSlot() noexcept {
+        return m_wizard.activeHand == CalibrationHandPhase::Right
+            ? m_rightCalibration
+            : m_leftCalibration;
+    }
+
+    [[nodiscard]] const HandCalibrationSlot& activeCalibrationSlot() const noexcept {
+        return m_wizard.activeHand == CalibrationHandPhase::Right
+            ? m_rightCalibration
+            : m_leftCalibration;
+    }
+
+    [[nodiscard]] static const HandTrackingHand* calibrationHandForPhase(
+        const CalibrationHandSelection selection,
+        const CalibrationHandPhase phase) noexcept
+    {
+        if (phase == CalibrationHandPhase::Right) {
+            return selection.right;
+        }
+        if (phase == CalibrationHandPhase::Left) {
+            return selection.left;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] bool validCalibrationHand(const HandTrackingHand& hand) const noexcept {
+        if (!validTrackedHand(hand) || hand.handednessScore < m_settings.minimumCalibrationConfidence) {
             return false;
         }
 
-        const f32 palmSpan = imagePalmSpan(hand);
+        const f32 palmSpan = imageMetrics(hand).palmSpan;
         if (palmSpan < 0.035f || palmSpan > 0.68f) {
             return false;
         }
 
-        constexpr std::array<usize, 5U> requiredLandmarks{{0U, 5U, 9U, 13U, 17U}};
-        for (const usize index : requiredLandmarks) {
+        for (const usize index : PalmLandmarks::indices) {
             const HandTrackingLandmark landmark = hand.imageLandmarks[index];
             if (landmark.x < -0.18f || landmark.x > 1.18f || landmark.y < -0.18f || landmark.y > 1.18f) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    [[nodiscard]] bool validTrackedHand(const HandTrackingHand& hand) const noexcept {
+        if (!hand.valid || hand.handednessScore < m_settings.minimumTrackingConfidence) {
+            return false;
+        }
+        for (const usize index : PalmLandmarks::indices) {
+            const HandTrackingLandmark landmark = hand.imageLandmarks[index];
+            if (!std::isfinite(landmark.x) || !std::isfinite(landmark.y) || !std::isfinite(landmark.z)) {
                 return false;
             }
         }
@@ -418,9 +485,9 @@ private:
         const Vector2 palm,
         const f32 palmSpan) const noexcept
     {
-        const Vector2 target = ::biofuel::engine::custom::procedural::physics::calibrationTarget(step);
+        const Vector2 target = ::biofuel::engine::custom::procedural::pose::calibrationTarget(step);
         const f32 positionRadius =
-            (step == CalibrationWizardStep::Near || step == CalibrationWizardStep::Far) ? 0.20f : 0.115f;
+            ::biofuel::engine::custom::procedural::pose::calibrationTargetRadius(step);
         f32 error = distance2(palm, target) / positionRadius;
 
         if (step == CalibrationWizardStep::Near) {
@@ -454,7 +521,36 @@ private:
             };
             ++count;
         }
+        return selectHandCandidates(candidates, count);
+    }
 
+    [[nodiscard]] CalibrationHandSelection trackedHands(
+        const ::biofuel::engine::vision::hand_tracking::HandTrackingFrame& frame) const noexcept
+    {
+        std::array<CalibrationCandidate, 2U> candidates{};
+        usize count = 0U;
+        for (const auto& hand : frame.hands) {
+            if (!validTrackedHand(hand) || count >= candidates.size()) {
+                continue;
+            }
+            candidates[count] = CalibrationCandidate{
+                .hand = &hand,
+                .side = resolveSide(hand),
+                .displayX = imagePalmCenter(hand).x,
+            };
+            ++count;
+        }
+        return selectHandCandidates(candidates, count);
+    }
+
+    [[nodiscard]] static usize selectedHandCount(const CalibrationHandSelection selection) noexcept {
+        return (selection.left != nullptr ? 1U : 0U) + (selection.right != nullptr ? 1U : 0U);
+    }
+
+    [[nodiscard]] static CalibrationHandSelection selectHandCandidates(
+        const std::array<CalibrationCandidate, 2U>& candidates,
+        const usize count) noexcept
+    {
         CalibrationHandSelection selection{};
         if (count == 0U) {
             return selection;
@@ -497,7 +593,7 @@ private:
             slot.progress.holdSeconds = m_wizard.requiredHoldSeconds;
             slot.progress.targetError = 0.0f;
             slot.progress.status =
-                ::biofuel::engine::custom::procedural::physics::CalibrationCaptureStatus::Captured;
+                ::biofuel::engine::custom::procedural::pose::CalibrationCaptureStatus::Captured;
             return;
         }
 
@@ -507,38 +603,37 @@ private:
             slot.progress.targetAcquired = false;
             slot.progress.targetError = 1.0f;
             slot.progress.status =
-                ::biofuel::engine::custom::procedural::physics::CalibrationCaptureStatus::Missing;
+                ::biofuel::engine::custom::procedural::pose::CalibrationCaptureStatus::Missing;
             return;
         }
 
         slot.progress.detected = true;
-        const Vector2 palm = imagePalmCenter(*hand);
-        const f32 palmSpan = imagePalmSpan(*hand);
-        const f32 targetError = calibrationTargetError(m_wizard.step, slot.profile, palm, palmSpan);
-        const bool stable = calibrationSampleStable(slot, palm, palmSpan);
+        const ImageHandMetrics metrics = imageMetrics(*hand);
+        const f32 targetError = calibrationTargetError(m_wizard.step, slot.profile, metrics.palmCenter, metrics.palmSpan);
+        const bool stable = calibrationSampleStable(slot, metrics.palmCenter, metrics.palmSpan);
         slot.progress.targetError = targetError;
 
         if (targetError > 1.0f) {
             resetSlotAccumulator(slot);
             slot.progress.targetAcquired = false;
             slot.progress.status =
-                ::biofuel::engine::custom::procedural::physics::CalibrationCaptureStatus::OutsideTarget;
+                ::biofuel::engine::custom::procedural::pose::CalibrationCaptureStatus::OutsideTarget;
             return;
         }
         if (!stable) {
             resetSlotAccumulator(slot);
             slot.progress.targetAcquired = false;
             slot.progress.status =
-                ::biofuel::engine::custom::procedural::physics::CalibrationCaptureStatus::Unstable;
+                ::biofuel::engine::custom::procedural::pose::CalibrationCaptureStatus::Unstable;
             return;
         }
 
         slot.progress.targetAcquired = true;
         slot.progress.status =
-            ::biofuel::engine::custom::procedural::physics::CalibrationCaptureStatus::Capturing;
+            ::biofuel::engine::custom::procedural::pose::CalibrationCaptureStatus::Capturing;
         const f32 safeDt = std::min(std::max(dt, 0.0f), 0.05f);
         slot.progress.holdSeconds = std::min(m_wizard.requiredHoldSeconds, slot.progress.holdSeconds + safeDt);
-        accumulateCalibrationSample(slot, palm, palmSpan);
+        accumulateCalibrationSample(slot, metrics.palmCenter, metrics.palmSpan);
 
         if (slot.progress.holdSeconds < m_wizard.requiredHoldSeconds) {
             return;
@@ -546,15 +641,15 @@ private:
 
         const Vector2 capturedPalm = slot.sample.count > 0U
             ? scale2(slot.sample.palmSum, 1.0f / static_cast<f32>(slot.sample.count))
-            : palm;
+            : metrics.palmCenter;
         const f32 capturedSpan = slot.sample.count > 0U
             ? slot.sample.spanSum / static_cast<f32>(slot.sample.count)
-            : palmSpan;
+            : metrics.palmSpan;
         captureCalibrationSample(slot, capturedPalm, capturedSpan);
         slot.progress.sampleCaptured = true;
         slot.progress.targetAcquired = true;
         slot.progress.status =
-            ::biofuel::engine::custom::procedural::physics::CalibrationCaptureStatus::Captured;
+            ::biofuel::engine::custom::procedural::pose::CalibrationCaptureStatus::Captured;
         slot.progress.holdSeconds = m_wizard.requiredHoldSeconds;
     }
 
@@ -564,8 +659,8 @@ private:
         const f32 palmSpan) noexcept
     {
         const bool stable = !slot.sample.hasLast
-            || (distance2(palm, slot.sample.lastPalm) <= 0.030f
-                && std::fabs(palmSpan - slot.sample.lastPalmSpan) <= 0.035f);
+            || (distance2(palm, slot.sample.lastPalm) <= m_settings.calibrationPositionJitter
+                && std::fabs(palmSpan - slot.sample.lastPalmSpan) <= m_settings.calibrationSpanJitter);
         slot.sample.lastPalm = palm;
         slot.sample.lastPalmSpan = palmSpan;
         slot.sample.hasLast = true;
@@ -580,12 +675,14 @@ private:
 
     void resetCalibrationAccumulator() noexcept {
         m_wizard.holdSeconds = 0.0f;
-        resetSlotAccumulator(m_leftCalibration);
-        resetSlotAccumulator(m_rightCalibration);
-        m_leftCalibration.progress = CalibrationHandProgress{};
-        m_rightCalibration.progress = CalibrationHandProgress{};
-        m_leftCalibration.progress.requiredHoldSeconds = m_wizard.requiredHoldSeconds;
-        m_rightCalibration.progress.requiredHoldSeconds = m_wizard.requiredHoldSeconds;
+        resetCalibrationStepAccumulator(m_leftCalibration);
+        resetCalibrationStepAccumulator(m_rightCalibration);
+    }
+
+    void resetCalibrationStepAccumulator(HandCalibrationSlot& slot) noexcept {
+        resetSlotAccumulator(slot);
+        slot.progress = CalibrationHandProgress{};
+        slot.progress.requiredHoldSeconds = m_wizard.requiredHoldSeconds;
     }
 
     static void resetSlotAccumulator(HandCalibrationSlot& slot) noexcept {
@@ -611,6 +708,18 @@ private:
         case CalibrationWizardStep::Bottom:
             slot.profile.bottom = palm;
             break;
+        case CalibrationWizardStep::TopLeft:
+            slot.profile.topLeft = palm;
+            break;
+        case CalibrationWizardStep::TopRight:
+            slot.profile.topRight = palm;
+            break;
+        case CalibrationWizardStep::BottomLeft:
+            slot.profile.bottomLeft = palm;
+            break;
+        case CalibrationWizardStep::BottomRight:
+            slot.profile.bottomRight = palm;
+            break;
         case CalibrationWizardStep::Near:
             slot.profile.nearPalmSpan = palmSpan;
             break;
@@ -626,17 +735,11 @@ private:
     void syncWizardProgress() noexcept {
         m_wizard.left = m_leftCalibration.progress;
         m_wizard.right = m_rightCalibration.progress;
-        m_wizard.requiredHoldSeconds = std::max(
-            m_leftCalibration.progress.requiredHoldSeconds,
-            m_rightCalibration.progress.requiredHoldSeconds);
-        m_wizard.holdSeconds = std::min(
-            m_leftCalibration.progress.holdSeconds,
-            m_rightCalibration.progress.holdSeconds);
-        m_wizard.targetAcquired =
-            m_leftCalibration.progress.targetAcquired && m_rightCalibration.progress.targetAcquired;
-        m_wizard.targetError = std::max(
-            m_leftCalibration.progress.targetError,
-            m_rightCalibration.progress.targetError);
+        const CalibrationHandProgress& active = activeCalibrationSlot().progress;
+        m_wizard.requiredHoldSeconds = active.requiredHoldSeconds;
+        m_wizard.holdSeconds = active.holdSeconds;
+        m_wizard.targetAcquired = active.targetAcquired;
+        m_wizard.targetError = active.targetError;
     }
 
     [[nodiscard]] CalibrationSessionProfile combinedCalibrationProfile() const noexcept {
@@ -653,6 +756,10 @@ private:
             .right = average2(left.right, right.right),
             .top = average2(left.top, right.top),
             .bottom = average2(left.bottom, right.bottom),
+            .topLeft = average2(left.topLeft, right.topLeft),
+            .topRight = average2(left.topRight, right.topRight),
+            .bottomLeft = average2(left.bottomLeft, right.bottomLeft),
+            .bottomRight = average2(left.bottomRight, right.bottomRight),
             .nearPalmSpan = (left.nearPalmSpan + right.nearPalmSpan) * 0.5f,
             .farPalmSpan = (left.farPalmSpan + right.farPalmSpan) * 0.5f,
             .referencePalmSpan = (left.referencePalmSpan + right.referencePalmSpan) * 0.5f,
@@ -671,10 +778,9 @@ private:
         const PoseBounds bounds) const noexcept
     {
         const CalibrationSessionProfile& profile = calibrationProfileForSide(side);
-        const f32 palmSpan = imagePalmSpan(hand);
-        const f32 palmDepth = imagePalmDepth(hand);
-        const f32 stageDepth = ::biofuel::engine::custom::procedural::physics::remapClamped(
-            palmSpan,
+        const ImageHandMetrics metrics = imageMetrics(hand);
+        const f32 stageDepth = ::biofuel::engine::custom::procedural::pose::remapClamped(
+            metrics.palmSpan,
             profile.farPalmSpan,
             profile.nearPalmSpan,
             bounds.min.z + 0.08f,
@@ -687,27 +793,10 @@ private:
             .landmarks = {},
         };
         for (usize index = 0U; index < pose.landmarks.size(); ++index) {
-            pose.landmarks[index] = mapImageLandmark(profile, bounds, stageDepth, palmDepth, hand.imageLandmarks[index]);
+            pose.landmarks[index] = mapImageLandmark(profile, bounds, stageDepth, metrics.palmDepth, hand.imageLandmarks[index]);
         }
         fitVisible(pose, bounds);
         return pose;
-    }
-
-    [[nodiscard]] Vector3 mapWorldLandmark(
-        const Vector3 origin,
-        const Vector3 worldPalm,
-        const Vector3 value,
-        const f32 scale) const noexcept
-    {
-        Vector3 local = Vector3Subtract(value, worldPalm);
-        if (m_settings.mirrorPolicy == MirrorPolicy::Selfie) {
-            local.x = -local.x;
-        }
-        return Vector3Add(origin, Vector3{
-            local.x * scale,
-            -local.y * scale,
-            -local.z * scale,
-        });
     }
 
     [[nodiscard]] Vector3 mapImageLandmark(
@@ -718,16 +807,19 @@ private:
         const HandTrackingLandmark value) const noexcept
     {
         const HandTrackingLandmark displayValue = displayLandmark(value);
-        const f32 x = ::biofuel::engine::custom::procedural::physics::remapUnclamped(
+        const Vector2 displayPoint{displayValue.x, displayValue.y};
+        const auto warp =
+            ::biofuel::engine::custom::procedural::pose::calibrationImageWarpAt(profile, displayPoint);
+        const f32 x = ::biofuel::engine::custom::procedural::pose::remapUnclamped(
             displayValue.x,
-            profile.left.x,
-            profile.right.x,
+            warp.leftX,
+            warp.rightX,
             bounds.min.x + 0.04f,
             bounds.max.x - 0.04f);
-        const f32 y = ::biofuel::engine::custom::procedural::physics::remapUnclamped(
+        const f32 y = ::biofuel::engine::custom::procedural::pose::remapUnclamped(
             displayValue.y,
-            profile.top.y,
-            profile.bottom.y,
+            warp.topY,
+            warp.bottomY,
             bounds.max.y - 0.04f,
             bounds.min.y + 0.04f);
         const f32 zOffset = std::clamp((palmDepth - value.z) * 0.72f, -0.15f, 0.15f);
@@ -735,25 +827,15 @@ private:
     }
 
     [[nodiscard]] HandSide resolveSide(const HandTrackingHand& hand) const noexcept {
-        if (hand.handedness == HandTrackingHandedness::Left) {
+        if (hand.handednessScore >= m_settings.handednessLockConfidence
+            && hand.handedness == HandTrackingHandedness::Left) {
             return HandSide::Left;
         }
-        if (hand.handedness == HandTrackingHandedness::Right) {
+        if (hand.handednessScore >= m_settings.handednessLockConfidence
+            && hand.handedness == HandTrackingHandedness::Right) {
             return HandSide::Right;
         }
         return imagePalmCenter(hand).x >= 0.5f ? HandSide::Right : HandSide::Left;
-    }
-
-    [[nodiscard]] static usize activeHandCount(
-        const ::biofuel::engine::vision::hand_tracking::HandTrackingFrame& frame) noexcept
-    {
-        usize count = 0U;
-        for (const auto& hand : frame.hands) {
-            if (hand.valid) {
-                ++count;
-            }
-        }
-        return count;
     }
 
     [[nodiscard]] static PoseBounds resolveBoundsForHand(
@@ -771,7 +853,7 @@ private:
         if (!m_results.leftPose.valid || !m_results.rightPose.valid) {
             return;
         }
-        ::biofuel::engine::custom::procedural::physics::PoseSeparationSolver::apply(
+        ::biofuel::engine::custom::procedural::pose::PoseSeparationSolver::apply(
             m_results.leftPose.landmarks,
             m_results.rightPose.landmarks,
             posePalmCenter(m_results.leftPose),
@@ -783,7 +865,7 @@ private:
         if (!pose.valid) {
             return;
         }
-        ::biofuel::engine::custom::procedural::physics::PoseVisibilityFitter::apply(
+        ::biofuel::engine::custom::procedural::pose::PoseVisibilityFitter::apply(
             pose.landmarks,
             bounds);
     }

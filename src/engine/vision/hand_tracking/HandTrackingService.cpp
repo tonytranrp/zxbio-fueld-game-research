@@ -4,8 +4,10 @@
 #include "engine/events/hand_tracking/HandTrackingEventModule.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <thread>
@@ -73,6 +75,50 @@ constexpr f32 GESTURE_DEBOUNCE_SECONDS = 0.15f;
     };
 }
 
+[[nodiscard]] f32 sanitizeUnitScore(const f32 value) noexcept {
+    return std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : 0.0f;
+}
+
+[[nodiscard]] f32 sanitizeCoordinate(const f32 value) noexcept {
+    return std::isfinite(value) ? value : 0.0f;
+}
+
+[[nodiscard]] HandTrackingLandmark sanitizedLandmark(
+    const f32 x,
+    const f32 y,
+    const f32 z) noexcept
+{
+    return HandTrackingLandmark{
+        .x = sanitizeCoordinate(x),
+        .y = sanitizeCoordinate(y),
+        .z = sanitizeCoordinate(z),
+    };
+}
+
+[[nodiscard]] bool validHandednessValue(const u8 value) noexcept {
+    return value <= static_cast<u8>(HandTrackingHandedness::Right);
+}
+
+[[nodiscard]] bool validGestureValue(const u8 value) noexcept {
+    return value <= static_cast<u8>(HandTrackingGesture::ILoveYou);
+}
+
+[[nodiscard]] Vector2 handPalmCenter2D(const HandTrackingHand& hand) noexcept {
+    constexpr std::array<usize, 5U> palm{{0U, 5U, 9U, 13U, 17U}};
+    Vector2 center{0.0f, 0.0f};
+    for (const usize index : palm) {
+        center.x += hand.imageLandmarks[index].x;
+        center.y += hand.imageLandmarks[index].y;
+    }
+    return Vector2{center.x / static_cast<f32>(palm.size()), center.y / static_cast<f32>(palm.size())};
+}
+
+[[nodiscard]] f32 distanceSquared2D(const Vector2 a, const Vector2 b) noexcept {
+    const f32 dx = a.x - b.x;
+    const f32 dy = a.y - b.y;
+    return dx * dx + dy * dy;
+}
+
 [[nodiscard]] std::filesystem::path appDirectory() {
     return std::filesystem::path{GetApplicationDirectory()};
 }
@@ -97,34 +143,31 @@ constexpr f32 GESTURE_DEBOUNCE_SECONDS = 0.15f;
 #endif
 }
 
-[[nodiscard]] std::string quotedUtf8(const std::filesystem::path& value) {
-    std::string path = value.generic_string();
-    std::string escaped;
-    escaped.reserve(path.size() + 2U);
-    escaped.push_back('"');
-    for (const char ch : path) {
-        if (ch == '"') {
-            escaped.push_back('\\');
-        }
-        escaped.push_back(ch);
-    }
-    escaped.push_back('"');
-    return escaped;
-}
-
-[[nodiscard]] std::string narrowPath(const std::filesystem::path& path) {
-    return path.generic_string();
-}
-
 [[nodiscard]] std::string controlJson(const std::string_view command, const bool previewEnabled) {
     std::ostringstream out;
     out << "{\"command\":\"" << command << "\","
         << "\"preview\":" << (previewEnabled ? "true" : "false") << ","
-        << "\"camera_index\":0,"
         << "\"udp_port\":" << UDP_PORT << ","
         << "\"preview_port\":" << PREVIEW_PORT << "}\n";
     return out.str();
 }
+
+#ifdef _WIN32
+[[nodiscard]] std::wstring quotedWide(const std::filesystem::path& value) {
+    const std::wstring path = value.wstring();
+    std::wstring escaped;
+    escaped.reserve(path.size() + 2U);
+    escaped.push_back(L'"');
+    for (const wchar_t ch : path) {
+        if (ch == L'"') {
+            escaped.push_back(L'\\');
+        }
+        escaped.push_back(ch);
+    }
+    escaped.push_back(L'"');
+    return escaped;
+}
+#endif
 
 } // namespace
 
@@ -177,14 +220,37 @@ public:
             m_packetRateWindowStart = std::chrono::steady_clock::now();
         }
 
-        std::scoped_lock lock(m_mutex);
-        if (m_latestFrame) {
-            m_status.secondsSinceLastFrame = secondsSince(m_lastFrameSteady);
-            if (m_status.secondsSinceLastFrame > FRAME_STALE_SECONDS && m_status.state == HandTrackingConnectionState::Online) {
-                m_status.state = HandTrackingConnectionState::Offline;
-                m_status.message = "Tracking packets are stale";
-                publishLostHands();
+        bool shouldPublishLostHands = false;
+        bool startupTimedOut = false;
+        std::string startupErrorMessage;
+        {
+            std::scoped_lock lock(m_mutex);
+            if (m_latestFrame) {
+                m_status.secondsSinceLastFrame = secondsSince(m_lastFrameSteady);
+                if (m_status.secondsSinceLastFrame > FRAME_STALE_SECONDS && m_status.state == HandTrackingConnectionState::Online) {
+                    m_status.state = HandTrackingConnectionState::Offline;
+                    m_status.message = "Tracking packets are stale";
+                    shouldPublishLostHands = true;
+                }
+            } else if (m_status.workerRunning && m_status.state == HandTrackingConnectionState::Starting) {
+                m_status.secondsSinceLastFrame = secondsSince(m_lastFrameSteady);
+                if (m_status.secondsSinceLastFrame > FRAME_STALE_SECONDS * 3.0f) {
+                    startupTimedOut = true;
+                    startupErrorMessage = "No hand-tracking frames received after worker startup";
+                    m_status.state = HandTrackingConnectionState::Error;
+                    m_status.message = startupErrorMessage;
+                    m_status.workerRunning = false;
+                }
             }
+        }
+        if (shouldPublishLostHands) {
+            publishLostHands();
+        }
+        if (startupTimedOut) {
+            cleanupRuntimeResources();
+            ::biofuel::engine::runtime::typed::Events::publish<::biofuel::engine::runtime::typed::hand_tracking::WorkerError>({
+                startupErrorMessage,
+            });
         }
 #else
         std::scoped_lock lock(m_mutex);
@@ -244,12 +310,14 @@ public:
 
         startReceiver();
         if (!startWorkerProcess()) {
+            cleanupRuntimeResources();
             return false;
         }
 
         const bool preview = previewEnabled();
         if (!sendControlWithRetry(controlJson("start", preview))) {
             setError("Could not connect to Python hand-tracking worker control port");
+            cleanupRuntimeResources();
             return false;
         }
 
@@ -262,6 +330,8 @@ public:
             m_status.state = HandTrackingConnectionState::Starting;
             m_status.workerRunning = true;
             m_status.message = "Tracking worker started";
+            m_status.secondsSinceLastFrame = 0.0f;
+            m_lastFrameSteady = std::chrono::steady_clock::now();
         }
         ::biofuel::engine::runtime::typed::Events::publish<::biofuel::engine::runtime::typed::hand_tracking::WorkerStarted>();
         return true;
@@ -270,19 +340,7 @@ public:
 
     void stop() noexcept {
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
-        m_receiverRunning.store(false);
-        m_previewRunning.store(false);
-        try {
-            (void)sendControl(controlJson("shutdown", false));
-        } catch (...) {
-        }
-        if (m_receiverThread.joinable()) {
-            m_receiverThread.join();
-        }
-        if (m_previewThread.joinable()) {
-            m_previewThread.join();
-        }
-        stopWorkerProcess();
+        cleanupRuntimeResources();
 #endif
         std::scoped_lock lock(m_mutex);
         m_status.workerRunning = false;
@@ -299,13 +357,13 @@ public:
             m_status.previewEnabled = enabled;
         }
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
+        if (running()) {
+            (void)sendControl(controlJson("preview", enabled));
+        }
         if (enabled) {
             startPreview();
         } else {
-            m_previewRunning.store(false);
-        }
-        if (running()) {
-            (void)sendControl(controlJson("preview", enabled));
+            stopPreviewThread();
         }
 #endif
     }
@@ -397,9 +455,22 @@ private:
     static_assert(sizeof(RawPacket) == 1064U);
     static_assert(sizeof(PreviewHeader) == 16U);
 
+    void cleanupRuntimeResources() noexcept {
+        try {
+            (void)sendControl(controlJson("shutdown", false));
+        } catch (...) {
+        }
+        stopReceiverThread();
+        stopPreviewThread();
+        stopWorkerProcess();
+    }
+
     void startReceiver() {
         if (m_receiverRunning.load()) {
             return;
+        }
+        if (m_receiverThread.joinable()) {
+            m_receiverThread.join();
         }
         m_receiverRunning.store(true);
         m_receiverThread = std::thread([this] { receiverLoop(); });
@@ -409,8 +480,25 @@ private:
         if (m_previewRunning.load()) {
             return;
         }
+        if (m_previewThread.joinable()) {
+            m_previewThread.join();
+        }
         m_previewRunning.store(true);
         m_previewThread = std::thread([this] { previewLoop(); });
+    }
+
+    void stopReceiverThread() noexcept {
+        m_receiverRunning.store(false);
+        if (m_receiverThread.joinable()) {
+            m_receiverThread.join();
+        }
+    }
+
+    void stopPreviewThread() noexcept {
+        m_previewRunning.store(false);
+        if (m_previewThread.joinable()) {
+            m_previewThread.join();
+        }
     }
 
     void receiverLoop() {
@@ -438,6 +526,35 @@ private:
         } catch (const std::exception& ex) {
             setError(std::string{"UDP receiver failed: "} + ex.what());
         }
+        m_receiverRunning.store(false);
+    }
+
+    [[nodiscard]] static bool readPreviewBytes(
+        asio::ip::tcp::socket& socket,
+        void* data,
+        const std::size_t byteCount,
+        const std::atomic<bool>& running)
+    {
+        auto* cursor = static_cast<u8*>(data);
+        std::size_t total = 0U;
+        while (running.load() && total < byteCount) {
+            asio::error_code ec;
+            const std::size_t received = socket.read_some(asio::buffer(cursor + total, byteCount - total), ec);
+            if (!ec) {
+                if (received == 0U) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    continue;
+                }
+                total += received;
+                continue;
+            }
+            if (ec == asio::error::would_block || ec == asio::error::try_again) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            return false;
+        }
+        return total == byteCount;
     }
 
     void previewLoop() {
@@ -446,16 +563,21 @@ private:
                 asio::io_context io;
                 asio::ip::tcp::socket socket(io);
                 socket.connect(asio::ip::tcp::endpoint(asio::ip::make_address("127.0.0.1"), PREVIEW_PORT));
+                socket.non_blocking(true);
                 while (m_previewRunning.load()) {
                     PreviewHeader header{};
-                    asio::read(socket, asio::buffer(&header, sizeof(header)));
+                    if (!readPreviewBytes(socket, &header, sizeof(header), m_previewRunning)) {
+                        break;
+                    }
                     if (std::memcmp(header.magic, "MJPG", 4U) != 0 || header.byteCount == 0U || header.byteCount > 2'500'000U) {
                         break;
                     }
                     HandTrackingPreviewFrame frame{};
                     frame.sequence = header.sequence;
                     frame.jpegBytes.resize(header.byteCount);
-                    asio::read(socket, asio::buffer(frame.jpegBytes.data(), frame.jpegBytes.size()));
+                    if (!readPreviewBytes(socket, frame.jpegBytes.data(), frame.jpegBytes.size(), m_previewRunning)) {
+                        break;
+                    }
                     {
                         std::scoped_lock lock(m_mutex);
                         m_latestPreview = std::move(frame);
@@ -465,6 +587,7 @@ private:
                 std::this_thread::sleep_for(std::chrono::milliseconds(250));
             }
         }
+        m_previewRunning.store(false);
     }
 
     [[nodiscard]] static std::optional<HandTrackingFrame> parsePacket(const std::array<u8, sizeof(RawPacket)>& buffer) {
@@ -480,29 +603,34 @@ private:
         frame.timestampMs = raw.timestampMs;
         frame.cameraWidth = raw.cameraWidth;
         frame.cameraHeight = raw.cameraHeight;
-        frame.handCount = std::min<u8>(raw.handCount, static_cast<u8>(HandTrackingFrame::MAX_HANDS));
+        const u8 packetHandCount = std::min<u8>(raw.handCount, static_cast<u8>(HandTrackingFrame::MAX_HANDS));
         const u64 nowMs = nowEpochMs();
         frame.latencyMs = raw.timestampMs > nowMs ? 0.0f : static_cast<f32>(nowMs - raw.timestampMs);
 
         for (usize handIndexValue = 0U; handIndexValue < HandTrackingFrame::MAX_HANDS; ++handIndexValue) {
             const RawHand& rawHand = raw.hands[handIndexValue];
             HandTrackingHand& hand = frame.hands[handIndexValue];
-            hand.valid = rawHand.valid != 0U;
-            hand.handedness = static_cast<HandTrackingHandedness>(rawHand.handedness);
-            hand.gesture = static_cast<HandTrackingGesture>(rawHand.gesture);
-            hand.handednessScore = rawHand.handednessScore;
-            hand.gestureScore = rawHand.gestureScore;
+            hand.valid = handIndexValue < packetHandCount && rawHand.valid != 0U;
+            hand.handedness = validHandednessValue(rawHand.handedness)
+                ? static_cast<HandTrackingHandedness>(rawHand.handedness)
+                : HandTrackingHandedness::Unknown;
+            hand.gesture = validGestureValue(rawHand.gesture)
+                ? static_cast<HandTrackingGesture>(rawHand.gesture)
+                : HandTrackingGesture::Unknown;
+            hand.handednessScore = sanitizeUnitScore(rawHand.handednessScore);
+            hand.gestureScore = sanitizeUnitScore(rawHand.gestureScore);
             for (usize landmark = 0U; landmark < HandTrackingHand::LANDMARK_COUNT; ++landmark) {
-                hand.imageLandmarks[landmark] = HandTrackingLandmark{
-                    .x = rawHand.image[landmark].x,
-                    .y = rawHand.image[landmark].y,
-                    .z = rawHand.image[landmark].z,
-                };
-                hand.worldLandmarks[landmark] = HandTrackingLandmark{
-                    .x = rawHand.world[landmark].x,
-                    .y = rawHand.world[landmark].y,
-                    .z = rawHand.world[landmark].z,
-                };
+                hand.imageLandmarks[landmark] = sanitizedLandmark(
+                    rawHand.image[landmark].x,
+                    rawHand.image[landmark].y,
+                    rawHand.image[landmark].z);
+                hand.worldLandmarks[landmark] = sanitizedLandmark(
+                    rawHand.world[landmark].x,
+                    rawHand.world[landmark].y,
+                    rawHand.world[landmark].z);
+            }
+            if (hand.valid) {
+                ++frame.handCount;
             }
         }
         return frame;
@@ -535,19 +663,17 @@ private:
             return false;
         }
 
-        const std::string args =
-            quotedUtf8(python) + " " +
-            quotedUtf8(script) +
-            " --model " + quotedUtf8(model) +
-            " --config " + quotedUtf8(config) +
-            " --udp-host 127.0.0.1" +
-            " --udp-port " + std::to_string(UDP_PORT) +
-            " --control-port " + std::to_string(CONTROL_PORT) +
-            " --preview-port " + std::to_string(PREVIEW_PORT) +
-            " --parent-pid " + std::to_string(currentProcessId());
-
 #ifdef _WIN32
-        std::wstring command(args.begin(), args.end());
+        std::wstring command =
+            quotedWide(python) + L" " +
+            quotedWide(script) +
+            L" --model " + quotedWide(model) +
+            L" --config " + quotedWide(config) +
+            L" --udp-host 127.0.0.1" +
+            L" --udp-port " + std::to_wstring(UDP_PORT) +
+            L" --control-port " + std::to_wstring(CONTROL_PORT) +
+            L" --preview-port " + std::to_wstring(PREVIEW_PORT) +
+            L" --parent-pid " + std::to_wstring(currentProcessId());
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
         PROCESS_INFORMATION process{};
@@ -636,6 +762,36 @@ private:
     }
 #endif
 
+    [[nodiscard]] static const HandTrackingHand* matchingPreviousHand(
+        const HandTrackingHand& current,
+        const HandTrackingFrame& previous) noexcept
+    {
+        const Vector2 currentPalm = handPalmCenter2D(current);
+        const HandTrackingHand* best = nullptr;
+        f32 bestDistance = std::numeric_limits<f32>::max();
+        for (const HandTrackingHand& candidate : previous.hands) {
+            if (!candidate.valid) {
+                continue;
+            }
+            const bool sameKnownHand =
+                current.handedness != HandTrackingHandedness::Unknown
+                && candidate.handedness == current.handedness;
+            const bool bothUnknown =
+                current.handedness == HandTrackingHandedness::Unknown
+                && candidate.handedness == HandTrackingHandedness::Unknown;
+            if (!sameKnownHand && !bothUnknown) {
+                continue;
+            }
+
+            const f32 distance = distanceSquared2D(currentPalm, handPalmCenter2D(candidate));
+            if (distance < bestDistance) {
+                best = &candidate;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
     [[nodiscard]] HandTrackingFrame smoothFrame(const HandTrackingFrame& raw) const {
         std::optional<HandTrackingFrame> previous;
         {
@@ -652,16 +808,13 @@ private:
             if (!hand.valid) {
                 continue;
             }
-            const auto previousIt = std::find_if(previous->hands.begin(), previous->hands.end(),
-                [&hand](const HandTrackingHand& candidate) {
-                    return candidate.valid && candidate.handedness == hand.handedness;
-                });
-            if (previousIt == previous->hands.end()) {
+            const HandTrackingHand* previousHand = matchingPreviousHand(hand, *previous);
+            if (previousHand == nullptr) {
                 continue;
             }
             for (usize index = 0U; index < HandTrackingHand::LANDMARK_COUNT; ++index) {
-                hand.imageLandmarks[index] = lerpLandmark(previousIt->imageLandmarks[index], hand.imageLandmarks[index], alpha);
-                hand.worldLandmarks[index] = lerpLandmark(previousIt->worldLandmarks[index], hand.worldLandmarks[index], alpha);
+                hand.imageLandmarks[index] = lerpLandmark(previousHand->imageLandmarks[index], hand.imageLandmarks[index], alpha);
+                hand.worldLandmarks[index] = lerpLandmark(previousHand->worldLandmarks[index], hand.worldLandmarks[index], alpha);
             }
         }
         return result;
@@ -670,7 +823,7 @@ private:
     void updateGestures(const HandTrackingFrame& frame) {
         const auto now = std::chrono::steady_clock::now();
         for (const auto& hand : frame.hands) {
-            if (!hand.valid) {
+            if (!hand.valid || hand.handedness == HandTrackingHandedness::Unknown) {
                 continue;
             }
             GestureDebounce& state = m_gestures[handIndex(hand.handedness)];

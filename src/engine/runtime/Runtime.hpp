@@ -28,6 +28,7 @@ public:
     [[nodiscard]] static auto& audio() { return service<::biofuel::engine::runtime::typed::AudioService>(); }
     [[nodiscard]] static auto& model() { return service<::biofuel::engine::runtime::typed::ModelService>(); }
     [[nodiscard]] static auto& animation() { return service<::biofuel::engine::runtime::typed::AnimationService>(); }
+    [[nodiscard]] static auto& physics() { return service<::biofuel::engine::runtime::typed::PhysicsService>(); }
     [[nodiscard]] static auto& events() { return service<::biofuel::engine::runtime::typed::EventService>(); }
     [[nodiscard]] static auto& render() { return service<::biofuel::engine::runtime::typed::RenderService>(); }
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING

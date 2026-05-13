@@ -25,9 +25,9 @@ using ::biofuel::engine::custom::procedural::hand::HandSide;
 using ::biofuel::engine::custom::procedural::hand::RobotHandRenderOptions;
 using ::biofuel::engine::custom::procedural::hand::TrackedRobotHandPose;
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
-using ::biofuel::engine::custom::procedural::physics::CalibrationWizardStep;
-using ::biofuel::engine::custom::procedural::physics::MirrorPolicy;
-using ::biofuel::engine::custom::procedural::physics::StageLayoutPolicy;
+using ::biofuel::engine::custom::procedural::pose::CalibrationHandPhase;
+using ::biofuel::engine::custom::procedural::pose::MirrorPolicy;
+using ::biofuel::engine::custom::procedural::pose::StageLayoutPolicy;
 #endif
 
 [[nodiscard]] Vector3 add(const Vector3 a, const Vector3 b) noexcept {
@@ -195,10 +195,9 @@ void DevHandLabScreen::updateCameraInput() noexcept {
 }
 
 void DevHandLabScreen::updateHandTracking(const f32 dt) noexcept {
-    static_cast<void>(dt);
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     auto& tracking = ::biofuel::engine::runtime::Runtime::handTracking();
-    updatePreviewTexture();
+    updatePreviewTexture(dt);
     if (!tracking.running() || tracking.status().secondsSinceLastFrame > 0.35f) {
         m_trackedLeft.valid = false;
         m_trackedRight.valid = false;
@@ -209,12 +208,14 @@ void DevHandLabScreen::updateHandTracking(const f32 dt) noexcept {
             frame->cameraWidth,
             frame->cameraHeight,
             MirrorPolicy::Selfie,
-            StageLayoutPolicy::Shared);
+            StageLayoutPolicy::Adaptive);
         if (!m_handRetargeter.calibrationValid() && !m_handRetargeter.calibrationState().active) {
             m_handRetargeter.startCalibration();
         }
         applyTrackedFrame(*frame, dt);
     }
+#else
+    static_cast<void>(dt);
 #endif
 }
 
@@ -237,16 +238,23 @@ void DevHandLabScreen::resetTrackingCalibration() noexcept {
     m_trackingMapped = {};
 }
 
-void DevHandLabScreen::updatePreviewTexture() noexcept {
+void DevHandLabScreen::updatePreviewTexture(const f32 dt) noexcept {
+    constexpr f32 PREVIEW_UPLOAD_INTERVAL_SECONDS = 1.0f / 12.0f;
     auto& tracking = ::biofuel::engine::runtime::Runtime::handTracking();
     const auto status = tracking.status();
     if (!status.previewEnabled) {
+        m_previewUploadCooldown = 0.0f;
         return;
     }
     const auto preview = tracking.latestPreviewFrame();
     if (!preview || preview->jpegBytes.empty() || preview->sequence == m_previewTextureSequence) {
         return;
     }
+    if (m_previewUploadCooldown > 0.0f) {
+        m_previewUploadCooldown = std::max(0.0f, m_previewUploadCooldown - dt);
+        return;
+    }
+    m_previewUploadCooldown = PREVIEW_UPLOAD_INTERVAL_SECONDS;
     if (preview->jpegBytes.size() > static_cast<usize>(std::numeric_limits<i32>::max())) {
         return;
     }
@@ -255,6 +263,14 @@ void DevHandLabScreen::updatePreviewTexture() noexcept {
     if (image.data == nullptr) {
         return;
     }
+    ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    if (m_previewTexture.id != 0U && m_previewTexture.width == image.width && m_previewTexture.height == image.height) {
+        UpdateTexture(m_previewTexture, image.data);
+        UnloadImage(image);
+        m_previewTextureSequence = preview->sequence;
+        return;
+    }
+
     Texture2D texture = LoadTextureFromImage(image);
     UnloadImage(image);
     if (texture.id == 0U) {
@@ -270,6 +286,7 @@ void DevHandLabScreen::unloadPreviewTexture() noexcept {
         UnloadTexture(m_previewTexture);
         m_previewTexture = Texture2D{};
         m_previewTextureSequence = 0U;
+        m_previewUploadCooldown = 0.0f;
     }
 }
 
@@ -452,14 +469,14 @@ void DevHandLabScreen::drawCalibrationGuide(const Rectangle previewBounds) const
     }
 
     const Vector2 target =
-        ::biofuel::engine::custom::procedural::physics::calibrationTarget(wizard.step);
+        ::biofuel::engine::custom::procedural::pose::calibrationTarget(wizard.step);
     const Vector2 targetPoint{
         previewBounds.x + target.x * previewBounds.width,
         previewBounds.y + target.y * previewBounds.height,
     };
-    const f32 targetRadius = wizard.step == CalibrationWizardStep::Near
-        ? 44.0f
-        : wizard.step == CalibrationWizardStep::Far ? 20.0f : 28.0f;
+    const f32 targetRadius =
+        ::biofuel::engine::custom::procedural::pose::calibrationTargetRadius(wizard.step)
+        * std::min(previewBounds.width, previewBounds.height);
     const Color targetColor = wizard.targetAcquired
         ? Color{84, 236, 148, 235}
         : Color{255, 203, 84, 230};
@@ -481,7 +498,7 @@ void DevHandLabScreen::drawCalibrationGuide(const Rectangle previewBounds) const
     DrawRectangleLinesEx(card, 1.0f, Color{84, 236, 148, 165});
 
     const std::string_view prompt =
-        ::biofuel::engine::custom::procedural::physics::calibrationPrompt(wizard.step);
+        ::biofuel::engine::custom::procedural::pose::calibrationPrompt(wizard.activeHand, wizard.step);
     Renderer::drawText(
         prompt.data(),
         static_cast<i32>(card.x + 10.0f),
@@ -489,13 +506,28 @@ void DevHandLabScreen::drawCalibrationGuide(const Rectangle previewBounds) const
         12,
         Color{233, 246, 238, 255});
 
+    const std::string_view phaseName =
+        ::biofuel::engine::custom::procedural::pose::calibrationHandPhaseName(wizard.activeHand);
+    char stepText[96]{};
+    std::snprintf(stepText, sizeof(stepText), "%.*s phase | step %u/%u",
+        static_cast<int>(phaseName.size()),
+        phaseName.data(),
+        static_cast<unsigned>(::biofuel::engine::custom::procedural::pose::calibrationStepOrdinal(wizard.step)),
+        static_cast<unsigned>(::biofuel::engine::custom::procedural::pose::calibrationStepCount()));
+    Renderer::drawText(
+        stepText,
+        static_cast<i32>(card.x + 10.0f),
+        static_cast<i32>(card.y + 24.0f),
+        10,
+        Color{177, 212, 198, 255});
+
     const auto drawHandProgress = [&progressColor, card](std::string_view label, const auto progress, const f32 y) noexcept {
         const f32 ratio = std::clamp(
             progress.requiredHoldSeconds > 0.0f ? progress.holdSeconds / progress.requiredHoldSeconds : 0.0f,
             0.0f,
             1.0f);
         const std::string_view status =
-            ::biofuel::engine::custom::procedural::physics::calibrationCaptureStatusName(progress.status);
+            ::biofuel::engine::custom::procedural::pose::calibrationCaptureStatusName(progress.status);
         char text[96]{};
         std::snprintf(text, sizeof(text), "%.*s  %.*s",
             static_cast<int>(label.size()),
@@ -516,8 +548,8 @@ void DevHandLabScreen::drawCalibrationGuide(const Rectangle previewBounds) const
             8,
             progress.sampleCaptured ? Color{84, 236, 148, 255} : progressColor);
     };
-    drawHandProgress("Left", wizard.left, card.y + 29.0f);
-    drawHandProgress("Right", wizard.right, card.y + 47.0f);
+    const auto activeProgress = wizard.activeHand == CalibrationHandPhase::Right ? wizard.right : wizard.left;
+    drawHandProgress(phaseName, activeProgress, card.y + 46.0f);
 }
 #endif
 

@@ -80,6 +80,8 @@ target_link_libraries(${PROJECT_NAME}
         raylib
         nlohmann_json::nlohmann_json
         spdlog::spdlog
+        biofuel_rapier_bridge
+        biofuel_rapier_bridge_cxx
 )
 
 if(BIOFUEL_ENABLE_HAND_TRACKING)
@@ -214,6 +216,29 @@ endif()
 
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} PRIVATE Psapi)
+endif()
+
+option(BIOFUEL_BUILD_TESTS "Build BiofuelGame smoke-test executables." ON)
+if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
+    add_executable(BiofuelPhysicsSmokeTest
+        "${CMAKE_SOURCE_DIR}/tests/physics/PhysicsSmoke.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/EventManager.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/engine/physics/PhysicsSystem.cpp"
+    )
+    add_dependencies(BiofuelPhysicsSmokeTest GenerateTypedRegistries)
+    target_include_directories(BiofuelPhysicsSmokeTest
+        PRIVATE
+            ${GENERATED_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${entt_SOURCE_DIR}/src
+    )
+    target_link_libraries(BiofuelPhysicsSmokeTest
+        PRIVATE
+            raylib
+            biofuel_rapier_bridge
+            biofuel_rapier_bridge_cxx
+    )
+    add_test(NAME BiofuelPhysicsSmoke COMMAND BiofuelPhysicsSmokeTest)
 endif()
 
 add_custom_command(

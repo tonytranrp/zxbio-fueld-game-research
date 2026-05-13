@@ -5,7 +5,7 @@ if(NOT DEFINED REQUIREMENTS_FILE)
     message(FATAL_ERROR "REQUIREMENTS_FILE is required")
 endif()
 
-set(UV_VERSION "latest")
+set(UV_VERSION "0.11.11")
 set(UV_DIR "${OUTPUT_DIR}/uv")
 set(VENV_DIR "${OUTPUT_DIR}/.venv")
 file(MAKE_DIRECTORY "${UV_DIR}")

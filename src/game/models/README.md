@@ -31,9 +31,13 @@ game/models/
 6. Use `Runtime::model().createInstance(...)` from the caller.
 
 ```cpp
-auto instance = biofuel::engine::runtime::Runtime::model().createInstance(ModelAssetId::Harvester);
-if (instance && instance->ready()) {
-    instance->setAnimationState("idle");
+auto& models = biofuel::engine::runtime::Runtime::model();
+const auto registered = models.registry();
+if (!registered.empty()) {
+    auto instance = models.createInstance(registered.front().id);
+    if (instance && instance->ready()) {
+        instance->setAnimationState("idle");
+    }
 }
 ```
 
