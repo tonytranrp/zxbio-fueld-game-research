@@ -83,6 +83,8 @@ void IdleScreen::onEnter() {
     m_inputDelay = 0.0f;
     m_inputReady = false;
     m_videoMode = false;
+    ensureHandTrackingForModelOverlay();
+    m_handOverlay.onEnter();
 
     if (!m_idleVideoName.empty()) {
         auto& vm = ::biofuel::engine::runtime::Runtime::video();
@@ -107,6 +109,8 @@ void IdleScreen::onEnter() {
 }
 
 void IdleScreen::onExit() {
+    m_handOverlay.onExit();
+
     if (m_videoMode && !m_idleVideoName.empty()) {
         auto& vm = ::biofuel::engine::runtime::Runtime::video();
         if (vm.isPlaying(m_idleVideoName) || vm.isPaused(m_idleVideoName)) {
@@ -123,6 +127,8 @@ void IdleScreen::onExit() {
 }
 
 void IdleScreen::onUpdate(const f32 dt) {
+    m_handOverlay.update(dt);
+
     if (!m_videoMode) {
         m_backdrop.update(dt);
         m_backdrop.setFloat("uIdleDim", 1.0f);
@@ -147,6 +153,7 @@ void IdleScreen::onRender() {
         .frameTime = GetFrameTime(),
     };
     ::biofuel::engine::ui::typed::RenderPipeline<IdleScreen>::render(*this, context);
+    m_handOverlay.render();
 }
 
 void IdleScreen::onInput() {
@@ -173,6 +180,10 @@ void IdleScreen::startFallbackBackdrop() {
         audio.loadMusic(MUSIC_PATH, MUSIC_PATH);
     }
     audio.playMusic(MUSIC_PATH);
+}
+
+void IdleScreen::ensureHandTrackingForModelOverlay() {
+    game::presentation::hands::ensureModelOnlyHandTracking();
 }
 
 } // namespace biofuel::game::screens

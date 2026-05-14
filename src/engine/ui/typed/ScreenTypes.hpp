@@ -13,6 +13,7 @@ enum class ScreenId : u8 {
     Join,
     GamePlay,
     PausePopup,
+    Calibration,
     Idle,
     Video,
 #ifdef BIOFUEL_ENABLE_DEV_SCREENS

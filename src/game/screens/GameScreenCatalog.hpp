@@ -7,6 +7,7 @@
 #include "game/screens/join/JoinScreenModule.hpp"
 #include "game/screens/gameplay/GamePlayScreenModule.hpp"
 #include "game/screens/pause_popup/PausePopupScreenModule.hpp"
+#include "game/screens/calibration/CalibrationScreenModule.hpp"
 #include "game/screens/idle/IdleScreenModule.hpp"
 #include "game/screens/video/VideoScreenModule.hpp"
 #ifdef BIOFUEL_ENABLE_DEV_SCREENS
@@ -21,6 +22,7 @@ using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
     JoinScreen,
     GamePlayScreen,
     PausePopupScreen,
+    CalibrationScreen,
     IdleScreen,
     VideoScreen
 #ifdef BIOFUEL_ENABLE_DEV_SCREENS
@@ -40,6 +42,7 @@ namespace detail {
     case Join:
     case GamePlay:
     case PausePopup:
+    case Calibration:
     case Idle:
     case Video:
 #ifdef BIOFUEL_ENABLE_DEV_SCREENS
@@ -57,6 +60,7 @@ namespace detail {
     using enum ::biofuel::engine::ui::typed::ScreenId;
     switch (id) {
     case PausePopup:
+    case Calibration:
 #ifdef BIOFUEL_ENABLE_DEV_SCREENS
     case DevHandLab:
 #endif
@@ -109,6 +113,7 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case Join: return typed::TransitionPolicy<JoinScreen>::VALUE;
     case GamePlay: return typed::TransitionPolicy<GamePlayScreen>::VALUE;
     case PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
+    case Calibration: return typed::TransitionPolicy<CalibrationScreen>::VALUE;
     case Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
     case Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
 #ifdef BIOFUEL_ENABLE_DEV_SCREENS
@@ -128,6 +133,7 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     using enum typed::ScreenId;
     switch (id) {
     case PausePopup: return typed::StackPolicy<PausePopupScreen>::VALUE;
+    case Calibration: return typed::StackPolicy<CalibrationScreen>::VALUE;
 #ifdef BIOFUEL_ENABLE_DEV_SCREENS
     case DevHandLab: return typed::StackPolicy<DevHandLabScreen>::VALUE;
 #endif

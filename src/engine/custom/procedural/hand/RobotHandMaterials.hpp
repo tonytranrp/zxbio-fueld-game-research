@@ -43,6 +43,7 @@ struct RobotHandMaterialState {
     f32 shellIntensity = 1.0f;
     f32 accentIntensity = 1.0f;
     f32 jointIntensity = 1.0f;
+    f32 opacity = 1.0f;
 };
 
 struct RobotHandTexturePaths {
@@ -87,6 +88,11 @@ template<typename TMaterialTag>
     return Color{channel(color.r), channel(color.g), channel(color.b), color.a};
 }
 
+[[nodiscard]] inline Color opacityColor(const Color color, const f32 opacity) noexcept {
+    const f32 clamped = opacity < 0.0f ? 0.0f : (opacity > 1.0f ? 1.0f : opacity);
+    return Color{color.r, color.g, color.b, static_cast<u8>(static_cast<f32>(color.a) * clamped)};
+}
+
 [[nodiscard]] inline RobotHandPalette applyMaterialState(RobotHandPalette palette, const RobotHandMaterialState state) noexcept {
     palette.shell = tintColor(palette.shell, state.shellIntensity);
     palette.shellShadow = tintColor(palette.shellShadow, state.shellIntensity);
@@ -94,6 +100,15 @@ template<typename TMaterialTag>
     palette.palmPanel = tintColor(palette.palmPanel, state.accentIntensity);
     palette.joint = tintColor(palette.joint, state.jointIntensity);
     palette.jointEdge = tintColor(palette.jointEdge, state.jointIntensity);
+    palette.shell = opacityColor(palette.shell, state.opacity);
+    palette.shellShadow = opacityColor(palette.shellShadow, state.opacity);
+    palette.accent = opacityColor(palette.accent, state.opacity);
+    palette.joint = opacityColor(palette.joint, state.opacity);
+    palette.jointEdge = opacityColor(palette.jointEdge, state.opacity);
+    palette.target = opacityColor(palette.target, state.opacity);
+    palette.targetLine = opacityColor(palette.targetLine, state.opacity);
+    palette.debugLine = opacityColor(palette.debugLine, state.opacity);
+    palette.palmPanel = opacityColor(palette.palmPanel, state.opacity);
     return palette;
 }
 

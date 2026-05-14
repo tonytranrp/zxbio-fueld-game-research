@@ -5,9 +5,9 @@
     "candidate_indices": [0, 1, 2, 3],
     "backends": ["dshow", "default", "msmf"],
     "candidate_modes": [
-      { "width": 640, "height": 480, "fps": 30 },
-      { "width": 960, "height": 540, "fps": 30 },
       { "width": 1280, "height": 720, "fps": 30 },
+      { "width": 960, "height": 540, "fps": 30 },
+      { "width": 640, "height": 480, "fps": 30 },
       { "width": 320, "height": 240, "fps": 30 }
     ]
   },
@@ -24,7 +24,7 @@
   "preview": {
     "enabled": false,
     "max_fps": "camera",
-    "jpeg_quality": 72,
-    "max_width": 480
+    "jpeg_quality": 84,
+    "max_width": 960
   }
 }

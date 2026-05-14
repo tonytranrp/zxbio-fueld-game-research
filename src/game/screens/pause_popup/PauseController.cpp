@@ -34,6 +34,7 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     switch (current->screenId()) {
     case Loading:
     case PausePopup:
+    case Calibration:
     case Idle:
     case Video:
     case Unknown:

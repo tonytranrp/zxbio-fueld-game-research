@@ -92,6 +92,14 @@ void AppLifecycle::addStartupTasks(LoadingTaskQueue& tasks, const StartupLifecyc
     tasks.add({"Initializing physics engine...", 0.5f, []() {
         ::biofuel::engine::runtime::Runtime::physics().init();
     }});
+#ifdef BIOFUEL_ENABLE_HAND_TRACKING
+    tasks.add({"Initializing hand tracking bridge...", 0.2f, []() {
+        ::biofuel::engine::runtime::Runtime::handTracking().init();
+    }});
+#endif
+    tasks.add({"Initializing hand pose system...", 0.2f, []() {
+        ::biofuel::engine::runtime::Runtime::handPose().init();
+    }});
     tasks.add({"Initializing model system...", 0.4f, []() {
         ::biofuel::engine::runtime::Runtime::model().init();
     }});
@@ -153,6 +161,7 @@ void AppLifecycle::shutdownCoreServices() noexcept {
     services.get<::biofuel::engine::runtime::typed::TaskService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::AnimationService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::ScreenService>().shutdown();
+    services.get<::biofuel::engine::runtime::typed::HandPoseService>().shutdown();
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     services.get<::biofuel::engine::runtime::typed::HandTrackingService>().shutdown();
 #endif

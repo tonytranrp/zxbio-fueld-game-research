@@ -5,6 +5,7 @@
 #include "MainMenuTypes.hpp"
 #include "game/presentation/idle/IdleTrigger.hpp"
 #include "game/presentation/effects/ScreenBackdropController.hpp"
+#include "game/presentation/hands/HandModelOverlay.hpp"
 #include "engine/graphics/components/Camera/CameraComponent.hpp"
 #include <raylib.h>
 #include <array>
@@ -152,6 +153,8 @@ private:
     bool m_idleTransitionActive = false;
     bool m_revealBackdropOnResume = false;
     bool m_reportedStableMemory = false;
+    bool m_handCalibrationReady = false;
+    game::presentation::hands::HandModelOverlay m_handOverlay;
 
     void startIdleTransition();
     void updateIdleTransition(f32 dt);
@@ -176,6 +179,8 @@ private:
     void startCameraSequence() noexcept;
     void advanceCameraSequence() noexcept;
     void transitionToJoinIfReady();
+    void restoreMainMenuAfterCalibration() noexcept;
+    void ensureHandTrackingForModelOverlay();
 
     // ---- Methods ----
     void activateSelected();

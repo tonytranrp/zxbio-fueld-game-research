@@ -1,11 +1,23 @@
-﻿#include "GamePlayScreen.hpp"
+#include "GamePlayScreen.hpp"
 #include "engine/graphics/Render.hpp"
+#include "engine/runtime/Runtime.hpp"
 #include <raylib.h>
 #include <string_view>
 
 namespace biofuel::game::screens {
 
-void GamePlayScreen::onUpdate(const f32) {}
+void GamePlayScreen::onEnter() {
+    ensureHandTrackingForModelOverlay();
+    m_handOverlay.onEnter();
+}
+
+void GamePlayScreen::onExit() {
+    m_handOverlay.onExit();
+}
+
+void GamePlayScreen::onUpdate(const f32 dt) {
+    m_handOverlay.update(dt);
+}
 
 void GamePlayScreen::onRender() {
     using namespace ::biofuel::engine::graphics;
@@ -34,8 +46,14 @@ void GamePlayScreen::onRender() {
         screenHeight / 2,
         messageSize,
         Color{220, 228, 232, 255});
+
+    m_handOverlay.render();
 }
 
 void GamePlayScreen::onInput() {}
+
+void GamePlayScreen::ensureHandTrackingForModelOverlay() {
+    game::presentation::hands::ensureModelOnlyHandTracking();
+}
 
 } // namespace biofuel::game::screens

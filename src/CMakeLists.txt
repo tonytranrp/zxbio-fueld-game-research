@@ -71,6 +71,7 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/MainMenuBgModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/MenuOptionModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/input/InputServiceModule.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/engine/custom/procedural/hand/HandPoseServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/models/ModelServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/physics/PhysicsServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/tasks/TaskServiceModule.hpp"
@@ -336,6 +337,11 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     target_link_libraries(BiofuelFarmStateSmokeTest PRIVATE biofuel_game)
     add_test(NAME BiofuelFarmStateSmoke COMMAND BiofuelFarmStateSmokeTest)
 
+    add_executable(BiofuelHandPresenceAnimatorSmokeTest
+        "${CMAKE_SOURCE_DIR}/tests/game/HandPresenceAnimatorSmoke.cpp")
+    target_link_libraries(BiofuelHandPresenceAnimatorSmokeTest PRIVATE biofuel_game)
+    add_test(NAME BiofuelHandPresenceAnimatorSmoke COMMAND BiofuelHandPresenceAnimatorSmokeTest)
+
     add_executable(BiofuelArchitecturePlanRuntimeSmokeTest
         "${CMAKE_SOURCE_DIR}/tests/runtime/ArchitecturePlanRuntimeSmoke.cpp")
     target_link_libraries(BiofuelArchitecturePlanRuntimeSmokeTest PRIVATE biofuel_engine)
@@ -364,6 +370,10 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
             -P "${CMAKE_SOURCE_DIR}/tests/architecture/HandTrackingSafetyGuard.cmake")
+    add_test(NAME BiofuelCalibrationFlowGuard
+        COMMAND ${CMAKE_COMMAND}
+            -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -P "${CMAKE_SOURCE_DIR}/tests/architecture/CalibrationFlowGuard.cmake")
     add_test(NAME BiofuelVideoSafetyGuard
         COMMAND ${CMAKE_COMMAND}
             -D SOURCE_DIR=${CMAKE_SOURCE_DIR}

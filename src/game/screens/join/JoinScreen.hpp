@@ -1,12 +1,15 @@
 ﻿#pragma once
 
 #include "engine/ui/Screen.hpp"
+#include "game/presentation/hands/HandModelOverlay.hpp"
 #include <raylib.h>
 
 namespace biofuel::game::screens {
 
 class JoinScreen final : public ::biofuel::engine::ui::Screen {
 public:
+    void onEnter() override;
+    void onExit() override;
     void onUpdate(f32 dt) override;
     void onRender() override;
     void onInput() override;
@@ -22,6 +25,7 @@ private:
     static constexpr i32 HINT_FONT_SIZE = 15;
 
     bool m_gameplayQueued = false;
+    game::presentation::hands::HandModelOverlay m_handOverlay;
 
     [[nodiscard]] Rectangle joinButtonBounds() const noexcept;
     void activateJoin();
