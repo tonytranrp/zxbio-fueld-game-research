@@ -49,5 +49,5 @@ Each task reports its name and weight. Model tasks show the current asset name s
 - No helper types live in this screen header; keep the class self-contained
 - Use `constexpr` for timing constants and layout dimensions
 - Build tasks in `buildTasks()`, called from `onEnter()`
-- `buildTasks()` clears the queue first, so re-entering the screen cannot duplicate stale tasks
+- `buildTasks()` clears the queue with `Runtime::tasks()` first, so re-entering the screen cancels any stale active async task without cancelling unrelated engine work
 - Defer navigation via `queueReplace()` to avoid re-entrancy during update

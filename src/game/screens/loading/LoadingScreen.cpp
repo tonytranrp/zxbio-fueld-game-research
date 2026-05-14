@@ -145,7 +145,7 @@ LoadingScreen::LoadingScreen(i32 width, i32 height, i32 targetFps)
     , m_appTargetFps(targetFps) {}
 
 void LoadingScreen::buildTasks() {
-    m_tasks.clear();
+    m_tasks.clear(::biofuel::engine::runtime::Runtime::tasks());
     m_tasks.reserve(16U + ::biofuel::engine::runtime::typed::AssetCatalog<
         ::biofuel::engine::runtime::typed::EngineStartupCatalog>::Assets::size);
     ::biofuel::engine::app::AppLifecycle::addStartupTasks(

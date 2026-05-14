@@ -38,12 +38,10 @@ void AudioManager::shutdown() noexcept {
 void AudioManager::update() noexcept {
     if (!m_initialized) return;
     if (!m_currentMusic.empty()) {
-        auto it = m_musicTracks.find(m_currentMusic);
-        if (it == m_musicTracks.end()) {
-            m_currentMusic.clear();
-            m_musicPaused = false;
+        if (recoverStaleCurrentMusic("update")) {
             return;
         }
+        auto it = m_musicTracks.find(m_currentMusic);
         UpdateMusicStream(it->second);
     }
 }
@@ -192,11 +190,9 @@ void AudioManager::playMusic(std::string_view name) {
     }
 
     if (!m_currentMusic.empty()) {
-        if (auto current = m_musicTracks.find(m_currentMusic); current != m_musicTracks.end()) {
+        if (!recoverStaleCurrentMusic("playMusic")) {
+            auto current = m_musicTracks.find(m_currentMusic);
             StopMusicStream(current->second);
-        } else {
-            m_currentMusic.clear();
-            m_musicPaused = false;
         }
     }
 
@@ -217,24 +213,16 @@ void AudioManager::stopMusic() noexcept {
 
 void AudioManager::pauseMusic() noexcept {
     if (m_currentMusic.empty()) return;
+    if (recoverStaleCurrentMusic("pauseMusic")) return;
     auto it = m_musicTracks.find(m_currentMusic);
-    if (it == m_musicTracks.end()) {
-        m_currentMusic.clear();
-        m_musicPaused = false;
-        return;
-    }
     PauseMusicStream(it->second);
     m_musicPaused = true;
 }
 
 void AudioManager::resumeMusic() noexcept {
     if (m_currentMusic.empty() || !m_musicPaused) return;
+    if (recoverStaleCurrentMusic("resumeMusic")) return;
     auto it = m_musicTracks.find(m_currentMusic);
-    if (it == m_musicTracks.end()) {
-        m_currentMusic.clear();
-        m_musicPaused = false;
-        return;
-    }
     ResumeMusicStream(it->second);
     m_musicPaused = false;
 }
@@ -317,6 +305,20 @@ void AudioManager::applyMasterVolume() noexcept {
     if (m_initialized) {
         SetMasterVolume(m_muted ? 0.0f : m_masterVolume);
     }
+}
+
+bool AudioManager::recoverStaleCurrentMusic(std::string_view caller) noexcept {
+    if (m_currentMusic.empty()) {
+        return false;
+    }
+    if (m_musicTracks.find(m_currentMusic) != m_musicTracks.end()) {
+        return false;
+    }
+
+    spdlog::warn("AudioManager::{} recovered stale current music '{}'", caller, m_currentMusic);
+    m_currentMusic.clear();
+    m_musicPaused = false;
+    return true;
 }
 
 } // namespace biofuel::engine::audio

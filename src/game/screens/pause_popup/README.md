@@ -38,6 +38,13 @@ Two-phase animation via `AnimationManager`:
 | `m_quitting` | If true, requests app quit after pop |
 | `m_wantsPop` | Deferred pop flag set on slide-out complete |
 
+### Global pause eligibility
+
+`PauseController` is global, but intentionally narrow. It opens pause only for
+`MainMenu`, `Join`, and `GamePlay`. It rejects loading, the pause popup itself,
+and transient/diagnostic screens (`Idle`, `Video`, `DevHandLab`) because those
+screens already own ESC for dismissal or navigation.
+
 ## Dependencies
 
 - `Screen` / `ScreenManager` for lifecycle and stack operations

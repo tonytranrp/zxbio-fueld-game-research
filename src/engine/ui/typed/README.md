@@ -51,6 +51,11 @@ be toggled through screen override events, which is useful for debug tools.
 ## Coding standards
 
 - Screen IDs are stable; do not reorder existing IDs casually.
+- New `ScreenId` values must be reviewed against game-level global input policy
+  such as pause eligibility; the engine registry should stay policy-neutral.
+- Architecture follow-up: `ScreenId` currently lives in `engine/ui/typed` for
+  this single-game vertical slice. If the engine is reused by multiple games,
+  move game-specific IDs behind a game-owned or opaque registry boundary.
 - Keep stack policy explicit in specs.
 - Render elements are compile-time types, not heap widgets.
 - Prefer `RenderContext` over global lookups inside typed render elements.

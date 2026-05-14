@@ -79,6 +79,7 @@ private:
     void applyAllSfxVolumes() noexcept;
     void applyMusicVolume(std::string_view name) noexcept;
     void applyMasterVolume() noexcept;
+    [[nodiscard]] bool recoverStaleCurrentMusic(std::string_view caller) noexcept;
 
     std::unordered_map<std::string, Sound, TransparentHash, std::equal_to<>> m_sounds;
     std::unordered_map<std::string, Music, TransparentHash, std::equal_to<>> m_musicTracks;

@@ -11,6 +11,13 @@ function(read_required relative_path out_var)
     set(${out_var} "${contents}" PARENT_SCOPE)
 endfunction()
 
+function(require_contains label contents needle)
+    string(FIND "${contents}" "${needle}" found_index)
+    if(found_index EQUAL -1)
+        message(FATAL_ERROR "Task boundary guard failed: ${label}")
+    endif()
+endfunction()
+
 read_required("src/engine/tasks/TaskManager.hpp" TASK_MANAGER_HEADER)
 read_required("src/engine/tasks/TaskManager.cpp" TASK_MANAGER_CPP)
 read_required("src/engine/core/LoadingTask.hpp" LOADING_TASK_HEADER)
@@ -24,6 +31,25 @@ if(TASK_MANAGER_HEADER MATCHES "taskflow")
 endif()
 if(NOT TASK_MANAGER_CPP MATCHES "taskflow/taskflow.hpp")
     message(FATAL_ERROR "Task boundary guard failed: TaskManager implementation must own Taskflow integration")
+endif()
+require_contains(
+    "TaskManager must expose task-specific cancellation without exposing Taskflow"
+    "${TASK_MANAGER_HEADER}"
+    "void cancel(TaskId id) noexcept;")
+require_contains(
+    "TaskManager records must own per-task stop sources"
+    "${TASK_MANAGER_CPP}"
+    "std::shared_ptr<std::stop_source> stopSource;")
+require_contains(
+    "TaskManager must create a fresh stop source for each scheduled task"
+    "${TASK_MANAGER_CPP}"
+    "auto stopSource = std::make_shared<std::stop_source>();")
+require_contains(
+    "TaskManager worker lambdas must capture the per-task stop token"
+    "${TASK_MANAGER_CPP}"
+    "auto token = stopSource->get_token();")
+if(TASK_MANAGER_CPP MATCHES "std::stop_source stopSource;")
+    message(FATAL_ERROR "Task boundary guard failed: TaskManager must not use a manager-wide stop source")
 endif()
 if(NOT ROOT_CMAKE MATCHES "taskflow/taskflow")
     message(FATAL_ERROR "Task boundary guard failed: root CMake must fetch Taskflow explicitly")
@@ -44,6 +70,26 @@ endif()
 if(NOT LOADING_TASK_HEADER MATCHES "runAsync" OR NOT LOADING_SCREEN MATCHES "Runtime::tasks")
     message(FATAL_ERROR "Task boundary guard failed: loading queue must integrate async tasks through TaskManager")
 endif()
+require_contains(
+    "LoadingTaskQueue clear must be able to cancel only its active async task"
+    "${LOADING_TASK_HEADER}"
+    "void clear(::biofuel::engine::tasks::TaskManager& taskManager) noexcept")
+if(LOADING_TASK_HEADER MATCHES "void clear\\(\\)")
+    message(FATAL_ERROR "Task boundary guard failed: LoadingTaskQueue must not expose a no-arg clear that can drop an active async task")
+endif()
+require_contains(
+    "LoadingTaskQueue reset implementation must stay private"
+    "${LOADING_TASK_HEADER}"
+    "private:
+    void resetState() noexcept")
+require_contains(
+    "LoadingTaskQueue active async cancellation must use TaskManager::cancel instead of cancelAll"
+    "${LOADING_TASK_HEADER}"
+    "taskManager.cancel(*m_activeAsyncTask);")
+require_contains(
+    "LoadingScreen rebuild must cancel stale queue async work with the runtime TaskManager"
+    "${LOADING_SCREEN}"
+    "m_tasks.clear(::biofuel::engine::runtime::Runtime::tasks());")
 if(APP_LIFECYCLE MATCHES "LoadingTask::async[^\\r\\n]*(Load|Unload|Draw)")
     message(FATAL_ERROR "Task boundary guard failed: async startup tasks must not call Raylib resource/render APIs")
 endif()

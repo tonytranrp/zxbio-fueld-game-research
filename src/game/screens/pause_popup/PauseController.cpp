@@ -34,17 +34,17 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     switch (current->screenId()) {
     case Loading:
     case PausePopup:
+    case Idle:
+    case Video:
     case Unknown:
     case Count:
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+    case DevHandLab:
+#endif
         return false;
     case MainMenu:
     case Join:
     case GamePlay:
-    case Idle:
-    case Video:
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    case DevHandLab:
-#endif
         return true;
     }
 

@@ -8,7 +8,9 @@ update timing, service initialization order, and shutdown.
 ```text
 engine/app/
 |-- App.hpp
-`-- App.cpp
+|-- App.cpp
+|-- AppLifecycle.hpp
+`-- AppLifecycle.cpp
 ```
 
 ## Responsibilities
@@ -16,6 +18,8 @@ engine/app/
 - Create and close the Raylib window.
 - Push the loading screen as the first screen.
 - Poll input, update services, and render the active screen stack.
+- Keep media streaming services, such as audio and video, pumping even when a
+  modal/overlay screen freezes gameplay-facing updates below it.
 - Apply the fixed timestep accumulator.
 - Keep platform window helpers, such as Windows borderless dragging, isolated
   behind platform guards.

@@ -93,6 +93,7 @@ public:
     [[nodiscard]] bool finished(TaskId id) const;
     [[nodiscard]] bool failed(TaskId id) const;
 
+    void cancel(TaskId id) noexcept;
     void cancelAll() noexcept;
 
 private:

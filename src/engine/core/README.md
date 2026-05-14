@@ -33,6 +33,16 @@ queue.add({"Compile shaders", 2.0f, [] { Runtime::shader().init(); }});
 queue.processNext();
 ```
 
+If the queue owns an active async task, clear it with the task manager so only
+that task is cancelled:
+
+```cpp
+queue.clear(Runtime::tasks());
+```
+
+The reset implementation is intentionally private so callers cannot discard an
+active async task id without first requesting cancellation through `TaskManager`.
+
 Use `core/units` wrappers at subsystem boundaries:
 
 ```cpp

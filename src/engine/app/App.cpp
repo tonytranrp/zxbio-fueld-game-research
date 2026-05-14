@@ -125,9 +125,9 @@ void Application::update(const f32 dt) {
         services.get<::biofuel::engine::runtime::typed::ModelService>().update(dt);
     }
     services.get<::biofuel::engine::runtime::typed::AudioService>().update();
-    if (!freezeUnderlying) {
-        services.get<::biofuel::engine::runtime::typed::VideoService>().update();
-    }
+    // Video overlays need per-frame pumping for decoded frames and Raylib audio
+    // streams even when the top screen freezes gameplay updates below it.
+    services.get<::biofuel::engine::runtime::typed::VideoService>().update();
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     if (!freezeUnderlying) {
         services.get<::biofuel::engine::runtime::typed::HandTrackingService>().update(dt);

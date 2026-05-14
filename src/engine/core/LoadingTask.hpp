@@ -42,14 +42,15 @@ struct LoadingTask {
 // ------------------------------------------------------------------------------
 class LoadingTaskQueue {
 public:
-    void clear() noexcept {
-        m_tasks.clear();
-        m_currentIndex = -1;
-        m_completedWeight = 0.0f;
-        m_totalWeight = 0.0f;
-        m_failed = false;
-        m_failureMessage.clear();
-        m_activeAsyncTask.reset();
+    void clear(::biofuel::engine::tasks::TaskManager& taskManager) noexcept {
+        cancelActive(taskManager);
+        resetState();
+    }
+
+    void cancelActive(::biofuel::engine::tasks::TaskManager& taskManager) noexcept {
+        if (m_activeAsyncTask.has_value()) {
+            taskManager.cancel(*m_activeAsyncTask);
+        }
     }
 
     void reserve(const size_t taskCount) {
@@ -166,6 +167,16 @@ public:
     }
 
 private:
+    void resetState() noexcept {
+        m_tasks.clear();
+        m_currentIndex = -1;
+        m_completedWeight = 0.0f;
+        m_totalWeight = 0.0f;
+        m_failed = false;
+        m_failureMessage.clear();
+        m_activeAsyncTask.reset();
+    }
+
     void fail(const std::string& taskName, const char* reason) {
         m_failed = true;
         m_failureMessage = "Failed: ";

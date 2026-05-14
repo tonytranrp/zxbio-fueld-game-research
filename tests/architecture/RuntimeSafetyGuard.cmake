@@ -18,7 +18,36 @@ function(require_contains label contents needle)
     endif()
 endfunction()
 
+read_required("src/engine/audio/AudioManager.hpp" AUDIO_MANAGER_HPP)
 read_required("src/engine/audio/AudioManager.cpp" AUDIO_MANAGER)
+read_required("tests/runtime/ArchitecturePlanRuntimeSmoke.cpp" ARCHITECTURE_PLAN_RUNTIME_SMOKE)
+require_contains(
+    "AudioManager must centralize stale current-music recovery in the header contract"
+    "${AUDIO_MANAGER_HPP}"
+    "recoverStaleCurrentMusic(std::string_view caller) noexcept")
+require_contains(
+    "AudioManager must warn when recovering stale current music"
+    "${AUDIO_MANAGER}"
+    "AudioManager::{} recovered stale current music")
+require_contains(
+    "AudioManager::update must use centralized stale current-music recovery"
+    "${AUDIO_MANAGER}"
+    "recoverStaleCurrentMusic(\"update\")")
+require_contains(
+    "AudioManager::playMusic must use centralized stale current-music recovery"
+    "${AUDIO_MANAGER}"
+    "recoverStaleCurrentMusic(\"playMusic\")")
+require_contains(
+    "AudioManager::pauseMusic must use centralized stale current-music recovery"
+    "${AUDIO_MANAGER}"
+    "recoverStaleCurrentMusic(\"pauseMusic\")")
+require_contains(
+    "AudioManager::resumeMusic must use centralized stale current-music recovery"
+    "${AUDIO_MANAGER}"
+    "recoverStaleCurrentMusic(\"resumeMusic\")")
+if(ARCHITECTURE_PLAN_RUNTIME_SMOKE MATCHES "detach\\(")
+    message(FATAL_ERROR "Runtime safety guard failed: ArchitecturePlanRuntimeSmoke must not detach worker threads")
+endif()
 require_contains(
     "AudioManager::mute must reapply SFX volumes so existing sounds become silent while muted"
     "${AUDIO_MANAGER}"
@@ -72,6 +101,16 @@ require_contains(
     "Application startup must delegate loading-visible shader staging to AppLifecycle"
     "${APP_CPP}"
     "AppLifecycle::prepareLoadingPrelude();")
+require_contains(
+    "Application must keep video playback pumping even when overlay screens freeze gameplay updates"
+    "${APP_CPP}"
+    "AudioService>().update();
+    // Video overlays need per-frame pumping for decoded frames and Raylib audio
+    // streams even when the top screen freezes gameplay updates below it.
+    services.get<::biofuel::engine::runtime::typed::VideoService>().update();")
+if(APP_CPP MATCHES "if \\(!freezeUnderlying\\)[^{]*\\{[^}]*VideoService>\\(\\)\\.update\\(\\)")
+    message(FATAL_ERROR "Runtime safety guard failed: VideoService update must not be gated by freezeUnderlying")
+endif()
 require_contains(
     "AppLifecycle must own core service shutdown ordering"
     "${APP_LIFECYCLE}"
@@ -134,4 +173,4 @@ require_contains(
             renderSlotToBackbuffer(incoming, sw, sh);
         }")
 
-message(STATUS "Runtime safety guard passed: audio, loading task, and crossfade fallbacks are hardened.")
+message(STATUS "Runtime safety guard passed: audio, loading task, video pumping, and crossfade fallbacks are hardened.")

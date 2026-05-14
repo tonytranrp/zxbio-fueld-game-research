@@ -44,6 +44,8 @@ public:
 
 - Keep reusable math, services, caches, and detector logic out of screens.
 - Use `queuePush`, `queueReplace`, and `queuePop` from update paths.
+- If a screen consumes ESC for its own flow, keep it out of the global pause
+  eligibility switch in `pause_popup/PauseController.cpp`.
 - Put shared effects in `game/presentation/`.
 - Put reusable engine behavior in `engine/`.
 - Each screen folder must have its own `README.md`.
