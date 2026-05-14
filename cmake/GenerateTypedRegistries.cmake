@@ -5,10 +5,9 @@ if(NOT DEFINED OUTPUT_DIR)
     message(FATAL_ERROR "OUTPUT_DIR is required")
 endif()
 
-file(GLOB_RECURSE TYPED_MODULE_HEADERS
-    "${SRC_DIR}/*.hpp"
-    "${SRC_DIR}/*.h"
-)
+if(NOT DEFINED TYPED_MODULE_HEADERS)
+    message(FATAL_ERROR "TYPED_MODULE_HEADERS is required; registry generation must use an explicit module manifest")
+endif()
 
 set(EVENT_INCLUDES "")
 set(SERVICE_INCLUDES "")

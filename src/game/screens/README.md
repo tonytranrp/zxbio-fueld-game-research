@@ -8,6 +8,8 @@ Concrete Fuel Farm screens live here.
 game/screens/
 |-- loading/
 |-- main_menu/
+|-- join/
+|-- gameplay/
 |-- pause_popup/
 |-- idle/
 |-- video/
@@ -19,10 +21,10 @@ game/screens/
 Create a folder with the screen class, module header, and local README:
 
 ```text
-game/screens/farm/
-|-- FarmScreen.hpp
-|-- FarmScreen.cpp
-|-- FarmScreenModule.hpp
+game/screens/example/
+|-- ExampleScreen.hpp
+|-- ExampleScreen.cpp
+|-- ExampleScreenModule.hpp
 `-- README.md
 ```
 
@@ -30,7 +32,7 @@ The screen derives from `engine::ui::Screen`, owns only screen workflow state,
 and registers a typed screen module.
 
 ```cpp
-class FarmScreen final : public engine::ui::Screen {
+class ExampleScreen final : public engine::ui::Screen {
 public:
     void onUpdate(f32 dt) override;
     void onRender() override;

@@ -4,9 +4,10 @@ Fuel Farm balance data will live here.
 
 ## Current status
 
-This folder is intentionally empty except for this README. It is reserved for
-game-domain data extracted from the research documents, such as crops, fuels,
-buildings, technologies, events, prices, and ecology numbers.
+This folder now starts with `FuelFarmData.hpp`, a compact constexpr crop/fuel
+table extracted from the project plan. It remains the home for game-domain data
+from the research documents, such as crops, fuels, buildings, technologies,
+events, prices, and ecology numbers.
 
 ## Expected use
 

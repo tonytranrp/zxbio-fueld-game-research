@@ -1,0 +1,147 @@
+#pragma once
+
+#include "engine/ui/typed/ScreenRegistry.hpp"
+#include "engine/ui/typed/ScreenValidation.hpp"
+#include "game/screens/loading/LoadingScreenModule.hpp"
+#include "game/screens/main_menu/MainMenuScreenModule.hpp"
+#include "game/screens/join/JoinScreenModule.hpp"
+#include "game/screens/gameplay/GamePlayScreenModule.hpp"
+#include "game/screens/pause_popup/PausePopupScreenModule.hpp"
+#include "game/screens/idle/IdleScreenModule.hpp"
+#include "game/screens/video/VideoScreenModule.hpp"
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+#include "game/screens/dev_hand_lab/DevHandLabScreenModule.hpp"
+#endif
+
+namespace biofuel::game::screens {
+
+using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
+    LoadingScreen,
+    MainMenuScreen,
+    JoinScreen,
+    GamePlayScreen,
+    PausePopupScreen,
+    IdleScreen,
+    VideoScreen
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+    , DevHandLabScreen
+#endif
+    >;
+
+static_assert(::biofuel::engine::ui::typed::validateScreenRegistry<GameScreenRegistry>());
+
+namespace detail {
+
+[[nodiscard]] constexpr bool hasTransitionPolicySwitchEntry(const ::biofuel::engine::ui::typed::ScreenId id) noexcept {
+    using enum ::biofuel::engine::ui::typed::ScreenId;
+    switch (id) {
+    case Loading:
+    case MainMenu:
+    case Join:
+    case GamePlay:
+    case PausePopup:
+    case Idle:
+    case Video:
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+    case DevHandLab:
+#endif
+        return true;
+    case Unknown:
+    case Count:
+        break;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool hasStackPolicySwitchEntry(const ::biofuel::engine::ui::typed::ScreenId id) noexcept {
+    using enum ::biofuel::engine::ui::typed::ScreenId;
+    switch (id) {
+    case PausePopup:
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+    case DevHandLab:
+#endif
+        return true;
+    case Loading:
+    case MainMenu:
+    case Join:
+    case GamePlay:
+    case Idle:
+    case Video:
+    case Unknown:
+    case Count:
+        break;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool isDefaultStackPolicy(const ::biofuel::engine::ui::typed::StackPolicyData policy) noexcept {
+    return !policy.renderBelow && !policy.updateBelow && !policy.inputBelow;
+}
+
+template<typename TRegistry>
+struct PolicySwitchValidator;
+
+template<typename... TScreens>
+struct PolicySwitchValidator<::biofuel::engine::ui::typed::ScreenRegistry<TScreens...>> {
+    static consteval bool valid() {
+        namespace typed = ::biofuel::engine::ui::typed;
+        static_assert((hasTransitionPolicySwitchEntry(typed::ScreenSpec<TScreens>::ID) && ...),
+            "Every registered screen must have an entry in transitionPolicyForId().");
+        static_assert(((isDefaultStackPolicy(typed::StackPolicy<TScreens>::VALUE)
+            || hasStackPolicySwitchEntry(typed::ScreenSpec<TScreens>::ID)) && ...),
+            "Every screen with a non-default StackPolicy must have an entry in stackPolicyForId().");
+        return true;
+    }
+};
+
+} // namespace detail
+
+static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
+
+[[nodiscard]] constexpr ::biofuel::engine::ui::typed::TransitionPolicyData transitionPolicyForId(
+    const ::biofuel::engine::ui::typed::ScreenId id) noexcept
+{
+    namespace typed = ::biofuel::engine::ui::typed;
+    using enum typed::ScreenId;
+    switch (id) {
+    case Loading: return typed::TransitionPolicy<LoadingScreen>::VALUE;
+    case MainMenu: return typed::TransitionPolicy<MainMenuScreen>::VALUE;
+    case Join: return typed::TransitionPolicy<JoinScreen>::VALUE;
+    case GamePlay: return typed::TransitionPolicy<GamePlayScreen>::VALUE;
+    case PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
+    case Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
+    case Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+    case DevHandLab: return typed::TransitionPolicy<DevHandLabScreen>::VALUE;
+#endif
+    case Unknown:
+    case Count:
+        break;
+    }
+    return typed::TransitionPolicyData{};
+}
+
+[[nodiscard]] constexpr ::biofuel::engine::ui::typed::StackPolicyData stackPolicyForId(
+    const ::biofuel::engine::ui::typed::ScreenId id) noexcept
+{
+    namespace typed = ::biofuel::engine::ui::typed;
+    using enum typed::ScreenId;
+    switch (id) {
+    case PausePopup: return typed::StackPolicy<PausePopupScreen>::VALUE;
+#ifdef BIOFUEL_ENABLE_DEV_SCREENS
+    case DevHandLab: return typed::StackPolicy<DevHandLabScreen>::VALUE;
+#endif
+    case Loading:
+    case MainMenu:
+    case Join:
+    case GamePlay:
+    case Idle:
+    case Video:
+    case Unknown:
+    case Count:
+        break;
+    }
+    return typed::StackPolicyData{};
+}
+
+} // namespace biofuel::game::screens

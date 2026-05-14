@@ -133,6 +133,13 @@ consteval bool screenNamesAreUnique() {
 template<typename TTuple>
 struct RegistryValidator;
 
+template<>
+struct RegistryValidator<std::tuple<>> {
+    static consteval bool validate() {
+        return true;
+    }
+};
+
 template<typename... TScreens>
 struct RegistryValidator<std::tuple<TScreens...>> {
     static consteval bool validate() {

@@ -1,48 +1,20 @@
-#include "LoadingScreen.hpp"
+﻿#include "LoadingScreen.hpp"
 #include "LoadingScreenModule.hpp"
 #include "game/screens/main_menu/MainMenuScreen.hpp"
+#include "engine/app/AppLifecycle.hpp"
 #include "engine/ui/ScreenManager.hpp"
 #include "engine/ui/typed/RenderPipeline.hpp"
 #include "engine/graphics/Render.hpp"
-#include "engine/graphics/ShaderManager.hpp"
-#include "engine/graphics/shaders/BlurCompositeModule.hpp"
-#include "engine/graphics/shaders/BlurHModule.hpp"
-#include "engine/graphics/shaders/BlurVModule.hpp"
-#include "engine/graphics/shaders/CrossfadeModule.hpp"
 #include "engine/graphics/shaders/LoadingPreludeModule.hpp"
-#include "engine/graphics/shaders/MainMenuBgModule.hpp"
-#include "engine/graphics/shaders/MenuOptionModule.hpp"
-#include "engine/audio/AudioManager.hpp"
-#include "engine/video/VideoManager.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/runtime/typed/AssetCatalog.hpp"
-#include "engine/runtime/typed/Assets.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
-#include "engine/graphics/shaders/TypedShaderModule.hpp"
-#include "engine/animation/AnimationManager.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
 #if defined(BIOFUEL_ENABLE_DEV_SCREENS) && defined(BIOFUEL_DEV_STARTUP_HAND_LAB)
 #include "game/screens/dev_hand_lab/DevHandLabScreen.hpp"
 #endif
 #include <raylib.h>
 #include <string>
-
-namespace biofuel::game::screens {
-
-namespace {
-
-template<typename TShader>
-void ensureShaderLoaded(::biofuel::engine::graphics::ShaderManager& shaderManager) {
-    if (::biofuel::engine::runtime::typed::Shaders::loaded<TShader>(shaderManager)) {
-        return;
-    }
-
-    ::biofuel::engine::runtime::typed::Shaders::load<TShader>(shaderManager);
-}
-
-} // namespace
-
-} // namespace biofuel::game::screens
 
 namespace biofuel::engine::ui::typed {
 
@@ -118,7 +90,9 @@ struct RenderElementExecutor<loading::StatusTextElement, ::biofuel::game::screen
         const i32 barY = static_cast<i32>(panel.y) + 62;
         const bool fullyDone = screen.m_tasksDone && screen.m_displayProgress >= 1.0f;
         std::string status = "Ready.";
-        if (!fullyDone) {
+        if (screen.m_tasks.isFailed()) {
+            status = screen.m_tasks.failureMessage();
+        } else if (!fullyDone) {
             const i32 dotCount = static_cast<i32>(screen.m_elapsed / ::biofuel::game::screens::LoadingScreen::DOTS_INTERVAL) % 4;
             status = screen.m_tasks.currentName() + std::string(dotCount, '.');
         }
@@ -174,85 +148,13 @@ void LoadingScreen::buildTasks() {
     m_tasks.clear();
     m_tasks.reserve(16U + ::biofuel::engine::runtime::typed::AssetCatalog<
         ::biofuel::engine::runtime::typed::EngineStartupCatalog>::Assets::size);
-
-    m_tasks.add({"Configuring input...", 0.3f, []() {
-        SetExitKey(KEY_NULL);
-    }});
-    m_tasks.add({"Setting window constraints...", 0.3f, [this]() {
-        SetWindowMinSize(m_appWidth, m_appHeight);
-    }});
-    m_tasks.add({"Setting target framerate...", 0.3f, [this]() {
-        SetTargetFPS(m_appTargetFps);
-    }});
-
-    m_tasks.add({"Initializing event bus...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::events().init();
-    }});
-    m_tasks.add({"Initializing screen stack...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::screen().init();
-    }});
-    m_tasks.add({"Initializing animation system...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::animation().init();
-    }});
-    m_tasks.add({"Initializing physics engine...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::physics().init();
-    }});
-    m_tasks.add({"Initializing shader system...", 0.3f, []() {
-        ::biofuel::engine::runtime::Runtime::shader().init();
-    }});
-    m_tasks.add({"Initializing model system...", 0.4f, []() {
-        ::biofuel::engine::runtime::Runtime::model().init();
-    }});
-    m_tasks.add({"Initializing audio device...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::audio().init();
-    }});
-    m_tasks.add({"Initializing video system...", 0.4f, []() {
-        ::biofuel::engine::runtime::Runtime::video().init();
-    }});
-
-    auto& shaderManager = ::biofuel::engine::runtime::Runtime::shader();
-    m_tasks.add({"Compiling blur horizontal shader...", 2.0f, [&shaderManager]() {
-        ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::BlurH>(shaderManager);
-    }});
-    m_tasks.add({"Compiling blur vertical shader...", 2.0f, [&shaderManager]() {
-        ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::BlurV>(shaderManager);
-    }});
-    m_tasks.add({"Compiling blur composite shader...", 1.2f, [&shaderManager]() {
-        ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::BlurComposite>(shaderManager);
-    }});
-    m_tasks.add({"Compiling crossfade shader...", 2.0f, [&shaderManager]() {
-        ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::Crossfade>(shaderManager);
-    }});
-    m_tasks.add({"Compiling loading prelude shader...", 2.0f, [&shaderManager]() {
-        ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::LoadingPrelude>(shaderManager);
-    }});
-    m_tasks.add({"Compiling menu option shader...", 1.3f, [&shaderManager]() {
-        ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::MenuOption>(shaderManager);
-    }});
-    m_tasks.add({"Compiling background shader...", 2.0f, [&shaderManager]() {
-        ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::MainMenuBg>(shaderManager);
-    }});
-
-    auto& modelService = ::biofuel::engine::runtime::Runtime::model();
-    for (const auto& modelSpec : modelService.registry()) {
-        if (!modelSpec.preloadOnStartup) {
-            continue;
-        }
-
-        std::string taskName = "Loading model asset: ";
-        taskName += modelSpec.debugName;
-        if (!modelSpec.shaderName.empty()) {
-            taskName += " (model + shader)";
-        }
-
-        m_tasks.add({std::move(taskName), 1.6f, [assetId = modelSpec.id]() {
-            (void)::biofuel::engine::runtime::Runtime::model().preload(assetId);
-        }});
-    }
-
-    m_tasks.add({"Caching transition shader...", 1.0f, []() {
-        ::biofuel::engine::runtime::Runtime::screen().preloadCrossfadeShader();
-    }});
+    ::biofuel::engine::app::AppLifecycle::addStartupTasks(
+        m_tasks,
+        ::biofuel::engine::app::StartupLifecycleConfig{
+            .width = m_appWidth,
+            .height = m_appHeight,
+            .targetFps = m_appTargetFps,
+        });
 }
 
 void LoadingScreen::onEnter() {
@@ -290,8 +192,14 @@ void LoadingScreen::onUpdate(const f32 dt) {
     m_backdrop.update(dt);
 
     if (!m_tasks.isDone()) {
-        m_tasks.processNext();
+        m_tasks.processNext(&::biofuel::engine::runtime::Runtime::tasks());
         m_actualProgress = m_tasks.progress();
+
+        if (m_tasks.isFailed()) {
+            m_tasksDone = false;
+            m_allowSkip = false;
+            return;
+        }
 
         if (m_tasks.isDone()) {
             m_tasksDone = true;
@@ -333,7 +241,7 @@ void LoadingScreen::onRender() {
 void LoadingScreen::onInput() {
     if (m_allowSkip && !m_transitioned) {
         // Use state-polling (IsKeyDown/IsMouseButtonDown) instead of
-        // queue-draining (GetKeyPressed) — InputSystem::poll() already
+        // queue-draining (GetKeyPressed) â€” InputSystem::poll() already
         // consumes the key queue before onInput() runs (B005).
         if (IsKeyDown(KEY_SPACE) || IsKeyDown(KEY_ENTER) ||
             IsMouseButtonDown(MOUSE_BUTTON_LEFT) ||

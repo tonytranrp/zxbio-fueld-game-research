@@ -105,6 +105,5 @@ struct EventRegistryValidator<biofuel::typed::Registry<TEvents...>> {
 };
 
 static_assert(EventRegistryValidator<AppEventRegistry>::valid());
-static_assert(EventRegistryValidator<FutureGameplayEvents>::valid());
 
 } // namespace biofuel::engine::runtime::typed

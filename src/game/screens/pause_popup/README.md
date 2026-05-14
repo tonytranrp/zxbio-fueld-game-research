@@ -1,6 +1,6 @@
 # PausePopupScreen
 
-Semi-transparent blurred overlay with a vertical menu. Slides in from the right edge when ESC is pressed, slides out to the left when dismissed.
+Semi-transparent blurred overlay with a vertical menu. `PauseController` routes the global ESC pause request on eligible screens, then this popup slides in from the right edge and slides out to the left when dismissed.
 
 ## Current contents
 
@@ -8,6 +8,8 @@ Semi-transparent blurred overlay with a vertical menu. Slides in from the right 
 game/screens/pause_popup/
 |-- PausePopupScreen.hpp
 |-- PausePopupScreen.cpp
+|-- PauseController.hpp
+|-- PauseController.cpp
 `-- README.md
 ```
 

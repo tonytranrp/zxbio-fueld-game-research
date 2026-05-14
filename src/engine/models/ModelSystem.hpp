@@ -11,7 +11,7 @@
 #include <vector>
 #include <raylib.h>
 
-namespace biofuel::game::models {
+namespace biofuel::engine::models {
 
 enum class ModelAssetId : u32 {
 };
@@ -134,6 +134,7 @@ public:
     [[nodiscard]] u64 instanceId() const noexcept { return m_instanceId; }
     [[nodiscard]] ModelAssetId assetId() const noexcept { return m_assetId; }
     [[nodiscard]] bool ready() const noexcept { return m_model != nullptr; }
+    [[nodiscard]] bool ownsIndependentModel() const noexcept { return m_ownsModel; }
     [[nodiscard]] const ModelAssetMetrics& metrics() const noexcept { return m_metrics; }
     [[nodiscard]] Shader shader() const noexcept;
     [[nodiscard]] ModelAnimator& animator() noexcept { return m_animator; }
@@ -219,4 +220,4 @@ private:
     bool m_eventSinksConnected = false;
 };
 
-} // namespace biofuel::game::models
+} // namespace biofuel::engine::models

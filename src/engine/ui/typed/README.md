@@ -25,14 +25,14 @@ engine/ui/typed/
 
 ```cpp
 template<>
-struct ScreenSpec<FarmScreen> {
-    static constexpr ScreenId ID = ScreenId::Farm;
-    static constexpr std::string_view NAME = "FarmScreen";
+struct ScreenSpec<GamePlayScreen> {
+    static constexpr ScreenId ID = ScreenId::GamePlay;
+    static constexpr std::string_view NAME = "GamePlayScreen";
 };
 
 template<>
-struct RenderLayers<FarmScreen> {
-    using Type = RenderLayerList<FarmScreen, RenderElementList<FarmHudElement>>;
+struct RenderLayers<GamePlayScreen> {
+    using Type = RenderLayerList<GamePlayScreen, RenderElementList<GamePlayHudElement>>;
 };
 ```
 

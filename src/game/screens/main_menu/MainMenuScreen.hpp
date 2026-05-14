@@ -129,6 +129,7 @@ private:
 
     // ---- Dimension shift (driven after dismiss completes) ----
     f32 m_dimensionShift = 0.0f;
+    bool m_joinTransitionQueued = false;
 
     // ---- Camera component (managed via Component system) ----
     ::biofuel::engine::graphics::component::CameraComponent m_cameraComponent;
@@ -174,6 +175,7 @@ private:
     void updateDimensionShift(f32 dt) noexcept;
     void startCameraSequence() noexcept;
     void advanceCameraSequence() noexcept;
+    void transitionToJoinIfReady();
 
     // ---- Methods ----
     void activateSelected();

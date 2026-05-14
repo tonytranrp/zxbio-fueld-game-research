@@ -1,19 +1,10 @@
-#include "engine/app/App.hpp"
+#include "game/app/GameApp.hpp"
 
 // ------------------------------------------------------------------------------
 // Entry Point
 // ------------------------------------------------------------------------------
 int main()
 {
-    biofuel::engine::app::Application::Config config{
-        .title = "Biofuel Game - Fuel Farm",
-        .width = 1280,
-        .height = 720,
-        .targetFps = 60,
-        .fullscreen = false,
-        .resizable = true,
-    };
-
-    biofuel::engine::app::Application app(config);
+    auto app = biofuel::game::app::makeApplication();
     return app.run();
 }

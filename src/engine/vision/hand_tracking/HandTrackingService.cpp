@@ -281,10 +281,12 @@ public:
     }
 
     void requestCameraAccess() {
-        std::scoped_lock lock(m_mutex);
-        m_status.cameraConsentRequested = true;
-        m_status.state = HandTrackingConnectionState::WaitingForConsent;
-        m_status.message = "Camera access requested";
+        {
+            std::scoped_lock lock(m_mutex);
+            m_status.cameraConsentRequested = true;
+            m_status.state = HandTrackingConnectionState::WaitingForConsent;
+            m_status.message = "Camera access requested";
+        }
         ::biofuel::engine::runtime::typed::Events::publish<::biofuel::engine::runtime::typed::hand_tracking::CameraAccessRequested>();
     }
 
@@ -318,11 +320,17 @@ public:
         return false;
 #else
         {
-            std::scoped_lock lock(m_mutex);
-            if (!m_status.cameraConsentGranted) {
-                m_status.cameraConsentRequested = true;
-                m_status.state = HandTrackingConnectionState::WaitingForConsent;
-                m_status.message = "Camera access required before tracking can start";
+            bool publishCameraRequest = false;
+            {
+                std::scoped_lock lock(m_mutex);
+                if (!m_status.cameraConsentGranted) {
+                    m_status.cameraConsentRequested = true;
+                    m_status.state = HandTrackingConnectionState::WaitingForConsent;
+                    m_status.message = "Camera access required before tracking can start";
+                    publishCameraRequest = true;
+                }
+            }
+            if (publishCameraRequest) {
                 ::biofuel::engine::runtime::typed::Events::publish<::biofuel::engine::runtime::typed::hand_tracking::CameraAccessRequested>();
                 return false;
             }
@@ -532,14 +540,14 @@ private:
     void receiverLoop() {
         try {
             asio::io_context io;
-            asio::ip::udp::socket socket(io, asio::ip::udp::endpoint(asio::ip::udp::v4(), UDP_PORT));
+            asio::ip::udp::socket socket(io, asio::ip::udp::endpoint(asio::ip::address_v4::loopback(), UDP_PORT));
             socket.non_blocking(true);
             std::array<u8, sizeof(RawPacket)> buffer{};
             asio::ip::udp::endpoint sender;
             while (m_receiverRunning.load()) {
                 asio::error_code ec;
                 const std::size_t received = socket.receive_from(asio::buffer(buffer), sender, 0, ec);
-                if (!ec && received == sizeof(RawPacket)) {
+                if (!ec && received == sizeof(RawPacket) && sender.address().is_loopback()) {
                     if (auto frame = parsePacket(buffer)) {
                         std::scoped_lock lock(m_mutex);
                         m_pendingFrame = *frame;

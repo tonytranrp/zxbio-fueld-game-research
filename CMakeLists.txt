@@ -49,6 +49,7 @@ if(NOT EXISTS ${CPM_DOWNLOAD_LOCATION})
     file(DOWNLOAD
         https://github.com/cpm-cmake/CPM.cmake/releases/download/v${CPM_DOWNLOAD_VERSION}/CPM.cmake
         ${CPM_DOWNLOAD_LOCATION}
+        EXPECTED_HASH SHA256=c8cdc32c03816538ce22781ed72964dc864b2a34a310d3b7104812a5ca2d835d
         STATUS CPM_DOWNLOAD_STATUS
     )
     list(GET CPM_DOWNLOAD_STATUS 0 CPM_DOWNLOAD_STATUS_CODE)
@@ -68,6 +69,7 @@ set(BUILD_SHARED_LIBS ON)
 CPMAddPackage(
     NAME raylib
     URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
+    URL_HASH SHA256=aea98ecf5bc5c5e0b789a76de0083a21a70457050ea4cc2aec7566935f5e258e
     OPTIONS
         "BUILD_EXAMPLES OFF"
         "BUILD_GAMES OFF"
@@ -78,6 +80,7 @@ set(BUILD_SHARED_LIBS OFF)
 CPMAddPackage(
     NAME entt
     URL https://github.com/skypjack/entt/archive/refs/tags/v3.14.0.tar.gz
+    URL_HASH SHA256=e31f6e95a30e2977a50449ef9a607a9ff40febe6f9da2a8144a183f8606f7719
     OPTIONS
         "ENTT_BUILD_TESTING OFF"
 )
@@ -86,18 +89,29 @@ CPMAddPackage(
 CPMAddPackage(
     NAME nlohmann_json
     URL https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz
+    URL_HASH SHA256=0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406
     OPTIONS
         "JSON_BuildTests OFF"
         "JSON_Install OFF"
 )
 
-# Taskflow is removed - it is not used by any code.
-# Re-add when parallel task scheduling is implemented.
+# Taskflow - header-only task/job scheduling used behind engine/tasks/TaskManager.
+CPMAddPackage(
+    NAME taskflow
+    URL https://github.com/taskflow/taskflow/archive/refs/tags/v4.0.0.tar.gz
+    URL_HASH SHA256=a9d27ad29caffc95e394976c6a362debb94194f9b3fbb7f25e34aaf54272f497
+    DOWNLOAD_ONLY YES
+)
+if(taskflow_SOURCE_DIR AND NOT TARGET taskflow)
+    add_library(taskflow INTERFACE)
+    target_include_directories(taskflow SYSTEM INTERFACE "${taskflow_SOURCE_DIR}")
+endif()
 
 # spdlog - Logging (header-only mode)
 CPMAddPackage(
     NAME spdlog
     URL https://github.com/gabime/spdlog/archive/refs/tags/v1.14.1.tar.gz
+    URL_HASH SHA256=1586508029a7d0670dfcb2d97575dcdc242d3868a259742b69f100801ab4e16b
     OPTIONS
         "SPDLOG_BUILD_EXAMPLE OFF"
         "SPDLOG_INSTALL OFF"
@@ -108,6 +122,7 @@ CPMAddPackage(
 CPMAddPackage(
     NAME Corrosion
     URL https://github.com/corrosion-rs/corrosion/archive/refs/tags/v0.6.1.tar.gz
+    URL_HASH SHA256=e9e95b1ee2bad52681f347993fb1a5af5cce458c5ce8a2636c9e476e4babf8e3
     OPTIONS
         "CORROSION_BUILD_TESTS OFF"
 )
@@ -130,6 +145,7 @@ if(BIOFUEL_ENABLE_HAND_TRACKING)
     CPMAddPackage(
         NAME asio
         URL https://github.com/chriskohlhoff/asio/archive/refs/tags/asio-1-30-2.tar.gz
+        URL_HASH SHA256=755bd7f85a4b269c67ae0ea254907c078d408cce8e1a352ad2ed664d233780e8
         DOWNLOAD_ONLY YES
     )
 endif()

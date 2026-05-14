@@ -38,7 +38,13 @@ void AudioManager::shutdown() noexcept {
 void AudioManager::update() noexcept {
     if (!m_initialized) return;
     if (!m_currentMusic.empty()) {
-        UpdateMusicStream(m_musicTracks.at(m_currentMusic));
+        auto it = m_musicTracks.find(m_currentMusic);
+        if (it == m_musicTracks.end()) {
+            m_currentMusic.clear();
+            m_musicPaused = false;
+            return;
+        }
+        UpdateMusicStream(it->second);
     }
 }
 
@@ -105,9 +111,10 @@ void AudioManager::playSoundPitched(std::string_view name, f32 pitch) {
 void AudioManager::playSoundAtVolume(std::string_view name, f32 volume) {
     const std::string key(name);
     if (auto it = m_sounds.find(key); it != m_sounds.end()) {
-        SetSoundVolume(it->second, std::clamp(volume, 0.0f, 1.0f) * m_sfxVolume);
+        const f32 effectiveSfxVolume = m_muted ? 0.0f : m_sfxVolume;
+        SetSoundVolume(it->second, std::clamp(volume, 0.0f, 1.0f) * effectiveSfxVolume);
         PlaySound(it->second);
-        SetSoundVolume(it->second, m_sfxVolume);
+        SetSoundVolume(it->second, effectiveSfxVolume);
     }
 }
 
@@ -142,6 +149,7 @@ void AudioManager::unloadMusic(std::string_view name) {
         if (m_currentMusic == key) {
             StopMusicStream(it->second);
             m_currentMusic.clear();
+            m_musicPaused = false;
         }
         ::biofuel::engine::debug::MemoryTelemetry::remove(
             ::biofuel::engine::debug::ResourceKind::AudioAsset,
@@ -154,8 +162,11 @@ void AudioManager::unloadMusic(std::string_view name) {
 
 void AudioManager::unloadAllMusic() noexcept {
     if (!m_currentMusic.empty()) {
-        StopMusicStream(m_musicTracks.at(m_currentMusic));
+        if (auto it = m_musicTracks.find(m_currentMusic); it != m_musicTracks.end()) {
+            StopMusicStream(it->second);
+        }
         m_currentMusic.clear();
+        m_musicPaused = false;
     }
     for (auto& [_, m] : m_musicTracks) {
         ::biofuel::engine::debug::MemoryTelemetry::remove(
@@ -181,7 +192,12 @@ void AudioManager::playMusic(std::string_view name) {
     }
 
     if (!m_currentMusic.empty()) {
-        StopMusicStream(m_musicTracks.at(m_currentMusic));
+        if (auto current = m_musicTracks.find(m_currentMusic); current != m_musicTracks.end()) {
+            StopMusicStream(current->second);
+        } else {
+            m_currentMusic.clear();
+            m_musicPaused = false;
+        }
     }
 
     m_currentMusic = key;
@@ -192,26 +208,44 @@ void AudioManager::playMusic(std::string_view name) {
 
 void AudioManager::stopMusic() noexcept {
     if (m_currentMusic.empty()) return;
-    StopMusicStream(m_musicTracks.at(m_currentMusic));
+    if (auto it = m_musicTracks.find(m_currentMusic); it != m_musicTracks.end()) {
+        StopMusicStream(it->second);
+    }
     m_currentMusic.clear();
     m_musicPaused = false;
 }
 
 void AudioManager::pauseMusic() noexcept {
     if (m_currentMusic.empty()) return;
-    PauseMusicStream(m_musicTracks.at(m_currentMusic));
+    auto it = m_musicTracks.find(m_currentMusic);
+    if (it == m_musicTracks.end()) {
+        m_currentMusic.clear();
+        m_musicPaused = false;
+        return;
+    }
+    PauseMusicStream(it->second);
     m_musicPaused = true;
 }
 
 void AudioManager::resumeMusic() noexcept {
     if (m_currentMusic.empty() || !m_musicPaused) return;
-    ResumeMusicStream(m_musicTracks.at(m_currentMusic));
+    auto it = m_musicTracks.find(m_currentMusic);
+    if (it == m_musicTracks.end()) {
+        m_currentMusic.clear();
+        m_musicPaused = false;
+        return;
+    }
+    ResumeMusicStream(it->second);
     m_musicPaused = false;
 }
 
 bool AudioManager::isMusicPlaying() const noexcept {
     if (m_currentMusic.empty() || m_musicPaused) return false;
-    return IsMusicStreamPlaying(m_musicTracks.at(m_currentMusic));
+    auto it = m_musicTracks.find(m_currentMusic);
+    if (it == m_musicTracks.end()) {
+        return false;
+    }
+    return IsMusicStreamPlaying(it->second);
 }
 
 bool AudioManager::hasMusic(std::string_view name) const noexcept {
@@ -229,9 +263,7 @@ void AudioManager::setMasterVolume(f32 volume) {
 
 void AudioManager::setSfxVolume(f32 volume) {
     m_sfxVolume = std::clamp(volume, 0.0f, 1.0f);
-    if (!m_muted) {
-        applyAllSfxVolumes();
-    }
+    applyAllSfxVolumes();
 }
 
 void AudioManager::setMusicVolume(f32 volume) {
@@ -249,12 +281,14 @@ void AudioManager::mute() noexcept {
     if (m_muted) return;
     m_muted = true;
     applyMasterVolume();
+    applyAllSfxVolumes();
 }
 
 void AudioManager::unmute() noexcept {
     if (!m_muted) return;
     m_muted = false;
     applyMasterVolume();
+    applyAllSfxVolumes();
 }
 
 // -----------------------------------------------------------------------------
@@ -263,13 +297,13 @@ void AudioManager::unmute() noexcept {
 
 void AudioManager::applySfxVolume(std::string_view name) {
     if (auto it = m_sounds.find(std::string(name)); it != m_sounds.end()) {
-        SetSoundVolume(it->second, m_sfxVolume);
+        SetSoundVolume(it->second, m_muted ? 0.0f : m_sfxVolume);
     }
 }
 
 void AudioManager::applyAllSfxVolumes() noexcept {
     for (auto& [_, s] : m_sounds) {
-        SetSoundVolume(s, m_sfxVolume);
+        SetSoundVolume(s, m_muted ? 0.0f : m_sfxVolume);
     }
 }
 

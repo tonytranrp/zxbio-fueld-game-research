@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/Types.hpp"
+#include <functional>
 #include <string>
 #include <memory>
 
@@ -19,6 +20,8 @@ public:
         i32 targetFps = 60;
         bool fullscreen = false;
         bool resizable = false;
+        std::function<void(i32 width, i32 height, i32 targetFps)> startup;
+        std::function<void()> globalInput;
     };
 
     explicit Application(Config config = {});

@@ -10,6 +10,7 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -24,6 +25,9 @@ class Screen;
 // ------------------------------------------------------------------------------
 class ScreenManager {
 public:
+    using TransitionPolicyResolver = typed::TransitionPolicyData (*)(typed::ScreenId) noexcept;
+    using StackPolicyResolver = typed::StackPolicyData (*)(typed::ScreenId) noexcept;
+
     [[nodiscard]] static ScreenManager& instance() noexcept;
 
     void init();
@@ -33,18 +37,18 @@ public:
     void push(std::unique_ptr<Screen> screen);
     template<typename TScreen, typename... TArgs>
     void push(TArgs&&... args) {
-        push(m_screens.makeSlot<TScreen>(
-            transitionPolicyFor(typed::screenIdOf<TScreen>),
-            std::forward<TArgs>(args)...));
+        push(typed::ScreenSlot::typed<std::remove_cvref_t<TScreen>>(
+            std::make_unique<std::remove_cvref_t<TScreen>>(std::forward<TArgs>(args)...),
+            transitionPolicyFor(typed::screenIdOf<TScreen>)));
     }
     void push(typed::ScreenSlot slot);
     void pop();
     void replace(std::unique_ptr<Screen> screen);
     template<typename TScreen, typename... TArgs>
     void replace(TArgs&&... args) {
-        replace(m_screens.makeSlot<TScreen>(
-            transitionPolicyFor(typed::screenIdOf<TScreen>),
-            std::forward<TArgs>(args)...));
+        replace(typed::ScreenSlot::typed<std::remove_cvref_t<TScreen>>(
+            std::make_unique<std::remove_cvref_t<TScreen>>(std::forward<TArgs>(args)...),
+            transitionPolicyFor(typed::screenIdOf<TScreen>)));
     }
     void replace(typed::ScreenSlot slot);
     void clear();
@@ -53,17 +57,17 @@ public:
     void queuePush(std::unique_ptr<Screen> screen);
     template<typename TScreen, typename... TArgs>
     void queuePush(TArgs&&... args) {
-        queuePush(m_screens.makeSlot<TScreen>(
-            transitionPolicyFor(typed::screenIdOf<TScreen>),
-            std::forward<TArgs>(args)...));
+        queuePush(typed::ScreenSlot::typed<std::remove_cvref_t<TScreen>>(
+            std::make_unique<std::remove_cvref_t<TScreen>>(std::forward<TArgs>(args)...),
+            transitionPolicyFor(typed::screenIdOf<TScreen>)));
     }
     void queuePush(typed::ScreenSlot slot);
     void queueReplace(std::unique_ptr<Screen> screen);
     template<typename TScreen, typename... TArgs>
     void queueReplace(TArgs&&... args) {
-        queueReplace(m_screens.makeSlot<TScreen>(
-            transitionPolicyFor(typed::screenIdOf<TScreen>),
-            std::forward<TArgs>(args)...));
+        queueReplace(typed::ScreenSlot::typed<std::remove_cvref_t<TScreen>>(
+            std::make_unique<std::remove_cvref_t<TScreen>>(std::forward<TArgs>(args)...),
+            transitionPolicyFor(typed::screenIdOf<TScreen>)));
     }
     void queueReplace(typed::ScreenSlot slot);
     void queuePop();
@@ -79,6 +83,7 @@ public:
     [[nodiscard]] bool isEmpty() const noexcept;
     [[nodiscard]] size_t stackSize() const noexcept;
     [[nodiscard]] bool isTransitioning() const noexcept;
+    [[nodiscard]] bool blocksUnderlyingUpdates() const noexcept;
     void captureScreen(Screen* screen, ::biofuel::engine::graphics::RenderSurface& target);
     [[nodiscard]] bool isLayerEnabled(typed::ScreenId screenId, std::string_view layerName) const noexcept;
 
@@ -88,6 +93,7 @@ public:
 
     // Crossfade transition preloading — called during LoadingScreen init tasks
     void preloadCrossfadeShader();
+    void setPolicyResolvers(TransitionPolicyResolver transitionResolver, StackPolicyResolver stackResolver) noexcept;
 
     ScreenManager(const ScreenManager&) = delete;
     ScreenManager& operator=(const ScreenManager&) = delete;
@@ -100,6 +106,8 @@ private:
 
     typed::TypedScreenStack<typed::AppScreenRegistry> m_screens;
     typed::ScreenCommandQueue m_commands;
+    TransitionPolicyResolver m_transitionPolicyResolver = typed::transitionPolicyForId;
+    StackPolicyResolver m_stackPolicyResolver = typed::stackPolicyForId;
     bool m_quitRequested = false;
     bool m_overrideSinksConnected = false;
 
@@ -114,13 +122,14 @@ private:
     i32 m_crossfadeTexInLoc = -1;
 
     void ensureCrossfadeShader();
-    void ensureTransitionTextures(i32 width, i32 height);
+    [[nodiscard]] bool ensureTransitionTextures(i32 width, i32 height);
+    void renderSlotToBackbuffer(typed::ScreenSlot& slot, i32 width, i32 height);
     void renderCrossfade(typed::ScreenSlot& outgoing, typed::ScreenSlot& incoming);
     void syncBridgeTransition(typed::ScreenSlot& slot) const noexcept;
     [[nodiscard]] typed::TransitionPolicyData transitionPolicyFor(const Screen& screen) const noexcept;
     [[nodiscard]] typed::TransitionPolicyData transitionPolicyFor(typed::ScreenId screenId) const noexcept;
-    [[nodiscard]] static typed::StackPolicyData stackPolicyFor(const Screen& screen) noexcept;
-    [[nodiscard]] static typed::StackPolicyData stackPolicyFor(typed::ScreenId screenId) noexcept;
+    [[nodiscard]] typed::StackPolicyData stackPolicyFor(const Screen& screen) const noexcept;
+    [[nodiscard]] typed::StackPolicyData stackPolicyFor(typed::ScreenId screenId) const noexcept;
 
     struct TransitionOverrideState {
         bool active = false;

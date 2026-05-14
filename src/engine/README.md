@@ -13,6 +13,7 @@ engine/
 |-- runtime/    Runtime facade plus service/event/asset/shader registries
 |-- events/     event payloads and dispatcher bridge
 |-- physics/    Rapier-backed 2D/3D rigid-body simulation
+|-- tasks/      task/job scheduling wrapper and async loading helpers
 |-- graphics/   renderer, render surfaces, shaders, shader components
 |-- animation/  value animation and model keyframe playback
 |-- audio/      audio asset and playback service

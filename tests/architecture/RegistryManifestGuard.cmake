@@ -1,0 +1,21 @@
+if(NOT DEFINED SOURCE_DIR)
+    message(FATAL_ERROR "SOURCE_DIR is required")
+endif()
+
+file(READ "${SOURCE_DIR}/src/CMakeLists.txt" SRC_CMAKE)
+file(READ "${SOURCE_DIR}/cmake/GenerateTypedRegistries.cmake" GENERATOR)
+
+if(NOT SRC_CMAKE MATCHES "set\\(ENGINE_TYPED_MODULE_HEADERS")
+    message(FATAL_ERROR "Registry manifest guard failed: src/CMakeLists.txt must declare ENGINE_TYPED_MODULE_HEADERS")
+endif()
+if(NOT SRC_CMAKE MATCHES "TYPED_MODULE_HEADERS=\\$\\{ENGINE_TYPED_MODULE_HEADERS\\}")
+    message(FATAL_ERROR "Registry manifest guard failed: typed registry generation must consume ENGINE_TYPED_MODULE_HEADERS")
+endif()
+if(GENERATOR MATCHES "GLOB_RECURSE")
+    message(FATAL_ERROR "Registry manifest guard failed: GenerateTypedRegistries.cmake must not recursively scan headers")
+endif()
+if(NOT GENERATOR MATCHES "TYPED_MODULE_HEADERS is required")
+    message(FATAL_ERROR "Registry manifest guard failed: GenerateTypedRegistries.cmake must require an explicit module manifest")
+endif()
+
+message(STATUS "Registry manifest guard passed: typed registry inputs are explicit.")

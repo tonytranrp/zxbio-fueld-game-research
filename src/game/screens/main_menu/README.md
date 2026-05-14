@@ -18,14 +18,15 @@ game/screens/main_menu/
 1. `onEnter()` resets state, configures the `ScreenBackdropController`, and waits for crossfade completion.
 2. `onUpdate()` advances backdrop time, menu slide, dismiss animation, staged intro, idle detection, and the shader/camera dimension shift.
 3. `onRender()` renders the shader backdrop plus title, subtitle, hints, horizontal carousel menu, and footer through typed render elements.
-4. `onInput()` opens pause with ESC, replaces into the Debug procedural hand lab with `Ctrl+H`, navigates with LEFT/RIGHT, and activates with ENTER or mouse click.
+4. `onInput()` replaces into the Debug procedural hand lab with `Ctrl+H`, navigates with LEFT/RIGHT, and activates with ENTER or mouse click. Pause is routed globally by `PauseController`.
 
-When New Game or Continue is activated, the UI dismisses and the main-menu shader/camera transition holds its final state. No GLB hand model is loaded for this path.
+When New Game or Continue is activated, the UI dismisses and the main-menu shader/camera transition holds its final state, then queues `JoinScreen`. `JoinScreen` is responsible for entering the temporary `GamePlayScreen` placeholder.
 
 ## Dependencies
 
 - `Screen` / `ScreenManager` for lifecycle and navigation
 - `ScreenBackdropController` for the shader backdrop
+- `JoinScreen` for the post-transition Join step
 - `IdleTrigger` and `IdleScreen` for idle video behavior
 - `MenuHelper` for horizontal carousel rendering and input
 - `Easing` for intro, dismiss, menu-slide, and camera easing

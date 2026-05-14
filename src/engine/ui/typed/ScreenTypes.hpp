@@ -10,6 +10,8 @@ enum class ScreenId : u8 {
     Unknown,
     Loading,
     MainMenu,
+    Join,
+    GamePlay,
     PausePopup,
     Idle,
     Video,

@@ -11,7 +11,7 @@
 #include <spdlog/spdlog.h>
 #include <raymath.h>
 
-namespace biofuel::game::models {
+namespace biofuel::engine::models {
 
 namespace {
 
@@ -229,7 +229,8 @@ ModelInstance::ModelInstance(
         m_sharedAsset->prototype.boneCount > 0 ||
         !m_sharedAsset->keyframeClips.empty();
     if (needsIndependentModel) {
-        m_ownedModel = LoadModel(m_sharedAsset->spec.assetPath.data());
+        const std::string assetPath{m_sharedAsset->spec.assetPath};
+        m_ownedModel = LoadModel(assetPath.c_str());
         if (m_ownedModel.meshCount <= 0) {
             spdlog::warn("ModelInstance: failed to create independent model for '{}'", m_debugName);
             m_ownedModel = {};
@@ -478,7 +479,7 @@ std::shared_ptr<ModelInstance> ModelSystem::createInstance(const ModelAssetId as
         0);
     instance->m_telemetryCounted = true;
 
-    if (assetIt->second->spec.releasePrototypeAfterInstance && instance->ready()) {
+    if (assetIt->second->spec.releasePrototypeAfterInstance && instance->ownsIndependentModel()) {
         unloadPrototype(*assetIt->second);
     }
     return instance;
@@ -546,12 +547,13 @@ std::shared_ptr<SharedAssetData> ModelSystem::loadAsset(const ModelAssetSpec& sp
     auto asset = std::make_shared<SharedAssetData>();
     asset->spec = spec;
 
-    if (!FileExists(spec.assetPath.data())) {
+    const std::string assetPath{spec.assetPath};
+    if (!FileExists(assetPath.c_str())) {
         spdlog::warn("ModelSystem: model '{}' not found at '{}'", spec.debugName, spec.assetPath);
         return asset;
     }
 
-    asset->prototype = LoadModel(spec.assetPath.data());
+    asset->prototype = LoadModel(assetPath.c_str());
     if (asset->prototype.meshCount <= 0) {
         spdlog::warn("ModelSystem: failed to load model '{}'", spec.debugName);
         asset->prototype = {};
@@ -568,7 +570,7 @@ std::shared_ptr<SharedAssetData> ModelSystem::loadAsset(const ModelAssetSpec& sp
     }
     {
         std::error_code error;
-        const auto bytes = std::filesystem::file_size(std::filesystem::path{spec.assetPath}, error);
+        const auto bytes = std::filesystem::file_size(std::filesystem::path{assetPath}, error);
         asset->estimatedBytes = error ? 0 : static_cast<i64>(bytes);
     }
 
@@ -588,7 +590,7 @@ std::shared_ptr<SharedAssetData> ModelSystem::loadAsset(const ModelAssetSpec& sp
 
     if (spec.loadAnimations) {
         i32 rawCount = 0;
-        asset->animations = LoadModelAnimations(spec.assetPath.data(), &rawCount);
+        asset->animations = LoadModelAnimations(assetPath.c_str(), &rawCount);
         asset->animationCount = rawCount;
         if (asset->animations == nullptr || asset->animationCount <= 0) {
             asset->animations = nullptr;
@@ -718,4 +720,4 @@ void ModelSystem::onPlayAction(const ::biofuel::engine::events::model::ModelPlay
     }
 }
 
-} // namespace biofuel::game::models
+} // namespace biofuel::engine::models

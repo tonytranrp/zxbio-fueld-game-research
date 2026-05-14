@@ -1,19 +1,10 @@
 #include "App.hpp"
+#include "AppLifecycle.hpp"
 #include "engine/graphics/Render.hpp"
-#include "engine/graphics/ShaderManager.hpp"
 #include "engine/debug/DebugOverlayService.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
-#include "engine/graphics/shaders/LoadingPreludeModule.hpp"
-#include "engine/graphics/shaders/MenuOptionModule.hpp"
-#include "engine/audio/AudioManager.hpp"
-#include "engine/video/VideoManager.hpp"
 #include "engine/runtime/Runtime.hpp"
-#include "engine/runtime/typed/Assets.hpp"
-#include "engine/graphics/shaders/TypedShaderModule.hpp"
 #include "engine/ui/ScreenManager.hpp"
-#include "game/screens/loading/LoadingScreen.hpp"
-#include "engine/input/InputSystem.hpp"
-#include "engine/animation/AnimationManager.hpp"
 #include <raylib.h>
 
 #ifdef _WIN32
@@ -42,28 +33,21 @@ void Application::init() {
         return;
     }
 
-    if (m_config.resizable) {
-        SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    }
-    if (m_config.fullscreen) {
-        SetConfigFlags(FLAG_FULLSCREEN_MODE);
-    }
-
-    InitWindow(m_config.width, m_config.height, m_config.title.c_str());
+    AppLifecycle::openWindow(WindowLifecycleConfig{
+        .title = m_config.title,
+        .width = m_config.width,
+        .height = m_config.height,
+        .fullscreen = m_config.fullscreen,
+        .resizable = m_config.resizable,
+    });
 #ifdef _WIN32
     setupWindowDragTimer();
 #endif
-    auto& services = ::biofuel::engine::runtime::Runtime::services();
-    auto& shaderManager = services.get<::biofuel::engine::runtime::typed::ShaderService>();
-    shaderManager.init();
-    ::biofuel::engine::runtime::typed::Shaders::load<::biofuel::engine::runtime::typed::shader::LoadingPrelude>(shaderManager);
-    ::biofuel::engine::runtime::typed::Shaders::load<::biofuel::engine::runtime::typed::shader::MenuOption>(shaderManager);
+    AppLifecycle::prepareLoadingPrelude();
 
-    // Push loading screen immediately — it handles ALL remaining init
-    // (window config, systems init, shader compilation, crossfade preload)
-    // while showing real-time progress via the task queue.
-    services.get<::biofuel::engine::runtime::typed::ScreenService>().push<::biofuel::game::screens::LoadingScreen>(
-        m_config.width, m_config.height, m_config.targetFps);
+    if (m_config.startup) {
+        m_config.startup(m_config.width, m_config.height, m_config.targetFps);
+    }
 
     m_initialized = true;
     m_running = true;
@@ -75,20 +59,7 @@ void Application::shutdown() {
     }
 
     ::biofuel::engine::debug::MemoryTelemetry::snapshot("app.shutdown.begin");
-    auto& services = ::biofuel::engine::runtime::Runtime::services();
-    services.get<::biofuel::engine::runtime::typed::DebugOverlayService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::AnimationService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::ScreenService>().shutdown();
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
-    services.get<::biofuel::engine::runtime::typed::HandTrackingService>().shutdown();
-#endif
-    services.get<::biofuel::engine::runtime::typed::ModelService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::PhysicsService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::VideoService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::AudioService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::ShaderService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::FontService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::EventService>().shutdown();
+    AppLifecycle::shutdownCoreServices();
 #ifdef _WIN32
     killWindowDragTimer();
 #endif
@@ -137,23 +108,35 @@ i32 Application::run() {
 void Application::processInput() {
     auto& services = ::biofuel::engine::runtime::Runtime::services();
     services.get<::biofuel::engine::runtime::typed::InputService>().poll();
+    if (m_config.globalInput) {
+        m_config.globalInput();
+    }
     services.get<::biofuel::engine::runtime::typed::ScreenService>().handleInput();
 }
 
 void Application::update(const f32 dt) {
     auto& services = ::biofuel::engine::runtime::Runtime::services();
+    auto& screens = services.get<::biofuel::engine::runtime::typed::ScreenService>();
+    const bool freezeUnderlying = screens.blocksUnderlyingUpdates();
+
     services.get<::biofuel::engine::runtime::typed::AnimationService>().update(dt);
-    services.get<::biofuel::engine::runtime::typed::PhysicsService>().stepFixed(dt);
-    services.get<::biofuel::engine::runtime::typed::ModelService>().update(dt);
+    if (!freezeUnderlying) {
+        services.get<::biofuel::engine::runtime::typed::PhysicsService>().stepFixed(dt);
+        services.get<::biofuel::engine::runtime::typed::ModelService>().update(dt);
+    }
     services.get<::biofuel::engine::runtime::typed::AudioService>().update();
-    services.get<::biofuel::engine::runtime::typed::VideoService>().update();
+    if (!freezeUnderlying) {
+        services.get<::biofuel::engine::runtime::typed::VideoService>().update();
+    }
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
-    services.get<::biofuel::engine::runtime::typed::HandTrackingService>().update(dt);
+    if (!freezeUnderlying) {
+        services.get<::biofuel::engine::runtime::typed::HandTrackingService>().update(dt);
+    }
 #endif
 #ifdef _WIN32
     flushDragMove();
 #endif
-    services.get<::biofuel::engine::runtime::typed::ScreenService>().update(dt);
+    screens.update(dt);
 }
 
 void Application::render() {

@@ -16,7 +16,7 @@ engine/ui/
 Concrete screens derive from `Screen` and are owned by `ScreenManager`.
 
 ```cpp
-class FarmScreen final : public biofuel::engine::ui::Screen {
+class GamePlayScreen final : public biofuel::engine::ui::Screen {
 public:
     void onUpdate(f32 dt) override;
     void onRender() override;
@@ -27,12 +27,17 @@ public:
 Navigate through the manager or the runtime facade:
 
 ```cpp
-Runtime::screen().queueReplace<FarmScreen>();
+Runtime::screen().queueReplace<GamePlayScreen>();
 Runtime::screen().queuePush<PausePopupScreen>();
 ```
 
 Use queued operations from `onUpdate()` to avoid re-entrancy while the stack is
 being iterated.
+
+Modal screens can block lower-screen updates through their typed stack policy.
+`ScreenManager::blocksUnderlyingUpdates()` exposes that state to the application
+loop so simulation-like services can freeze while modal UI keeps rendering and
+receiving input.
 
 ## Coding standards
 

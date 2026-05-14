@@ -19,11 +19,12 @@ Generated build output under `build/`, `out/`, and `src/build/` is not part of t
 The playable codebase is still early-stage, but it already contains:
 
 - application bootstrap and fixed-timestep loop
-- loading screen with deferred startup tasks
+- loading screen with deferred startup tasks plus async-safe preflight support
 - screen stack with crossfade transitions
 - animated main menu with embedded background shader
+- intermediate Join screen and temporary GamePlay placeholder
 - typed model system with startup-preloaded model assets
-- pause popup with blur backdrop
+- global pause routing with a blur-backed pause popup
 - event bus, input polling, animation manager, and small render/font/UI utilities
 
 ## Build
@@ -45,7 +46,7 @@ This repo prefers conservative modern C++:
 - project aliases from `src/Core/Types.hpp` for numeric types
 - `std::string_view`, `std::span`, `constexpr`, `[[nodiscard]]`, and `noexcept` where they clarify intent
 - concrete helpers and RAII wrappers before generic/template-heavy abstractions
-- existing utility boundaries such as `Renderer`, `ShaderManager`, and `ModelSystem` instead of scattered raw Raylib calls
+- existing utility boundaries such as `Renderer`, `ShaderManager`, `ModelSystem`, and `TaskManager` instead of scattered raw Raylib or scheduler calls
 
 Templates are allowed when they remove real shared duplication or belong to an existing generic subsystem such as `Animation<T>`. They are not the default style for screens, systems, or utilities.
 

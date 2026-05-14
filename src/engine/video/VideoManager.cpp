@@ -453,12 +453,14 @@ public:
 
         if (!IsAudioDeviceReady()) {
             error = "Raylib audio device is not ready";
+            unload();
             return false;
         }
         SetAudioStreamBufferSizeDefault(AUDIO_FRAMES_PER_CHUNK);
         m_audio = LoadAudioStream(AUDIO_SAMPLE_RATE, AUDIO_BITS, AUDIO_CHANNELS);
         if (!m_audio.buffer) {
             error = "Failed to create video audio stream";
+            unload();
             return false;
         }
         SetAudioStreamVolume(m_audio, m_volume);
@@ -482,7 +484,7 @@ public:
 
     bool play(const bool looping, const f32 volume, std::string& error) override {
         stop();
-        m_looping = looping;
+        m_looping.store(looping, std::memory_order_relaxed);
         setVolume(volume);
         m_stop.store(false, std::memory_order_relaxed);
         m_completed.store(false, std::memory_order_relaxed);
@@ -595,7 +597,7 @@ public:
     }
 
     void setLooping(const bool looping) noexcept override {
-        m_looping = looping;
+        m_looping.store(looping, std::memory_order_relaxed);
     }
 
     void setVolume(const f32 volume) noexcept override {
@@ -671,7 +673,7 @@ private:
             updateTelemetryLocked();
         }
 
-        if (!m_looping && !m_stop.load(std::memory_order_relaxed)) {
+        if (!m_looping.load(std::memory_order_relaxed) && !m_stop.load(std::memory_order_relaxed)) {
             m_completed.store(true, std::memory_order_relaxed);
         }
     }
@@ -772,7 +774,7 @@ private:
     AudioStream m_audio{};
     bool m_audioLoaded = false;
     f32 m_volume = 1.0f;
-    bool m_looping = false;
+    std::atomic_bool m_looping = false;
 
     PipeProcess m_videoProcess;
     PipeProcess m_audioProcess;
@@ -876,6 +878,10 @@ void VideoManager::loadVideo(std::string_view name, std::string_view path) {
         inst.loaded = false;
         inst.error = true;
         inst.errorMessage = error.empty() ? "Video backend failed to load the file" : std::move(error);
+        if (inst.backend) {
+            inst.backend->unload();
+            inst.backend.reset();
+        }
         spdlog::error("VideoManager: failed to load '{}': {}", inst.path, inst.errorMessage);
         m_videos.emplace(key, std::move(inst));
         ::biofuel::engine::runtime::typed::Events::publish<::biofuel::engine::runtime::typed::video::Error>({

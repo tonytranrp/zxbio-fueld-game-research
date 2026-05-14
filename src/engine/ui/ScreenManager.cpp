@@ -228,6 +228,14 @@ void ScreenManager::preloadCrossfadeShader() {
     ensureCrossfadeShader();
 }
 
+void ScreenManager::setPolicyResolvers(
+    const TransitionPolicyResolver transitionResolver,
+    const StackPolicyResolver stackResolver) noexcept
+{
+    m_transitionPolicyResolver = transitionResolver ? transitionResolver : typed::transitionPolicyForId;
+    m_stackPolicyResolver = stackResolver ? stackResolver : typed::stackPolicyForId;
+}
+
 // ------------------------------------------------------------------------------
 // Crossfade Transition Rendering
 // ------------------------------------------------------------------------------
@@ -246,9 +254,28 @@ void ScreenManager::ensureCrossfadeShader() {
     }
 }
 
-void ScreenManager::ensureTransitionTextures(i32 width, i32 height) {
+bool ScreenManager::ensureTransitionTextures(i32 width, i32 height) {
     m_transitionOut.ensureSize(width, height);
     m_transitionIn.ensureSize(width, height);
+    return m_transitionOut.valid() && m_transitionIn.valid();
+}
+
+void ScreenManager::renderSlotToBackbuffer(
+    typed::ScreenSlot& slot,
+    const i32 width,
+    const i32 height)
+{
+    syncBridgeTransition(slot);
+    typed::RenderContext context{
+        .manager = this,
+        .services = &::biofuel::engine::runtime::Runtime::services(),
+        .screenId = slot.id,
+        .screenWidth = width,
+        .screenHeight = height,
+        .transitionAlpha = slot.transition.alpha(),
+        .frameTime = GetFrameTime(),
+    };
+    slot.dispatch->onRender(*slot.screen, context);
 }
 
 void ScreenManager::renderCrossfade(typed::ScreenSlot& outgoing, typed::ScreenSlot& incoming) {
@@ -257,7 +284,10 @@ void ScreenManager::renderCrossfade(typed::ScreenSlot& outgoing, typed::ScreenSl
     const i32 sh = Renderer::screenHeight();
 
     ensureCrossfadeShader();
-    ensureTransitionTextures(sw, sh);
+    if (!ensureTransitionTextures(sw, sh)) {
+        renderSlotToBackbuffer(incoming, sw, sh);
+        return;
+    }
 
     // Render outgoing screen
     {
@@ -295,7 +325,11 @@ void ScreenManager::renderCrossfade(typed::ScreenSlot& outgoing, typed::ScreenSl
 
     if (m_crossfadeShader.id == 0) {
         // Fallback: just draw incoming screen directly
-        Renderer::drawRenderTexture(m_transitionIn.texture());
+        if (m_transitionIn.valid()) {
+            Renderer::drawRenderTexture(m_transitionIn.texture());
+        } else {
+            renderSlotToBackbuffer(incoming, sw, sh);
+        }
         return;
     }
 
@@ -510,15 +544,15 @@ typed::TransitionPolicyData ScreenManager::transitionPolicyFor(const typed::Scre
     if (overrides.transition.active) {
         return overrides.transition.policy;
     }
-    return typed::transitionPolicyForId(screenId);
+    return m_transitionPolicyResolver(screenId);
 }
 
-typed::StackPolicyData ScreenManager::stackPolicyFor(const Screen& screen) noexcept {
+typed::StackPolicyData ScreenManager::stackPolicyFor(const Screen& screen) const noexcept {
     return stackPolicyFor(screen.screenId());
 }
 
-typed::StackPolicyData ScreenManager::stackPolicyFor(const typed::ScreenId screenId) noexcept {
-    return typed::stackPolicyForId(screenId);
+typed::StackPolicyData ScreenManager::stackPolicyFor(const typed::ScreenId screenId) const noexcept {
+    return m_stackPolicyResolver(screenId);
 }
 
 bool ScreenManager::isLayerEnabled(
@@ -657,6 +691,13 @@ bool ScreenManager::isTransitioning() const noexcept {
         }
     }
     return false;
+}
+
+bool ScreenManager::blocksUnderlyingUpdates() const noexcept {
+    if (m_screens.size() < 2) {
+        return false;
+    }
+    return !stackPolicyFor(m_screens.back().id).updateBelow;
 }
 
 void ScreenManager::releaseTransitionTextures() noexcept {

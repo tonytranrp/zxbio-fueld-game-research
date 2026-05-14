@@ -6,7 +6,6 @@
 
 #include "engine/runtime/typed/Assets.hpp"
 #include "engine/runtime/typed/Services.hpp"
-#include "game/gameplay/FutureSystems.hpp"
 
 namespace biofuel::engine::runtime {
 
@@ -27,6 +26,7 @@ public:
     [[nodiscard]] static auto& video() { return service<::biofuel::engine::runtime::typed::VideoService>(); }
     [[nodiscard]] static auto& audio() { return service<::biofuel::engine::runtime::typed::AudioService>(); }
     [[nodiscard]] static auto& model() { return service<::biofuel::engine::runtime::typed::ModelService>(); }
+    [[nodiscard]] static auto& tasks() { return service<::biofuel::engine::runtime::typed::TaskService>(); }
     [[nodiscard]] static auto& animation() { return service<::biofuel::engine::runtime::typed::AnimationService>(); }
     [[nodiscard]] static auto& physics() { return service<::biofuel::engine::runtime::typed::PhysicsService>(); }
     [[nodiscard]] static auto& events() { return service<::biofuel::engine::runtime::typed::EventService>(); }

@@ -16,10 +16,10 @@ Render elements are small compile-time nodes consumed by `RenderPipeline`.
 Define a `NAME` when tooling should be able to toggle the element.
 
 ```cpp
-struct FarmHudLayer {
-    static constexpr std::string_view NAME = "farm.hud";
+struct GamePlayHudLayer {
+    static constexpr std::string_view NAME = "gameplay.hud";
 
-    static void render(FarmScreen& screen, RenderContext& context) {
+    static void render(GamePlayScreen& screen, RenderContext& context) {
         // draw using screen state and context dimensions
     }
 };
