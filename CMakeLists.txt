@@ -118,6 +118,20 @@ CPMAddPackage(
         "SPDLOG_FMT_EXTERNAL OFF"
 )
 
+# Pipeline-c- - Compile-time validated pipeline builder for gameplay systems.
+CPMAddPackage(
+    NAME pipeline_c
+    URL https://github.com/tonytranrp/Pipeline-c-/archive/refs/heads/main.tar.gz
+    URL_HASH SHA256=a4312156951c3b0fe52c15ab1c4bccb1e9298399d5940b4b701c93dd4c718038
+    OPTIONS
+        "PB_BUILD_TESTS OFF"
+        "PB_BUILD_EXAMPLES OFF"
+        "PB_BUILD_BENCHMARKS OFF"
+        "PB_ENABLE_WARNINGS OFF"
+        "PB_WARNINGS_AS_ERRORS OFF"
+        "PB_ENABLE_UNITY OFF"
+)
+
 # Corrosion - Cargo/Rust integration for the Rapier physics bridge.
 CPMAddPackage(
     NAME Corrosion

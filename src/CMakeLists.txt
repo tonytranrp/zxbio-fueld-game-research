@@ -159,7 +159,11 @@ target_compile_definitions(biofuel_engine PUBLIC
 
 add_library(biofuel_game STATIC ${GAME_SOURCES})
 add_dependencies(biofuel_game GenerateShaderSources GenerateTypedRegistries)
-target_link_libraries(biofuel_game PUBLIC biofuel_engine)
+target_link_libraries(biofuel_game
+    PUBLIC
+        biofuel_engine
+        pb::runtime
+)
 
 target_include_directories(biofuel_game
     PUBLIC
@@ -337,10 +341,25 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     target_link_libraries(BiofuelFarmStateSmokeTest PRIVATE biofuel_game)
     add_test(NAME BiofuelFarmStateSmoke COMMAND BiofuelFarmStateSmokeTest)
 
-    add_executable(BiofuelHandPresenceAnimatorSmokeTest
+add_executable(BiofuelHandPresenceAnimatorSmokeTest
         "${CMAKE_SOURCE_DIR}/tests/game/HandPresenceAnimatorSmoke.cpp")
     target_link_libraries(BiofuelHandPresenceAnimatorSmokeTest PRIVATE biofuel_game)
     add_test(NAME BiofuelHandPresenceAnimatorSmoke COMMAND BiofuelHandPresenceAnimatorSmokeTest)
+
+    add_executable(BiofuelPipelineSmokeTest
+        "${CMAKE_SOURCE_DIR}/tests/pipeline/PipelineSmoke.cpp")
+    target_link_libraries(BiofuelPipelineSmokeTest PRIVATE biofuel_game)
+    add_test(NAME BiofuelPipelineSmoke COMMAND BiofuelPipelineSmokeTest)
+
+    add_executable(BiofuelTurnPipelineSmokeTest
+        "${CMAKE_SOURCE_DIR}/tests/pipeline/TurnPipelineSmoke.cpp")
+    target_link_libraries(BiofuelTurnPipelineSmokeTest PRIVATE biofuel_game)
+    add_test(NAME BiofuelTurnPipelineSmoke COMMAND BiofuelTurnPipelineSmokeTest)
+
+    add_executable(BiofuelHarvestPipelineSmokeTest
+        "${CMAKE_SOURCE_DIR}/tests/pipeline/HarvestPipelineSmoke.cpp")
+    target_link_libraries(BiofuelHarvestPipelineSmokeTest PRIVATE biofuel_game)
+    add_test(NAME BiofuelHarvestPipelineSmoke COMMAND BiofuelHarvestPipelineSmokeTest)
 
     add_executable(BiofuelArchitecturePlanRuntimeSmokeTest
         "${CMAKE_SOURCE_DIR}/tests/runtime/ArchitecturePlanRuntimeSmoke.cpp")

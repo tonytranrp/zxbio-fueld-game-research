@@ -1,6 +1,10 @@
 #pragma once
 
 #include "engine/runtime/typed/ServiceDeclare.hpp"
+#include "game/gameplay/TurnPipeline.hpp"
+#include "game/gameplay/HarvestPipeline.hpp"
+#include "game/gameplay/FuelProcessPipeline.hpp"
+#include "game/gameplay/TechTreePipeline.hpp"
 
 namespace biofuel::engine::runtime::typed {
 BIOFUEL_SERVICE_TAG(EconomyService);
@@ -10,10 +14,24 @@ BIOFUEL_SERVICE_TAG(TechService);
 BIOFUEL_SERVICE_TAG(SaveService);
 BIOFUEL_SERVICE_TAG(GameStateService);
 
-struct EconomyServiceBackend {};
-struct EcologyServiceBackend {};
-struct SeasonServiceBackend {};
-struct TechServiceBackend {};
+struct EconomyServiceBackend {
+    biofuel::game::gameplay::TurnPipelineRunner turnRunner;
+    biofuel::game::gameplay::HarvestPipelineRunner harvestRunner;
+    biofuel::game::gameplay::FuelProcessPipelineRunner fuelRunner;
+};
+
+struct EcologyServiceBackend {
+    biofuel::game::gameplay::TurnPipelineRunner turnRunner;
+};
+
+struct SeasonServiceBackend {
+    biofuel::game::gameplay::TurnPipelineRunner turnRunner;
+};
+
+struct TechServiceBackend {
+    biofuel::game::gameplay::TechTreePipelineRunner techRunner;
+};
+
 struct SaveServiceBackend {};
 struct GameStateServiceBackend {};
 
