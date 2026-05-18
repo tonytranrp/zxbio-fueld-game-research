@@ -48,11 +48,17 @@ inline constexpr std::array<CropData, 5> kCropData{{
     {CropId::Algae, "Algae (Biodiesel)", FuelKind::Biodiesel, 5000, 2, 1, 1, 10, 118300},
 }};
 
+static_assert(kCropData.size() == 5,
+              "kCropData must contain exactly 5 CropData entries (Corn, Sugarcane, Soybean, Switchgrass, Algae)");
+
 inline constexpr std::array<FuelMarketData, 3> kFuelMarketData{{
     {FuelKind::Ethanol, "Ethanol", 220},
     {FuelKind::Biodiesel, "Biodiesel", 310},
     {FuelKind::CellulosicEthanol, "Cellulosic Ethanol", 260},
 }};
+
+static_assert(kFuelMarketData.size() == 3,
+              "kFuelMarketData must contain exactly 3 FuelMarketData entries (Ethanol, Biodiesel, CellulosicEthanol)");
 
 [[nodiscard]] constexpr std::optional<CropData> cropData(const CropId id) noexcept {
     for (const CropData& crop : kCropData) {

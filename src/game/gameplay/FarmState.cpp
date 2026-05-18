@@ -79,12 +79,4 @@ HarvestResult FarmState::harvestTile(const usize x, const usize y) noexcept {
     };
 }
 
-bool FarmState::inBounds(const usize x, const usize y) const noexcept {
-    return x < m_width && y < m_height;
-}
-
-usize FarmState::indexOf(const usize x, const usize y) const noexcept {
-    return (y * m_width) + x;
-}
-
 } // namespace biofuel::game::gameplay

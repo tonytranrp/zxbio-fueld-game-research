@@ -73,25 +73,37 @@ void Application::shutdown() {
 // Main Loop
 // ------------------------------------------------------------------------------
 
+namespace {
+
+// Precomputed accumulator ceiling: FIXED_DT (1/60) × max catchup frames.
+// Avoids a multiply on every frame in the hot path.
+constexpr f64 kAccumulatorCap = Application::kFixedDt * Application::kMaxFrameCatchupMultiplier;
+
+// Clamp the accumulator to prevent spiral-of-death.
+// BIOFUEL_FORCE_INLINE — single branch, called exactly once per frame in the
+// innermost game loop; the call overhead matters here.
+BIOFUEL_FORCE_INLINE void clampAccumulator(f64& accumulator) noexcept {
+    if (accumulator > kAccumulatorCap) {
+        accumulator = kAccumulatorCap;
+    }
+}
+
+} // namespace
+
 i32 Application::run() {
     init();
 
     f64 accumulator = 0.0;
 
     while (m_running && !WindowShouldClose() && !::biofuel::engine::runtime::Runtime::screen().quitRequested()) {
-        const f64 dt = static_cast<f64>(GetFrameTime());
-        accumulator += dt;
-
-        // Cap to prevent spiral-of-death (max 5 frames behind)
-        if (accumulator > FIXED_DT * MAX_FRAME_CATCHUP_MULTIPLIER) {
-            accumulator = FIXED_DT * MAX_FRAME_CATCHUP_MULTIPLIER;
-        }
+        accumulator += static_cast<f64>(GetFrameTime());
+        clampAccumulator(accumulator);
 
         processInput();
 
-        while (accumulator >= FIXED_DT) {
-            update(static_cast<f32>(FIXED_DT));
-            accumulator -= FIXED_DT;
+        while (accumulator >= Application::kFixedDt) {
+            update(static_cast<f32>(Application::kFixedDt));
+            accumulator -= Application::kFixedDt;
         }
 
         render();

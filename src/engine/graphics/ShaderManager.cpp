@@ -1,5 +1,6 @@
 #include "ShaderManager.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
+#include <array>
 #include <cstring>
 #include <spdlog/spdlog.h>
 
@@ -159,11 +160,11 @@ i32 ShaderManager::getLocation(Shader shader, std::string_view uniformName) noex
     // Safely null-terminate: uniform names are short (< 64 chars), so a
     // stack buffer avoids both the heap allocation of std::string and the
     // UB risk of assuming string_view::data() is null-terminated (B037).
-    char buf[64];
-    if (uniformName.size() < sizeof(buf)) {
-        std::memcpy(buf, uniformName.data(), uniformName.size());
+    std::array<char, 64> buf{};
+    if (uniformName.size() < buf.size()) {
+        std::memcpy(buf.data(), uniformName.data(), uniformName.size());
         buf[uniformName.size()] = '\0';
-        return GetShaderLocation(shader, buf);
+        return GetShaderLocation(shader, buf.data());
     }
     // Fallback for unexpectedly long names
     const std::string owned{uniformName};

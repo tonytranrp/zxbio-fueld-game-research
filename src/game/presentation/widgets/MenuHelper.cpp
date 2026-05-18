@@ -173,11 +173,11 @@ void renderMenuOptionGlow(
     const Font font = GetFontDefault();
     constexpr f32 textPadX = 10.0f;
     constexpr f32 textPadY = 10.0f;
-    const f32 center[2] = {
+    const std::array<f32, 2> center{
         static_cast<f32>(state.centerX),
         static_cast<f32>(state.baselineY + state.fontSize / 2)
     };
-    const f32 halfSize[2] = {
+    const std::array<f32, 2> halfSize{
         static_cast<f32>(state.hitWidth) * 0.5f + textPadX,
         static_cast<f32>(state.fontSize) * 0.5f + textPadY
     };
@@ -191,8 +191,8 @@ void renderMenuOptionGlow(
     };
 
     ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::Time>(shader, timeLoc, &animTime);
-    ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::Center>(shader, centerLoc, center);
-    ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::HalfSize>(shader, halfSizeLoc, halfSize);
+    ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::Center>(shader, centerLoc, center.data());
+    ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::HalfSize>(shader, halfSizeLoc, halfSize.data());
     ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::SelectionStrength>(shader, selectionLoc, &selectionStrength);
     ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::HoverStrength>(shader, hoverLoc, &hoverStrength);
 

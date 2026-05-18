@@ -51,6 +51,11 @@ enum class State : u8 {
 // m_idleStateDuration seconds: Awake → Scratching → Washing → Yawning →
 // Sleeping → Awake...
 //
+// Texture cache: render() caches the resolved Texture2D* so repeated calls
+// within the same pose+frame skip the unordered_map heterogeneous lookup.
+// The cache is invalidated whenever state, direction, or animation frame
+// changes (in setState, update, advanceAnimation).
+//
 // Usage:
 //   NekoCat cat;
 //   cat.load();
@@ -169,6 +174,61 @@ private:
     Direction m_direction = Direction::Down;
     State m_state = State::Awake;
     bool m_loaded = false;
+
+    // -----------------------------------------------------------------------
+    // Texture cache — avoids unordered_map lookup on consecutive render()
+    // calls for the same pose+frame.  Invalidated by setState(), direction
+    // changes, and animation-frame transitions.  Mutable so const getTextureForCurrentFrame()
+    // can populate it.
+    // -----------------------------------------------------------------------
+    mutable const Texture2D* m_cachedTexture = nullptr;
 };
+
+// =============================================================================
+// Constexpr direction helpers — exposed for use by other systems (e.g. physics
+// velocity from WASD input).  Inlined for zero-overhead in hot paths.
+// =============================================================================
+
+[[nodiscard]] constexpr f32 dirDeltaX(const Direction dir) noexcept {
+    switch (dir) {
+    case Direction::Left:
+    case Direction::UpLeft:
+    case Direction::DownLeft:
+        return -1.0f;
+    case Direction::Right:
+    case Direction::UpRight:
+    case Direction::DownRight:
+        return 1.0f;
+    default:
+        return 0.0f;
+    }
+}
+
+[[nodiscard]] constexpr f32 dirDeltaY(const Direction dir) noexcept {
+    switch (dir) {
+    case Direction::Up:
+    case Direction::UpLeft:
+    case Direction::UpRight:
+        return -1.0f;
+    case Direction::Down:
+    case Direction::DownLeft:
+    case Direction::DownRight:
+        return 1.0f;
+    default:
+        return 0.0f;
+    }
+}
+
+[[nodiscard]] constexpr f32 diagonalScale(const Direction dir) noexcept {
+    switch (dir) {
+    case Direction::UpLeft:
+    case Direction::UpRight:
+    case Direction::DownLeft:
+    case Direction::DownRight:
+        return 0.70710678f; // 1/sqrt(2)
+    default:
+        return 1.0f;
+    }
+}
 
 }  // namespace biofuel::game::presentation::sprites

@@ -475,7 +475,7 @@ private:
     };
 
     struct RawPacket {
-        char magic[4];
+        std::array<char, 4> magic{};
         u16 version;
         u16 headerSize;
         u64 sequence;
@@ -489,7 +489,7 @@ private:
     };
 
     struct PreviewHeader {
-        char magic[4];
+        std::array<char, 4> magic{};
         u64 sequence;
         u32 byteCount;
     };
@@ -612,7 +612,7 @@ private:
                     if (!readPreviewBytes(socket, &header, sizeof(header), m_previewRunning)) {
                         break;
                     }
-                    if (std::memcmp(header.magic, "MJPG", 4U) != 0 || header.byteCount == 0U || header.byteCount > 2'500'000U) {
+                    if (std::memcmp(header.magic.data(), "MJPG", 4U) != 0 || header.byteCount == 0U || header.byteCount > 2'500'000U) {
                         break;
                     }
                     if (m_lastPreviewSequence.has_value() && header.sequence <= *m_lastPreviewSequence) {
@@ -673,7 +673,7 @@ private:
     [[nodiscard]] static std::optional<HandTrackingFrame> parsePacket(const std::array<u8, sizeof(RawPacket)>& buffer) {
         RawPacket raw{};
         std::memcpy(&raw, buffer.data(), sizeof(raw));
-        if (std::memcmp(raw.magic, "BHTK", 4U) != 0 || raw.version != PROTOCOL_VERSION || raw.headerSize != 32U) {
+        if (std::memcmp(raw.magic.data(), "BHTK", 4U) != 0 || raw.version != PROTOCOL_VERSION || raw.headerSize != 32U) {
             return std::nullopt;
         }
 

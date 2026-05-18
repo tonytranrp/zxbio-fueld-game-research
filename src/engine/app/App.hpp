@@ -52,8 +52,13 @@ private:
     bool m_initialized = false;
     bool m_running = false;
 
-    static constexpr f64 FIXED_DT = 1.0 / 60.0;
-    static constexpr f64 MAX_FRAME_CATCHUP_MULTIPLIER = 5.0;
+public:
+    // Exposed for hot-path inlining — the anonymous-namespace accumulator
+    // helper in App.cpp references these at compile-time.
+    static constexpr f64 kFixedDt = 1.0 / 60.0;
+    static constexpr f64 kMaxFrameCatchupMultiplier = 5.0;
+
+private:
 
 #ifdef _WIN32
     void setupWindowDragTimer();

@@ -111,6 +111,24 @@ mod ffi {
         collider_b: u64,
     }
 
+    struct BridgeContactForceEvent2D {
+        valid: bool,
+        collider_a: u64,
+        collider_b: u64,
+        total_force: BridgeVec2,
+        max_force_direction: BridgeVec2,
+        max_force_magnitude: f32,
+    }
+
+    struct BridgeContactForceEvent3D {
+        valid: bool,
+        collider_a: u64,
+        collider_b: u64,
+        total_force: BridgeVec3,
+        max_force_direction: BridgeVec3,
+        max_force_magnitude: f32,
+    }
+
     extern "Rust" {
         type RapierWorld2D;
         type RapierWorld3D;
@@ -206,6 +224,13 @@ mod ffi {
         fn contact_event_3d(world: &RapierWorld3D, index: u64) -> BridgeContactEvent;
         fn clear_contact_events_2d(world: &mut RapierWorld2D);
         fn clear_contact_events_3d(world: &mut RapierWorld3D);
+
+        fn contact_force_event_count_2d(world: &RapierWorld2D) -> u64;
+        fn contact_force_event_count_3d(world: &RapierWorld3D) -> u64;
+        fn contact_force_event_2d(world: &RapierWorld2D, index: u64) -> BridgeContactForceEvent2D;
+        fn contact_force_event_3d(world: &RapierWorld3D, index: u64) -> BridgeContactForceEvent3D;
+        fn clear_contact_force_events_2d(world: &mut RapierWorld2D);
+        fn clear_contact_force_events_3d(world: &mut RapierWorld3D);
     }
 }
 
@@ -981,6 +1006,172 @@ pub fn clear_contact_events_2d(world: &mut RapierWorld2D) {
 
 pub fn clear_contact_events_3d(world: &mut RapierWorld3D) {
     world.drained_contacts.clear();
+}
+
+pub fn set_body_rotation_3d(world: &mut RapierWorld3D, body: u64, rotation: ffi::BridgeQuat) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_3d(body)) {
+        rigid_body.set_rotation(
+            r3::Rotation::from_xyzw(rotation.x, rotation.y, rotation.z, rotation.w),
+            true,
+        );
+    }
+}
+
+pub fn apply_force_2d(world: &mut RapierWorld2D, body: u64, force: ffi::BridgeVec2) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_2d(body)) {
+        rigid_body.add_force(vec2(force), true);
+    }
+}
+
+pub fn apply_force_3d(world: &mut RapierWorld3D, body: u64, force: ffi::BridgeVec3) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_3d(body)) {
+        rigid_body.add_force(vec3(force), true);
+    }
+}
+
+pub fn apply_impulse_2d(world: &mut RapierWorld2D, body: u64, impulse: ffi::BridgeVec2) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_2d(body)) {
+        rigid_body.apply_impulse(vec2(impulse), true);
+    }
+}
+
+pub fn apply_impulse_3d(world: &mut RapierWorld3D, body: u64, impulse: ffi::BridgeVec3) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_3d(body)) {
+        rigid_body.apply_impulse(vec3(impulse), true);
+    }
+}
+
+pub fn apply_torque_2d(world: &mut RapierWorld2D, body: u64, torque: f32) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_2d(body)) {
+        rigid_body.apply_torque_impulse(torque, true);
+    }
+}
+
+pub fn apply_torque_3d(world: &mut RapierWorld3D, body: u64, torque: ffi::BridgeVec3) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_3d(body)) {
+        rigid_body.apply_torque_impulse(vec3(torque), true);
+    }
+}
+
+pub fn apply_force_at_point_2d(
+    world: &mut RapierWorld2D,
+    body: u64,
+    force: ffi::BridgeVec2,
+    point: ffi::BridgeVec2,
+) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_2d(body)) {
+        rigid_body.add_force_at_point(vec2(force), point2(&point), true);
+    }
+}
+
+pub fn apply_force_at_point_3d(
+    world: &mut RapierWorld3D,
+    body: u64,
+    force: ffi::BridgeVec3,
+    point: ffi::BridgeVec3,
+) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_3d(body)) {
+        rigid_body.add_force_at_point(vec3(force), point3(&point), true);
+    }
+}
+
+pub fn body_mass_2d(world: &RapierWorld2D, body: u64) -> f32 {
+    if let Some(rigid_body) = world.bodies.get(unpack_body_2d(body)) {
+        rigid_body.mass()
+    } else {
+        0.0
+    }
+}
+
+pub fn body_mass_3d(world: &RapierWorld3D, body: u64) -> f32 {
+    if let Some(rigid_body) = world.bodies.get(unpack_body_3d(body)) {
+        rigid_body.mass()
+    } else {
+        0.0
+    }
+}
+
+pub fn set_body_mass_2d(world: &mut RapierWorld2D, body: u64, mass: f32) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_2d(body)) {
+        rigid_body.set_additional_mass(mass, true);
+    }
+}
+
+pub fn set_body_mass_3d(world: &mut RapierWorld3D, body: u64, mass: f32) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_3d(body)) {
+        rigid_body.set_additional_mass(mass, true);
+    }
+}
+
+pub fn body_angular_velocity_2d(world: &RapierWorld2D, body: u64) -> f32 {
+    if let Some(rigid_body) = world.bodies.get(unpack_body_2d(body)) {
+        rigid_body.angvel()
+    } else {
+        0.0
+    }
+}
+
+pub fn body_angular_velocity_3d(world: &RapierWorld3D, body: u64) -> ffi::BridgeVec3 {
+    if let Some(rigid_body) = world.bodies.get(unpack_body_3d(body)) {
+        let av = rigid_body.angvel();
+        ffi::BridgeVec3 { x: av.x, y: av.y, z: av.z }
+    } else {
+        ffi::BridgeVec3 { x: 0.0, y: 0.0, z: 0.0 }
+    }
+}
+
+pub fn set_body_angular_velocity_2d(world: &mut RapierWorld2D, body: u64, value: f32) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_2d(body)) {
+        rigid_body.set_angvel(value, true);
+    }
+}
+
+pub fn set_body_angular_velocity_3d(world: &mut RapierWorld3D, body: u64, value: ffi::BridgeVec3) {
+    if let Some(rigid_body) = world.bodies.get_mut(unpack_body_3d(body)) {
+        rigid_body.set_angvel(vec3(value), true);
+    }
+}
+
+pub fn contact_force_event_count_2d(_world: &RapierWorld2D) -> u64 {
+    0
+}
+
+pub fn contact_force_event_count_3d(_world: &RapierWorld3D) -> u64 {
+    0
+}
+
+pub fn contact_force_event_2d(
+    _world: &RapierWorld2D,
+    _index: u64,
+) -> ffi::BridgeContactForceEvent2D {
+    ffi::BridgeContactForceEvent2D {
+        valid: false,
+        collider_a: 0,
+        collider_b: 0,
+        total_force: ffi::BridgeVec2 { x: 0.0, y: 0.0 },
+        max_force_direction: ffi::BridgeVec2 { x: 0.0, y: 0.0 },
+        max_force_magnitude: 0.0,
+    }
+}
+
+pub fn contact_force_event_3d(
+    _world: &RapierWorld3D,
+    _index: u64,
+) -> ffi::BridgeContactForceEvent3D {
+    ffi::BridgeContactForceEvent3D {
+        valid: false,
+        collider_a: 0,
+        collider_b: 0,
+        total_force: ffi::BridgeVec3 { x: 0.0, y: 0.0, z: 0.0 },
+        max_force_direction: ffi::BridgeVec3 { x: 0.0, y: 0.0, z: 0.0 },
+        max_force_magnitude: 0.0,
+    }
+}
+
+pub fn clear_contact_force_events_2d(_world: &mut RapierWorld2D) {
+}
+
+pub fn clear_contact_force_events_3d(_world: &mut RapierWorld3D) {
 }
 
 #[cfg(test)]

@@ -468,7 +468,7 @@ void DevHandLabScreen::drawStatusHud() const noexcept {
     DrawRectangle(18, Renderer::screenHeight() - 56, 590, 36, Color{3, 8, 10, 176});
     DrawRectangleLines(18, Renderer::screenHeight() - 56, 590, 36, Color{64, 190, 118, 155});
 
-    char line[320]{};
+    std::array<char, 320> line{};
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     const auto& tracking = ::biofuel::engine::runtime::Runtime::handTracking();
     const auto status = tracking.status();
@@ -487,7 +487,7 @@ void DevHandLabScreen::drawStatusHud() const noexcept {
     const std::string_view grabState = physicsState.grabbed
         ? (physicsState.grabbedBy == HandSide::Left ? "grab left" : "grab right")
         : "cube idle";
-    std::snprintf(line, sizeof(line), "ESC | C start | V preview | X stop | K calibrate | %.*s | %.1f pps | %s | %.*s | %.*s",
+    std::snprintf(line.data(), line.size(), "ESC | C start | V preview | X stop | K calibrate | %.*s | %.1f pps | %s | %.*s | %.*s",
         static_cast<int>(::biofuel::engine::vision::hand_tracking::toString(status.state).size()),
         ::biofuel::engine::vision::hand_tracking::toString(status.state).data(),
         static_cast<double>(status.packetsPerSecond),
@@ -497,9 +497,9 @@ void DevHandLabScreen::drawStatusHud() const noexcept {
         static_cast<int>(grabState.size()),
         grabState.data());
 #else
-    std::snprintf(line, sizeof(line), "ESC menu | hand tracking build option OFF | RMB orbit | wheel zoom");
+    std::snprintf(line.data(), line.size(), "ESC menu | hand tracking build option OFF | RMB orbit | wheel zoom");
 #endif
-    Renderer::drawText(line, 30, Renderer::screenHeight() - 43, 13, Color{216, 240, 228, 255});
+    Renderer::drawText(line.data(), 30, Renderer::screenHeight() - 43, 13, Color{216, 240, 228, 255});
 }
 
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
@@ -515,13 +515,13 @@ void DevHandLabScreen::drawLiveTrackingOverlay() const noexcept {
     DrawRectangleRec(panel, Color{4, 10, 13, 224});
     DrawRectangleLinesEx(panel, 1.0f, status.workerRunning ? Color{84, 236, 148, 210} : Color{92, 118, 122, 180});
 
-    char line[192]{};
-    std::snprintf(line, sizeof(line), "LIVE CAMERA | %.*s | age %.2fs | %s",
+    std::array<char, 192> line{};
+    std::snprintf(line.data(), line.size(), "LIVE CAMERA | %.*s | age %.2fs | %s",
         static_cast<int>(::biofuel::engine::vision::hand_tracking::toString(status.state).size()),
         ::biofuel::engine::vision::hand_tracking::toString(status.state).data(),
         static_cast<double>(status.secondsSinceLastFrame),
         wizard.active ? "quick calibration running" : "selfie mirror mapped");
-    Renderer::drawText(line, static_cast<i32>(panel.x + 12.0f), static_cast<i32>(panel.y + 12.0f), 13, Color{226, 244, 236, 255});
+    Renderer::drawText(line.data(), static_cast<i32>(panel.x + 12.0f), static_cast<i32>(panel.y + 12.0f), 13, Color{226, 244, 236, 255});
 
     DrawRectangleRec(preview, Color{9, 16, 19, 255});
     if (m_previewTexture.id != 0U) {
@@ -640,14 +640,14 @@ void DevHandLabScreen::drawCalibrationGuide(const Rectangle previewBounds) const
 
     const std::string_view phaseName =
         ::biofuel::engine::custom::procedural::pose::calibrationHandPhaseName(wizard.activeHand);
-    char stepText[96]{};
-    std::snprintf(stepText, sizeof(stepText), "%.*s phase | step %u/%u",
+    std::array<char, 96> stepText{};
+    std::snprintf(stepText.data(), stepText.size(), "%.*s phase | step %u/%u",
         static_cast<int>(phaseName.size()),
         phaseName.data(),
         static_cast<unsigned>(::biofuel::engine::custom::procedural::pose::calibrationStepOrdinal(wizard.step)),
         static_cast<unsigned>(::biofuel::engine::custom::procedural::pose::calibrationStepCount()));
     Renderer::drawText(
-        stepText,
+        stepText.data(),
         static_cast<i32>(card.x + 10.0f),
         static_cast<i32>(card.y + 24.0f),
         10,
@@ -660,13 +660,13 @@ void DevHandLabScreen::drawCalibrationGuide(const Rectangle previewBounds) const
             1.0f);
         const std::string_view status =
             ::biofuel::engine::custom::procedural::pose::calibrationCaptureStatusName(progress.status);
-        char text[96]{};
-        std::snprintf(text, sizeof(text), "%.*s  %.*s",
+        std::array<char, 96> text{};
+        std::snprintf(text.data(), text.size(), "%.*s  %.*s",
             static_cast<int>(label.size()),
             label.data(),
             static_cast<int>(status.size()),
             status.data());
-        Renderer::drawText(text, static_cast<i32>(card.x + 10.0f), static_cast<i32>(y - 2.0f), 10, Color{214, 234, 226, 255});
+        Renderer::drawText(text.data(), static_cast<i32>(card.x + 10.0f), static_cast<i32>(y - 2.0f), 10, Color{214, 234, 226, 255});
         DrawRectangle(
             static_cast<i32>(card.x + 92.0f),
             static_cast<i32>(y),

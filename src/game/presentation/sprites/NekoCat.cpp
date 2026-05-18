@@ -2,62 +2,12 @@
 
 #include <raylib.h>
 #include <spdlog/spdlog.h>
+#include <array>
 #include <cstdio>
 #include <cmath>
 #include <string_view>
 
 namespace biofuel::game::presentation::sprites {
-
-// ------------------------------------------------------------------------------
-// Direction delta helpers
-// ------------------------------------------------------------------------------
-
-namespace {
-
-[[nodiscard]] constexpr f32 dirDeltaX(const Direction dir) noexcept {
-    switch (dir) {
-    case Direction::Left:
-    case Direction::UpLeft:
-    case Direction::DownLeft:
-        return -1.0f;
-    case Direction::Right:
-    case Direction::UpRight:
-    case Direction::DownRight:
-        return 1.0f;
-    default:
-        return 0.0f;
-    }
-}
-
-[[nodiscard]] constexpr f32 dirDeltaY(const Direction dir) noexcept {
-    switch (dir) {
-    case Direction::Up:
-    case Direction::UpLeft:
-    case Direction::UpRight:
-        return -1.0f;
-    case Direction::Down:
-    case Direction::DownLeft:
-    case Direction::DownRight:
-        return 1.0f;
-    default:
-        return 0.0f;
-    }
-}
-
-// Normalize diagonal movement so speed is consistent with cardinal directions.
-[[nodiscard]] constexpr f32 diagonalScale(const Direction dir) noexcept {
-    switch (dir) {
-    case Direction::UpLeft:
-    case Direction::UpRight:
-    case Direction::DownLeft:
-    case Direction::DownRight:
-        return 0.70710678f; // 1/sqrt(2)
-    default:
-        return 1.0f;
-    }
-}
-
-} // namespace
 
 // ------------------------------------------------------------------------------
 // Frame-count lookup
@@ -163,17 +113,17 @@ void NekoCat::load() {
     for (const Direction dir : kDirections) {
         const char* prefix = directionPrefix(dir);
         for (i32 frame = 1; frame <= 2; ++frame) {
-            char path[256];
-            std::snprintf(path, sizeof(path), "assets/sprites/neko/%s%d.png", prefix, frame);
+            std::array<char, 256> path{};
+            std::snprintf(path.data(), path.size(), "assets/sprites/neko/%s%d.png", prefix, frame);
 
-            Texture2D tex = LoadTexture(path);
+            Texture2D tex = LoadTexture(path.data());
             if (tex.id != 0) {
                 SetTextureFilter(tex, TEXTURE_FILTER_POINT);
             }
 
-            char key[32];
-            std::snprintf(key, sizeof(key), "%s%d", prefix, frame);
-            m_textures[std::string{key}] = tex;
+            std::array<char, 32> key{};
+            std::snprintf(key.data(), key.size(), "%s%d", prefix, frame);
+            m_textures[std::string{key.data()}] = tex;
         }
     }
 
@@ -188,25 +138,25 @@ void NekoCat::load() {
         const i32 count = frameCountForState(st);
 
         for (i32 frame = 1; frame <= count; ++frame) {
-            char path[256];
+            std::array<char, 256> path{};
             if (count == 1) {
-                std::snprintf(path, sizeof(path), "assets/sprites/neko/%s.png", prefix);
+                std::snprintf(path.data(), path.size(), "assets/sprites/neko/%s.png", prefix);
             } else {
-                std::snprintf(path, sizeof(path), "assets/sprites/neko/%s%d.png", prefix, frame);
+                std::snprintf(path.data(), path.size(), "assets/sprites/neko/%s%d.png", prefix, frame);
             }
 
-            Texture2D tex = LoadTexture(path);
+            Texture2D tex = LoadTexture(path.data());
             if (tex.id != 0) {
                 SetTextureFilter(tex, TEXTURE_FILTER_POINT);
             }
 
-            char key[32];
+            std::array<char, 32> key{};
             if (count == 1) {
-                std::snprintf(key, sizeof(key), "%s", prefix);
+                std::snprintf(key.data(), key.size(), "%s", prefix);
             } else {
-                std::snprintf(key, sizeof(key), "%s%d", prefix, frame);
+                std::snprintf(key.data(), key.size(), "%s%d", prefix, frame);
             }
-            m_textures[std::string{key}] = tex;
+            m_textures[std::string{key.data()}] = tex;
         }
     }
 
@@ -239,6 +189,7 @@ void NekoCat::setState(const State state) noexcept {
     m_state = state;
     m_frameTimer = 0.0f;
     m_currentFrame = 1; // 1-based frame numbering for key lookup
+    m_cachedTexture = nullptr; // invalidate — new state means different texture
 }
 
 // ------------------------------------------------------------------------------
@@ -255,25 +206,29 @@ const Texture2D& NekoCat::getTextureForCurrentFrame() const noexcept {
         ? 2
         : frameCountForState(m_state);
 
-    char key[32];
+    std::array<char, 32> key{};
     if (count == 1) {
-        std::snprintf(key, sizeof(key), "%s", prefix);
+        std::snprintf(key.data(), key.size(), "%s", prefix);
     } else {
-        std::snprintf(key, sizeof(key), "%s%d", prefix, m_currentFrame);
+        std::snprintf(key.data(), key.size(), "%s%d", prefix, m_currentFrame);
     }
 
     // Heterogeneous lookup via TransparentHash — no std::string allocation
-    auto it = m_textures.find(std::string_view{key});
+    auto it = m_textures.find(std::string_view{key.data()});
     if (it != m_textures.end()) {
+        // Cache for subsequent render() calls at the same pose+frame
+        m_cachedTexture = &it->second;
         return it->second;
     }
 
     // Fallback: return the first texture we find, or a static empty texture
     if (!m_textures.empty()) {
-        return m_textures.begin()->second;
+        m_cachedTexture = &m_textures.begin()->second;
+        return *m_cachedTexture;
     }
 
     static const Texture2D kEmpty{};
+    m_cachedTexture = &kEmpty;
     return kEmpty;
 }
 
@@ -303,7 +258,11 @@ void NekoCat::advanceAnimation(const f32 dt) noexcept {
         m_frameTimer = std::fmod(m_frameTimer, max);
     }
 
-    m_currentFrame = (m_frameTimer < safeDuration) ? 1 : 2;
+    const i32 newFrame = (m_frameTimer < safeDuration) ? 1 : 2;
+    if (newFrame != m_currentFrame) {
+        m_currentFrame = newFrame;
+        m_cachedTexture = nullptr; // frame changed → texture key is stale
+    }
 }
 
 // ------------------------------------------------------------------------------
@@ -347,7 +306,10 @@ void NekoCat::update(const f32 dt, const Direction inputDirection) noexcept {
             advanceIdleState(dt);
         }
     } else {
-        m_direction = inputDirection;
+        if (m_direction != inputDirection) {
+            m_direction = inputDirection;
+            m_cachedTexture = nullptr; // direction changed → texture key is stale
+        }
         if (m_state != State::Walking) {
             setState(State::Walking);
         }
@@ -382,7 +344,12 @@ void NekoCat::update(const f32 dt, const Direction inputDirection) noexcept {
 void NekoCat::render() const noexcept {
     if (!m_loaded) return;
 
-    const Texture2D& tex = getTextureForCurrentFrame();
+    // Use cached pointer when the pose+frame haven't changed since the last
+    // lookup — this is the common case (most frames reuse the same texture).
+    const Texture2D& tex = m_cachedTexture
+        ? *m_cachedTexture
+        : getTextureForCurrentFrame();
+
     if (tex.id == 0) return;
 
     const f32 spriteSize = 32.0f * m_scale;

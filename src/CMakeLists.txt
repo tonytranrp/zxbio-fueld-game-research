@@ -61,6 +61,7 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/screen/ScreenEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/video/VideoEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/window/WindowEventModule.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/world/WorldEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/fonts/FontServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/RenderServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/BlurCompositeModule.hpp"
@@ -80,6 +81,8 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/video/VideoServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/vision/hand_tracking/HandTrackingServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/window/WindowServiceModule.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/engine/world/WorldPhysicsEventModule.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/engine/world/WorldServiceModule.hpp"
 )
 
 set(GENERATED_SHADER_HEADER "${GENERATED_DIR}/ShaderSources.hpp")

@@ -3,6 +3,7 @@
 #include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/runtime/typed/Events.hpp"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -126,9 +127,9 @@ std::wstring findFfmpegExecutable() {
     }
 #endif
 
-    wchar_t found[MAX_PATH]{};
-    if (SearchPathW(nullptr, L"ffmpeg.exe", nullptr, MAX_PATH, found, nullptr) > 0) {
-        return found;
+    std::array<wchar_t, MAX_PATH> found{};
+    if (SearchPathW(nullptr, L"ffmpeg.exe", nullptr, MAX_PATH, found.data(), nullptr) > 0) {
+        return found.data();
     }
     return {};
 }

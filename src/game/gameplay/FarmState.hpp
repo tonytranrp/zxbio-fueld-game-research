@@ -34,6 +34,8 @@ struct Tile {
     i32 ageTurns = 0;
     i32 buildingId = -1;
 };
+static_assert(sizeof(Tile) == 24,
+              "Tile must be exactly 24 bytes (u8 TileType + 3 padding + 5 i32)");
 
 struct FarmInventory {
     i32 fuelGallons = 0;
@@ -59,14 +61,30 @@ public:
 
     [[nodiscard]] const Tile* tileAt(usize x, usize y) const noexcept;
     [[nodiscard]] Tile* tileAt(usize x, usize y) noexcept;
+
+    /// Unchecked tile access — caller guarantees (x,y) are in bounds.
+    /// Use in hot loops where bounds have already been verified once at the
+    /// loop perimeter.  Skips the per-access branch to improve pipeline
+    //  throughput on large grids.
+    [[nodiscard]] const Tile& atUnsafe(usize x, usize y) const noexcept {
+        return m_tiles[y * m_width + x];
+    }
+    [[nodiscard]] Tile& atUnsafe(usize x, usize y) noexcept {
+        return m_tiles[y * m_width + x];
+    }
+
     [[nodiscard]] bool setTileType(usize x, usize y, TileType type) noexcept;
 
     void advanceSeason() noexcept;
     [[nodiscard]] HarvestResult harvestTile(usize x, usize y) noexcept;
 
 private:
-    [[nodiscard]] bool inBounds(usize x, usize y) const noexcept;
-    [[nodiscard]] usize indexOf(usize x, usize y) const noexcept;
+    [[nodiscard]] BIOFUEL_FORCE_INLINE bool inBounds(usize x, usize y) const noexcept {
+        return x < m_width && y < m_height;
+    }
+    [[nodiscard]] BIOFUEL_FORCE_INLINE usize indexOf(usize x, usize y) const noexcept {
+        return (y * m_width) + x;
+    }
 
     usize m_width = 0U;
     usize m_height = 0U;

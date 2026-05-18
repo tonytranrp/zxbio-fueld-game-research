@@ -4,6 +4,8 @@
 #include "engine/events/physics/PhysicsEventModule.hpp"
 #include "engine/runtime/typed/Events.hpp"
 #include <algorithm>
+#include <cmath>
+#include <unordered_map>
 #include <vector>
 
 namespace biofuel::engine::physics {
@@ -51,6 +53,8 @@ namespace {
 struct PhysicsSystem::Impl {
     rust::Box<bridge::RapierWorld2D> world2D = bridge::new_world_2d();
     rust::Box<bridge::RapierWorld3D> world3D = bridge::new_world_3d();
+    std::unordered_map<u64, CollisionGroup> colliderGroups2D;
+    std::unordered_map<u64, CollisionGroup> colliderGroups3D;
 };
 
 PhysicsWorld2D::PhysicsWorld2D(PhysicsSystem& system) noexcept
@@ -132,6 +136,33 @@ void PhysicsWorld2D::setBodyLinearVelocity(const PhysicsBody2D body, const Vecto
     bridge::set_body_linear_velocity_2d(*m_system->m_impl->world2D, body.value, toBridge(velocity));
 }
 
+void PhysicsWorld2D::setBodyType(const PhysicsBody2D body, const PhysicsBodyKind newType) const {
+    m_system->ensureInitialized();
+    // TODO(Phase 5): Wire through bridge when set_body_type_2d is exposed.
+    // Rapier supports RigidBody::set_body_type() for Fixed↔Dynamic mutation.
+    (void)body;
+    (void)newType;
+}
+
+void PhysicsWorld2D::wakeBody(const PhysicsBody2D body) const {
+    m_system->ensureInitialized();
+    // TODO(Phase 5): Wire through bridge when wake_body_2d is exposed.
+    (void)body;
+}
+
+void PhysicsWorld2D::putBodyToSleep(const PhysicsBody2D body) const {
+    m_system->ensureInitialized();
+    // TODO(Phase 5): Wire through bridge when sleep_body_2d is exposed.
+    (void)body;
+}
+
+bool PhysicsWorld2D::isBodySleeping(const PhysicsBody2D body) const {
+    m_system->ensureInitialized();
+    // TODO(Phase 5): Wire through bridge when is_body_sleeping_2d is exposed.
+    (void)body;
+    return false;
+}
+
 PhysicsCollider2D PhysicsWorld2D::attachBox(const PhysicsBody2D body, const BoxColliderDesc2D& desc) const {
     m_system->ensureInitialized();
     const bridge::BridgeBoxColliderDesc2D bridgeDesc{
@@ -139,7 +170,9 @@ PhysicsCollider2D PhysicsWorld2D::attachBox(const PhysicsBody2D body, const BoxC
         .density = desc.density,
         .sensor = desc.sensor,
     };
-    return PhysicsCollider2D{bridge::attach_box_2d(*m_system->m_impl->world2D, body.value, bridgeDesc)};
+    const u64 handle = bridge::attach_box_2d(*m_system->m_impl->world2D, body.value, bridgeDesc);
+    m_system->registerColliderGroup(PhysicsWorldKind::World2D, handle, desc.collisionGroup);
+    return PhysicsCollider2D{handle};
 }
 
 PhysicsCollider2D PhysicsWorld2D::attachCircle(const PhysicsBody2D body, const CircleColliderDesc& desc) const {
@@ -149,7 +182,9 @@ PhysicsCollider2D PhysicsWorld2D::attachCircle(const PhysicsBody2D body, const C
         .density = desc.density,
         .sensor = desc.sensor,
     };
-    return PhysicsCollider2D{bridge::attach_circle_2d(*m_system->m_impl->world2D, body.value, bridgeDesc)};
+    const u64 handle = bridge::attach_circle_2d(*m_system->m_impl->world2D, body.value, bridgeDesc);
+    m_system->registerColliderGroup(PhysicsWorldKind::World2D, handle, desc.collisionGroup);
+    return PhysicsCollider2D{handle};
 }
 
 PhysicsCollider2D PhysicsWorld2D::attachCapsule(const PhysicsBody2D body, const CapsuleColliderDesc2D& desc) const {
@@ -160,7 +195,9 @@ PhysicsCollider2D PhysicsWorld2D::attachCapsule(const PhysicsBody2D body, const 
         .density = desc.density,
         .sensor = desc.sensor,
     };
-    return PhysicsCollider2D{bridge::attach_capsule_2d(*m_system->m_impl->world2D, body.value, bridgeDesc)};
+    const u64 handle = bridge::attach_capsule_2d(*m_system->m_impl->world2D, body.value, bridgeDesc);
+    m_system->registerColliderGroup(PhysicsWorldKind::World2D, handle, desc.collisionGroup);
+    return PhysicsCollider2D{handle};
 }
 
 bool PhysicsWorld2D::colliderExists(const PhysicsCollider2D collider) const {
@@ -191,6 +228,18 @@ std::optional<PhysicsRayHit2D> PhysicsWorld2D::raycast(
         .normal = fromBridge(hit.normal),
         .timeOfImpact = hit.time_of_impact,
     };
+}
+
+Joint2D PhysicsWorld2D::createJoint(const JointDesc2D& /*desc*/) const {
+    return Joint2D{0U};
+}
+
+void PhysicsWorld2D::removeJoint(const Joint2D /*joint*/) const {
+}
+
+bool PhysicsWorld2D::jointExists(const Joint2D joint) const {
+    (void)joint;
+    return false;
 }
 
 PhysicsWorld3D::PhysicsWorld3D(PhysicsSystem& system) noexcept
@@ -270,6 +319,33 @@ void PhysicsWorld3D::setBodyLinearVelocity(const PhysicsBody3D body, const Vecto
     bridge::set_body_linear_velocity_3d(*m_system->m_impl->world3D, body.value, toBridge(velocity));
 }
 
+void PhysicsWorld3D::setBodyType(const PhysicsBody3D body, const PhysicsBodyKind newType) const {
+    m_system->ensureInitialized();
+    // TODO(Phase 5): Wire through bridge when set_body_type_3d is exposed.
+    // Rapier supports RigidBody::set_body_type() for Fixed↔Dynamic mutation.
+    (void)body;
+    (void)newType;
+}
+
+void PhysicsWorld3D::wakeBody(const PhysicsBody3D body) const {
+    m_system->ensureInitialized();
+    // TODO(Phase 5): Wire through bridge when wake_body_3d is exposed.
+    (void)body;
+}
+
+void PhysicsWorld3D::putBodyToSleep(const PhysicsBody3D body) const {
+    m_system->ensureInitialized();
+    // TODO(Phase 5): Wire through bridge when sleep_body_3d is exposed.
+    (void)body;
+}
+
+bool PhysicsWorld3D::isBodySleeping(const PhysicsBody3D body) const {
+    m_system->ensureInitialized();
+    // TODO(Phase 5): Wire through bridge when is_body_sleeping_3d is exposed.
+    (void)body;
+    return false;
+}
+
 PhysicsCollider3D PhysicsWorld3D::attachCuboid(const PhysicsBody3D body, const CuboidColliderDesc& desc) const {
     m_system->ensureInitialized();
     const bridge::BridgeCuboidColliderDesc bridgeDesc{
@@ -277,7 +353,9 @@ PhysicsCollider3D PhysicsWorld3D::attachCuboid(const PhysicsBody3D body, const C
         .density = desc.density,
         .sensor = desc.sensor,
     };
-    return PhysicsCollider3D{bridge::attach_cuboid_3d(*m_system->m_impl->world3D, body.value, bridgeDesc)};
+    const u64 handle = bridge::attach_cuboid_3d(*m_system->m_impl->world3D, body.value, bridgeDesc);
+    m_system->registerColliderGroup(PhysicsWorldKind::World3D, handle, desc.collisionGroup);
+    return PhysicsCollider3D{handle};
 }
 
 PhysicsCollider3D PhysicsWorld3D::attachBall(const PhysicsBody3D body, const BallColliderDesc& desc) const {
@@ -287,7 +365,9 @@ PhysicsCollider3D PhysicsWorld3D::attachBall(const PhysicsBody3D body, const Bal
         .density = desc.density,
         .sensor = desc.sensor,
     };
-    return PhysicsCollider3D{bridge::attach_ball_3d(*m_system->m_impl->world3D, body.value, bridgeDesc)};
+    const u64 handle = bridge::attach_ball_3d(*m_system->m_impl->world3D, body.value, bridgeDesc);
+    m_system->registerColliderGroup(PhysicsWorldKind::World3D, handle, desc.collisionGroup);
+    return PhysicsCollider3D{handle};
 }
 
 PhysicsCollider3D PhysicsWorld3D::attachCapsule(const PhysicsBody3D body, const CapsuleColliderDesc3D& desc) const {
@@ -298,7 +378,9 @@ PhysicsCollider3D PhysicsWorld3D::attachCapsule(const PhysicsBody3D body, const 
         .density = desc.density,
         .sensor = desc.sensor,
     };
-    return PhysicsCollider3D{bridge::attach_capsule_3d(*m_system->m_impl->world3D, body.value, bridgeDesc)};
+    const u64 handle = bridge::attach_capsule_3d(*m_system->m_impl->world3D, body.value, bridgeDesc);
+    m_system->registerColliderGroup(PhysicsWorldKind::World3D, handle, desc.collisionGroup);
+    return PhysicsCollider3D{handle};
 }
 
 bool PhysicsWorld3D::colliderExists(const PhysicsCollider3D collider) const {
@@ -331,6 +413,18 @@ std::optional<PhysicsRayHit3D> PhysicsWorld3D::raycast(
     };
 }
 
+Joint3D PhysicsWorld3D::createJoint(const JointDesc3D& /*desc*/) const {
+    return Joint3D{0U};
+}
+
+void PhysicsWorld3D::removeJoint(const Joint3D /*joint*/) const {
+}
+
+bool PhysicsWorld3D::jointExists(const Joint3D joint) const {
+    (void)joint;
+    return false;
+}
+
 PhysicsSystem::PhysicsSystem() = default;
 
 PhysicsSystem::~PhysicsSystem() noexcept {
@@ -349,13 +443,65 @@ void PhysicsSystem::shutdown() noexcept {
     m_impl.reset();
 }
 
+void PhysicsSystem::setFixedTimestep(const f32 dt) noexcept {
+    m_fixedTimestep = dt > 0.0f ? dt : (1.0f / 60.0f);
+}
+
+void PhysicsSystem::setMaxSubSteps(const i32 n) noexcept {
+    m_maxSubSteps = n < 1 ? 1 : (n > 16 ? 16 : n);
+}
+
+void PhysicsSystem::setSolverIterations(const i32 n) noexcept {
+    m_integrationConfig.solverIterations = n < 1 ? 1 : (n > 128 ? 128 : n);
+}
+
+void PhysicsSystem::setMaxCcdSubsteps(const i32 n) noexcept {
+    m_integrationConfig.maxCcdSubsteps = n < 1 ? 1 : (n > 32 ? 32 : n);
+}
+
+void PhysicsSystem::setErp(const f32 erp) noexcept {
+    m_integrationConfig.erp = std::clamp(erp, 0.0f, 1.0f);
+}
+
 void PhysicsSystem::stepFixed(const f32 dt) {
     ensureInitialized();
     m_contacts.clear();
+
     const f32 safeDt = std::max(dt, 0.0f);
-    bridge::step_world_2d(*m_impl->world2D, safeDt);
-    bridge::step_world_3d(*m_impl->world3D, safeDt);
-    drainContacts();
+    if (safeDt <= 0.0f) {
+        return;
+    }
+
+    // Cache world pointers once — the hot sub-step loop and drainContacts()
+    // dereference these repeatedly.  Lifting them into locals avoids re-loading
+    // m_impl->world2D/world3D through the unique_ptr indirection on every
+    // iteration and inside drainContacts.
+    auto& world2D = *m_impl->world2D;
+    auto& world3D = *m_impl->world3D;
+
+    const f32 timestep = m_fixedTimestep > 0.0f ? m_fixedTimestep : (1.0f / 60.0f);
+
+    if (safeDt <= timestep) {
+        bridge::step_world_2d(world2D, safeDt);
+        bridge::step_world_3d(world3D, safeDt);
+        drainContacts(world2D, world3D);
+        return;
+    }
+
+    i32 subSteps = static_cast<i32>(std::ceil(safeDt / timestep));
+    if (subSteps > m_maxSubSteps) {
+        subSteps = m_maxSubSteps;
+    }
+    if (subSteps < 1) {
+        subSteps = 1;
+    }
+
+    const f32 subDt = safeDt / static_cast<f32>(subSteps);
+    for (i32 i = 0; i < subSteps; ++i) {
+        bridge::step_world_2d(world2D, subDt);
+        bridge::step_world_3d(world3D, subDt);
+    }
+    drainContacts(world2D, world3D);
 }
 
 void PhysicsSystem::ensureInitialized() {
@@ -364,11 +510,23 @@ void PhysicsSystem::ensureInitialized() {
     }
 }
 
-void PhysicsSystem::drainContacts() {
-    const u64 count2D = bridge::contact_event_count_2d(*m_impl->world2D);
+void PhysicsSystem::drainContacts(
+    bridge::RapierWorld2D& world2D,
+    bridge::RapierWorld3D& world3D)
+{
+    const u64 count2D = bridge::contact_event_count_2d(world2D);
+    const u64 count3D = bridge::contact_event_count_3d(world3D);
+
+    // Single reserve up-front — avoids incremental reallocations as contacts
+    // are pushed in the loops below.
+    m_contacts.reserve(m_contacts.size() + count2D + count3D);
+
     for (u64 index = 0U; index < count2D; ++index) {
-        const bridge::BridgeContactEvent contact = bridge::contact_event_2d(*m_impl->world2D, index);
+        const bridge::BridgeContactEvent contact = bridge::contact_event_2d(world2D, index);
         if (!contact.valid) {
+            continue;
+        }
+        if (!passesCollisionFilter(PhysicsWorldKind::World2D, contact.collider_a, contact.collider_b)) {
             continue;
         }
         const PhysicsContactEvent event{
@@ -380,12 +538,14 @@ void PhysicsSystem::drainContacts() {
         m_contacts.push_back(event);
         publishContact(event);
     }
-    bridge::clear_contact_events_2d(*m_impl->world2D);
+    bridge::clear_contact_events_2d(world2D);
 
-    const u64 count3D = bridge::contact_event_count_3d(*m_impl->world3D);
     for (u64 index = 0U; index < count3D; ++index) {
-        const bridge::BridgeContactEvent contact = bridge::contact_event_3d(*m_impl->world3D, index);
+        const bridge::BridgeContactEvent contact = bridge::contact_event_3d(world3D, index);
         if (!contact.valid) {
+            continue;
+        }
+        if (!passesCollisionFilter(PhysicsWorldKind::World3D, contact.collider_a, contact.collider_b)) {
             continue;
         }
         const PhysicsContactEvent event{
@@ -397,7 +557,7 @@ void PhysicsSystem::drainContacts() {
         m_contacts.push_back(event);
         publishContact(event);
     }
-    bridge::clear_contact_events_3d(*m_impl->world3D);
+    bridge::clear_contact_events_3d(world3D);
 }
 
 void PhysicsSystem::publishContact(const PhysicsContactEvent& event) const {
@@ -414,6 +574,58 @@ void PhysicsSystem::publishContact(const PhysicsContactEvent& event) const {
         .colliderA = event.colliderA,
         .colliderB = event.colliderB,
     });
+}
+
+void PhysicsSystem::registerColliderGroup(
+    const PhysicsWorldKind world,
+    const u64 colliderHandle,
+    const CollisionGroup group)
+{
+    ensureInitialized();
+    if (colliderHandle == 0U) {
+        return;
+    }
+    if (world == PhysicsWorldKind::World2D) {
+        m_impl->colliderGroups2D[colliderHandle] = group;
+    } else {
+        m_impl->colliderGroups3D[colliderHandle] = group;
+    }
+}
+
+void PhysicsSystem::unregisterColliderGroup(
+    const PhysicsWorldKind world,
+    const u64 colliderHandle)
+{
+    if (!m_impl) {
+        return;
+    }
+    if (world == PhysicsWorldKind::World2D) {
+        m_impl->colliderGroups2D.erase(colliderHandle);
+    } else {
+        m_impl->colliderGroups3D.erase(colliderHandle);
+    }
+}
+
+bool PhysicsSystem::passesCollisionFilter(
+    const PhysicsWorldKind world,
+    const u64 colliderA,
+    const u64 colliderB) const
+{
+    const auto& groups = (world == PhysicsWorldKind::World2D)
+                             ? m_impl->colliderGroups2D
+                             : m_impl->colliderGroups3D;
+
+    const auto itA = groups.find(colliderA);
+    const auto itB = groups.find(colliderB);
+
+    if (itA == groups.end() || itB == groups.end()) {
+        return true;
+    }
+
+    const CollisionGroup& groupA = itA->second;
+    const CollisionGroup& groupB = itB->second;
+
+    return groupA.collidesWith(groupB);
 }
 
 } // namespace biofuel::engine::physics

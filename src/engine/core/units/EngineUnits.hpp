@@ -25,10 +25,14 @@ struct PixelToMeterScale {
         return Vector2{metersToPixels(meters.x), metersToPixels(meters.y)};
     }
 };
+static_assert(sizeof(PixelToMeterScale) == 4,
+              "PixelToMeterScale must be exactly 4 bytes (1 f32)");
 
 struct TileSizePixels {
     f32 value = 32.0f;
 };
+static_assert(sizeof(TileSizePixels) == 4,
+              "TileSizePixels must be exactly 4 bytes (1 f32)");
 
 struct WorldMeters2D {
     f32 x = 0.0f;
@@ -43,6 +47,8 @@ struct WorldMeters2D {
         return WorldMeters2D{value.x, value.y};
     }
 };
+static_assert(sizeof(WorldMeters2D) == 8,
+              "WorldMeters2D must be exactly 8 bytes (2 f32)");
 
 struct WorldMeters3D {
     f32 x = 0.0f;
@@ -58,6 +64,8 @@ struct WorldMeters3D {
         return WorldMeters3D{value.x, value.y, value.z};
     }
 };
+static_assert(sizeof(WorldMeters3D) == 12,
+              "WorldMeters3D must be exactly 12 bytes (3 f32)");
 
 struct ScreenPixels2D {
     f32 x = 0.0f;
@@ -72,11 +80,16 @@ struct ScreenPixels2D {
         return ScreenPixels2D{value.x, value.y};
     }
 };
+static_assert(sizeof(ScreenPixels2D) == 8,
+              "ScreenPixels2D must be exactly 8 bytes (2 f32)");
 
 struct TileCoord {
     i32 x = 0;
     i32 y = 0;
+    constexpr auto operator<=>(const TileCoord&) const = default;
 };
+static_assert(sizeof(TileCoord) == 8,
+              "TileCoord must be exactly 8 bytes (2 i32)");
 
 struct NormalizedCameraCoord2D {
     f32 x = 0.0f;
@@ -91,6 +104,8 @@ struct NormalizedCameraCoord2D {
         return NormalizedCameraCoord2D{value.x, value.y};
     }
 };
+static_assert(sizeof(NormalizedCameraCoord2D) == 8,
+              "NormalizedCameraCoord2D must be exactly 8 bytes (2 f32)");
 
 struct NormalizedCameraCoord3D {
     f32 x = 0.0f;
@@ -106,6 +121,8 @@ struct NormalizedCameraCoord3D {
         return NormalizedCameraCoord3D{value.x, value.y, value.z};
     }
 };
+static_assert(sizeof(NormalizedCameraCoord3D) == 12,
+              "NormalizedCameraCoord3D must be exactly 12 bytes (3 f32)");
 
 [[nodiscard]] constexpr ScreenPixels2D toScreenPixels(
     const WorldMeters2D value,

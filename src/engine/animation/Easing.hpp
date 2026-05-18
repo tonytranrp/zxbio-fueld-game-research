@@ -11,54 +11,54 @@ namespace biofuel::engine::animation::Easing {
 // ------------------------------------------------------------------------------
 
 // ---- Linear ----
-[[nodiscard]] inline f32 linear(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 linear(f32 t) noexcept {
     return t;
 }
 
 // ---- Quadratic ----
-[[nodiscard]] inline f32 easeInQuad(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInQuad(f32 t) noexcept {
     return t * t;
 }
-[[nodiscard]] inline f32 easeOutQuad(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeOutQuad(f32 t) noexcept {
     return t * (2.0f - t);
 }
-[[nodiscard]] inline f32 easeInOutQuad(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInOutQuad(f32 t) noexcept {
     return t < 0.5f ? 2.0f * t * t : -1.0f + (4.0f - 2.0f * t) * t;
 }
 
 // ---- Cubic ----
-[[nodiscard]] inline f32 easeInCubic(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInCubic(f32 t) noexcept {
     return t * t * t;
 }
-[[nodiscard]] inline f32 easeOutCubic(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeOutCubic(f32 t) noexcept {
     const f32 u = t - 1.0f;
     return u * u * u + 1.0f;
 }
-[[nodiscard]] inline f32 easeInOutCubic(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInOutCubic(f32 t) noexcept {
     return t < 0.5f ? 4.0f * t * t * t : 1.0f - (-2.0f * t + 2.0f) * (-2.0f * t + 2.0f) * (-2.0f * t + 2.0f) * 0.5f;
 }
 
 // ---- Quartic ----
-[[nodiscard]] inline f32 easeInQuart(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInQuart(f32 t) noexcept {
     return t * t * t * t;
 }
-[[nodiscard]] inline f32 easeOutQuart(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeOutQuart(f32 t) noexcept {
     const f32 u = t - 1.0f;
     return 1.0f - u * u * u * u;
 }
-[[nodiscard]] inline f32 easeInOutQuart(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInOutQuart(f32 t) noexcept {
     return t < 0.5f ? 8.0f * t * t * t * t : 1.0f - 8.0f * (t - 1.0f) * (t - 1.0f) * (t - 1.0f) * (t - 1.0f);
 }
 
 // ---- Quintic ----
-[[nodiscard]] inline f32 easeInQuint(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInQuint(f32 t) noexcept {
     return t * t * t * t * t;
 }
-[[nodiscard]] inline f32 easeOutQuint(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeOutQuint(f32 t) noexcept {
     const f32 u = t - 1.0f;
     return u * u * u * u * u + 1.0f;
 }
-[[nodiscard]] inline f32 easeInOutQuint(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInOutQuint(f32 t) noexcept {
     return t < 0.5f ? 16.0f * t * t * t * t * t : 1.0f + 16.0f * (t - 1.0f) * (t - 1.0f) * (t - 1.0f) * (t - 1.0f) * (t - 1.0f);
 }
 
@@ -129,18 +129,18 @@ namespace biofuel::engine::animation::Easing {
 }
 
 // ---- Back (overshoot) ----
-[[nodiscard]] inline f32 easeInBack(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInBack(f32 t) noexcept {
     constexpr f32 c1 = 1.70158f;
     constexpr f32 c3 = c1 + 1.0f;
     return c3 * t * t * t - c1 * t * t;
 }
-[[nodiscard]] inline f32 easeOutBack(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeOutBack(f32 t) noexcept {
     constexpr f32 c1 = 1.70158f;
     constexpr f32 c3 = c1 + 1.0f;
     const f32 u = t - 1.0f;
     return 1.0f + c3 * u * u * u + c1 * u * u;
 }
-[[nodiscard]] inline f32 easeInOutBack(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInOutBack(f32 t) noexcept {
     constexpr f32 c1 = 1.70158f;
     constexpr f32 c2 = c1 * 1.525f;
     if (t < 0.5f) {
@@ -152,7 +152,7 @@ namespace biofuel::engine::animation::Easing {
 }
 
 // ---- Bounce ----
-[[nodiscard]] inline f32 easeOutBounce(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeOutBounce(f32 t) noexcept {
     constexpr f32 n1 = 7.5625f;
     constexpr f32 d1 = 2.75f;
     if (t < 1.0f / d1) {
@@ -169,10 +169,10 @@ namespace biofuel::engine::animation::Easing {
     const f32 u = t - 2.625f / d1;
     return n1 * u * u + 0.984375f;
 }
-[[nodiscard]] inline f32 easeInBounce(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInBounce(f32 t) noexcept {
     return 1.0f - easeOutBounce(1.0f - t);
 }
-[[nodiscard]] inline f32 easeInOutBounce(f32 t) noexcept {
+[[nodiscard]] inline constexpr f32 easeInOutBounce(f32 t) noexcept {
     return t < 0.5f
         ? 0.5f * (1.0f - easeOutBounce(1.0f - 2.0f * t))
         : 0.5f * easeOutBounce(2.0f * t - 1.0f) + 0.5f;

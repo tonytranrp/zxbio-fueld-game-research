@@ -22,25 +22,7 @@ const char* nullTerminate(std::string_view sv, std::array<char, STACK_BUFFER_SIZ
 
 } // namespace
 
-void Renderer::beginFrame(Color clearColor) {
-    BeginDrawing();
-    ClearBackground(clearColor);
-}
-
-void Renderer::endFrame() {
-    EndDrawing();
-}
-
-void Renderer::drawText(const std::string& text, i32 x, i32 y, i32 fontSize, Color color) {
-    ::DrawText(text.c_str(), x, y, fontSize, color);
-}
-
-void Renderer::drawTextCentered(const std::string& text, i32 x, i32 y, i32 fontSize, Color color) {
-    const i32 textWidth = MeasureText(text.c_str(), fontSize);
-    ::DrawText(text.c_str(), x - textWidth / 2, y, fontSize, color);
-}
-
-void Renderer::drawText(std::string_view text, i32 x, i32 y, i32 fontSize, Color color) {
+void Renderer::drawText(std::string_view text, i32 x, i32 y, i32 fontSize, Color color) noexcept {
     std::array<char, STACK_BUFFER_SIZE> buf;
     if (const char* cstr = nullTerminate(text, buf)) {
         ::DrawText(cstr, x, y, fontSize, color);
@@ -50,7 +32,7 @@ void Renderer::drawText(std::string_view text, i32 x, i32 y, i32 fontSize, Color
     }
 }
 
-void Renderer::drawTextCentered(std::string_view text, i32 centerX, i32 y, i32 fontSize, Color color) {
+void Renderer::drawTextCentered(std::string_view text, i32 centerX, i32 y, i32 fontSize, Color color) noexcept {
     std::array<char, STACK_BUFFER_SIZE> buf;
     if (const char* cstr = nullTerminate(text, buf)) {
         const i32 textWidth = MeasureText(cstr, fontSize);
@@ -62,15 +44,6 @@ void Renderer::drawTextCentered(std::string_view text, i32 centerX, i32 y, i32 f
     }
 }
 
-void Renderer::drawText(const char* text, i32 x, i32 y, i32 fontSize, Color color) {
-    ::DrawText(text, x, y, fontSize, color);
-}
-
-void Renderer::drawTextCentered(const char* text, i32 centerX, i32 y, i32 fontSize, Color color) {
-    const i32 textWidth = MeasureText(text, fontSize);
-    ::DrawText(text, centerX - textWidth / 2, y, fontSize, color);
-}
-
 void Renderer::drawText(
     Font font,
     std::string_view text,
@@ -78,7 +51,7 @@ void Renderer::drawText(
     i32 y,
     i32 fontSize,
     Color color,
-    const f32 spacing)
+    const f32 spacing) noexcept
 {
     std::array<char, STACK_BUFFER_SIZE> buf;
     const char* cstr = nullTerminate(text, buf);
@@ -101,21 +74,13 @@ void Renderer::drawTextCentered(
     i32 y,
     i32 fontSize,
     Color color,
-    const f32 spacing)
+    const f32 spacing) noexcept
 {
     const i32 textWidth = measureText(font, text, fontSize, spacing);
     drawText(font, text, centerX - textWidth / 2, y, fontSize, color, spacing);
 }
 
-void Renderer::drawRect(i32 x, i32 y, i32 width, i32 height, Color color) {
-    DrawRectangle(x, y, width, height, color);
-}
-
-void Renderer::drawRectLines(i32 x, i32 y, i32 width, i32 height, Color color) {
-    DrawRectangleLines(x, y, width, height, color);
-}
-
-void Renderer::drawSprite(Texture2D texture, i32 x, i32 y, i32 width, i32 height) {
+void Renderer::drawSprite(Texture2D texture, i32 x, i32 y, i32 width, i32 height) noexcept {
     DrawTexturePro(
         texture,
         {0.0f, 0.0f, static_cast<f32>(texture.width), static_cast<f32>(texture.height)},
@@ -126,26 +91,7 @@ void Renderer::drawSprite(Texture2D texture, i32 x, i32 y, i32 width, i32 height
     );
 }
 
-void Renderer::drawFullscreen(Color color) {
-    drawRect(0, 0, screenWidth(), screenHeight(), color);
-}
-
-void Renderer::drawFullscreenTexture(Texture2D texture, Color tint) {
-    DrawTexturePro(
-        texture,
-        Rectangle{0.0f, 0.0f, static_cast<f32>(texture.width), static_cast<f32>(texture.height)},
-        Rectangle{0.0f, 0.0f, static_cast<f32>(screenWidth()), static_cast<f32>(screenHeight())},
-        Vector2{0.0f, 0.0f},
-        0.0f,
-        tint
-    );
-}
-
-void Renderer::drawTextureRec(Texture2D texture, Rectangle source, Vector2 position, Color tint) {
-    DrawTextureRec(texture, source, position, tint);
-}
-
-void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, Color tint) {
+void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, Color tint) noexcept {
     DrawTextureRec(
         texture,
         // Negative height flips Y — OpenGL render textures are vertically
@@ -164,7 +110,7 @@ void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, Color tint) {
     );
 }
 
-void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, i32 width, i32 height, Color tint) {
+void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, i32 width, i32 height, Color tint) noexcept {
     DrawTexturePro(
         texture,
         Rectangle{
@@ -205,14 +151,6 @@ i32 Renderer::measureText(Font font, std::string_view text, i32 fontSize, const 
         static_cast<f32>(fontSize),
         spacing
     ).x);
-}
-
-i32 Renderer::screenWidth() noexcept {
-    return GetScreenWidth();
-}
-
-i32 Renderer::screenHeight() noexcept {
-    return GetScreenHeight();
 }
 
 } // namespace biofuel::engine::graphics

@@ -6,6 +6,7 @@
 #include "engine/graphics/shaders/TypedShaderModule.hpp"
 #include "engine/graphics/ShaderManager.hpp"
 #include <algorithm>
+#include <array>
 
 namespace biofuel::game::presentation::effects {
 
@@ -65,7 +66,7 @@ void ScreenBackdropController::render(const f32 transitionAlpha) const {
         return;
     }
 
-    const f32 resolution[3] = {
+    const std::array<f32, 3> resolution{
         static_cast<f32>(sw),
         static_cast<f32>(sh),
         1.0f
@@ -86,7 +87,7 @@ void ScreenBackdropController::render(const f32 transitionAlpha) const {
     );
 
     const f32 time = shaderTime();
-    ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::IResolution>(m_shader, m_resolutionLoc, resolution);
+    ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::IResolution>(m_shader, m_resolutionLoc, resolution.data());
     ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::ITime>(m_shader, m_timeLoc, &time);
     ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::Brightness>(m_shader, m_brightnessLoc, &brightness);
     ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::RevealProgress>(m_shader, m_revealLoc, &reveal);
