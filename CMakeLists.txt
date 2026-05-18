@@ -16,7 +16,21 @@ if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL" CACHE STRING "MSVC runtime library" FORCE)
 endif()
 
+# ------------------------------------------------------------------------------
+# Experimental: Python/MediaPipe hand-tracking subsystem.
+#
+# When OFF (default): all hand-tracking code is compiled out via #ifdef guards.
+#   - HandTrackingService::featureEnabled() returns false
+#   - HandTrackingService::start() returns false immediately
+#   - Runtime::handTracking() accessor is not compiled (linker error if called)
+#   - No Python runtime, ASIO, or worker process overhead
+#
+# When ON: BIOFUEL_ENABLE_HAND_TRACKING is defined globally, pulling in ASIO,
+#   provisioning a build-local Python 3.12 venv, and enabling the full
+#   UDP/TCP hand-tracking pipeline with MediaPipe gesture recognition.
+# ------------------------------------------------------------------------------
 option(BIOFUEL_ENABLE_HAND_TRACKING "Enable optional Python/MediaPipe hand tracking runtime." OFF)
+option(BIOFUEL_ENABLE_DEV_SCREENS "Enable developer-only screens (hand lab, etc.)" OFF)
 
 # ------------------------------------------------------------------------------
 # Build Output Directories

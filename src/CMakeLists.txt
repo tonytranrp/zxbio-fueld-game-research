@@ -154,9 +154,9 @@ target_link_libraries(biofuel_engine
 )
 
 target_compile_definitions(biofuel_engine PUBLIC SPDLOG_HEADER_ONLY)
-target_compile_definitions(biofuel_engine PUBLIC
-    $<$<CONFIG:Debug>:BIOFUEL_ENABLE_DEV_SCREENS>
-)
+if(BIOFUEL_ENABLE_DEV_SCREENS)
+    target_compile_definitions(biofuel_engine PUBLIC BIOFUEL_ENABLE_DEV_SCREENS)
+endif()
 
 add_library(biofuel_game STATIC ${GAME_SOURCES})
 add_dependencies(biofuel_game GenerateShaderSources GenerateTypedRegistries)
