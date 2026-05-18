@@ -3,7 +3,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-TurnOutput EcologyUpdate::operator()(TurnOutput state) const noexcept {
+[[nodiscard]] TurnOutput EcologyUpdate::operator()(TurnOutput state) const noexcept {
     FarmState& farm = state.farmState;
     const Season season = farm.season();
 

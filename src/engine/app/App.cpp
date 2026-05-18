@@ -83,8 +83,8 @@ i32 Application::run() {
         accumulator += dt;
 
         // Cap to prevent spiral-of-death (max 5 frames behind)
-        if (accumulator > FIXED_DT * 5.0) {
-            accumulator = FIXED_DT * 5.0;
+        if (accumulator > FIXED_DT * MAX_FRAME_CATCHUP_MULTIPLIER) {
+            accumulator = FIXED_DT * MAX_FRAME_CATCHUP_MULTIPLIER;
         }
 
         processInput();

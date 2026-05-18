@@ -10,7 +10,7 @@ struct ValidateCrop {
     using input_type = HarvestInput;
     using output_type = HarvestInput;
 
-    HarvestInput operator()(HarvestInput input) const noexcept;
+    [[nodiscard]] HarvestInput operator()(HarvestInput input) const noexcept;
 };
 
 } // namespace biofuel::game::gameplay::stages

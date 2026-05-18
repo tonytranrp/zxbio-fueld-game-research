@@ -10,7 +10,7 @@ struct Transesterify {
     using input_type = ProcessingInput;
     using output_type = ProcessingOutput;
 
-    ProcessingOutput operator()(ProcessingInput input) const noexcept;
+    [[nodiscard]] ProcessingOutput operator()(ProcessingInput input) const noexcept;
 };
 
 } // namespace biofuel::game::gameplay::stages

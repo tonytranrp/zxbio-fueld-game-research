@@ -52,6 +52,8 @@ namespace detail {
     case Unknown:
     case Count:
         break;
+    default:
+        break;
     }
     return false;
 }
@@ -73,6 +75,8 @@ namespace detail {
     case Video:
     case Unknown:
     case Count:
+        break;
+    default:
         break;
     }
     return false;
@@ -122,6 +126,8 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case Unknown:
     case Count:
         break;
+    default:
+        break;
     }
     return typed::TransitionPolicyData{};
 }
@@ -145,6 +151,8 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case Video:
     case Unknown:
     case Count:
+        break;
+    default:
         break;
     }
     return typed::StackPolicyData{};

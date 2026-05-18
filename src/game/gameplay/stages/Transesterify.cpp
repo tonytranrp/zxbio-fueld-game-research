@@ -2,7 +2,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-ProcessingOutput Transesterify::operator()(ProcessingInput input) const noexcept {
+[[nodiscard]] ProcessingOutput Transesterify::operator()(ProcessingInput input) const noexcept {
     return computeFuelOutput(input);
 }
 

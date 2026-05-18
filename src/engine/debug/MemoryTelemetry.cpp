@@ -46,7 +46,7 @@ void updatePeak(std::atomic<i64>& peak, const i64 value) noexcept {
 
 } // namespace
 
-void MemoryTelemetry::add(const ResourceKind kind, const i64 count, const i64 bytes) noexcept {
+void MemoryTelemetry::add([[maybe_unused]] const ResourceKind kind, [[maybe_unused]] const i64 count, [[maybe_unused]] const i64 bytes) noexcept {
 #ifndef NDEBUG
     auto& stats = slot(kind);
     const i64 liveCount = stats.liveCount.fetch_add(count, std::memory_order_relaxed) + count;
@@ -54,25 +54,19 @@ void MemoryTelemetry::add(const ResourceKind kind, const i64 count, const i64 by
     updatePeak(stats.peakCount, liveCount);
     updatePeak(stats.peakBytes, liveBytes);
 #else
-    (void)kind;
-    (void)count;
-    (void)bytes;
 #endif
 }
 
-void MemoryTelemetry::remove(const ResourceKind kind, const i64 count, const i64 bytes) noexcept {
+void MemoryTelemetry::remove([[maybe_unused]] const ResourceKind kind, [[maybe_unused]] const i64 count, [[maybe_unused]] const i64 bytes) noexcept {
 #ifndef NDEBUG
     auto& stats = slot(kind);
     stats.liveCount.fetch_sub(count, std::memory_order_relaxed);
     stats.liveBytes.fetch_sub(bytes, std::memory_order_relaxed);
 #else
-    (void)kind;
-    (void)count;
-    (void)bytes;
 #endif
 }
 
-void MemoryTelemetry::set(const ResourceKind kind, const i64 count, const i64 bytes) noexcept {
+void MemoryTelemetry::set([[maybe_unused]] const ResourceKind kind, [[maybe_unused]] const i64 count, [[maybe_unused]] const i64 bytes) noexcept {
 #ifndef NDEBUG
     auto& stats = slot(kind);
     stats.liveCount.store(count, std::memory_order_relaxed);
@@ -80,13 +74,10 @@ void MemoryTelemetry::set(const ResourceKind kind, const i64 count, const i64 by
     updatePeak(stats.peakCount, count);
     updatePeak(stats.peakBytes, bytes);
 #else
-    (void)kind;
-    (void)count;
-    (void)bytes;
 #endif
 }
 
-void MemoryTelemetry::snapshot(const std::string_view label) noexcept {
+void MemoryTelemetry::snapshot([[maybe_unused]] const std::string_view label) noexcept {
 #ifndef NDEBUG
     const ProcessMemoryStats process = processMemory();
     spdlog::debug(
@@ -112,7 +103,6 @@ void MemoryTelemetry::snapshot(const std::string_view label) noexcept {
             mibSigned(resource.peakBytes));
     }
 #else
-    (void)label;
 #endif
 }
 

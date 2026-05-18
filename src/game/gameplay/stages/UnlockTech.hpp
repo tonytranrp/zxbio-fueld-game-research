@@ -10,7 +10,7 @@ struct UnlockTech {
     using input_type = TechTreeInput;
     using output_type = TechTreeOutput;
 
-    TechTreeOutput operator()(TechTreeInput input) const noexcept;
+    [[nodiscard]] TechTreeOutput operator()(TechTreeInput input) const noexcept;
 };
 
 } // namespace biofuel::game::gameplay::stages

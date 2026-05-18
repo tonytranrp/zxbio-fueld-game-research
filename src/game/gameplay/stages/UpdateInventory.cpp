@@ -3,7 +3,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-HarvestOutput UpdateInventory::operator()(HarvestOutput output) const noexcept {
+[[nodiscard]] HarvestOutput UpdateInventory::operator()(HarvestOutput output) const noexcept {
     // Apply the harvest mutation to FarmState — reset the harvested tile.
     if (output.harvested && output.farmState != nullptr) {
         Tile* tile = output.farmState->tileAt(output.tileX, output.tileY);

@@ -3,6 +3,10 @@
 #include "engine/core/Types.hpp"
 #include "engine/ui/typed/ScreenTypes.hpp"
 
+namespace biofuel {
+class LoadingTaskQueue;
+}
+
 namespace biofuel::engine::ui {
 
 namespace typed {
@@ -45,6 +49,11 @@ public:
     virtual void onUpdate(f32 deltaTime) = 0;
     virtual void onRender() = 0;
     virtual void onInput() {}
+
+    // ---- Async loading (called by ScreenManager before onEnter) ----
+    // Screens with heavy init should override this to register tasks.
+    // ScreenManager processes tasks before calling onEnter().
+    virtual void buildLoadingTasks(::biofuel::LoadingTaskQueue& tasks) { static_cast<void>(tasks); }
 
     // ---- Accessors ----
     [[nodiscard]] ScreenManager* manager() const noexcept { return m_manager; }

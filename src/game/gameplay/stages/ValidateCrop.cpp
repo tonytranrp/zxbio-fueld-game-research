@@ -3,7 +3,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-HarvestInput ValidateCrop::operator()(HarvestInput input) const noexcept {
+[[nodiscard]] HarvestInput ValidateCrop::operator()(HarvestInput input) const noexcept {
     // If the farm state pointer is null or the tile is not a crop, zero out.
     // The pipeline will check for null later.
     // This stage passes through valid input unchanged.

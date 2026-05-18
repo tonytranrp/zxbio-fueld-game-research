@@ -12,6 +12,7 @@
 #include "engine/runtime/Runtime.hpp"
 #include "engine/runtime/typed/AssetCatalog.hpp"
 #include "engine/runtime/typed/Assets.hpp"
+#include "engine/tasks/TaskModuleRegistry.hpp"
 #include "engine/ui/ScreenManager.hpp"
 #include <raylib.h>
 #include <filesystem>
@@ -63,15 +64,9 @@ void AppLifecycle::addStartupTasks(LoadingTaskQueue& tasks, const StartupLifecyc
         SetTargetFPS(config.targetFps);
     }});
 
-    tasks.add({"Initializing event bus...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::events().init();
-    }});
-    tasks.add({"Initializing task manager...", 0.4f, []() {
-        ::biofuel::engine::runtime::Runtime::tasks().init();
-    }});
-    tasks.add({"Initializing screen stack...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::screen().init();
-    }});
+    // Auto-registered engine service init tasks (compile-time validated)
+    ::biofuel::engine::tasks::EngineStartupModules::populate(tasks);
+
     tasks.add(LoadingTask::async("Preflighting startup assets...", 0.8f, [](std::stop_token token) {
         if (token.stop_requested()) {
             return;
@@ -86,29 +81,6 @@ void AppLifecycle::addStartupTasks(LoadingTaskQueue& tasks, const StartupLifecyc
             throw std::runtime_error{"assets/shaders directory is missing"};
         }
     }));
-    tasks.add({"Initializing animation system...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::animation().init();
-    }});
-    tasks.add({"Initializing physics engine...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::physics().init();
-    }});
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
-    tasks.add({"Initializing hand tracking bridge...", 0.2f, []() {
-        ::biofuel::engine::runtime::Runtime::handTracking().init();
-    }});
-#endif
-    tasks.add({"Initializing hand pose system...", 0.2f, []() {
-        ::biofuel::engine::runtime::Runtime::handPose().init();
-    }});
-    tasks.add({"Initializing model system...", 0.4f, []() {
-        ::biofuel::engine::runtime::Runtime::model().init();
-    }});
-    tasks.add({"Initializing audio device...", 0.5f, []() {
-        ::biofuel::engine::runtime::Runtime::audio().init();
-    }});
-    tasks.add({"Initializing video system...", 0.4f, []() {
-        ::biofuel::engine::runtime::Runtime::video().init();
-    }});
 
     auto& shaderManager = ::biofuel::engine::runtime::Runtime::shader();
     tasks.add({"Compiling blur horizontal shader...", 2.0f, [&shaderManager]() {

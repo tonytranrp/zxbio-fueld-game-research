@@ -2,7 +2,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-ProcessingOutput Distill::operator()(ProcessingInput input) const noexcept {
+[[nodiscard]] ProcessingOutput Distill::operator()(ProcessingInput input) const noexcept {
     return computeFuelOutput(input);
 }
 

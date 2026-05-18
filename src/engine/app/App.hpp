@@ -53,6 +53,7 @@ private:
     bool m_running = false;
 
     static constexpr f64 FIXED_DT = 1.0 / 60.0;
+    static constexpr f64 MAX_FRAME_CATCHUP_MULTIPLIER = 5.0;
 
 #ifdef _WIN32
     void setupWindowDragTimer();

@@ -1,16 +1,13 @@
 #pragma once
 
+#include "game/gameplay/stages/PassThrough.hpp"
 #include "game/gameplay/stages/ProcessTypes.hpp"
 
 namespace biofuel::game::gameplay::stages {
 
 /// Grinds the washed crop into a fine mash.
 /// Used in ethanol and cellulosic processing pipelines.
-struct GrindCrop {
-    using input_type = ProcessingInput;
-    using output_type = ProcessingInput;
-
-    ProcessingInput operator()(ProcessingInput input) const noexcept;
-};
+/// Currently a pass-through; efficiency factors deferred to future milestone.
+using GrindCrop = PassThrough<ProcessingInput>;
 
 } // namespace biofuel::game::gameplay::stages

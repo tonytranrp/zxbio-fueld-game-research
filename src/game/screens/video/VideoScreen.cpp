@@ -38,8 +38,7 @@ bool videoscreen::FallbackColorTag::visible(const ::biofuel::game::screens::Vide
     return !screen.started() || frame.id == 0;
 }
 
-Color videoscreen::FallbackColorTag::color(const ::biofuel::game::screens::VideoScreen& screen) noexcept {
-    (void)screen;
+Color videoscreen::FallbackColorTag::color([[maybe_unused]] const ::biofuel::game::screens::VideoScreen& screen) noexcept {
     return ::biofuel::game::screens::VideoScreen::fallbackColor();
 }
 

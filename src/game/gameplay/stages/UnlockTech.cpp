@@ -2,7 +2,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-TechTreeOutput UnlockTech::operator()(TechTreeInput input) const noexcept {
+[[nodiscard]] TechTreeOutput UnlockTech::operator()(TechTreeInput input) const noexcept {
     TechTreeOutput output{};
     output.status = input.status;
     output.turnsRemaining = input.turnsRemaining;

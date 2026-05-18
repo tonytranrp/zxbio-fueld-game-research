@@ -34,6 +34,11 @@ void ScreenManager::shutdown() {
     clear();
     disconnectOverrideSinks();
 
+    // Discard any pending async screen transition
+    m_loadingTasks.clear(::biofuel::engine::runtime::Runtime::tasks());
+    m_pendingSlot.reset();
+    m_pendingSlotAction = typed::ScreenCommandQueue::Action::None;
+
     releaseTransitionTextures();
     ::biofuel::engine::graphics::TransientResourceCache::instance().releaseAll();
     // m_crossfadeShader is owned by ShaderManager — do NOT UnloadShader here.
@@ -61,6 +66,10 @@ void ScreenManager::push(typed::ScreenSlot slot) {
         spdlog::warn("ScreenManager::push() ignored — transition in progress");
         return;
     }
+    if (isLoadingScreen()) {
+        spdlog::warn("ScreenManager::push() ignored — loading screen in progress");
+        return;
+    }
 
     if (!m_screens.empty()) {
         typed::LifecycleContext pauseContext{*this, &::biofuel::engine::runtime::Runtime::services(), m_screens.back().id};
@@ -84,6 +93,10 @@ void ScreenManager::push(typed::ScreenSlot slot) {
 void ScreenManager::pop() {
     if (isTransitioning()) {
         spdlog::warn("ScreenManager::pop() ignored — transition in progress");
+        return;
+    }
+    if (isLoadingScreen()) {
+        spdlog::warn("ScreenManager::pop() ignored — loading screen in progress");
         return;
     }
 
@@ -113,6 +126,10 @@ void ScreenManager::replace(std::unique_ptr<Screen> screen) {
 void ScreenManager::replace(typed::ScreenSlot slot) {
     if (isTransitioning()) {
         spdlog::warn("ScreenManager::replace() ignored — transition in progress");
+        return;
+    }
+    if (isLoadingScreen()) {
+        spdlog::warn("ScreenManager::replace() ignored — loading screen in progress");
         return;
     }
 
@@ -155,6 +172,10 @@ void ScreenManager::queuePush(std::unique_ptr<Screen> screen) {
 }
 
 void ScreenManager::queuePush(typed::ScreenSlot slot) {
+    if (isLoadingScreen()) {
+        spdlog::warn("ScreenManager::queuePush() ignored — loading screen in progress");
+        return;
+    }
     if (m_commands.action() != typed::ScreenCommandQueue::Action::None || m_commands.hasSlot()) {
         spdlog::warn("ScreenManager::queuePush() overwriting a pending screen action");
     }
@@ -171,6 +192,10 @@ void ScreenManager::queueReplace(std::unique_ptr<Screen> screen) {
 }
 
 void ScreenManager::queueReplace(typed::ScreenSlot slot) {
+    if (isLoadingScreen()) {
+        spdlog::warn("ScreenManager::queueReplace() ignored — loading screen in progress");
+        return;
+    }
     if (m_commands.action() != typed::ScreenCommandQueue::Action::None || m_commands.hasSlot()) {
         spdlog::warn("ScreenManager::queueReplace() overwriting a pending screen action");
     }
@@ -178,11 +203,18 @@ void ScreenManager::queueReplace(typed::ScreenSlot slot) {
 }
 
 void ScreenManager::queuePop() {
+    if (isLoadingScreen()) {
+        spdlog::warn("ScreenManager::queuePop() ignored — loading screen in progress");
+        return;
+    }
     m_commands.pop();
 }
 
 void ScreenManager::processPendingActions() {
     if (isTransitioning()) {
+        return;
+    }
+    if (isLoadingScreen()) {
         return;
     }
 
@@ -199,6 +231,61 @@ void ScreenManager::processPendingActions() {
     const auto action = m_commands.action();
     auto slot = m_commands.consumeSlot();
 
+    // Set manager so buildLoadingTasks() can access Runtime::tasks() via manager()
+    slot->setManager(this);
+
+    // Let the screen register async init tasks before onEnter()
+    m_loadingTasks.clear(::biofuel::engine::runtime::Runtime::tasks());
+    slot->buildLoadingTasks(m_loadingTasks);
+
+    if (m_loadingTasks.totalTasks() == 0) {
+        // Fast path: no loading tasks, proceed synchronously
+        switch (action) {
+            case typed::ScreenCommandQueue::Action::Push:
+                push(std::move(slot));
+                break;
+            case typed::ScreenCommandQueue::Action::Replace:
+                replace(std::move(slot));
+                break;
+            default:
+                break;
+        }
+        return;
+    }
+
+    // Slow path: store pending slot and process tasks over multiple frames
+    m_pendingSlot = std::move(slot);
+    m_pendingSlotAction = action;
+}
+
+void ScreenManager::processLoadingTransition() {
+    if (!m_pendingSlot.has_value()) {
+        return;
+    }
+
+    if (m_loadingTasks.isFailed()) {
+        spdlog::error("ScreenManager::processLoadingTransition() task failed: {} — discarding pending screen",
+                      m_loadingTasks.failureMessage());
+        m_loadingTasks.cancelActive(::biofuel::engine::runtime::Runtime::tasks());
+        m_loadingTasks.waitForActive(::biofuel::engine::runtime::Runtime::tasks());
+        m_pendingSlot.reset();
+        m_pendingSlotAction = typed::ScreenCommandQueue::Action::None;
+        m_loadingTasks.clear(::biofuel::engine::runtime::Runtime::tasks());
+        return;
+    }
+
+    m_loadingTasks.processNext(&::biofuel::engine::runtime::Runtime::tasks());
+
+    if (!m_loadingTasks.isDone()) {
+        return;
+    }
+
+    // All loading tasks complete — finalize the transition
+    auto slot = std::move(*m_pendingSlot);
+    const auto action = m_pendingSlotAction;
+    m_pendingSlot.reset();
+    m_pendingSlotAction = typed::ScreenCommandQueue::Action::None;
+
     switch (action) {
         case typed::ScreenCommandQueue::Action::Push:
             push(std::move(slot));
@@ -211,7 +298,15 @@ void ScreenManager::processPendingActions() {
     }
 }
 
+
 void ScreenManager::clear() {
+    // Discard any pending async screen transition
+    m_loadingTasks.cancelActive(::biofuel::engine::runtime::Runtime::tasks());
+    m_loadingTasks.waitForActive(::biofuel::engine::runtime::Runtime::tasks());
+    m_loadingTasks.clear(::biofuel::engine::runtime::Runtime::tasks());
+    m_pendingSlot.reset();
+    m_pendingSlotAction = typed::ScreenCommandQueue::Action::None;
+
     while (!m_screens.empty()) {
         typed::LifecycleContext exitContext{*this, &::biofuel::engine::runtime::Runtime::services(), m_screens.back().id};
         m_screens.back().dispatch->onExit(*m_screens.back().screen, exitContext);
@@ -413,6 +508,7 @@ void ScreenManager::update(f32 dt) {
     }
 
     // Process any deferred push/replace from onUpdate() calls above
+    processLoadingTransition();
     processPendingActions();
 
     if (!isTransitioning()) {

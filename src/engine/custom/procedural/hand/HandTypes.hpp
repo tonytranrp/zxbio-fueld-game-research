@@ -91,6 +91,7 @@ struct HandTargetHandle {
     case FingerId::Ring: return "Ring";
     case FingerId::Pinky: return "Pinky";
     case FingerId::Count: break;
+    default: break;
     }
     return "Unknown";
 }
@@ -99,8 +100,8 @@ struct HandTargetHandle {
     switch (hand) {
     case HandSide::Left: return "Left";
     case HandSide::Right: return "Right";
+    default: return "Unknown";
     }
-    return "Unknown";
 }
 
 [[nodiscard]] constexpr HandRigDimensions defaultRobotHandDimensions() noexcept {

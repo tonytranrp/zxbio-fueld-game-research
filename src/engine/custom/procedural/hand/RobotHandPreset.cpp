@@ -107,6 +107,7 @@ void writeFingerDimensions(json& target, const HandRigDimensions& dimensions) {
     case RobotHandMaterialSlot::Target: return "target";
     case RobotHandMaterialSlot::PalmPanel: return "palmPanel";
     case RobotHandMaterialSlot::Count: break;
+    default: break;
     }
     return "unknown";
 }

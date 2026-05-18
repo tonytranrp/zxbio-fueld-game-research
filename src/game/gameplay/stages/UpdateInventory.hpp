@@ -10,7 +10,7 @@ struct UpdateInventory {
     using input_type = HarvestOutput;
     using output_type = HarvestOutput;
 
-    HarvestOutput operator()(HarvestOutput output) const noexcept;
+    [[nodiscard]] HarvestOutput operator()(HarvestOutput output) const noexcept;
 };
 
 } // namespace biofuel::game::gameplay::stages

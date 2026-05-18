@@ -51,8 +51,7 @@ bool idle::FallbackColorTag::visible(const ::biofuel::game::screens::IdleScreen&
     return frame.id == 0;
 }
 
-Color idle::FallbackColorTag::color(const ::biofuel::game::screens::IdleScreen& screen) noexcept {
-    (void)screen;
+Color idle::FallbackColorTag::color([[maybe_unused]] const ::biofuel::game::screens::IdleScreen& screen) noexcept {
     return ::biofuel::game::screens::IdleScreen::fallbackColor();
 }
 
@@ -60,8 +59,7 @@ bool idle::FallbackBackdropTag::visible(const ::biofuel::game::screens::IdleScre
     return !screen.videoMode() && screen.fallbackBackdropReady();
 }
 
-void idle::FallbackBackdropTag::render(const ::biofuel::game::screens::IdleScreen& screen, RenderContext& context) {
-    (void)context;
+void idle::FallbackBackdropTag::render(const ::biofuel::game::screens::IdleScreen& screen, [[maybe_unused]] RenderContext& context) {
     screen.renderFallbackBackdrop();
 }
 

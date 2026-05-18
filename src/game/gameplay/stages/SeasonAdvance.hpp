@@ -12,7 +12,7 @@ struct SeasonAdvance {
     using input_type = TurnInput;
     using output_type = TurnOutput;
 
-    TurnOutput operator()(TurnInput input) const noexcept;
+    [[nodiscard]] TurnOutput operator()(TurnInput input) const noexcept;
 };
 
 } // namespace biofuel::game::gameplay::stages

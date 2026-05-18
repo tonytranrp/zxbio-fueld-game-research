@@ -90,8 +90,9 @@ private:
     case TileType::Water:
     case TileType::Built:
         return false;
+    default:
+        return false;
     }
-    return false;
 }
 
 [[nodiscard]] constexpr std::optional<data::CropId> cropForTile(TileType type) noexcept {
@@ -106,8 +107,9 @@ private:
     case TileType::Water:
     case TileType::Built:
         return std::nullopt;
+    default:
+        return std::nullopt;
     }
-    return std::nullopt;
 }
 
 [[nodiscard]] constexpr Season nextSeason(Season season) noexcept {
@@ -116,8 +118,8 @@ private:
     case Season::Summer: return Season::Fall;
     case Season::Fall: return Season::Winter;
     case Season::Winter: return Season::Spring;
+    default: return Season::Spring;
     }
-    return Season::Spring;
 }
 
 } // namespace biofuel::game::gameplay

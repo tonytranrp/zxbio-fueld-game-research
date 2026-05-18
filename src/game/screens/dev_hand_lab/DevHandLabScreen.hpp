@@ -19,11 +19,15 @@ namespace biofuel::game::screens {
 
 class DevHandLabScreen final : public ::biofuel::engine::ui::Screen {
 public:
+    ~DevHandLabScreen() override;
+
     void onEnter() override;
     void onExit() override;
     void onUpdate(f32 dt) override;
     void onRender() override;
     void onInput() override;
+
+    void buildLoadingTasks(::biofuel::LoadingTaskQueue& tasks) override;
 
     [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override {
         return ::biofuel::engine::ui::typed::ScreenId::DevHandLab;
@@ -46,6 +50,7 @@ private:
     LeftHand m_leftHand;
     RightHand m_rightHand;
     Vector2 m_lastMouse{0.0f, 0.0f};
+    bool m_loadingComplete = false;
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     Texture2D m_previewTexture{};
     u64 m_previewTextureSequence = std::numeric_limits<u64>::max();

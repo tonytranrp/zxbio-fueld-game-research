@@ -213,6 +213,8 @@ struct CalibrationImageWarp {
     case CalibrationWizardStep::Inactive:
     case CalibrationWizardStep::Complete:
         break;
+    default:
+        break;
     }
     return CalibrationWizardStep::Complete;
 }
@@ -222,6 +224,8 @@ struct CalibrationImageWarp {
     case CalibrationHandPhase::Left: return CalibrationHandPhase::Right;
     case CalibrationHandPhase::Right: return CalibrationHandPhase::Complete;
     case CalibrationHandPhase::Complete:
+        break;
+    default:
         break;
     }
     return CalibrationHandPhase::Complete;
@@ -247,6 +251,8 @@ struct CalibrationImageWarp {
     case CalibrationWizardStep::Inactive:
     case CalibrationWizardStep::Complete:
         break;
+    default:
+        break;
     }
     return 0U;
 }
@@ -256,8 +262,8 @@ struct CalibrationImageWarp {
     case CalibrationHandPhase::Left: return "Left hand";
     case CalibrationHandPhase::Right: return "Right hand";
     case CalibrationHandPhase::Complete: return "Hands";
+    default: return "Hand";
     }
-    return "Hand";
 }
 
 [[nodiscard]] inline std::string_view calibrationPrompt(const CalibrationWizardStep step) noexcept {
@@ -275,8 +281,8 @@ struct CalibrationImageWarp {
     case CalibrationWizardStep::Far: return "Move farther from the camera";
     case CalibrationWizardStep::Inactive: return "Calibration idle";
     case CalibrationWizardStep::Complete: return "Calibration complete";
+    default: return "Calibration";
     }
-    return "Calibration";
 }
 
 [[nodiscard]] inline std::string_view calibrationPrompt(
@@ -298,6 +304,7 @@ struct CalibrationImageWarp {
         case CalibrationWizardStep::Far: return "Left hand: move farther from the camera";
         case CalibrationWizardStep::Inactive: return "Calibration idle";
         case CalibrationWizardStep::Complete: return "Left hand calibration complete";
+        default: break;
         }
     }
     if (phase == CalibrationHandPhase::Right) {
@@ -315,6 +322,7 @@ struct CalibrationImageWarp {
         case CalibrationWizardStep::Far: return "Right hand: move farther from the camera";
         case CalibrationWizardStep::Inactive: return "Calibration idle";
         case CalibrationWizardStep::Complete: return "Right hand calibration complete";
+        default: break;
         }
     }
     return calibrationPrompt(step);
@@ -327,8 +335,8 @@ struct CalibrationImageWarp {
     case CalibrationCaptureStatus::Unstable: return "hold still";
     case CalibrationCaptureStatus::Capturing: return "capturing";
     case CalibrationCaptureStatus::Captured: return "captured";
+    default: return "waiting";
     }
-    return "waiting";
 }
 
 [[nodiscard]] inline f32 calibrationRequiredHoldSeconds(const CalibrationWizardStep step) noexcept {
@@ -348,6 +356,8 @@ struct CalibrationImageWarp {
         return 0.42f;
     case CalibrationWizardStep::Inactive:
     case CalibrationWizardStep::Complete:
+        break;
+    default:
         break;
     }
     return 0.45f;
@@ -369,6 +379,8 @@ struct CalibrationImageWarp {
         return Vector2{0.50f, 0.55f};
     case CalibrationWizardStep::Inactive:
     case CalibrationWizardStep::Complete:
+        break;
+    default:
         break;
     }
     return Vector2{0.50f, 0.55f};
@@ -392,6 +404,8 @@ struct CalibrationImageWarp {
         return 0.170f;
     case CalibrationWizardStep::Inactive:
     case CalibrationWizardStep::Complete:
+        break;
+    default:
         break;
     }
     return 0.105f;

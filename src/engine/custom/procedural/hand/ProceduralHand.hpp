@@ -156,6 +156,7 @@ private:
         case FingerId::Ring: solveFingerTyped<FingerId::Ring>(finger, settings); return;
         case FingerId::Pinky: solveFingerTyped<FingerId::Pinky>(finger, settings); return;
         case FingerId::Count: break;
+        default: break;
         }
     }
 

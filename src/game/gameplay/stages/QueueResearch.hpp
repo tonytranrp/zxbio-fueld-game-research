@@ -10,7 +10,7 @@ struct QueueResearch {
     using input_type = TechTreeInput;
     using output_type = TechTreeInput;
 
-    TechTreeInput operator()(TechTreeInput input) const noexcept;
+    [[nodiscard]] TechTreeInput operator()(TechTreeInput input) const noexcept;
 };
 
 } // namespace biofuel::game::gameplay::stages

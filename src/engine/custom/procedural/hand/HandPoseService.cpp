@@ -17,7 +17,7 @@ void HandPoseService::shutdown() noexcept {
     m_lastFrameSequence = 0U;
 }
 
-void HandPoseService::update(const f32 dt) noexcept {
+void HandPoseService::update([[maybe_unused]] const f32 dt) noexcept {
     const f32 safeDt = std::min(std::max(dt, 0.0f), 0.05f);
     m_secondsSinceMappedFrame += safeDt;
 
@@ -47,7 +47,6 @@ void HandPoseService::update(const f32 dt) noexcept {
     m_lastFrameSequence = frame->sequence;
     m_secondsSinceMappedFrame = 0.0f;
 #else
-    (void)safeDt;
     m_featureEnabled = false;
     m_mapped.leftPose.valid = false;
     m_mapped.rightPose.valid = false;

@@ -3,32 +3,50 @@
 
 namespace biofuel::game::gameplay {
 
+// ── Predicate implementations ─────────────────────────────────────────────
+
+bool IsEthanol::operator()(const stages::ProcessingInput& input) const noexcept {
+    const std::optional<data::CropData> crop = data::cropData(input.cropId);
+    return crop.has_value() && crop->fuelKind == data::FuelKind::Ethanol;
+}
+
+bool IsBiodiesel::operator()(const stages::ProcessingInput& input) const noexcept {
+    const std::optional<data::CropData> crop = data::cropData(input.cropId);
+    return crop.has_value() && crop->fuelKind == data::FuelKind::Biodiesel;
+}
+
+bool IsCellulosicEthanol::operator()(const stages::ProcessingInput& input) const noexcept {
+    const std::optional<data::CropData> crop = data::cropData(input.cropId);
+    return crop.has_value() && crop->fuelKind == data::FuelKind::CellulosicEthanol;
+}
+
+// ── PipelineEngineStage implementation ────────────────────────────────────
+
+template <typename Pipeline>
+    requires pb::core::ValidPipeline<Pipeline>
+stages::ProcessingOutput PipelineEngineStage<Pipeline>::operator()(stages::ProcessingInput input) const {
+    auto engine = pb::runtime::compile<Pipeline>(pb::runtime::sequential{});
+    return engine.run(std::move(input));
+}
+
+// Explicit instantiations for the three fuel pipelines.
+template struct PipelineEngineStage<EthanolPipeline>;
+template struct PipelineEngineStage<BiodieselPipeline>;
+template struct PipelineEngineStage<CellulosicPipeline>;
+
+// ── Runner ────────────────────────────────────────────────────────────────
+
 FuelProcessPipelineRunner::FuelProcessPipelineRunner()
-    : m_ethanol(pb::runtime::compile<EthanolPipeline>(pb::runtime::sequential{}))
-    , m_biodiesel(pb::runtime::compile<BiodieselPipeline>(pb::runtime::sequential{}))
-    , m_cellulosic(pb::runtime::compile<CellulosicPipeline>(pb::runtime::sequential{})) {
-    m_ethanol.set_observer(&m_observer);
-    m_biodiesel.set_observer(&m_observer);
-    m_cellulosic.set_observer(&m_observer);
+    : m_engine(pb::runtime::compile<FuelProcessRoutingPipeline>(pb::runtime::sequential{})) {
+    m_engine.set_observer(&m_observer);
 }
 
 stages::ProcessingOutput FuelProcessPipelineRunner::run(stages::ProcessingInput input) {
-    // Look up the FuelKind for this crop to select the pipeline.
-    const std::optional<data::CropData> crop = data::cropData(input.cropId);
-    if (!crop.has_value()) {
-        return stages::ProcessingOutput{};
+    auto result = m_engine.run(std::move(input));
+    if (result.has_value()) {
+        return std::move(result).value();
     }
-
-    switch (crop->fuelKind) {
-        case data::FuelKind::Ethanol:
-            return m_ethanol.run(std::move(input));
-        case data::FuelKind::Biodiesel:
-            return m_biodiesel.run(std::move(input));
-        case data::FuelKind::CellulosicEthanol:
-            return m_cellulosic.run(std::move(input));
-        default:
-            return stages::ProcessingOutput{};
-    }
+    return stages::ProcessingOutput{};
 }
 
 } // namespace biofuel::game::gameplay

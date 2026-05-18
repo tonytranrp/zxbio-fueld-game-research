@@ -2,7 +2,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-TechTreeInput AdvanceResearch::operator()(TechTreeInput input) const noexcept {
+[[nodiscard]] TechTreeInput AdvanceResearch::operator()(TechTreeInput input) const noexcept {
     // Only advance research that is InProgress.
     if (input.status != ResearchStatus::InProgress) {
         return input;

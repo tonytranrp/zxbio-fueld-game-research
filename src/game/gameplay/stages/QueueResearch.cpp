@@ -2,7 +2,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-TechTreeInput QueueResearch::operator()(TechTreeInput input) const noexcept {
+[[nodiscard]] TechTreeInput QueueResearch::operator()(TechTreeInput input) const noexcept {
     // Can only queue if the tech is Available and we have enough money.
     if (input.status != ResearchStatus::Available) {
         return input;

@@ -11,7 +11,7 @@ struct CalculateYield {
     using input_type = HarvestInput;
     using output_type = HarvestOutput;
 
-    HarvestOutput operator()(HarvestInput input) const noexcept;
+    [[nodiscard]] HarvestOutput operator()(HarvestInput input) const noexcept;
 };
 
 } // namespace biofuel::game::gameplay::stages

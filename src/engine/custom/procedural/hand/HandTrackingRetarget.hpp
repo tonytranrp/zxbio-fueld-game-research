@@ -792,6 +792,8 @@ private:
         case CalibrationWizardStep::Inactive:
         case CalibrationWizardStep::Complete:
             break;
+        default:
+            break;
         }
     }
 

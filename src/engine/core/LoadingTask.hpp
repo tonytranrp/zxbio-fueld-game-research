@@ -7,6 +7,7 @@
 #include <optional>
 #include <stop_token>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -50,6 +51,15 @@ public:
     void cancelActive(::biofuel::engine::tasks::TaskManager& taskManager) noexcept {
         if (m_activeAsyncTask.has_value()) {
             taskManager.cancel(*m_activeAsyncTask);
+        }
+    }
+
+    void waitForActive(::biofuel::engine::tasks::TaskManager& taskManager) const noexcept {
+        if (!m_activeAsyncTask.has_value()) {
+            return;
+        }
+        while (!taskManager.finished(*m_activeAsyncTask)) {
+            std::this_thread::yield();
         }
     }
 

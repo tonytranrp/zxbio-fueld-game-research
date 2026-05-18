@@ -49,7 +49,7 @@ Stages are the **leaves** of the pipeline tree. They know nothing about pipeline
 
 ### Fuel process sub-pipelines
 
-The `FuelProcessPipelineRunner` selects one of three linear pipelines at runtime based on `FuelKind`:
+The `FuelProcessPipelineRunner` uses **compile-time branch dispatch** via `pb::branch` to route a `ProcessingInput` to the correct sub-pipeline based on `FuelKind`. Branch predicates (`IsEthanol`, `IsBiodiesel`, `IsCellulosicEthanol`) inspect the crop's fuel kind and select one of three linear pipelines wrapped in a `PipelineEngineStage<T>`:
 
 | Pipeline | Stages |
 |---|---|
@@ -57,7 +57,7 @@ The `FuelProcessPipelineRunner` selects one of three linear pipelines at runtime
 | `BiodieselPipeline` | `WashCrop` → `PressExtract` → `Transesterify` |
 | `CellulosicPipeline` | `WashCrop` → `GrindCrop` → `Pretreat` → `Ferment` → `Distill` |
 
-All three share `ProcessingInput` / `ProcessingOutput` types, making them interchangeable behind a single `run()` call.
+All three share `ProcessingInput` / `ProcessingOutput` types, making them interchangeable behind a single `run()` call. The routing pipeline `FuelProcessRoutingPipeline` is a single-stage pipeline whose one stage is the `pb::branch` node — this is verified at compile time with `pipeline_size_v == 1`.
 
 ## How to create a new stage
 
@@ -234,28 +234,85 @@ private:
 } // namespace biofuel::game::gameplay
 ```
 
-### Multi-pipeline runner (runtime dispatch)
+### Branch/join dispatch (compile-time routing)
 
-`FuelProcessPipelineRunner` demonstrates a runner that holds multiple engines and selects one at runtime:
+`FuelProcessPipelineRunner` demonstrates compile-time branch dispatch via `pb::branch`. Instead of a manual switch, predicate stages inspect the input and the routing pipeline delegates to the correct sub-pipeline at compile time.
+
+**Step 1 — Define branch predicates.** Each predicate is a Stage that returns `bool`:
 
 ```cpp
-// Compile all three engines
-m_ethanol = pb::runtime::compile<EthanolPipeline>(pb::runtime::sequential{});
-m_biodiesel = pb::runtime::compile<BiodieselPipeline>(pb::runtime::sequential{});
-m_cellulosic = pb::runtime::compile<CellulosicPipeline>(pb::runtime::sequential{});
+struct IsEthanol {
+    using input_type = stages::ProcessingInput;
+    using output_type = bool;
+    bool operator()(const stages::ProcessingInput& input) const noexcept;
+};
+static_assert(pb::core::Stage<IsEthanol>);
+```
 
-// Wire the same observer to all three
-m_ethanol.set_observer(&m_observer);
-m_biodiesel.set_observer(&m_observer);
-m_cellulosic.set_observer(&m_observer);
+**Step 2 — Wrap each sub-pipeline in a PipelineEngineStage.** The branch case expects a single Stage, so each linear pipeline is wrapped:
 
-// Runtime dispatch
-switch (crop->fuelKind) {
-    case FuelKind::Ethanol:  return m_ethanol.run(std::move(input));
-    case FuelKind::Biodiesel: return m_biodiesel.run(std::move(input));
-    case FuelKind::CellulosicEthanol: return m_cellulosic.run(std::move(input));
+```cpp
+template <typename Pipeline>
+    requires pb::core::ValidPipeline<Pipeline>
+struct PipelineEngineStage {
+    using input_type = stages::ProcessingInput;
+    using output_type = stages::ProcessingOutput;
+    stages::ProcessingOutput operator()(stages::ProcessingInput input) const;
+};
+```
+
+**Step 3 — Define branch cases and the routing pipeline:**
+
+```cpp
+using IsEthanolCase = pb::case_<IsEthanol>::then<PipelineEngineStage<EthanolPipeline>>;
+using IsBiodieselCase = pb::case_<IsBiodiesel>::then<PipelineEngineStage<BiodieselPipeline>>;
+using IsCellulosicEthanolCase = pb::case_<IsCellulosicEthanol>::then<PipelineEngineStage<CellulosicPipeline>>;
+
+using FuelProcessRoutingPipeline = pb::core::from<stages::ProcessingInput>
+    ::branch<IsEthanolCase, IsBiodieselCase, IsCellulosicEthanolCase>
+    ::to<stages::ProcessingOutput>;
+
+static_assert(pb::core::pipeline_size_v<FuelProcessRoutingPipeline> == 1,
+              "Routing pipeline contains exactly one branch stage");
+```
+
+**Step 4 — Runner compiles the routing pipeline once:**
+
+```cpp
+FuelProcessPipelineRunner::FuelProcessPipelineRunner()
+    : m_engine(pb::runtime::compile<FuelProcessRoutingPipeline>(pb::runtime::sequential{})) {
+    m_engine.set_observer(&m_observer);
+}
+
+stages::ProcessingOutput FuelProcessPipelineRunner::run(stages::ProcessingInput input) {
+    auto result = m_engine.run(std::move(input));
+    if (result.has_value()) {
+        return std::move(result).value();
+    }
+    return stages::ProcessingOutput{};
 }
 ```
+
+The runner holds a single compiled engine. At runtime, the branch predicates are evaluated in order — the first matching case runs its `PipelineEngineStage`, which internally compiles and executes the sub-pipeline.
+
+### PassThrough utility
+
+Several stages are placeholder/pass-through no-ops that forward input unchanged (e.g., `WashCrop`, `GrindCrop`, `Ferment`, `PressExtract`, `Pretreat`, `EconomyUpdate`). Instead of duplicating boilerplate struct definitions, these stages use a shared generic alias:
+
+```cpp
+template <typename T>
+struct PassThrough {
+    using input_type  = T;
+    using output_type = T;
+    T operator()(T val) const noexcept { return val; }
+};
+
+// Usage (header-only, no .cpp needed):
+using WashCrop = PassThrough<ProcessingInput>;
+using EconomyUpdate = PassThrough<TurnOutput>;
+```
+
+A `PassThrough<T>` stage satisfies the `pb::core::Stage` concept without any .cpp file, keeping stub stages to a single header line. When a stage's real implementation is added later, replace the `using` alias with a concrete struct and add the corresponding .cpp file.
 
 ## The event observer bridge
 
@@ -265,8 +322,10 @@ switch (crop->fuelKind) {
 |---|---|---|
 | `on_stage_start(id)` | Before each stage executes | Trace log only |
 | `on_stage_success(id)` | After each stage completes | Publishes EnTT event via `publishEventForKey()` |
-| `on_stage_failure(id, err)` | Stage returned an error | Warning log |
-| `on_stage_exception(id, err)` | Stage threw an exception | Error log |
+| `on_stage_failure(id, err)` | Stage returned an error | Warning log; error pushed to `m_errors` |
+| `on_stage_exception(id, err)` | Stage threw an exception | Error log; error pushed to `m_errors` |
+
+`PipelineEventObserver` also accumulates `pb::runtime::error` records from failures and exceptions, exposing `errors()`, `has_errors()`, `last_error()`, and `clear_errors()` for callers to inspect pipeline health after execution.
 
 ### Stage-to-event mapping
 
@@ -389,17 +448,18 @@ stages/
 ├── SeasonAdvance.hpp/.cpp     Turn pipeline stage 1
 ├── CropGrowth.hpp/.cpp        Turn pipeline stage 2
 ├── EcologyUpdate.hpp/.cpp     Turn pipeline stage 3
-├── EconomyUpdate.hpp/.cpp     Turn pipeline stage 4
+├── EconomyUpdate.hpp          Turn pipeline stage 4 (PassThrough)
 ├── ValidateCrop.hpp/.cpp      Harvest pipeline stage 1
 ├── CalculateYield.hpp/.cpp    Harvest pipeline stage 2
 ├── UpdateInventory.hpp/.cpp   Harvest pipeline stage 3
-├── WashCrop.hpp/.cpp          Fuel process stage (all pipelines)
-├── GrindCrop.hpp/.cpp         Fuel process stage (ethanol, cellulosic)
-├── Ferment.hpp/.cpp           Fuel process stage (ethanol, cellulosic)
-├── Distill.hpp/.cpp           Fuel process stage (ethanol, cellulosic)
-├── PressExtract.hpp/.cpp      Fuel process stage (biodiesel)
-├── Transesterify.hpp/.cpp     Fuel process stage (biodiesel)
-├── Pretreat.hpp/.cpp          Fuel process stage (cellulosic only)
+├── WashCrop.hpp              Fuel process stage (all pipelines, PassThrough)
+├── GrindCrop.hpp             Fuel process stage (ethanol, cellulosic, PassThrough)
+├── Ferment.hpp               Fuel process stage (ethanol, cellulosic, PassThrough)
+├── Distill.hpp/.cpp          Fuel process stage (ethanol, cellulosic)
+├── PressExtract.hpp          Fuel process stage (biodiesel, PassThrough)
+├── Transesterify.hpp/.cpp    Fuel process stage (biodiesel)
+├── Pretreat.hpp              Fuel process stage (cellulosic only, PassThrough)
+├── PassThrough.hpp           Generic pass-through utility for stub/placeholder stages
 ├── QueueResearch.hpp/.cpp     Tech tree stage 1
 ├── AdvanceResearch.hpp/.cpp   Tech tree stage 2
 └── UnlockTech.hpp/.cpp        Tech tree stage 3

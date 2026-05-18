@@ -9,7 +9,6 @@
 #include <cmath>
 #include <filesystem>
 #include <spdlog/spdlog.h>
-#include <raymath.h>
 
 namespace biofuel::engine::models {
 

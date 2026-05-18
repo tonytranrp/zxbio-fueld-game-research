@@ -3,7 +3,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-TurnOutput CropGrowth::operator()(TurnOutput state) const noexcept {
+[[nodiscard]] TurnOutput CropGrowth::operator()(TurnOutput state) const noexcept {
     // Apply growth modifiers based on season.
     // Season was already advanced by SeasonAdvance.
     FarmState& farm = state.farmState;

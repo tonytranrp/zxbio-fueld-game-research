@@ -11,7 +11,7 @@ struct CropGrowth {
     using input_type = TurnOutput;
     using output_type = TurnOutput;
 
-    TurnOutput operator()(TurnOutput state) const noexcept;
+    [[nodiscard]] TurnOutput operator()(TurnOutput state) const noexcept;
 };
 
 } // namespace biofuel::game::gameplay::stages

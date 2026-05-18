@@ -92,6 +92,8 @@ MeshHandle ProceduralMeshCache::getOrCreate(const MeshKind kind, const i32 rings
     case MeshKind::Sphere:
         generated = GenMeshSphere(1.0f, rings, slices);
         break;
+    default:
+        break;
     }
 
     return addRecord(MeshRecord{

@@ -235,8 +235,8 @@ void MainMenuScreen::onUpdate(const f32 dt) {
     m_cameraComponent.update(dt);
     m_menuFxTime += dt;
     // Prevent precision loss after extended play — wrap at ~16 min
-    if (m_menuFxTime > 1000.0f) {
-        m_menuFxTime = std::fmod(m_menuFxTime, 1000.0f);
+    if (m_menuFxTime > MENU_FX_WRAP_PERIOD) {
+        m_menuFxTime = std::fmod(m_menuFxTime, MENU_FX_WRAP_PERIOD);
     }
 
     if (m_introPhase == IntroPhase::WaitingForTransition) {

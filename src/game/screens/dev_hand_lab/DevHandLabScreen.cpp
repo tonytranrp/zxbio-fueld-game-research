@@ -2,6 +2,7 @@
 
 #ifdef BIOFUEL_ENABLE_DEV_SCREENS
 
+#include "engine/core/LoadingTask.hpp"
 #include "engine/custom/procedural/hand/HandTypes.hpp"
 #include "engine/custom/procedural/ik/IkTypes.hpp"
 #include "engine/graphics/Render.hpp"
@@ -66,9 +67,39 @@ void drawPreviewMessage(
 
 } // namespace
 
+void DevHandLabScreen::buildLoadingTasks(::biofuel::LoadingTaskQueue& tasks) {
+    // Preset load: JSON file read + texture creation (sync, main-thread-safe)
+    tasks.add({"Loading robot hand preset...", 1.5f, [this]() {
+        reloadPreset();
+    }});
+
+    // Physics init: creates ~15 Rapier bodies (sync, main-thread-safe)
+    tasks.add({"Initializing hand physics...", 1.2f, [this]() {
+        m_handPhysics.init(::biofuel::engine::runtime::Runtime::physics().world3D());
+    }});
+
+#ifdef BIOFUEL_ENABLE_HAND_TRACKING
+    // Hand tracking start: camera + network (async, runs on worker thread)
+    tasks.add(::biofuel::LoadingTask::async("Starting hand tracking...", 0.5f, [this](std::stop_token token) {
+        if (token.stop_requested()) {
+            return;
+        }
+        startHandTrackingWithPreview();
+    }));
+#endif
+}
+
+DevHandLabScreen::~DevHandLabScreen() {
+    if (m_handPhysics.initialized()) {
+        m_handPhysics.shutdown(::biofuel::engine::runtime::Runtime::physics().world3D());
+    }
+#ifdef BIOFUEL_ENABLE_HAND_TRACKING
+    unloadPreviewTexture();
+#endif
+}
+
 void DevHandLabScreen::onEnter() {
     setTransitionDuration(0.08f);
-    reloadPreset();
     m_cameraState = dev_hand_lab::HandLabCameraState{
         .target = Vector3{0.0f, 0.02f, 0.0f},
         .yaw = 0.0f,
@@ -76,12 +107,11 @@ void DevHandLabScreen::onEnter() {
         .distance = 2.35f,
     };
     resetHands();
-    m_handPhysics.init(::biofuel::engine::runtime::Runtime::physics().world3D());
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     resetTrackingCalibration();
-    startHandTrackingWithPreview();
 #endif
     applyCamera();
+    m_loadingComplete = true;
 }
 
 void DevHandLabScreen::onExit() {
@@ -131,6 +161,19 @@ void DevHandLabScreen::onInput() {
 }
 
 void DevHandLabScreen::onRender() {
+    if (!m_loadingComplete) {
+        ClearBackground(Color{5, 10, 13, 255});
+        const char* loadingText = "Loading...";
+        const i32 textW = ::biofuel::engine::graphics::Renderer::measureText(loadingText, 24);
+        ::biofuel::engine::graphics::Renderer::drawText(
+            loadingText,
+            (::biofuel::engine::graphics::Renderer::screenWidth() - textW) / 2,
+            ::biofuel::engine::graphics::Renderer::screenHeight() / 2 - 12,
+            24,
+            Color{216, 240, 228, 255});
+        return;
+    }
+
     drawStudio();
 
     BeginMode3D(m_camera);

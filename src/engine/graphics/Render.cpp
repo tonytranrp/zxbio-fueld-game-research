@@ -8,7 +8,9 @@ namespace {
 
 // Stack-buffer null termination for string_view — avoids heap allocation
 // for short strings (covers all UI text). Falls back to std::string for long text.
-const char* nullTerminate(std::string_view sv, std::array<char, 256>& buf) {
+constexpr usize STACK_BUFFER_SIZE = 256;
+
+const char* nullTerminate(std::string_view sv, std::array<char, STACK_BUFFER_SIZE>& buf) {
     if (sv.size() < buf.size()) {
         std::memcpy(buf.data(), sv.data(), sv.size());
         buf[sv.size()] = '\0';
@@ -39,7 +41,7 @@ void Renderer::drawTextCentered(const std::string& text, i32 x, i32 y, i32 fontS
 }
 
 void Renderer::drawText(std::string_view text, i32 x, i32 y, i32 fontSize, Color color) {
-    std::array<char, 256> buf;
+    std::array<char, STACK_BUFFER_SIZE> buf;
     if (const char* cstr = nullTerminate(text, buf)) {
         ::DrawText(cstr, x, y, fontSize, color);
     } else {
@@ -49,7 +51,7 @@ void Renderer::drawText(std::string_view text, i32 x, i32 y, i32 fontSize, Color
 }
 
 void Renderer::drawTextCentered(std::string_view text, i32 centerX, i32 y, i32 fontSize, Color color) {
-    std::array<char, 256> buf;
+    std::array<char, STACK_BUFFER_SIZE> buf;
     if (const char* cstr = nullTerminate(text, buf)) {
         const i32 textWidth = MeasureText(cstr, fontSize);
         ::DrawText(cstr, centerX - textWidth / 2, y, fontSize, color);
@@ -78,7 +80,7 @@ void Renderer::drawText(
     Color color,
     const f32 spacing)
 {
-    std::array<char, 256> buf;
+    std::array<char, STACK_BUFFER_SIZE> buf;
     const char* cstr = nullTerminate(text, buf);
     const std::string fallback = cstr ? std::string{} : std::string{text};
     const char* ptr = cstr ? cstr : fallback.c_str();
@@ -180,7 +182,7 @@ void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, i32 width, i32
 }
 
 i32 Renderer::measureText(std::string_view text, i32 fontSize) noexcept {
-    std::array<char, 256> buf;
+    std::array<char, STACK_BUFFER_SIZE> buf;
     if (const char* cstr = nullTerminate(text, buf)) {
         return MeasureText(cstr, fontSize);
     }
@@ -189,7 +191,7 @@ i32 Renderer::measureText(std::string_view text, i32 fontSize) noexcept {
 }
 
 i32 Renderer::measureText(Font font, std::string_view text, i32 fontSize, const f32 spacing) noexcept {
-    std::array<char, 256> buf;
+    std::array<char, STACK_BUFFER_SIZE> buf;
     const char* cstr = nullTerminate(text, buf);
     const std::string fallback = cstr ? std::string{} : std::string{text};
     const char* ptr = cstr ? cstr : fallback.c_str();

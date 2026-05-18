@@ -3,7 +3,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-HarvestOutput CalculateYield::operator()(HarvestInput input) const noexcept {
+[[nodiscard]] HarvestOutput CalculateYield::operator()(HarvestInput input) const noexcept {
     if (input.farmState == nullptr) {
         return HarvestOutput{.harvested = false, .fuelGallons = 0, .revenueCents = 0};
     }

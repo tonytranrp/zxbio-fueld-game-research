@@ -101,6 +101,7 @@ private:
 
     // ---- Dimension shift (shader warp after dismiss) ----
     static constexpr f32 DIMENSION_SHIFT_DURATION = 3.0f;
+    static constexpr f32 MENU_FX_WRAP_PERIOD = 1000.0f;
 
     // ---- Camera look sequence (yaw-only, no position movement) ----
     // Phase 1: instantly look right

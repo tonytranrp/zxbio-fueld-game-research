@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/Types.hpp"
+#include "engine/core/LoadingTask.hpp"
 #include "engine/events/screen/ScreenEvents.hpp"
 #include "engine/graphics/RenderSurface.hpp"
 #include "engine/ui/typed/ScreenCommandQueue.hpp"
@@ -9,6 +10,7 @@
 #include <raylib.h>
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -83,6 +85,7 @@ public:
     [[nodiscard]] bool isEmpty() const noexcept;
     [[nodiscard]] size_t stackSize() const noexcept;
     [[nodiscard]] bool isTransitioning() const noexcept;
+    [[nodiscard]] bool isLoadingScreen() const noexcept { return m_pendingSlot.has_value(); }
     [[nodiscard]] bool blocksUnderlyingUpdates() const noexcept;
     void captureScreen(Screen* screen, ::biofuel::engine::graphics::RenderSurface& target);
     [[nodiscard]] bool isLayerEnabled(typed::ScreenId screenId, std::string_view layerName) const noexcept;
@@ -111,7 +114,13 @@ private:
     bool m_quitRequested = false;
     bool m_overrideSinksConnected = false;
 
+    // Async screen transition support
+    LoadingTaskQueue m_loadingTasks;
+    std::optional<typed::ScreenSlot> m_pendingSlot;
+    typed::ScreenCommandQueue::Action m_pendingSlotAction = typed::ScreenCommandQueue::Action::None;
+
     void processPendingActions();
+    void processLoadingTransition();
     void releaseTransitionTextures() noexcept;
 
     // Crossfade transition rendering

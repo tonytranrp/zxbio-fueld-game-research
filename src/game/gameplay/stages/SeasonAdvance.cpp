@@ -3,7 +3,7 @@
 
 namespace biofuel::game::gameplay::stages {
 
-TurnOutput SeasonAdvance::operator()(TurnInput input) const noexcept {
+[[nodiscard]] TurnOutput SeasonAdvance::operator()(TurnInput input) const noexcept {
     // Replicate FarmState::advanceSeason() logic:
     // After Winter, the year increments and season wraps to Spring.
     FarmState& farm = input.farmState;

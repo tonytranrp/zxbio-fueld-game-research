@@ -16,10 +16,12 @@ void PipelineEventObserver::on_stage_success(const pb::runtime::stage_id& id) {
 
 void PipelineEventObserver::on_stage_failure(const pb::runtime::stage_id& id, const pb::runtime::error& err) {
     spdlog::warn("Pipeline stage failed: {} - {}", std::string(id.key), std::string(err.message));
+    m_errors.push_back(err);
 }
 
 void PipelineEventObserver::on_stage_exception(const pb::runtime::stage_id& id, const pb::runtime::error& err) {
     spdlog::error("Pipeline stage exception: {} - {}", std::string(id.key), std::string(err.message));
+    m_errors.push_back(err);
 }
 
 void PipelineEventObserver::publishEventForKey(std::string_view key) const {
