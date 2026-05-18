@@ -10,10 +10,6 @@
 #include "game/screens/calibration/CalibrationScreenModule.hpp"
 #include "game/screens/idle/IdleScreenModule.hpp"
 #include "game/screens/video/VideoScreenModule.hpp"
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-#include "game/screens/dev_hand_lab/DevHandLabScreenModule.hpp"
-#endif
-
 namespace biofuel::game::screens {
 
 using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
@@ -25,9 +21,6 @@ using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
     CalibrationScreen,
     IdleScreen,
     VideoScreen
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    , DevHandLabScreen
-#endif
     >;
 
 static_assert(::biofuel::engine::ui::typed::validateScreenRegistry<GameScreenRegistry>());
@@ -45,9 +38,6 @@ namespace detail {
     case Calibration:
     case Idle:
     case Video:
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    case DevHandLab:
-#endif
         return true;
     case Unknown:
     case Count:
@@ -63,9 +53,6 @@ namespace detail {
     switch (id) {
     case PausePopup:
     case Calibration:
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    case DevHandLab:
-#endif
         return true;
     case Loading:
     case MainMenu:
@@ -120,9 +107,6 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case Calibration: return typed::TransitionPolicy<CalibrationScreen>::VALUE;
     case Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
     case Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    case DevHandLab: return typed::TransitionPolicy<DevHandLabScreen>::VALUE;
-#endif
     case Unknown:
     case Count:
         break;
@@ -140,9 +124,6 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     switch (id) {
     case PausePopup: return typed::StackPolicy<PausePopupScreen>::VALUE;
     case Calibration: return typed::StackPolicy<CalibrationScreen>::VALUE;
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    case DevHandLab: return typed::StackPolicy<DevHandLabScreen>::VALUE;
-#endif
     case Loading:
     case MainMenu:
     case Join:

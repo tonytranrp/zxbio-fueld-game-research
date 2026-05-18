@@ -1,10 +1,6 @@
 #include "MainMenuScreen.hpp"
 #include "MainMenuScreenModule.hpp"
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-#include "game/screens/dev_hand_lab/DevHandLabScreen.hpp"
-#endif
 #include "game/screens/join/JoinScreen.hpp"
-#include "game/screens/calibration/CalibrationScreen.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
 #include "game/presentation/hands/CalibrationFlowState.hpp"
 #include "engine/ui/ScreenManager.hpp"
@@ -356,15 +352,6 @@ void MainMenuScreen::onInput() {
         return;
     }
 
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_H)) {
-        if (auto* sm = manager(); sm != nullptr && !sm->isTransitioning()) {
-            sm->queueReplace<DevHandLabScreen>();
-        }
-        return;
-    }
-#endif
-
     if (m_introPhase != IntroPhase::Done) {
         return;
     }
@@ -542,13 +529,7 @@ void MainMenuScreen::transitionToJoinIfReady() {
 
     if (auto* sm = manager()) {
         m_joinTransitionQueued = true;
-        if (m_handCalibrationReady) {
-            sm->queueReplace<JoinScreen>();
-            return;
-        }
-
-        CalibrationFlowState::instance().begin(CalibrationRoute::Join);
-        sm->queuePush<CalibrationScreen>();
+        sm->queueReplace<JoinScreen>();
     }
 }
 

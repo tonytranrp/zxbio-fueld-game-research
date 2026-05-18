@@ -16,9 +16,6 @@ enum class ScreenId : u8 {
     Calibration,
     Idle,
     Video,
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    DevHandLab,
-#endif
     Count,
 };
 

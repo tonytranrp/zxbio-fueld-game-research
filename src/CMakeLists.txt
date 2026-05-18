@@ -154,9 +154,7 @@ target_link_libraries(biofuel_engine
 )
 
 target_compile_definitions(biofuel_engine PUBLIC SPDLOG_HEADER_ONLY)
-if(BIOFUEL_ENABLE_DEV_SCREENS)
-    target_compile_definitions(biofuel_engine PUBLIC BIOFUEL_ENABLE_DEV_SCREENS)
-endif()
+# BIOFUEL_ENABLE_DEV_SCREENS permanently disabled -- dev screens feature removed
 
 add_library(biofuel_game STATIC ${GAME_SOURCES})
 add_dependencies(biofuel_game GenerateShaderSources GenerateTypedRegistries)
@@ -262,10 +260,7 @@ if(BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
     target_compile_definitions(biofuel_game PRIVATE BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
 endif()
 
-option(BIOFUEL_DEV_STARTUP_HAND_LAB "Dev mode: start directly on the procedural hand lab after loading" OFF)
-if(BIOFUEL_DEV_STARTUP_HAND_LAB)
-    target_compile_definitions(biofuel_game PRIVATE $<$<CONFIG:Debug>:BIOFUEL_DEV_STARTUP_HAND_LAB>)
-endif()
+# BIOFUEL_DEV_STARTUP_HAND_LAB permanently disabled -- DevHandLab screen removed
 
 option(BIOFUEL_DEBUG_MEMORY_STATS "Debug mode: show memory/resource telemetry overlay." OFF)
 if(BIOFUEL_DEBUG_MEMORY_STATS)

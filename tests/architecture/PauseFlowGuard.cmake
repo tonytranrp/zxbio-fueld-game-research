@@ -23,7 +23,6 @@ read_required("src/game/screens/pause_popup/PauseController.cpp" PAUSE_CONTROLLE
 read_required("src/game/screens/main_menu/MainMenuScreen.cpp" MAIN_MENU_SCREEN)
 read_required("src/game/screens/idle/IdleScreen.cpp" IDLE_SCREEN)
 read_required("src/game/screens/video/VideoScreen.cpp" VIDEO_SCREEN)
-read_required("src/game/screens/dev_hand_lab/DevHandLabScreen.cpp" DEV_HAND_LAB_SCREEN)
 read_required("src/engine/app/App.cpp" APP_CPP)
 read_required("src/engine/ui/ScreenManager.hpp" SCREEN_MANAGER_HEADER)
 read_required("src/engine/ui/ScreenManager.cpp" SCREEN_MANAGER_CPP)
@@ -45,13 +44,6 @@ require_contains(
     case Unknown:
     case Count:")
 require_contains(
-    "PauseController must reject DevHandLab when dev screens are compiled"
-    "${PAUSE_CONTROLLER}"
-    "#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    case DevHandLab:
-#endif
-        return false;")
-require_contains(
     "PauseController true branch must be limited to MainMenu, Join, and GamePlay"
     "${PAUSE_CONTROLLER}"
     "case MainMenu:
@@ -66,14 +58,6 @@ require_contains(
     "VideoScreen must keep ownership of Escape dismissal"
     "${VIDEO_SCREEN}"
     "KEY_ESCAPE")
-require_contains(
-    "DevHandLabScreen must keep Escape navigation to the main menu"
-    "${DEV_HAND_LAB_SCREEN}"
-    "IsKeyPressed(KEY_ESCAPE)")
-require_contains(
-    "DevHandLabScreen Escape must return to MainMenuScreen instead of opening pause"
-    "${DEV_HAND_LAB_SCREEN}"
-    "queueReplace<MainMenuScreen>")
 if(MAIN_MENU_SCREEN MATCHES "queuePush<PausePopupScreen>\\(")
     message(FATAL_ERROR "Pause flow guard failed: pause activation must not be hard-coded in MainMenuScreen")
 endif()

@@ -10,9 +10,6 @@
 #include "engine/runtime/typed/AssetCatalog.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
-#if defined(BIOFUEL_ENABLE_DEV_SCREENS) && defined(BIOFUEL_DEV_STARTUP_HAND_LAB)
-#include "game/screens/dev_hand_lab/DevHandLabScreen.hpp"
-#endif
 #include <raylib.h>
 #include <string>
 
@@ -254,9 +251,7 @@ void LoadingScreen::onInput() {
 
 void LoadingScreen::transitionToNext() {
     if (auto* sm = manager()) {
-#if defined(BIOFUEL_ENABLE_DEV_SCREENS) && defined(BIOFUEL_DEV_STARTUP_HAND_LAB)
-        sm->queueReplace<DevHandLabScreen>();
-#elif defined(BIOFUEL_DEV_STARTUP_IDLE_VIDEO)
+#if defined(BIOFUEL_DEV_STARTUP_IDLE_VIDEO)
         sm->queueReplace<IdleScreen>(IdleScreen::idleVideoPath());
 #else
         sm->queueReplace<MainMenuScreen>();

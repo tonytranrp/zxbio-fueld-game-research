@@ -39,9 +39,6 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     case Video:
     case Unknown:
     case Count:
-#ifdef BIOFUEL_ENABLE_DEV_SCREENS
-    case DevHandLab:
-#endif
         return false;
     case MainMenu:
     case Join:

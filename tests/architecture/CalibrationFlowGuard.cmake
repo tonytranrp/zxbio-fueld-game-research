@@ -68,13 +68,9 @@ require_contains(
     ".inputBelow = false")
 
 require_contains(
-    "MainMenu must begin calibration before routing to Join"
+    "MainMenu must route directly to JoinScreen without a calibration branch"
     "${MAIN_MENU_SCREEN}"
-    "CalibrationFlowState::instance().begin(CalibrationRoute::Join);")
-require_contains(
-    "MainMenu must push CalibrationScreen instead of replacing directly while the overlay is active"
-    "${MAIN_MENU_SCREEN}"
-    "queuePush<CalibrationScreen>()")
+    "sm->queueReplace<JoinScreen>();")
 require_contains(
     "MainMenu must handle CalibrationScreen pop on resume"
     "${MAIN_MENU_SCREEN}"
@@ -87,10 +83,6 @@ require_contains(
     "MainMenu must restore the menu after calibration instead of leaving the dismissed overlay state"
     "${MAIN_MENU_SCREEN}"
     "restoreMainMenuAfterCalibration();")
-require_contains(
-    "MainMenu must route to Join only on a later calibrated menu activation"
-    "${MAIN_MENU_SCREEN}"
-    "if (m_handCalibrationReady)")
 require_contains(
     "MainMenu must own a hand model overlay for the post-calibration shader screen"
     "${MAIN_MENU_HEADER}"
@@ -173,4 +165,4 @@ require_contains(
     "${APP_CPP}"
     "services.get<::biofuel::engine::runtime::typed::HandPoseService>().update(dt);")
 
-message(STATUS "Calibration flow guard passed: MainMenu calibrates first, overlay freezes below, and Idle/GamePlay render model-only hands.")
+message(STATUS "Calibration flow guard passed: MainMenu routes directly to JoinScreen, calibration dead code preserved, Idle/GamePlay render model-only hands.")
