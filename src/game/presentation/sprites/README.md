@@ -80,7 +80,7 @@ all use a single fixed sprite set regardless of direction. `Scratching`,
 | `setDirection(Direction)`     | Override facing direction.               |
 | `setState(State)`             | Switch behavioural state (resets frame). |
 | `setPosition(f32 x, f32 y)`   | Top-left corner in screen pixels.        |
-| `setScale(f32)`               | Display scale (default 2.0 → 64×64 px).  |
+| `setScale(f32)`               | Display scale (default 3.0 → 96×96 px).  |
 | `setFrameDuration(f32)`       | Seconds per animation frame.             |
 
 ### Accessors
@@ -250,6 +250,121 @@ DrawTexturePro(
     Rectangle{m_x, m_y, spriteSize, spriteSize},          // dest (scaled)
     Vector2{0, 0}, 0.0f, WHITE);                          // origin, rotation, tint
 ```
+
+## How to add new sprites / animations
+
+Adding a new animation pose requires changes in three layers: **asset**, **enum**,
+**load logic**, and (optionally) **idle cycle**. Follow these steps in order.
+
+### 1. Add the PNG assets
+
+Drop your 32×32 PNG frames into `assets/sprites/neko/`. Naming must follow the
+convention the lookup system expects:
+
+| Frame count | Pattern                  | Example                     |
+|-------------|--------------------------|-----------------------------|
+| 1 frame     | `{prefix}.png`           | `awake.png`                 |
+| 2 frames    | `{prefix}1.png`, `{prefix}2.png` | `scratch1.png`, `scratch2.png` |
+
+Use lowercase, no spaces, no leading zeros on frame numbers. The prefix is the
+string returned by `statePrefix()` (or `directionPrefix()` for walking poses).
+
+### 2. Add a State enum value (non-walking poses)
+
+Open `NekoCat.hpp` and add a new enumerator to `enum class State`:
+
+```cpp
+enum class State : u8 {
+    Walking,
+    Awake,
+    Scratching,
+    Washing,
+    Yawning,
+    Sleeping,
+    NewPose,   // <-- add here
+};
+```
+
+Placement in the enum does not affect behaviour, but keep related states
+together for readability.
+
+### 3. Register the prefix and frame count
+
+In `NekoCat.cpp`, update two functions:
+
+**`statePrefix()`** — map the new state to its filename prefix:
+
+```cpp
+const char* NekoCat::statePrefix(const State state) noexcept {
+    switch (state) {
+    // ... existing cases ...
+    case State::NewPose: return "newpose";   // <-- add
+    }
+    return "awake";
+}
+```
+
+**`frameCountForState()`** — declare how many frames the pose uses:
+
+```cpp
+i32 NekoCat::frameCountForState(const State state) noexcept {
+    switch (state) {
+    // ... existing cases ...
+    case State::NewPose: return 2;   // <-- 1 or 2
+    }
+    return 2;
+}
+```
+
+The `load()` function iterates `kStates[]` and calls `statePrefix()` +
+`frameCountForState()` for each entry, so adding the new state to `kStates[]` is
+all that's needed for loading — no changes to `load()` itself.
+
+### 4. Add the state to the load list
+
+In `NekoCat::load()`, the `kStates[]` array controls which states get loaded.
+Add the new state:
+
+```cpp
+static constexpr State kStates[] = {
+    State::Awake, State::Scratching, State::Washing,
+    State::Yawning, State::Sleeping, State::NewPose,   // <-- add
+};
+```
+
+### 5. Add a walking direction (optional)
+
+If the new pose is directional (like walking), add a `Direction` enumerator
+instead and update `directionPrefix()` in the same pattern. The `kDirections[]`
+array in `load()` drives which directions get loaded. Each direction
+automatically gets 2 frames.
+
+### 6. Add to the idle cycle (optional)
+
+If the new state should appear in the automatic idle cycle, add a transition in
+`advanceIdleState()`:
+
+```cpp
+void NekoCat::advanceIdleState(const f32 dt) noexcept {
+    // ...
+    switch (m_state) {
+    case State::Awake:     setState(State::Scratching); break;
+    // ...
+    case State::Sleeping:  setState(State::NewPose);    break;  // <-- modify
+    case State::NewPose:   setState(State::Awake);      break;  // <-- add
+    }
+}
+```
+
+The idle cycle is a simple fixed-order ring. Insert the new state at any point
+by rewiring the `setState()` calls on its neighbours.
+
+### 7. Verify
+
+- Confirm all PNGs are present with the correct names.
+- Build and run. The cat should load without missing-texture fallbacks.
+- Call `cat.setState(State::NewPose)` programmatically to test the animation.
+- If added to the idle cycle, leave the cat idle and watch it cycle through.
 
 ## Reference
 

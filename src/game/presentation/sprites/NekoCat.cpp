@@ -1,6 +1,7 @@
 #include "game/presentation/sprites/NekoCat.hpp"
 
 #include <raylib.h>
+#include <spdlog/spdlog.h>
 #include <cstdio>
 #include <cmath>
 #include <string_view>
@@ -209,6 +210,10 @@ void NekoCat::load() {
         }
     }
 
+    if (m_textures.empty()) {
+        spdlog::warn("NekoCat::load() — no textures loaded from assets/sprites/neko/");
+    }
+
     m_loaded = true;
 }
 
@@ -291,12 +296,14 @@ void NekoCat::advanceAnimation(const f32 dt) noexcept {
     // Model from crgimenes/neko:
     //   counter 0→max, frame 1 when count < threshold, frame 2 when count >= threshold
     //   threshold = frameDuration, max = frameDuration × 2
-    const f32 max = m_frameDuration * 2.0f;
+    // Guard against zero or negative frameDuration to prevent fmod divide-by-zero.
+    const f32 safeDuration = (m_frameDuration < 0.01f) ? 0.01f : m_frameDuration;
+    const f32 max = safeDuration * 2.0f;
     if (m_frameTimer >= max) {
         m_frameTimer = std::fmod(m_frameTimer, max);
     }
 
-    m_currentFrame = (m_frameTimer < m_frameDuration) ? 1 : 2;
+    m_currentFrame = (m_frameTimer < safeDuration) ? 1 : 2;
 }
 
 // ------------------------------------------------------------------------------
@@ -306,10 +313,12 @@ void NekoCat::advanceAnimation(const f32 dt) noexcept {
 void NekoCat::advanceIdleState(const f32 dt) noexcept {
     m_idleTimer += dt;
 
-    if (m_idleTimer < m_idleStateDuration) return;
+    // Guard against zero or negative idleStateDuration to prevent fmod divide-by-zero.
+    const f32 safeDuration = (m_idleStateDuration < 0.01f) ? 0.01f : m_idleStateDuration;
+    if (m_idleTimer < safeDuration) return;
 
     // Reset timer (carry forward any overflow for smooth cycling)
-    m_idleTimer = std::fmod(m_idleTimer, m_idleStateDuration);
+    m_idleTimer = std::fmod(m_idleTimer, safeDuration);
 
     // Cycle to the next idle state: Awake → Scratching → Washing → Yawning → Sleeping → Awake...
     switch (m_state) {
@@ -319,8 +328,6 @@ void NekoCat::advanceIdleState(const f32 dt) noexcept {
     case State::Yawning:   setState(State::Sleeping);   break;
     case State::Sleeping:  setState(State::Awake);      break;
     default:
-        // Walking or unexpected — reset to start of idle cycle
-        setState(State::Awake);
         break;
     }
 }
