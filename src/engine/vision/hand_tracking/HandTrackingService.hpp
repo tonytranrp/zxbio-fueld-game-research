@@ -36,8 +36,8 @@ public:
     [[nodiscard]] bool previewEnabled() const noexcept;
     [[nodiscard]] HandTrackingStatus status() const;
     [[nodiscard]] std::optional<HandTrackingFrame> latestFrame() const;
-    [[nodiscard]] std::optional<HandTrackingPreviewFrame> latestPreviewFrame() const;
-    [[nodiscard]] std::optional<HandTrackingPreviewFrame> latestPreviewFrameAfter(u64 sequence) const;
+    [[nodiscard]] std::optional<std::shared_ptr<const HandTrackingPreviewFrame>> latestPreviewFrame() const;
+    [[nodiscard]] std::optional<std::shared_ptr<const HandTrackingPreviewFrame>> latestPreviewFrameAfter(u64 sequence) const;
 
 private:
     class Impl;

@@ -15,6 +15,7 @@ void HandPoseService::shutdown() noexcept {
     m_featureEnabled = false;
     m_secondsSinceMappedFrame = 999.0f;
     m_lastFrameSequence = 0U;
+    m_lastFrameTimestampMs = 0U;
 }
 
 void HandPoseService::update([[maybe_unused]] const f32 dt) noexcept {
@@ -39,12 +40,22 @@ void HandPoseService::update([[maybe_unused]] const f32 dt) noexcept {
         return;
     }
 
+    if (frame->sequence == m_lastFrameSequence) {
+        return;
+    }
+
+    const f32 frameDt = (m_lastFrameTimestampMs != 0U && frame->timestampMs > m_lastFrameTimestampMs)
+        ? static_cast<f32>(frame->timestampMs - m_lastFrameTimestampMs) / 1000.0f
+        : safeDt;
+    const f32 mapDt = std::min(std::max(frameDt, 0.0f), 0.05f);
+
     if (frame->cameraWidth > 0U && frame->cameraHeight > 0U) {
         beginSession(frame->cameraWidth, frame->cameraHeight);
     }
 
-    m_mapped = m_retargeter.map(*frame, safeDt);
+    m_mapped = m_retargeter.map(*frame, mapDt);
     m_lastFrameSequence = frame->sequence;
+    m_lastFrameTimestampMs = frame->timestampMs;
     m_secondsSinceMappedFrame = 0.0f;
 #else
     m_featureEnabled = false;

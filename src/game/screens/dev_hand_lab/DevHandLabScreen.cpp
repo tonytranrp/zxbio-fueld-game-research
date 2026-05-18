@@ -309,27 +309,27 @@ void DevHandLabScreen::updatePreviewTexture() noexcept {
     if (!preview) {
         return;
     }
-    const bool hasRgbaPreview = !preview->rgbaBytes.empty() && preview->width > 0U && preview->height > 0U;
-    const bool hasJpegPreview = !preview->jpegBytes.empty();
+    const bool hasRgbaPreview = !(*preview)->rgbaBytes.empty() && (*preview)->width > 0U && (*preview)->height > 0U;
+    const bool hasJpegPreview = !(*preview)->jpegBytes.empty();
     if (!hasRgbaPreview && !hasJpegPreview) {
         return;
     }
 
     if (hasRgbaPreview) {
-        const i32 width = static_cast<i32>(preview->width);
-        const i32 height = static_cast<i32>(preview->height);
+        const i32 width = static_cast<i32>((*preview)->width);
+        const i32 height = static_cast<i32>((*preview)->height);
         const usize requiredBytes = static_cast<usize>(width) * static_cast<usize>(height) * 4U;
-        if (preview->rgbaBytes.size() < requiredBytes) {
+        if ((*preview)->rgbaBytes.size() < requiredBytes) {
             return;
         }
         if (m_previewTexture.id != 0U && m_previewTexture.width == width && m_previewTexture.height == height) {
-            UpdateTexture(m_previewTexture, preview->rgbaBytes.data());
-            m_previewTextureSequence = preview->sequence;
+            UpdateTexture(m_previewTexture, (*preview)->rgbaBytes.data());
+            m_previewTextureSequence = (*preview)->sequence;
             return;
         }
 
         Image image{
-            .data = const_cast<u8*>(preview->rgbaBytes.data()),
+            .data = const_cast<u8*>((*preview)->rgbaBytes.data()),
             .width = width,
             .height = height,
             .mipmaps = 1,
@@ -341,14 +341,14 @@ void DevHandLabScreen::updatePreviewTexture() noexcept {
         }
         unloadPreviewTexture();
         m_previewTexture = texture;
-        m_previewTextureSequence = preview->sequence;
+        m_previewTextureSequence = (*preview)->sequence;
         return;
     }
 
-    if (preview->jpegBytes.size() > static_cast<usize>(std::numeric_limits<i32>::max())) {
+    if ((*preview)->jpegBytes.size() > static_cast<usize>(std::numeric_limits<i32>::max())) {
         return;
     }
-    Image image = LoadImageFromMemory(".jpg", preview->jpegBytes.data(), static_cast<i32>(preview->jpegBytes.size()));
+    Image image = LoadImageFromMemory(".jpg", (*preview)->jpegBytes.data(), static_cast<i32>((*preview)->jpegBytes.size()));
     if (image.data == nullptr) {
         return;
     }
@@ -356,7 +356,7 @@ void DevHandLabScreen::updatePreviewTexture() noexcept {
     if (m_previewTexture.id != 0U && m_previewTexture.width == image.width && m_previewTexture.height == image.height) {
         UpdateTexture(m_previewTexture, image.data);
         UnloadImage(image);
-        m_previewTextureSequence = preview->sequence;
+        m_previewTextureSequence = (*preview)->sequence;
         return;
     }
     Texture2D texture = LoadTextureFromImage(image);
@@ -366,7 +366,7 @@ void DevHandLabScreen::updatePreviewTexture() noexcept {
     }
     unloadPreviewTexture();
     m_previewTexture = texture;
-    m_previewTextureSequence = preview->sequence;
+    m_previewTextureSequence = (*preview)->sequence;
 }
 
 void DevHandLabScreen::unloadPreviewTexture() noexcept {

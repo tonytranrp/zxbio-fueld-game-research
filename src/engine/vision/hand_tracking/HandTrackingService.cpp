@@ -201,15 +201,17 @@ public:
         (void)dt;
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
         std::optional<HandTrackingFrame> pending;
+        std::optional<HandTrackingFrame> previous;
         {
             std::scoped_lock lock(m_mutex);
             if (m_pendingFrame && (!m_latestFrame || m_pendingFrame->sequence != m_latestFrame->sequence)) {
                 pending = m_pendingFrame;
             }
+            previous = m_latestFrame;
         }
 
         if (pending) {
-            HandTrackingFrame smoothed = smoothFrame(*pending);
+            HandTrackingFrame smoothed = smoothFrame(*pending, previous);
             {
                 std::scoped_lock lock(m_mutex);
                 m_latestFrame = smoothed;
@@ -377,6 +379,8 @@ public:
         m_status.message = featureEnabled() ? "Tracking stopped" : "Hand tracking disabled";
         m_pendingFrame.reset();
         m_latestFrame.reset();
+        m_latestPreview.reset();
+        m_lastPreviewSequence.reset();
     }
 
     void setPreviewEnabled(const bool enabled) {
@@ -434,14 +438,17 @@ public:
         return m_latestFrame;
     }
 
-    [[nodiscard]] std::optional<HandTrackingPreviewFrame> latestPreviewFrame() const {
+    [[nodiscard]] std::optional<std::shared_ptr<const HandTrackingPreviewFrame>> latestPreviewFrame() const {
         std::scoped_lock lock(m_mutex);
+        if (!m_latestPreview) {
+            return std::nullopt;
+        }
         return m_latestPreview;
     }
 
-    [[nodiscard]] std::optional<HandTrackingPreviewFrame> latestPreviewFrameAfter(const u64 sequence) const {
+    [[nodiscard]] std::optional<std::shared_ptr<const HandTrackingPreviewFrame>> latestPreviewFrameAfter(const u64 sequence) const {
         std::scoped_lock lock(m_mutex);
-        if (!m_latestPreview || m_latestPreview->sequence == sequence) {
+        if (!m_latestPreview || (*m_latestPreview)->sequence == sequence) {
             return std::nullopt;
         }
         return m_latestPreview;
@@ -585,7 +592,7 @@ private:
                 continue;
             }
             if (ec == asio::error::would_block || ec == asio::error::try_again) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
             }
             return false;
@@ -608,16 +615,24 @@ private:
                     if (std::memcmp(header.magic, "MJPG", 4U) != 0 || header.byteCount == 0U || header.byteCount > 2'500'000U) {
                         break;
                     }
-                    HandTrackingPreviewFrame frame{};
-                    frame.sequence = header.sequence;
-                    frame.jpegBytes.resize(header.byteCount);
-                    if (!readPreviewBytes(socket, frame.jpegBytes.data(), frame.jpegBytes.size(), m_previewRunning)) {
+                    if (m_lastPreviewSequence.has_value() && header.sequence <= *m_lastPreviewSequence) {
+                        std::vector<u8> discard(header.byteCount);
+                        if (!readPreviewBytes(socket, discard.data(), discard.size(), m_previewRunning)) {
+                            break;
+                        }
+                        continue;
+                    }
+                    auto frame = std::make_shared<HandTrackingPreviewFrame>();
+                    frame->sequence = header.sequence;
+                    frame->jpegBytes.resize(header.byteCount);
+                    if (!readPreviewBytes(socket, frame->jpegBytes.data(), frame->jpegBytes.size(), m_previewRunning)) {
                         break;
                     }
-                    decodePreviewFrame(frame);
+                    decodePreviewFrame(*frame);
                     {
                         std::scoped_lock lock(m_mutex);
-                        m_latestPreview = std::move(frame);
+                        m_lastPreviewSequence = frame->sequence;
+                        m_latestPreview = frame;
                     }
                 }
             } catch (const std::exception&) {
@@ -941,12 +956,7 @@ private:
         return std::clamp(alpha, 0.08f, 0.92f);
     }
 
-    [[nodiscard]] HandTrackingFrame smoothFrame(const HandTrackingFrame& raw) const {
-        std::optional<HandTrackingFrame> previous;
-        {
-            std::scoped_lock lock(m_mutex);
-            previous = m_latestFrame;
-        }
+    [[nodiscard]] HandTrackingFrame smoothFrame(const HandTrackingFrame& raw, const std::optional<HandTrackingFrame>& previous) const {
         if (!previous) {
             return raw;
         }
@@ -1031,7 +1041,8 @@ private:
     HandTrackingStatus m_status{};
     std::optional<HandTrackingFrame> m_pendingFrame{};
     std::optional<HandTrackingFrame> m_latestFrame{};
-    std::optional<HandTrackingPreviewFrame> m_latestPreview{};
+    std::optional<std::shared_ptr<HandTrackingPreviewFrame>> m_latestPreview{};
+    std::optional<u64> m_lastPreviewSequence{};
     std::array<GestureDebounce, 2U> m_gestures{};
     std::chrono::steady_clock::time_point m_lastFrameSteady = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point m_packetRateWindowStart = std::chrono::steady_clock::now();
@@ -1121,11 +1132,11 @@ std::optional<HandTrackingFrame> HandTrackingService::latestFrame() const {
     return m_impl->latestFrame();
 }
 
-std::optional<HandTrackingPreviewFrame> HandTrackingService::latestPreviewFrame() const {
+std::optional<std::shared_ptr<const HandTrackingPreviewFrame>> HandTrackingService::latestPreviewFrame() const {
     return m_impl->latestPreviewFrame();
 }
 
-std::optional<HandTrackingPreviewFrame> HandTrackingService::latestPreviewFrameAfter(const u64 sequence) const {
+std::optional<std::shared_ptr<const HandTrackingPreviewFrame>> HandTrackingService::latestPreviewFrameAfter(const u64 sequence) const {
     return m_impl->latestPreviewFrameAfter(sequence);
 }
 

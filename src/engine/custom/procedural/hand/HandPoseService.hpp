@@ -47,6 +47,7 @@ private:
     bool m_featureEnabled = false;
     f32 m_secondsSinceMappedFrame = 999.0f;
     u64 m_lastFrameSequence = 0U;
+    u64 m_lastFrameTimestampMs = 0U;
 };
 
 } // namespace biofuel::engine::custom::procedural::hand

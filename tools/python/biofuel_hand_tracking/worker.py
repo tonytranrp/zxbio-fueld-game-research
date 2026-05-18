@@ -200,7 +200,7 @@ def preview_server(state: WorkerState) -> None:
                 continue
             with client:
                 last_sequence = -1
-                client.settimeout(0.25)
+                client.settimeout(0.01)
                 while not state.stop_event.is_set():
                     if not state.preview_enabled:
                         time.sleep(0.05)
@@ -212,6 +212,12 @@ def preview_server(state: WorkerState) -> None:
                         try:
                             client.sendall(pack_preview(sequence, preview))
                             last_sequence = sequence
+                        except (socket.timeout, BlockingIOError):
+                            # Send would block — skip this frame and grab the
+                            # latest on the next iteration.  The C++ side
+                            # receives the freshest frame instead of a stale
+                            # queued frame, avoiding burst-and-wait stutter.
+                            continue
                         except OSError:
                             break
                     else:
