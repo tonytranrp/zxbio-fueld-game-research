@@ -39,10 +39,11 @@ void GamePlayScreen::onEnter() {
     ensureHandTrackingForModelOverlay();
     m_handOverlay.onEnter();
 
-    // Initialize NekoCat at screen center
+    // Initialize NekoCat at screen center.
+    // Sprites are 32×32 at 3x scale = 96×96 on screen.
     const f32 screenW = static_cast<f32>(::biofuel::engine::graphics::Renderer::screenWidth());
     const f32 screenH = static_cast<f32>(::biofuel::engine::graphics::Renderer::screenHeight());
-    constexpr f32 spriteSize = 32.0f * 2.0f; // 32px texture at 2x scale
+    constexpr f32 spriteSize = 32.0f * 3.0f;
     m_neko.setPosition(
         (screenW - spriteSize) / 2.0f,
         (screenH - spriteSize) / 2.0f);

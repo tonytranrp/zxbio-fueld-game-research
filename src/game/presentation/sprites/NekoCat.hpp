@@ -47,6 +47,10 @@ enum class State : u8 {
 //   counter 0→max, frame 1 when count < threshold, frame 2 when count >= threshold,
 //   reset to 0 at max.  Threshold = frameDuration, max = frameDuration × 2.
 //
+// Idle cycling: when stationary, the cat cycles through idle states every
+// m_idleStateDuration seconds: Awake → Scratching → Washing → Yawning →
+// Sleeping → Awake...
+//
 // Usage:
 //   NekoCat cat;
 //   cat.load();
@@ -122,6 +126,13 @@ private:
     // ---- Animation counter ----
     void advanceAnimation(f32 dt) noexcept;
 
+    // ---- Idle state cycling ----
+    //
+    // When no movement input is received, the cat cycles through idle states
+    // on a timer: Awake → Scratching → Washing → Yawning → Sleeping → Awake...
+    // Each idle state persists for m_idleStateDuration seconds before cycling.
+    void advanceIdleState(f32 dt) noexcept;
+
     // -----------------------------------------------------------------------
     // Texture storage
     // -----------------------------------------------------------------------
@@ -137,7 +148,7 @@ private:
     // -----------------------------------------------------------------------
     f32 m_x = 0.0f;
     f32 m_y = 0.0f;
-    f32 m_scale = 2.0f;       // 32×32 → 64×64 on screen
+    f32 m_scale = 3.0f;       // 32×32 → 96×96 on screen
 
     // -----------------------------------------------------------------------
     // Animation state
@@ -145,6 +156,12 @@ private:
     f32 m_frameTimer = 0.0f;
     f32 m_frameDuration = 0.15f;  // ~6.67 fps per frame, ~3.33 fps full cycle
     i32 m_currentFrame = 0;
+
+    // -----------------------------------------------------------------------
+    // Idle state cycling
+    // -----------------------------------------------------------------------
+    f32 m_idleTimer = 0.0f;
+    f32 m_idleStateDuration = 2.5f;  // seconds per idle state before cycling
 
     // -----------------------------------------------------------------------
     // Pose

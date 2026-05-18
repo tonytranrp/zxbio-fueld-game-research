@@ -121,6 +121,8 @@ NekoCat::NekoCat(NekoCat&& other) noexcept
     , m_frameTimer(other.m_frameTimer)
     , m_frameDuration(other.m_frameDuration)
     , m_currentFrame(other.m_currentFrame)
+    , m_idleTimer(other.m_idleTimer)
+    , m_idleStateDuration(other.m_idleStateDuration)
     , m_direction(other.m_direction)
     , m_state(other.m_state)
     , m_loaded(other.m_loaded)
@@ -138,6 +140,8 @@ NekoCat& NekoCat::operator=(NekoCat&& other) noexcept {
         m_frameTimer = other.m_frameTimer;
         m_frameDuration = other.m_frameDuration;
         m_currentFrame = other.m_currentFrame;
+        m_idleTimer = other.m_idleTimer;
+        m_idleStateDuration = other.m_idleStateDuration;
         m_direction = other.m_direction;
         m_state = other.m_state;
         m_loaded = other.m_loaded;
@@ -296,15 +300,44 @@ void NekoCat::advanceAnimation(const f32 dt) noexcept {
 }
 
 // ------------------------------------------------------------------------------
+// Idle state cycling
+// ------------------------------------------------------------------------------
+
+void NekoCat::advanceIdleState(const f32 dt) noexcept {
+    m_idleTimer += dt;
+
+    if (m_idleTimer < m_idleStateDuration) return;
+
+    // Reset timer (carry forward any overflow for smooth cycling)
+    m_idleTimer = std::fmod(m_idleTimer, m_idleStateDuration);
+
+    // Cycle to the next idle state: Awake → Scratching → Washing → Yawning → Sleeping → Awake...
+    switch (m_state) {
+    case State::Awake:     setState(State::Scratching); break;
+    case State::Scratching: setState(State::Washing);   break;
+    case State::Washing:   setState(State::Yawning);    break;
+    case State::Yawning:   setState(State::Sleeping);   break;
+    case State::Sleeping:  setState(State::Awake);      break;
+    default:
+        // Walking or unexpected — reset to start of idle cycle
+        setState(State::Awake);
+        break;
+    }
+}
+
+// ------------------------------------------------------------------------------
 // Per-frame update
 // ------------------------------------------------------------------------------
 
 void NekoCat::update(const f32 dt, const Direction inputDirection) noexcept {
     // ---- Determine state ----
     if (inputDirection == Direction::Idle) {
-        // Keep current facing direction, switch to Awake state
+        // Transition out of Walking, then cycle idle states
         if (m_state == State::Walking) {
             setState(State::Awake);
+            m_idleTimer = 0.0f;
+        } else {
+            advanceIdleState(dt);
         }
     } else {
         m_direction = inputDirection;
