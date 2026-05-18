@@ -85,6 +85,7 @@ public:
     static void drawSprite(Texture2D texture, i32 x, i32 y, i32 width, i32 height);
     static void drawFullscreen(Color color);
     static void drawFullscreenTexture(Texture2D texture, Color tint = WHITE);
+    static void drawTextureRec(Texture2D texture, Rectangle source, Vector2 position, Color tint);
     static void drawRenderTexture(Texture2D texture, i32 x = 0, i32 y = 0, Color tint = WHITE);
     static void drawRenderTexture(Texture2D texture, i32 x, i32 y, i32 width, i32 height, Color tint);
 

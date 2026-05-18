@@ -2,6 +2,7 @@
 
 #include "engine/ui/Screen.hpp"
 #include "game/presentation/hands/HandModelOverlay.hpp"
+#include "game/presentation/sprites/NekoCat.hpp"
 #include <string_view>
 
 namespace biofuel::game::screens {
@@ -21,6 +22,7 @@ private:
     void ensureHandTrackingForModelOverlay();
 
     game::presentation::hands::HandModelOverlay m_handOverlay;
+    presentation::sprites::NekoCat m_neko;
 };
 
 } // namespace biofuel::game::screens

@@ -141,6 +141,10 @@ void Renderer::drawFullscreenTexture(Texture2D texture, Color tint) {
     );
 }
 
+void Renderer::drawTextureRec(Texture2D texture, Rectangle source, Vector2 position, Color tint) {
+    DrawTextureRec(texture, source, position, tint);
+}
+
 void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, Color tint) {
     DrawTextureRec(
         texture,

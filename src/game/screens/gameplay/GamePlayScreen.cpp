@@ -6,16 +6,57 @@
 
 namespace biofuel::game::screens {
 
+// ------------------------------------------------------------------------------
+// WASD Direction Helpers
+// ------------------------------------------------------------------------------
+
+[[nodiscard]] static presentation::sprites::Direction readWASDDirection() noexcept {
+    using presentation::sprites::Direction;
+
+    const bool w = IsKeyDown(KEY_W);
+    const bool a = IsKeyDown(KEY_A);
+    const bool s = IsKeyDown(KEY_S);
+    const bool d = IsKeyDown(KEY_D);
+
+    // Determine compound direction from key combination
+    if (w && d)  return Direction::UpRight;
+    if (w && a)  return Direction::UpLeft;
+    if (s && d)  return Direction::DownRight;
+    if (s && a)  return Direction::DownLeft;
+    if (w)       return Direction::Up;
+    if (s)       return Direction::Down;
+    if (a)       return Direction::Left;
+    if (d)       return Direction::Right;
+
+    return Direction::Idle;
+}
+
+// ------------------------------------------------------------------------------
+// Lifecycle
+// ------------------------------------------------------------------------------
+
 void GamePlayScreen::onEnter() {
     ensureHandTrackingForModelOverlay();
     m_handOverlay.onEnter();
+
+    // Initialize NekoCat at screen center
+    const f32 screenW = static_cast<f32>(::biofuel::engine::graphics::Renderer::screenWidth());
+    const f32 screenH = static_cast<f32>(::biofuel::engine::graphics::Renderer::screenHeight());
+    constexpr f32 spriteSize = 32.0f * 2.0f; // 32px texture at 2x scale
+    m_neko.setPosition(
+        (screenW - spriteSize) / 2.0f,
+        (screenH - spriteSize) / 2.0f);
+    m_neko.load();
 }
 
 void GamePlayScreen::onExit() {
+    m_neko.unload();
     m_handOverlay.onExit();
 }
 
 void GamePlayScreen::onUpdate(const f32 dt) {
+    const presentation::sprites::Direction direction = readWASDDirection();
+    m_neko.update(dt, direction);
     m_handOverlay.update(dt);
 }
 
@@ -23,6 +64,9 @@ void GamePlayScreen::onRender() {
     using namespace ::biofuel::engine::graphics;
 
     ClearBackground(Color{18, 24, 28, 255});
+
+    // Render NekoCat after background
+    m_neko.render();
 
     static constexpr std::string_view title = "FUEL FARM";
     static constexpr std::string_view message = "GamePlay screen will be implemented later.";
