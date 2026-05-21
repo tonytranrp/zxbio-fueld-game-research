@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "engine/physics/PhysicsTypes.hpp"
 #include "engine/ui/Screen.hpp"
 #include "game/gameplay/FarmState.hpp"
@@ -27,7 +28,7 @@ public:
     void onRender() override;
     void onInput() override;
 
-    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::engine::ui::typed::ScreenId::GamePlay; }
+    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::game::screens::screen_id::GamePlay; }
     [[nodiscard]] std::string_view getName() const noexcept override { return "GamePlayScreen"; }
 
 private:

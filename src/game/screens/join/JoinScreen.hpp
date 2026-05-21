@@ -1,3 +1,4 @@
+#include "game/screens/GameScreenIds.hpp"
 ﻿#pragma once
 
 #include "engine/ui/Screen.hpp"
@@ -14,7 +15,7 @@ public:
     void onRender() override;
     void onInput() override;
 
-    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::engine::ui::typed::ScreenId::Join; }
+    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::game::screens::screen_id::Join; }
     [[nodiscard]] std::string_view getName() const noexcept override { return "JoinScreen"; }
 
 private:

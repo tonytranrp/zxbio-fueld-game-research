@@ -26,7 +26,7 @@ engine/ui/typed/
 ```cpp
 template<>
 struct ScreenSpec<GamePlayScreen> {
-    static constexpr ScreenId ID = ScreenId::GamePlay;
+    static constexpr ScreenId ID = ScreenId::Slot3;
     static constexpr std::string_view NAME = "GamePlayScreen";
 };
 

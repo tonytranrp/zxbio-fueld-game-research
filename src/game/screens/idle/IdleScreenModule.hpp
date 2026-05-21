@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
 #include "engine/ui/typed/RenderLayers.hpp"
 #include "engine/ui/typed/ScreenSpec.hpp"
@@ -33,7 +34,7 @@ namespace biofuel::engine::ui::typed {
 
 template<>
 struct ScreenSpec<::biofuel::game::screens::IdleScreen> {
-    static constexpr ScreenId ID = ScreenId::Idle;
+    static constexpr ScreenId ID = screen_id::Idle;
     static constexpr std::string_view NAME = "IdleScreen";
 };
 

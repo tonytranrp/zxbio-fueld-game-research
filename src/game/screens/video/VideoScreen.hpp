@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/Screen.hpp"
 #include "engine/core/Types.hpp"
 #include <raylib.h>
@@ -31,7 +32,7 @@ public:
     void onRender() override;
     void onInput() override;
 
-    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::engine::ui::typed::ScreenId::Video; }
+    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::game::screens::screen_id::Video; }
     [[nodiscard]] std::string_view getName() const noexcept override {
         return "VideoScreen";
     }

@@ -74,7 +74,7 @@ require_contains(
 require_contains(
     "MainMenu must handle CalibrationScreen pop on resume"
     "${MAIN_MENU_SCREEN}"
-    "poppedScreenId == ::biofuel::engine::ui::typed::ScreenId::Calibration")
+    "poppedScreenId == ::biofuel::game::screens::screen_id::Calibration")
 require_contains(
     "MainMenu must remember successful calibration instead of auto-joining"
     "${MAIN_MENU_SCREEN}"

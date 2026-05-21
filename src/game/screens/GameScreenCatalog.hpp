@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/typed/ScreenRegistry.hpp"
 #include "engine/ui/typed/ScreenValidation.hpp"
 #include "game/screens/loading/LoadingScreenModule.hpp"
@@ -28,16 +29,15 @@ static_assert(::biofuel::engine::ui::typed::validateScreenRegistry<GameScreenReg
 namespace detail {
 
 [[nodiscard]] constexpr bool hasTransitionPolicySwitchEntry(const ::biofuel::engine::ui::typed::ScreenId id) noexcept {
-    using enum ::biofuel::engine::ui::typed::ScreenId;
     switch (id) {
-    case Loading:
-    case MainMenu:
-    case Join:
-    case GamePlay:
-    case PausePopup:
-    case Calibration:
-    case Idle:
-    case Video:
+    case screen_id::Loading:
+    case screen_id::MainMenu:
+    case screen_id::Join:
+    case screen_id::GamePlay:
+    case screen_id::PausePopup:
+    case screen_id::Calibration:
+    case screen_id::Idle:
+    case screen_id::Video:
         return true;
     case Unknown:
     case Count:
@@ -49,17 +49,16 @@ namespace detail {
 }
 
 [[nodiscard]] constexpr bool hasStackPolicySwitchEntry(const ::biofuel::engine::ui::typed::ScreenId id) noexcept {
-    using enum ::biofuel::engine::ui::typed::ScreenId;
     switch (id) {
-    case PausePopup:
-    case Calibration:
+    case screen_id::PausePopup:
+    case screen_id::Calibration:
         return true;
-    case Loading:
-    case MainMenu:
-    case Join:
-    case GamePlay:
-    case Idle:
-    case Video:
+    case screen_id::Loading:
+    case screen_id::MainMenu:
+    case screen_id::Join:
+    case screen_id::GamePlay:
+    case screen_id::Idle:
+    case screen_id::Video:
     case Unknown:
     case Count:
         break;
@@ -99,14 +98,14 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     namespace typed = ::biofuel::engine::ui::typed;
     using enum typed::ScreenId;
     switch (id) {
-    case Loading: return typed::TransitionPolicy<LoadingScreen>::VALUE;
-    case MainMenu: return typed::TransitionPolicy<MainMenuScreen>::VALUE;
-    case Join: return typed::TransitionPolicy<JoinScreen>::VALUE;
-    case GamePlay: return typed::TransitionPolicy<GamePlayScreen>::VALUE;
-    case PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
-    case Calibration: return typed::TransitionPolicy<CalibrationScreen>::VALUE;
-    case Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
-    case Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
+    case screen_id::Loading: return typed::TransitionPolicy<LoadingScreen>::VALUE;
+    case screen_id::MainMenu: return typed::TransitionPolicy<MainMenuScreen>::VALUE;
+    case screen_id::Join: return typed::TransitionPolicy<JoinScreen>::VALUE;
+    case screen_id::GamePlay: return typed::TransitionPolicy<GamePlayScreen>::VALUE;
+    case screen_id::PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
+    case screen_id::Calibration: return typed::TransitionPolicy<CalibrationScreen>::VALUE;
+    case screen_id::Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
+    case screen_id::Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
     case Unknown:
     case Count:
         break;
@@ -122,14 +121,14 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     namespace typed = ::biofuel::engine::ui::typed;
     using enum typed::ScreenId;
     switch (id) {
-    case PausePopup: return typed::StackPolicy<PausePopupScreen>::VALUE;
-    case Calibration: return typed::StackPolicy<CalibrationScreen>::VALUE;
-    case Loading:
-    case MainMenu:
-    case Join:
-    case GamePlay:
-    case Idle:
-    case Video:
+    case screen_id::PausePopup: return typed::StackPolicy<PausePopupScreen>::VALUE;
+    case screen_id::Calibration: return typed::StackPolicy<CalibrationScreen>::VALUE;
+    case screen_id::Loading:
+    case screen_id::MainMenu:
+    case screen_id::Join:
+    case screen_id::GamePlay:
+    case screen_id::Idle:
+    case screen_id::Video:
     case Unknown:
     case Count:
         break;

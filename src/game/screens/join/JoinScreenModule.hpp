@@ -1,3 +1,4 @@
+#include "game/screens/GameScreenIds.hpp"
 ﻿#pragma once
 
 #include "game/screens/join/JoinScreen.hpp"
@@ -14,7 +15,7 @@ namespace biofuel::engine::ui::typed {
 
 template<>
 struct ScreenSpec<::biofuel::game::screens::JoinScreen> {
-    static constexpr ScreenId ID = ScreenId::Join;
+    static constexpr ScreenId ID = screen_id::Join;
     static constexpr std::string_view NAME = "JoinScreen";
 };
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/Screen.hpp"
 #include "game/presentation/effects/ScreenBackdropController.hpp"
 #include "game/presentation/hands/HandModelOverlay.hpp"
@@ -34,7 +35,7 @@ public:
     void onRender() override;
     void onInput() override;
 
-    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::engine::ui::typed::ScreenId::Idle; }
+    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::game::screens::screen_id::Idle; }
     [[nodiscard]] std::string_view getName() const noexcept override { return "IdleScreen"; }
 
     void setIdleVideo(std::string_view videoName) { m_idleVideoName = videoName; }

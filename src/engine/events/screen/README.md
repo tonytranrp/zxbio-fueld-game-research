@@ -18,7 +18,7 @@ screen manager internals.
 
 ```cpp
 Events::publish<typed::screen::ScreenLayerOverride>({
-    .screenId = ScreenId::MainMenu,
+    .screenId = ScreenId::Slot1,
     .layerName = "debug",
     .enabled = false,
 });

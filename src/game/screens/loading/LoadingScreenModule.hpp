@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "game/screens/loading/LoadingScreen.hpp"
 #include "engine/ui/typed/RenderLayers.hpp"
 #include "engine/ui/typed/ScreenSpec.hpp"
@@ -21,7 +22,7 @@ namespace biofuel::engine::ui::typed {
 
 template<>
 struct ScreenSpec<::biofuel::game::screens::LoadingScreen> {
-    static constexpr ScreenId ID = ScreenId::Loading;
+    static constexpr ScreenId ID = screen_id::Loading;
     static constexpr std::string_view NAME = "LoadingScreen";
 };
 

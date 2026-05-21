@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/Screen.hpp"
 #include "game/presentation/widgets/MenuHelper.hpp"
 #include "game/presentation/effects/ScreenBlurEffect.hpp"
@@ -24,7 +25,7 @@ public:
     void onRender() override;
     void onInput() override;
 
-    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::engine::ui::typed::ScreenId::PausePopup; }
+    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::game::screens::screen_id::PausePopup; }
     [[nodiscard]] std::string_view getName() const noexcept override { return "PausePopupScreen"; }
 
 private:

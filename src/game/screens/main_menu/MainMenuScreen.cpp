@@ -1,3 +1,4 @@
+#include "game/screens/GameScreenIds.hpp"
 #include "MainMenuScreen.hpp"
 #include "MainMenuScreenModule.hpp"
 #include "game/screens/join/JoinScreen.hpp"
@@ -636,7 +637,7 @@ void MainMenuScreen::onResume() {
 }
 
 void MainMenuScreen::onResume(::biofuel::engine::ui::typed::ResumeContext& context) {
-    if (context.poppedScreenId == ::biofuel::engine::ui::typed::ScreenId::Calibration) {
+    if (context.poppedScreenId == ::biofuel::game::screens::screen_id::Calibration) {
         auto& flow = CalibrationFlowState::instance();
         const bool calibrationCompleted = flow.completed() && flow.route() == CalibrationRoute::Join;
         flow.clear();
@@ -646,7 +647,7 @@ void MainMenuScreen::onResume(::biofuel::engine::ui::typed::ResumeContext& conte
         return;
     }
 
-    if (context.poppedScreenId != ::biofuel::engine::ui::typed::ScreenId::Idle) {
+    if (context.poppedScreenId != ::biofuel::game::screens::screen_id::Idle) {
         m_revealBackdropOnResume = false;
         m_idleTrigger.onInput();
         return;

@@ -8,14 +8,14 @@ namespace biofuel::engine::ui::typed {
 
 enum class ScreenId : u8 {
     Unknown,
-    Loading,
-    MainMenu,
-    Join,
-    GamePlay,
-    PausePopup,
-    Calibration,
-    Idle,
-    Video,
+    Slot0,
+    Slot1,
+    Slot2,
+    Slot3,
+    Slot4,
+    Slot5,
+    Slot6,
+    Slot7,
     Count,
 };
 

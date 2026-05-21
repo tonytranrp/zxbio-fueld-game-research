@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "game/screens/calibration/CalibrationScreen.hpp"
 #include "engine/ui/typed/RenderLayers.hpp"
 #include "engine/ui/typed/ScreenSpec.hpp"
@@ -8,7 +9,7 @@ namespace biofuel::engine::ui::typed {
 
 template<>
 struct ScreenSpec<::biofuel::game::screens::CalibrationScreen> {
-    static constexpr ScreenId ID = ScreenId::Calibration;
+    static constexpr ScreenId ID = screen_id::Calibration;
     static constexpr std::string_view NAME = "CalibrationScreen";
 };
 

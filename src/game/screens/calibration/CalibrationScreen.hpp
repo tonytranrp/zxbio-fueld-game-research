@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/Screen.hpp"
 #include "game/presentation/hands/HandPreviewTexture.hpp"
 #include <raylib.h>
@@ -16,7 +17,7 @@ public:
     void onInput() override;
 
     [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override {
-        return ::biofuel::engine::ui::typed::ScreenId::Calibration;
+        return ::biofuel::game::screens::screen_id::Calibration;
     }
     [[nodiscard]] std::string_view getName() const noexcept override { return "CalibrationScreen"; }
 

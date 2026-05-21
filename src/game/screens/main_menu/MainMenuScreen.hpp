@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/Screen.hpp"
 #include "engine/ui/typed/ScreenLifecycle.hpp"
 #include "MainMenuTypes.hpp"
@@ -29,7 +30,7 @@ public:
     void onRender() override;
     void onInput() override;
 
-    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::engine::ui::typed::ScreenId::MainMenu; }
+    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::game::screens::screen_id::MainMenu; }
     [[nodiscard]] std::string_view getName() const noexcept override { return "MainMenuScreen"; }
 
 private:

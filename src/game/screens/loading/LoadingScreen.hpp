@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/Screen.hpp"
 #include "engine/core/LoadingTask.hpp"
 #include "game/presentation/effects/ScreenBackdropController.hpp"
@@ -28,7 +29,7 @@ public:
     void onRender() override;
     void onInput() override;
 
-    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::engine::ui::typed::ScreenId::Loading; }
+    [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::game::screens::screen_id::Loading; }
     [[nodiscard]] std::string_view getName() const noexcept override { return "LoadingScreen"; }
 
 private:
