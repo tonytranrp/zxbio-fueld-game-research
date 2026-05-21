@@ -39,8 +39,8 @@ namespace detail {
     case screen_id::Idle:
     case screen_id::Video:
         return true;
-    case Unknown:
-    case Count:
+    case ::biofuel::engine::ui::typed::ScreenId::Unknown:
+    case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;
     default:
         break;
@@ -59,8 +59,8 @@ namespace detail {
     case screen_id::GamePlay:
     case screen_id::Idle:
     case screen_id::Video:
-    case Unknown:
-    case Count:
+    case ::biofuel::engine::ui::typed::ScreenId::Unknown:
+    case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;
     default:
         break;
@@ -106,8 +106,8 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::Calibration: return typed::TransitionPolicy<CalibrationScreen>::VALUE;
     case screen_id::Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
     case screen_id::Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
-    case Unknown:
-    case Count:
+    case ::biofuel::engine::ui::typed::ScreenId::Unknown:
+    case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;
     default:
         break;
@@ -129,8 +129,8 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::GamePlay:
     case screen_id::Idle:
     case screen_id::Video:
-    case Unknown:
-    case Count:
+    case ::biofuel::engine::ui::typed::ScreenId::Unknown:
+    case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;
     default:
         break;

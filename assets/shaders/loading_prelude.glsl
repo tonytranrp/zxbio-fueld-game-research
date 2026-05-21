@@ -3,11 +3,11 @@
 // "Opening Gates" — Cinematic double-door loading screen
 // Two industrial blast-door panels are visible the entire loading duration.
 // When uRevealProgress approaches 1.0, the doors dramatically slide apart,
-// revealing the void behind just before the crossfade to main menu.
+// revealing the void behind just before the crossfade to the next screen.
 //
 // uBrightness  — controls the overall fade-in (panels appear from darkness)
 // uRevealProgress — controls the door OPENING (0 = closed, 1 = fully open)
-//   Configured with a long delay in LoadingScreen so doors stay closed
+//   Configured with a long delay by startup screens so doors stay closed
 //   during loading and only open near the end.
 
 in vec2 fragTexCoord;

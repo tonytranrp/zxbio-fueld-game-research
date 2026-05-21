@@ -7,7 +7,7 @@
 namespace biofuel::engine::graphics::shader {
 
 // ==============================================================================
-// ProceduralBackdropModule — Raymarched fractal background for the main menu
+// ProceduralBackdropModule — Raymarched fractal background for screen backdrops
 // ==============================================================================
 //
 // Adapted from ShaderToy s3s3WN. Uses gl_FragCoord so no texture binding

@@ -66,8 +66,8 @@ void ScreenManager::push(typed::ScreenSlot slot) {
         spdlog::warn("ScreenManager::push() ignored — transition in progress");
         return;
     }
-    if (isLoadingScreen()) {
-        spdlog::warn("ScreenManager::push() ignored — loading screen in progress");
+    if (hasPendingScreenTransition()) {
+        spdlog::warn("ScreenManager::push() ignored — pending screen transition in progress");
         return;
     }
 
@@ -95,8 +95,8 @@ void ScreenManager::pop() {
         spdlog::warn("ScreenManager::pop() ignored — transition in progress");
         return;
     }
-    if (isLoadingScreen()) {
-        spdlog::warn("ScreenManager::pop() ignored — loading screen in progress");
+    if (hasPendingScreenTransition()) {
+        spdlog::warn("ScreenManager::pop() ignored — pending screen transition in progress");
         return;
     }
 
@@ -128,8 +128,8 @@ void ScreenManager::replace(typed::ScreenSlot slot) {
         spdlog::warn("ScreenManager::replace() ignored — transition in progress");
         return;
     }
-    if (isLoadingScreen()) {
-        spdlog::warn("ScreenManager::replace() ignored — loading screen in progress");
+    if (hasPendingScreenTransition()) {
+        spdlog::warn("ScreenManager::replace() ignored — pending screen transition in progress");
         return;
     }
 
@@ -172,8 +172,8 @@ void ScreenManager::queuePush(std::unique_ptr<Screen> screen) {
 }
 
 void ScreenManager::queuePush(typed::ScreenSlot slot) {
-    if (isLoadingScreen()) {
-        spdlog::warn("ScreenManager::queuePush() ignored — loading screen in progress");
+    if (hasPendingScreenTransition()) {
+        spdlog::warn("ScreenManager::queuePush() ignored — pending screen transition in progress");
         return;
     }
     if (m_commands.action() != typed::ScreenCommandQueue::Action::None || m_commands.hasSlot()) {
@@ -192,8 +192,8 @@ void ScreenManager::queueReplace(std::unique_ptr<Screen> screen) {
 }
 
 void ScreenManager::queueReplace(typed::ScreenSlot slot) {
-    if (isLoadingScreen()) {
-        spdlog::warn("ScreenManager::queueReplace() ignored — loading screen in progress");
+    if (hasPendingScreenTransition()) {
+        spdlog::warn("ScreenManager::queueReplace() ignored — pending screen transition in progress");
         return;
     }
     if (m_commands.action() != typed::ScreenCommandQueue::Action::None || m_commands.hasSlot()) {
@@ -203,8 +203,8 @@ void ScreenManager::queueReplace(typed::ScreenSlot slot) {
 }
 
 void ScreenManager::queuePop() {
-    if (isLoadingScreen()) {
-        spdlog::warn("ScreenManager::queuePop() ignored — loading screen in progress");
+    if (hasPendingScreenTransition()) {
+        spdlog::warn("ScreenManager::queuePop() ignored — pending screen transition in progress");
         return;
     }
     m_commands.pop();
@@ -214,7 +214,7 @@ void ScreenManager::processPendingActions() {
     if (isTransitioning()) {
         return;
     }
-    if (isLoadingScreen()) {
+    if (hasPendingScreenTransition()) {
         return;
     }
 
@@ -316,7 +316,7 @@ void ScreenManager::clear() {
 }
 
 // ------------------------------------------------------------------------------
-// Crossfade Transition Preloading (called during LoadingScreen init tasks)
+// Crossfade Transition Preloading
 // ------------------------------------------------------------------------------
 
 void ScreenManager::preloadCrossfadeShader() {
@@ -338,7 +338,7 @@ void ScreenManager::setPolicyResolvers(
 void ScreenManager::ensureCrossfadeShader() {
     if (m_crossfadeShader.id > 0) return;
 
-    // Shader is already compiled during LoadingScreen — just look it up.
+    // Shader is already compiled during startup loading — just look it up.
     auto& sm = ::biofuel::engine::runtime::Runtime::shader();
     m_crossfadeShader = ::biofuel::engine::runtime::typed::Shaders::get<::biofuel::engine::runtime::typed::shader::Crossfade>(sm);
 

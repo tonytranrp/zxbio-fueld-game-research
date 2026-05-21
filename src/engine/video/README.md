@@ -1,6 +1,6 @@
 # engine/video
 
-Video playback for screen overlays, currently used by `IdleScreen`.
+Video playback for screen overlays.
 
 ## Current Backend
 

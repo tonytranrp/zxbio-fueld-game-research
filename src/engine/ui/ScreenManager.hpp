@@ -85,7 +85,7 @@ public:
     [[nodiscard]] bool isEmpty() const noexcept;
     [[nodiscard]] size_t stackSize() const noexcept;
     [[nodiscard]] bool isTransitioning() const noexcept;
-    [[nodiscard]] bool isLoadingScreen() const noexcept { return m_pendingSlot.has_value(); }
+    [[nodiscard]] bool hasPendingScreenTransition() const noexcept { return m_pendingSlot.has_value(); }
     [[nodiscard]] bool blocksUnderlyingUpdates() const noexcept;
     void captureScreen(Screen* screen, ::biofuel::engine::graphics::RenderSurface& target);
     [[nodiscard]] bool isLayerEnabled(typed::ScreenId screenId, std::string_view layerName) const noexcept;
@@ -94,7 +94,7 @@ public:
     void requestQuit() noexcept { m_quitRequested = true; }
     [[nodiscard]] bool quitRequested() const noexcept { return m_quitRequested; }
 
-    // Crossfade transition preloading — called during LoadingScreen init tasks
+    // Crossfade transition preloading for startup tasks
     void preloadCrossfadeShader();
     void setPolicyResolvers(TransitionPolicyResolver transitionResolver, StackPolicyResolver stackResolver) noexcept;
 

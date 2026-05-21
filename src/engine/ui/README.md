@@ -16,7 +16,7 @@ engine/ui/
 Concrete screens derive from `Screen` and are owned by `ScreenManager`.
 
 ```cpp
-class GamePlayScreen final : public biofuel::engine::ui::Screen {
+class ExampleScreen final : public biofuel::engine::ui::Screen {
 public:
     void onUpdate(f32 dt) override;
     void onRender() override;
@@ -27,8 +27,8 @@ public:
 Navigate through the manager or the runtime facade:
 
 ```cpp
-Runtime::screen().queueReplace<GamePlayScreen>();
-Runtime::screen().queuePush<PausePopupScreen>();
+Runtime::screen().queueReplace<ExampleScreen>();
+Runtime::screen().queuePush<ExampleModalScreen>();
 ```
 
 Use queued operations from `onUpdate()` to avoid re-entrancy while the stack is
@@ -39,9 +39,9 @@ Modal screens can block lower-screen updates through their typed stack policy.
 loop so simulation-like services can freeze while modal UI keeps rendering and
 receiving input.
 
-Game-specific global input policy belongs above this layer. For example, the
-Fuel Farm pause controller decides which concrete game screens can open pause;
-`engine/ui` only provides stack operations and freeze-state queries.
+Game-specific global input policy belongs above this layer. A game-level
+controller decides which concrete screens can open modal UI; `engine/ui` only
+provides stack operations and freeze-state queries.
 
 Architecture follow-up: `blocksUnderlyingUpdates()` currently doubles as the
 application freeze bridge for pause-like modal UI. If simulation, media, or

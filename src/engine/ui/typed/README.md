@@ -25,14 +25,14 @@ engine/ui/typed/
 
 ```cpp
 template<>
-struct ScreenSpec<GamePlayScreen> {
+struct ScreenSpec<ExampleScreen> {
     static constexpr ScreenId ID = ScreenId::Slot3;
-    static constexpr std::string_view NAME = "GamePlayScreen";
+    static constexpr std::string_view NAME = "ExampleScreen";
 };
 
 template<>
-struct RenderLayers<GamePlayScreen> {
-    using Type = RenderLayerList<GamePlayScreen, RenderElementList<GamePlayHudElement>>;
+struct RenderLayers<ExampleScreen> {
+    using Type = RenderLayerList<ExampleScreen, RenderElementList<ExampleHudElement>>;
 };
 ```
 
@@ -51,11 +51,10 @@ be toggled through screen override events, which is useful for debug tools.
 ## Coding standards
 
 - Screen IDs are stable; do not reorder existing IDs casually.
-- New `ScreenId` values must be reviewed against game-level global input policy
-  such as pause eligibility; the engine registry should stay policy-neutral.
-- Architecture follow-up: `ScreenId` currently lives in `engine/ui/typed` for
-  this single-game vertical slice. If the engine is reused by multiple games,
-  move game-specific IDs behind a game-owned or opaque registry boundary.
+- New `ScreenId` values must be reviewed against game-level global input policy; the engine registry should
+  stay policy-neutral.
+- Game-specific ID names should live outside engine headers; keep this enum
+  limited to generic stable slots or opaque IDs.
 - Keep stack policy explicit in specs.
 - Render elements are compile-time types, not heap widgets.
 - Prefer `RenderContext` over global lookups inside typed render elements.

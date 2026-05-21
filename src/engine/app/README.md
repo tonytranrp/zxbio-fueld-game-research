@@ -30,7 +30,7 @@ engine/app/
 
 ```cpp
 biofuel::engine::app::Application::Config config{
-    .title = "Biofuel Game - Fuel Farm",
+    .title = "Example Game",
     .width = 1280,
     .height = 720,
     .targetFps = 60,

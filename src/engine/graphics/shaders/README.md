@@ -46,7 +46,7 @@ constant definitions can live in the component class.
 1. Write GLSL in `assets/shaders/*.glsl`.
 2. Add embedded screen shader names to `src/CMakeLists.txt`.
 3. Expose the shader through a module header here.
-4. Compile it in `LoadingScreen::buildTasks()`.
+4. Compile it in the startup loading task list.
 5. Consume it through `engine::runtime::typed::Shaders`.
 
 ## Coding standards

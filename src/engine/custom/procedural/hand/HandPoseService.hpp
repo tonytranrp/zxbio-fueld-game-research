@@ -9,7 +9,7 @@ namespace biofuel::engine::custom::procedural::hand {
 //
 // HandTrackingService owns camera/worker IPC and preview frames. This service
 // owns retargeting/calibration state so a calibration performed by one screen
-// can be consumed by later screens without copying DevHandLab's session-local
+// can be consumed by later screens without copying tool-screen session-local
 // retargeter.
 class HandPoseService final {
 public:

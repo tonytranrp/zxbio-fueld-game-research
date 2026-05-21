@@ -263,7 +263,7 @@ if(BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
     target_compile_definitions(biofuel_game PRIVATE BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
 endif()
 
-# BIOFUEL_DEV_STARTUP_HAND_LAB permanently disabled -- DevHandLab screen removed
+# BIOFUEL_DEV_STARTUP_HAND_LAB permanently disabled -- startup tool screen removed
 
 option(BIOFUEL_DEBUG_MEMORY_STATS "Debug mode: show memory/resource telemetry overlay." OFF)
 if(BIOFUEL_DEBUG_MEMORY_STATS)
