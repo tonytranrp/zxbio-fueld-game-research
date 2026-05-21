@@ -4,27 +4,27 @@ This file is generated for a live OMX team worker run and is disposable.
 
 ## Worker Identity
 - Team: omx-team-launch-promp-d6881907
-- Worker: worker-2
+- Worker: worker-3
 - Role: executor
 - Leader cwd: /mnt/c/users/tonyt/documents/github/zxbio-fueld-game-research
-- Worktree root: /mnt/c/users/tonyt/documents/github/zxbio-fueld-game-research/.omx/team/omx-team-launch-promp-d6881907/worktrees/worker-2
+- Worktree root: /mnt/c/users/tonyt/documents/github/zxbio-fueld-game-research/.omx/team/omx-team-launch-promp-d6881907/worktrees/worker-3
 - Team state root: /root/.omx-runs/run-20260521185139-6f13/.omx/state
-- Inbox path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-2/inbox.md
-- Mailbox path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/mailbox/worker-2.json
+- Inbox path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-3/inbox.md
+- Mailbox path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/mailbox/worker-3.json
 - Leader mailbox path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/mailbox/leader-fixed.json
 - Task directory: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/tasks
-- Worker status path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-2/status.json
-- Worker identity path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-2/identity.json
+- Worker status path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-3/status.json
+- Worker identity path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-3/identity.json
 
 ## Protocol
-1. Read your inbox at `/root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-2/inbox.md`.
+1. Read your inbox at `/root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-3/inbox.md`.
 2. Load the worker skill from the first existing path:
    - `${CODEX_HOME:-~/.codex}/skills/worker/SKILL.md`
    - `/mnt/c/users/tonyt/documents/github/zxbio-fueld-game-research/.codex/skills/worker/SKILL.md`
    - `/mnt/c/users/tonyt/documents/github/zxbio-fueld-game-research/skills/worker/SKILL.md`
 3. Send startup ACK before task work:
 
-   `omx team api send-message --input "{"team_name":"omx-team-launch-promp-d6881907","from_worker":"worker-2","to_worker":"leader-fixed","body":"ACK: worker-2 initialized"}" --json`
+   `omx team api send-message --input "{"team_name":"omx-team-launch-promp-d6881907","from_worker":"worker-3","to_worker":"leader-fixed","body":"ACK: worker-3 initialized"}" --json`
 
 4. Resolve canonical team state root in this order: `OMX_TEAM_STATE_ROOT` env -> worker identity `team_state_root` -> config/manifest `team_state_root` -> local cwd fallback.
 5. Read task files from `/root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/tasks/task-<id>.json` using bare `task_id` values in APIs.
@@ -33,13 +33,13 @@ This file is generated for a live OMX team worker run and is disposable.
    - `omx team api transition-task-status --json`
    - `omx team api release-task-claim --json` only for rollback to pending
 7. Use mailbox delivery flow:
-   - `omx team api mailbox-list --input "{"team_name":"omx-team-launch-promp-d6881907","worker":"worker-2"}" --json`
-   - `omx team api mailbox-mark-delivered --input "{"team_name":"omx-team-launch-promp-d6881907","worker":"worker-2","message_id":"<MESSAGE_ID>"}" --json`
+   - `omx team api mailbox-list --input "{"team_name":"omx-team-launch-promp-d6881907","worker":"worker-3"}" --json`
+   - `omx team api mailbox-mark-delivered --input "{"team_name":"omx-team-launch-promp-d6881907","worker":"worker-3","message_id":"<MESSAGE_ID>"}" --json`
 8. Preserve leader steering via inbox/mailbox nudges; task payload stays in inbox/task JSON, not this file.
 9. Do not pass `workingDirectory` to legacy team_* MCP tools; use `omx team api` CLI interop.
 
 ## Message Protocol
-- Always include `from_worker: "worker-2"`
+- Always include `from_worker: "worker-3"`
 - Send leader messages to `to_worker: "leader-fixed"`
 
 ## Scope Rules
