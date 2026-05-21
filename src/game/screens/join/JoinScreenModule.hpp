@@ -15,7 +15,7 @@ namespace biofuel::engine::ui::typed {
 
 template<>
 struct ScreenSpec<::biofuel::game::screens::JoinScreen> {
-    static constexpr ScreenId ID = screen_id::Join;
+    static constexpr ScreenId ID = ::biofuel::game::screens::screen_id::Join;
     static constexpr std::string_view NAME = "JoinScreen";
 };
 

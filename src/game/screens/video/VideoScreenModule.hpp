@@ -27,7 +27,7 @@ namespace biofuel::engine::ui::typed {
 
 template<>
 struct ScreenSpec<::biofuel::game::screens::VideoScreen> {
-    static constexpr ScreenId ID = screen_id::Video;
+    static constexpr ScreenId ID = ::biofuel::game::screens::screen_id::Video;
     static constexpr std::string_view NAME = "VideoScreen";
 };
 

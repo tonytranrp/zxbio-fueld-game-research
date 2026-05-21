@@ -34,7 +34,7 @@ namespace biofuel::engine::ui::typed {
 
 template<>
 struct ScreenSpec<::biofuel::game::screens::IdleScreen> {
-    static constexpr ScreenId ID = screen_id::Idle;
+    static constexpr ScreenId ID = ::biofuel::game::screens::screen_id::Idle;
     static constexpr std::string_view NAME = "IdleScreen";
 };
 

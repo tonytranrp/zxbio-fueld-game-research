@@ -20,7 +20,7 @@ namespace biofuel::engine::ui::typed {
 
 template<>
 struct ScreenSpec<::biofuel::game::screens::PausePopupScreen> {
-    static constexpr ScreenId ID = screen_id::PausePopup;
+    static constexpr ScreenId ID = ::biofuel::game::screens::screen_id::PausePopup;
     static constexpr std::string_view NAME = "PausePopupScreen";
 };
 
