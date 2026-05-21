@@ -31,8 +31,8 @@ void HandPreviewTexture::update(
             return;
         }
 
-        if (m_texture.id != 0U && m_texture.width == width && m_texture.height == height) {
-            UpdateTexture(m_texture, (*preview)->rgbaBytes.data());
+        if (m_texture.valid() && m_texture.width() == width && m_texture.height() == height) {
+            m_texture.update((*preview)->rgbaBytes.data());
             m_sequence = (*preview)->sequence;
             return;
         }
@@ -49,8 +49,7 @@ void HandPreviewTexture::update(
             return;
         }
 
-        release();
-        m_texture = texture;
+        m_texture.reset(texture);
         m_sequence = (*preview)->sequence;
         return;
     }
@@ -59,36 +58,29 @@ void HandPreviewTexture::update(
         return;
     }
 
-    Image image = LoadImageFromMemory(".jpg", (*preview)->jpegBytes.data(), static_cast<i32>((*preview)->jpegBytes.size()));
-    if (image.data == nullptr) {
+    ::biofuel::engine::graphics::ImageResource image{LoadImageFromMemory(".jpg", (*preview)->jpegBytes.data(), static_cast<i32>((*preview)->jpegBytes.size()))};
+    if (!image.valid()) {
         return;
     }
-    ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    ImageFormat(&image.get(), PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
 
-    if (m_texture.id != 0U && m_texture.width == image.width && m_texture.height == image.height) {
-        UpdateTexture(m_texture, image.data);
-        UnloadImage(image);
+    if (m_texture.valid() && m_texture.width() == image.width() && m_texture.height() == image.height()) {
+        m_texture.update(image.get().data);
         m_sequence = (*preview)->sequence;
         return;
     }
 
-    Texture2D texture = LoadTextureFromImage(image);
-    UnloadImage(image);
+    Texture2D texture = LoadTextureFromImage(image.get());
     if (texture.id == 0U) {
         return;
     }
 
-    release();
-    m_texture = texture;
+    m_texture.reset(texture);
     m_sequence = (*preview)->sequence;
 }
 
 void HandPreviewTexture::release() noexcept {
-    if (m_texture.id == 0U) {
-        return;
-    }
-    UnloadTexture(m_texture);
-    m_texture = Texture2D{};
+    m_texture.reset();
     m_sequence = std::numeric_limits<u64>::max();
 }
 
