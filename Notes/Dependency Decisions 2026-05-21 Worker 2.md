@@ -16,6 +16,12 @@ Worker 2 changes used existing repository facilities:
 
 No CMake, CPM, Cargo, or Rust bridge dependency manifest was changed.
 
+## Candidate records
+
+| Candidate | Upstream URL | License | MSVC support status | CMake/CPM integration shape | Compile-time cost risk | Local replacement/deletion target | Decision |
+|---|---|---|---|---|---|---|---|
+| Pipeline-c++ / `pipeline_c` | https://github.com/tonytranrp/Pipeline-c- | MIT, per upstream `LICENSE`; repository page also identifies an MIT license. | Not proven in this worker. Upstream presets are Ninja/Clang-oriented; no Visual Studio/MSVC preset was observed. This project still needs native MSVC build evidence. | Existing `CPMAddPackage(NAME pipeline_c URL https://github.com/tonytranrp/Pipeline-c-/archive/refs/heads/main.tar.gz URL_HASH ... OPTIONS PB_BUILD_TESTS OFF, PB_BUILD_EXAMPLES OFF, PB_BUILD_BENCHMARKS OFF, PB_ENABLE_WARNINGS OFF, PB_WARNINGS_AS_ERRORS OFF, PB_ENABLE_UNITY OFF)`. | Medium: C++20 template pipeline builder used in gameplay and task metadata; compile-time can grow with pipeline/stage count. Upstream has a clang time-trace preset, suggesting compile-time measurement is expected for changes. | Existing local use replaces manual gameplay pipeline dispatch/observer boilerplate in `src/game/gameplay/**` and `tests/pipeline/**`; no Worker 2 engine code was replaced by adopting or changing it. | Defer any hash/pin update. Current fetch hash mismatch blocks configure; integration owner must pin a stable archive/ref or update the hash with provenance, then run builds/tests. |
+
 ## Current dependency blockers observed
 
 | Dependency | Status | Evidence | Required owner/action |
