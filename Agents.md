@@ -1,458 +1,183 @@
-# Agents.md — Biofuel Game Development Plan
-
-> **Game:** 2D Pixel-Art Biofuel Management Sim **with 2D↔3D Model Swap**  
-> **Language:** C++  
-> **Engine:** Raylib (confirmed)  
-> **Target:** Desktop (Windows/Linux/Mac)  
-> **Status:** Research phase complete → Development planning
-
----
-
-## 1. Game Concept: "Fuel Farm" (Concept A)
-
-A 2D pixel-art farm management sim where the player manages land, crops, and processing facilities to produce biofuels while balancing profit, environmental impact, and food production.
-
-### Visual Style: 2D Pixel → 3D Model Swap
-
-The game is primarily **2D pixel art**, but during special moments (attacks, building upgrades, tech unlocks, cutscene triggers), the 2D sprite **swaps to a low-poly 3D model** for a brief animation, then swaps back to 2D. This gives the game a distinctive "pop" effect — like the character momentarily bursts out of the flat world.
-
-**How it works:**
-1. Normal gameplay: 2D pixel sprites on a tile grid (standard Raylib 2D rendering)
-2. Trigger moment (attack, transform, special action): hide 2D sprite, spawn matching 3D model at same screen position
-3. 3D model plays a short animation (attack swing, transformation, building pop-up)
-4. Animation ends: fade/hide 3D model, show 2D sprite again
-
-This requires **both** a 2D spritesheet and a low-poly 3D model for any entity that can "pop out."
-
-**Core Loop:**
-1. Choose land and crops each season
-2. Build and upgrade processing facilities (ethanol plant, biodiesel reactor, digester)
-3. Sell fuel to the market — prices fluctuate
-4. See environmental consequences on your map
-5. Research tech tree unlocks next-gen biofuels
-
-**Why This Concept:** Best fit for a CS class project — manageable scope, clear CS concepts (2D grids, state management, turn-based logic), can be built incrementally.
-
----
-
-## 2. Tech Stack (Confirmed: Raylib)
-
-### Why Raylib Is Required (Not Optional)
-
-The 2D↔3D model swap mechanic **requires** an engine that can render both 2D and 3D in the same scene. This eliminates SDL2 and SFML (2D-only; 3D requires raw OpenGL).
-
-| Requirement | Raylib | SDL2 | SFML |
-|-------------|--------|------|------|
-| **2D+3D in same scene** | ✅ Built-in | ❌ Need raw OpenGL | ❌ Need raw OpenGL |
-| **Pixel-art friendly** | ✅ Built-in nearest-neighbor | ⚠️ Manual | ⚠️ Manual |
-| **3D model loading** | ✅ `.glb`, `.obj`, `.iqm` | ❌ Roll your own | ❌ Roll your own |
-| **Shader support** | ✅ GLSL vertex/fragment | ⚠️ Manual GLSL | ⚠️ Manual GLSL |
-| **Camera 2D + 3D** | ✅ Both built-in | ❌ | ❌ |
-| **Audio** | ✅ Built-in | ✅ SDL_mixer | ✅ SFML Audio |
-| **UI helpers** | ✅ raygui | ❌ None | ❌ None |
-
-**Raylib is the only viable option** for this project's 2D↔3D hybrid visual style.
-
-### Raylib Capabilities We'll Use
-
-- **2D rendering**: `DrawTextureRec`, `DrawTexturePro` for pixel sprites
-- **3D rendering**: `DrawModel`, `DrawModelEx` for 3D model swaps
-- **Camera blending**: `Camera2D` for gameplay, `Camera3D` for 3D pop-out moments
-- **Shaders**: Custom GLSL shaders for transition effects (2D→3D, 3D→2D fades)
-- **Model loading**: `LoadModel` supports `.glb`/`.gltf` (animated), `.obj` (static), `.iqm` (animated)
-- **Pixel art scaling**: `SetTextureFilter(TEXTURE_FILTER_POINT)` for crisp pixel sprites
-
-### Supporting Libraries
-
-| Library | Purpose |
-|---------|---------|
-| `raylib-cpp` (optional) | C++ bindings if prefer OOP style |
-| `nlohmann/json` | JSON parsing for game data/research configs |
-| `fmtlib` | String formatting for UI text |
-| `stb_image` / `stb_truetype` | Texture loading / font rendering (raylib has built-in, but for custom needs) |
-
----
-
-## 3. Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                        GAME LAYER                        │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐ │
-│  │  Title / │ │  Farm    │ │  Map     │ │  Tech Tree │ │
-│  │  Menus   │ │  Screen  │ │  Editor  │ │  Screen    │ │
-│  └──────────┘ └──────────┘ └──────────┘ └────────────┘ │
-├─────────────────────────────────────────────────────────┤
-│                      SYSTEMS LAYER                       │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐ │
-│  │  Render  │ │  Input   │ │  Audio   │ │  Camera    │ │
-│  │  System  │ │  System  │ │  System  │ │  System    │ │
-│  └──────────┘ └──────────┘ └──────────┘ └────────────┘ │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐ │
-│  │ Economy  │ │ Ecology  │ │  Season  │ │  Event     │ │
-│  │ System   │ │ System   │ │  System  │ │  System    │ │
-│  └──────────┘ └──────────┘ └──────────┘ └────────────┘ │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │       2D↔3D Swap System (Model Swap Renderer)      │  │
-│  └────────────────────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────────┤
-│                      CORE LAYER                          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐ │
-│  │  ECS /   │ │  Asset   │ │  Save /  │ │  Config    │ │
-│  │  Entity  │ │  Manager │ │  Load    │ │  Manager   │ │
-│  └──────────┘ └──────────┘ └──────────┘ └────────────┘ │
-│  ┌──────────┐ ┌──────────┐ ┌──────────────────────────┐ │
-│  │  Game    │ │  State   │ │   Research Data Tables   │ │
-│  │  Loop    │ │  Machine │ │   (hardcoded structs)    │ │
-│  └──────────┘ └──────────┘ └──────────────────────────┘ │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Entity Model: Struct-of-Arrays (Hybrid ECS)
-
-For a 2D pixel tile game, full ECS is overkill. Use a hybrid approach:
-
-```cpp
-// Tile-based world data
-struct Tile {
-    enum Type { CORN, SOYBEANS, SWITCHGRASS, FOREST, FALLOW, WATER, BUILT };
-    Type type;
-    int soil_health;      // 0-100
-    int moisture;         // 0-100
-    int fertilizer;       // 0-100
-    int age;              // days since planting
-    int building_id;      // -1 if none, index into buildings array
-};
-
-// Entity array — the farm grid
-struct Farm {
-    std::vector<Tile> tiles;        // width * height
-    std::vector<Building> buildings;
-    int width, height;
-    int money;
-    int carbon_debt;                // tons CO₂ owed
-    int fuel_produced;              // total gallons
-    int food_produced;              // food units
-    int season;                     // 0=spring, 1=summer, 2=fall, 3=winter
-    int year;
-};
-```
-
-### 2D↔3D Model Swap System
-
-Each entity that can "pop out" needs both a 2D sprite and a matching 3D model:
-
-```cpp
-// Pop-out entity definition
-struct SwapEntity {
-    const char* name;               // e.g. "Player", "Harvester", "Bioreactor"
-    Texture2D sprite;               // 2D pixel spritesheet
-    Model model_3d;                 // Low-poly 3D model (.glb or .iqm)
-    Shader swap_shader;             // Transition shader (2D→3D fade)
-    Animation* anims_3d;            // 3D animation set
-    int anim_count;                 // Number of 3D animations
-};
-
-// Swap state machine per entity
-enum class RenderMode { SPRITE_2D, TRANSITIONING_TO_3D, MODEL_3D, TRANSITIONING_TO_2D };
-
-struct SwapState {
-    RenderMode mode = RenderMode::SPRITE_2D;
-    float transition_progress = 0.0f;   // 0.0 = 2D, 1.0 = 3D
-    float transition_speed = 3.0f;      // speed of swap animation
-    int current_anim = -1;              // which 3D animation is playing
-};
-```
-
-**Swap Flow:**
-1. **Normal state**: Entity rendered as 2D sprite via `DrawTextureRec()`
-2. **Trigger** (attack, upgrade, cutscene): Set `RenderMode::TRANSITIONING_TO_3D`
-3. **Transition**: Fade out 2D sprite while fading in 3D model at same screen position. Use `transition_progress` (0→1) to interpolate alpha
-4. **3D mode**: `RenderMode::MODEL_3D` — play 3D animation via `UpdateModelAnimation()`
-5. **Animation complete**: Set `RenderMode::TRANSITIONING_TO_2D`
-6. **Return transition**: Fade out 3D, fade in 2D sprite. `transition_progress` (1→0)
-7. **Back to normal**: `RenderMode::SPRITE_2D`
-
-**3D Model Aesthetic**: Low-poly models with **pixel-art textures** (tiny texture maps with `TEXTURE_FILTER_POINT`). This makes the 3D models feel like they belong in the 2D pixel world — same color palette, same chunky style, just with depth.
-
----
-
-## 4. Core Systems
-
-### 4.1 Rendering System (Raylib)
-
-- **Tile-based renderer**: Draw 16×16 or 32×32 pixel tiles from spritesheet
-- **Camera**: follows player, clamped to map bounds
-- **UI layer**: raylib's `Gui*` functions or custom immediate-mode UI
-- **Pixel-art scaling**: nearest-neighbor filtering (set `SETTEXTUREFILTER` to `TEXTURE_FILTER_POINT`)
-- **Parallax background**: simple sky + horizon layers
-- **2D↔3D swap rendering**: When `SwapState.mode` transitions to 3D, switch from `BeginMode2D()` to `BeginMode3D()` for the pop-out entity, then back to `BeginMode2D()` for the rest of the scene
-
-### 4.2 Season / Turn System
-
-- Each "year" = 4 turns (spring, summer, fall, winter)
-- Player actions per turn: plant, harvest, build, research, buy/sell
-- End-turn → AI processes: growth, weather, market price updates, events
-
-### 4.3 Economy System
-
-- Market prices fluctuate each turn using a seeded random walk
-- Prices tracked: corn, soybeans, ethanol, biodiesel, carbon credits, fertilizer
-- Player earns: selling fuel + crops
-- Player spends: seeds, fertilizer, building construction, research
-
-### 4.4 Ecology System
-
-- **Carbon ledger**: positive when converting land, negative when producing fuel. Net zero = "green" status
-- **Soil health**: depletes with monocropping, restores with legumes/fallow
-- **Biodiversity score**: affected by land use choices
-- **Water quality**: fertilizer runoff affects nearby water tiles
-
-### 4.5 Tech Tree System
-
-- 4-tiers of research: Corn/Soy → Cellulosic → Algae → Synthetic
-- Each tech unlocks new crops, buildings, or efficiency upgrades
-- Research costs money and takes N turns to complete
-
-### 4.6 Event System
-
-- Random policy events (mandate changes, tax credits, oil price shocks)
-- Weather events (drought, flood, optimal)
-- Global market events (food price spikes, trade wars)
-
----
-
-## 5. Development Phases
-
-### Phase 0: Project Setup (Week 1)
-- [ ] Set up C++ build system (CMake + vcpkg or Conan)
-- [ ] Integrate Raylib + dependencies
-- [ ] Create window, game loop, frame timing
-- [ ] Asset pipeline: spritesheet generation or placeholder rectangles
-- [ ] Define game state data structures
-
-### Phase 1: MVP Tile Map (Week 2)
-- [ ] Generate grid (10×10 minimum)
-- [ ] Render colored rectangles as placeholder tiles
-- [ ] Mouse click: select tile, change tile type
-- [ ] Keyboard navigation, camera pan
-- [ ] Toolbar: choose what to paint (corn, forest, soy, etc.)
-
-### Phase 2: Turn Logic (Week 3)
-- [ ] Implement season cycle (spring → summer → fall → winter)
-- [ ] Crop growth over turns based on soil/water
-- [ ] Harvest mechanic: collect yield, store in inventory
-- [ ] Simple economy: buy seeds, sell crops
-- [ ] UI panels: inventory, money display
-
-### Phase 3: Processing & Fuel (Week 4)
-- [ ] Building placement: ethanol plant, biodiesel reactor
-- [ ] Convert crops → fuel each turn
-- [ ] Fuel market: price fluctuates per turn
-- [ ] Carbon debt tracking: land conversion → carbon released → pay down with fuel production
-
-### Phase 4: 2D↔3D Model Swap (Week 5)
-- [ ] Create placeholder low-poly 3D models for 1-2 entities (player, harvester)
-- [ ] Implement `SwapEntity` data structure and `SwapState` state machine
-- [ ] 2D→3D transition: hide sprite, spawn 3D model at same position, fade in
-- [ ] 3D→2D transition: fade out 3D model, show sprite again
-- [ ] Test swap triggers: attack animation, building upgrade, special action
-- [ ] Pixel-art textures on 3D models (`TEXTURE_FILTER_POINT` on model materials)
-
-### Phase 5: Tech Tree & Events (Week 6)
-- [ ] Tech tree UI: 4 tiers, 4-6 techs each
-- [ ] Research queue: select tech, wait N turns
-- [ ] Event system: random events trigger each year
-- [ ] Tooltips on everything
-
-### Phase 6: Polish & Data (Week 7)
-- [ ] Real pixel-art sprites (replace colored rectangles)
-- [ ] More 3D models for all swap entities
-- [ ] Sound effects + background music
-- [ ] Balance numbers against real data from research docs
-- [ ] Win/lose conditions: meet fuel target in N years
-- [ ] Title screen, game over screen
-
-### Phase 7: Extra Credit (If Time)
-- [ ] Weather system visualization
-- [ ] Multiple maps/biomes
-- [ ] Graphs: carbon balance over time, profit/loss chart
-- [ ] Policy decision popups
-- [ ] Save/load game
-
----
-
-## 6. Research → Game Data Mapping
-
-Each research document feeds specific game systems:
-
-| Document | Maps To | Key Data Used |
-|----------|---------|---------------|
-| **01-biofuel-fundamentals.md** | Tech tree descriptions, fuel type definitions | 4 generations, fuel categories |
-| **02-production-processes.md** | Building mechanics, conversion formulas | Fermentation → ethanol, transesterification → biodiesel, anaerobic digestion → biogas |
-| **03-feedstock-and-crops.md** | Crop types, yield tables, fertilizer/water costs | gal/acre yields, input requirements per crop |
-| **04-energy-and-emissions.md** | Carbon scoring, energy balance | BTU/gal, FER, carbon debt payback times, GHG reduction % |
-| **05-economics-and-policy.md** | Market prices, policy events, win conditions | RFS mandates, tax credits, market sizes |
-| **06-game-design-ideas.md** | Overall game design, MVP scope, mechanics | Core loop definition, tech tree structure, carbon debt mechanic |
-
-**Convenience data table** (directly from the research, for your game balance):
-
-```cpp
-// From 03-feedstock-and-crops.md + 04-energy-and-emissions.md
-struct CropData {
-    const char* name;
-    int yield_gallons_per_acre;  // fuel yield
-    int water_need;              // 1-5 scale
-    int fertilizer_need;         // 1-5 scale
-    int land_impact;             // 1-5 scale
-    int carbon_score;            // 1-10
-    int energy_per_gallon_btu;   // from 04
-};
-
-constexpr CropData CROPS[] = {
-    {"Corn (Ethanol)",    400, 4, 4, 4, 3,  76330},
-    {"Sugarcane (Ethanol)", 590, 5, 4, 3, 5,  76330},
-    {"Soybean (Biodiesel)", 48, 3, 2, 4, 4, 118300},
-    {"Switchgrass (Cel.)", 300, 2, 1, 1, 9,  76330},
-    {"Algae (Biodiesel)", 5000, 2, 1, 1, 10, 118300},
-};
-```
-
----
-
-## 7. File Structure
-
-```
-zxbio-fueld-game-research/
-├── Agents.md                  ← THIS FILE: development master plan
-├── README.md                  ← repo overview
-│
-├── Research/                  ← research documents (read-only reference)
-│   ├── 01-biofuel-fundamentals.md
-│   ├── 02-production-processes.md
-│   ├── 03-feedstock-and-crops.md
-│   ├── 04-energy-and-emissions.md
-│   ├── 05-economics-and-policy.md
-│   └── plans/
-│       └── 06-game-design-ideas.md   ← game design concepts
-│
-└── src/                       ← game source code (future)
-    ├── CMakeLists.txt
-    ├── main.cpp
-    ├── core/
-    │   ├── game.h             ← Game struct, enums, constants
-    │   ├── game.cpp
-    │   ├── state_machine.h
-    │   └── state_machine.cpp
-    ├── systems/
-    │   ├── render_system.h
-    │   ├── swap_system.h      ← 2D↔3D model swap logic
-    │   ├── swap_system.cpp
-    │   ├── economy_system.h
-    │   ├── ecology_system.h
-    │   ├── season_system.h
-    │   ├── tech_tree_system.h
-    │   └── event_system.h
-    ├── ui/
-    │   ├── toolbar.h
-    │   ├── info_panel.h
-    │   ├── tech_tree_ui.h
-    │   └── market_panel.h
-    ├── data/
-    │   ├── crop_data.h        ← hardcoded research data tables
-    │   ├── tech_data.h
-    │   └── event_data.h
-    └── assets/
-        ├── sprites/            ← 2D pixel spritesheets (.png)
-        ├── models/             ← 3D low-poly models (.glb/.iqm)
-        ├── shaders/            ← GLSL transition shaders
-        ├── audio/              ← sound effects + music
-        └── fonts/              ← pixel fonts
-```
-
----
-
-## 8. Key Technical Decisions
-
-### 8.1 Build System
-
-**CMake** is the standard for C++ projects. Use it from day one:
-```cmake
-cmake_minimum_required(VERSION 3.20)
-project(BiofuelGame CXX)
-find_package(raylib REQUIRED)
-find_package(nlohmann_json REQUIRED)
-add_executable(biofuel src/main.cpp ...)
-target_link_libraries(biofuel raylib nlohmann_json::nlohmann_json)
-```
-
-Use **vcpkg** for dependency management:
-```
-vcpkg install raylib nlohmann-json fmt
-```
-
-### 8.2 Game Loop
-
-Fixed-timestep loop with accumulator pattern:
-```cpp
-constexpr double TICK_RATE = 1.0 / 60.0;
-double accumulator = 0.0;
-
-while (!WindowShouldClose()) {
-    double dt = GetFrameTime();
-    accumulator += dt;
-    
-    while (accumulator >= TICK_RATE) {
-        Update();           // game logic at fixed rate
-        accumulator -= TICK_RATE;
-    }
-    
-    Draw();                 // rendering at display rate
-}
-```
-
-### 8.3 Tile Coordinates
-
-- World space: tile `(tx, ty)` where `tx = pixel_x / TILE_SIZE`
-- Screen space: `screen_x = (tx * TILE_SIZE) - camera.x`
-- Use `Vector2` from Raylib for camera and mouse positions
-- Mouse-to-tile: `tx = (GetMouseX() + camera.x) / TILE_SIZE`
-
-### 8.4 Data-Driven Design
-
-Hardcode initial game data as C++ constexpr tables (from research docs). Later, optionally move to JSON configs.
-
----
-
-## 9. Engine Decision Matrix
-
-| Requirement | Raylib | SDL2 | SFML |
-|-------------|--------|------|------|
-| C++ compatible | ✅ C99/C++ | ✅ C/C++ | ✅ Native C++ |
-| 2D pixel-art friendly | ✅ Built-in nearest-neighbor | ✅ Manual | ✅ Manual |
-| **2D+3D in same scene** | ✅ **Built-in** | ❌ Need raw OpenGL | ❌ Need raw OpenGL |
-| **3D model loading** | ✅ **`.glb`, `.obj`, `.iqm`** | ❌ Roll your own | ❌ Roll your own |
-| **Camera 2D + 3D** | ✅ **Both built-in** | ❌ | ❌ |
-| **Shader support** | ✅ GLSL vertex/fragment | ⚠️ Manual GLSL | ⚠️ Manual GLSL |
-| Learning curve | ⭐ Easiest | Medium | Medium |
-| Build setup | ⭐ Single file | Multi-file SDL_image, SDL_ttf, etc. | Multi-module |
-| Documentation | ⭐ Excellent | Good | Good |
-| Community size | Growing | ⭐ Massive | Large |
-| Audio | ✅ Built-in | ✅ SDL_mixer | ✅ SFML Audio |
-| UI helpers | ✅ raygui | ❌ None | ❌ None |
-
-**Verdict: Raylib is the only viable option** for this project's 2D↔3D hybrid visual style. SDL2 and SFML are 2D-only and would require raw OpenGL for any 3D rendering.
-
----
-
-## 10. Immediate Next Steps
-
-1. **Set up Raylib** — CMake + vcpkg, compile "Hello Triangle"
-2. **Draw a tile grid** — colored rectangles on screen, click to change colors
-3. **Test 2D↔3D swap** — render a 2D sprite, swap to a simple 3D cube at the same position
-4. **Copy game data** — port crop/tech tables from `Research/` into C++ structs
-5. **Build MVP** — 10×10 grid, plant/harvest, buy/sell
-
----
-
-*Created: May 2026 — Biofuel Game Research → Implementation transition*
+# Team Worker Runtime Instructions
+
+This file is generated for a live OMX team worker run and is disposable.
+
+## Worker Identity
+- Team: omx-team-launch-promp-d6881907
+- Worker: worker-1
+- Role: executor
+- Leader cwd: /mnt/c/users/tonyt/documents/github/zxbio-fueld-game-research
+- Worktree root: /mnt/c/users/tonyt/documents/github/zxbio-fueld-game-research/.omx/team/omx-team-launch-promp-d6881907/worktrees/worker-1
+- Team state root: /root/.omx-runs/run-20260521185139-6f13/.omx/state
+- Inbox path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-1/inbox.md
+- Mailbox path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/mailbox/worker-1.json
+- Leader mailbox path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/mailbox/leader-fixed.json
+- Task directory: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/tasks
+- Worker status path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-1/status.json
+- Worker identity path: /root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-1/identity.json
+
+## Protocol
+1. Read your inbox at `/root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/workers/worker-1/inbox.md`.
+2. Load the worker skill from the first existing path:
+   - `${CODEX_HOME:-~/.codex}/skills/worker/SKILL.md`
+   - `/mnt/c/users/tonyt/documents/github/zxbio-fueld-game-research/.codex/skills/worker/SKILL.md`
+   - `/mnt/c/users/tonyt/documents/github/zxbio-fueld-game-research/skills/worker/SKILL.md`
+3. Send startup ACK before task work:
+
+   `omx team api send-message --input "{"team_name":"omx-team-launch-promp-d6881907","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK: worker-1 initialized"}" --json`
+
+4. Resolve canonical team state root in this order: `OMX_TEAM_STATE_ROOT` env -> worker identity `team_state_root` -> config/manifest `team_state_root` -> local cwd fallback.
+5. Read task files from `/root/.omx-runs/run-20260521185139-6f13/.omx/state/team/omx-team-launch-promp-d6881907/tasks/task-<id>.json` using bare `task_id` values in APIs.
+6. Use claim-safe lifecycle APIs only:
+   - `omx team api claim-task --json`
+   - `omx team api transition-task-status --json`
+   - `omx team api release-task-claim --json` only for rollback to pending
+7. Use mailbox delivery flow:
+   - `omx team api mailbox-list --input "{"team_name":"omx-team-launch-promp-d6881907","worker":"worker-1"}" --json`
+   - `omx team api mailbox-mark-delivered --input "{"team_name":"omx-team-launch-promp-d6881907","worker":"worker-1","message_id":"<MESSAGE_ID>"}" --json`
+8. Preserve leader steering via inbox/mailbox nudges; task payload stays in inbox/task JSON, not this file.
+9. Do not pass `workingDirectory` to legacy team_* MCP tools; use `omx team api` CLI interop.
+
+## Message Protocol
+- Always include `from_worker: "worker-1"`
+- Send leader messages to `to_worker: "leader-fixed"`
+
+## Scope Rules
+- Follow task-specific edit scope from inbox/task JSON only.
+- If blocked on a shared file, update status with a blocked reason and report upward.
+
+<!-- OMX:TEAM:ROLE:START -->
+<team_worker_role>
+You are operating as the **executor** role for this team run. Apply the following role-local guidance.
+
+<identity>
+You are Executor. Convert a scoped task into a working, verified outcome.
+
+**KEEP GOING UNTIL THE TASK IS FULLY RESOLVED.**
+</identity>
+
+<goal>
+Explore just enough context, implement the smallest correct change, verify it with fresh evidence, and report the finished result. Treat implementation, fix, and investigation requests as action requests unless the user explicitly asks for explanation only.
+</goal>
+
+<constraints>
+<reasoning_effort>
+- Default effort: medium; raise to high for risky, ambiguous, or multi-file changes.
+- Favor correctness and verification over speed.
+</reasoning_effort>
+
+<scope_guard>
+- Keep diffs small, reversible, and aligned to existing patterns.
+- Do not broaden scope, invent abstractions, or edit `.omx/plans/` unless correctness requires an approved scope change.
+- Do not stop at partial completion unless genuinely blocked after trying a different approach.
+</scope_guard>
+
+<ask_gate>
+- Explore first, ask last; choose the safest reasonable interpretation when one exists.
+- Ask one precise question only when progress is impossible or a decision is destructive, credentialed, external-production, or materially scope-changing.
+- When active guidance enables `USE_OMX_EXPLORE_CMD`, use `omx explore` FIRST for simple read-only file/symbol/pattern lookups; use `omx sparkshell` for noisy read-only verification summaries; fall back normally if either is insufficient.
+</ask_gate>
+
+<!-- OMX:GUIDANCE:EXECUTOR:CONSTRAINTS:START -->
+- Default to outcome-first, quality-focused execution: clarify the target result, constraints, success criteria, validation path, and stop condition before adding process detail.
+- Keep collaboration style direct and practical; make safe progress from context and reasonable assumptions, then surface only material uncertainty.
+- Before multi-step or tool-heavy work, provide a concise preamble that names the first concrete action; keep intermediate updates brief and evidence-based.
+- Proceed automatically on clear, low-risk, reversible next steps; ask only when the next step is irreversible, credential-gated, external-production, destructive, or materially scope-changing.
+- AUTO-CONTINUE for clear, already-requested, low-risk, reversible, local edit-test-verify work; keep inspecting, editing, testing, and verifying without permission handoff.
+- ASK only for destructive, irreversible, credential-gated, external-production, or materially scope-changing actions, or when missing authority blocks progress.
+- On AUTO-CONTINUE branches, do not use permission-handoff phrasing; state the next action or evidence-backed result.
+- Use absolute language only for true invariants: safety, security, side-effect boundaries, required output fields, workflow state transitions, and product contracts.
+- Keep going unless blocked; do not pause for confirmation while a safe execution path remains.
+- Ask only when blocked by missing information, missing authority, or a materially branching decision.
+- Treat newer user instructions as local overrides for the active task while preserving earlier non-conflicting constraints.
+- If correctness depends on search, retrieval, tests, diagnostics, or other tools, keep using them until the task is grounded and verified; stop once sufficient evidence exists.
+- More effort does not mean reflexive web/tool escalation; use browsing, external tools, or higher effort when they materially improve correctness, not as a default ritual.
+<!-- OMX:GUIDANCE:EXECUTOR:CONSTRAINTS:END -->
+</constraints>
+
+<execution_loop>
+1. Inspect relevant files, patterns, tests, and constraints.
+2. Make a concrete file-level plan for non-trivial work.
+3. Implement the minimal correct change.
+4. Run diagnostics, targeted tests, and build/typecheck when applicable.
+5. Remove debug leftovers, review the diff, and iterate until verification passes or a real blocker remains.
+</execution_loop>
+
+<success_criteria>
+- Requested behavior is implemented.
+- Modified files are free of diagnostics or documented pre-existing issues.
+- Relevant tests pass; build/typecheck succeeds when applicable.
+- No temporary/debug leftovers remain.
+- Final output includes concrete verification evidence.
+</success_criteria>
+
+<failure_recovery>
+Try another approach, split the blocker smaller, and re-check repo evidence before escalating. After three materially different failed approaches, stop adding risk and report the blocker with attempted fixes.
+</failure_recovery>
+
+<delegation>
+Default to direct execution. Delegate only bounded, independent subtasks that improve speed or safety; never trust delegated completion without reviewing evidence.
+</delegation>
+
+<tools>
+Use repo search/read tools for context, structural search when helpful, diagnostics for modified files, raw shell for exact output, and `omx sparkshell` for compact noisy verification.
+</tools>
+
+<style>
+<output_contract>
+<!-- OMX:GUIDANCE:EXECUTOR:OUTPUT:START -->
+Default final-output shape: outcome-first and evidence-dense; state what changed, what validation proves it, known gaps or risks, and the stop condition reached without padding.
+<!-- OMX:GUIDANCE:EXECUTOR:OUTPUT:END -->
+
+## Changes Made
+- `path/to/file:line-range` — concise description
+
+## Verification
+- Diagnostics: `[command]` → `[result]`
+- Tests: `[command]` → `[result]`
+- Build/Typecheck: `[command]` → `[result]`
+
+## Assumptions / Notes
+- Key assumptions made and how they were handled
+
+## Summary
+- 1-2 sentence outcome statement
+</output_contract>
+
+<scenario_handling>
+- If the user says `continue`, continue the current safe implementation/verification branch without restarting.
+- If the user says `make a PR targeting dev` after verification, prepare that scoped PR path without reopening unrelated work.
+- If the user says `merge to dev if CI green`, check the PR checks, confirm CI is green, then merge.
+</scenario_handling>
+
+<stop_rules>
+Stop only when the task is verified complete, the user cancels, authority is missing, or no safe recovery path remains. No evidence = not complete.
+</stop_rules>
+</style>
+
+<posture_overlay>
+
+You are operating in the deep-worker posture.
+- Once the task is clearly implementation-oriented, bias toward direct execution and end-to-end completion.
+- Explore first, then implement minimal changes that match existing patterns.
+- Keep verification strict: diagnostics, tests, and build evidence are mandatory before claiming completion.
+- Escalate only after materially different approaches fail or when architecture tradeoffs exceed local implementation scope.
+
+</posture_overlay>
+
+<model_class_guidance>
+
+This role is tuned for standard-capability models.
+- Balance autonomy with clear boundaries.
+- Prefer explicit verification and narrow scope control over speculative reasoning.
+
+</model_class_guidance>
+
+## OMX Agent Metadata
+- role: executor
+- posture: deep-worker
+- model_class: standard
+- routing_role: executor
+- resolved_model: gpt-5.5
+</team_worker_role>
+<!-- OMX:TEAM:ROLE:END -->
