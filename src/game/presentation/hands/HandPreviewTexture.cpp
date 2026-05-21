@@ -1,6 +1,7 @@
 #include "game/presentation/hands/HandPreviewTexture.hpp"
 
 #include <limits>
+#include <utility>
 
 namespace biofuel::game::presentation::hands {
 
@@ -44,12 +45,12 @@ void HandPreviewTexture::update(
             .mipmaps = 1,
             .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
         };
-        Texture2D texture = LoadTextureFromImage(image);
-        if (texture.id == 0U) {
+        auto texture = ::biofuel::engine::graphics::TextureResource::fromImage(image);
+        if (!texture.valid()) {
             return;
         }
 
-        m_texture.reset(texture);
+        m_texture = std::move(texture);
         m_sequence = (*preview)->sequence;
         return;
     }
@@ -58,7 +59,10 @@ void HandPreviewTexture::update(
         return;
     }
 
-    ::biofuel::engine::graphics::ImageResource image{LoadImageFromMemory(".jpg", (*preview)->jpegBytes.data(), static_cast<i32>((*preview)->jpegBytes.size()))};
+    auto image = ::biofuel::engine::graphics::ImageResource::loadFromMemory(
+        ".jpg",
+        (*preview)->jpegBytes.data(),
+        static_cast<i32>((*preview)->jpegBytes.size()));
     if (!image.valid()) {
         return;
     }
@@ -70,12 +74,12 @@ void HandPreviewTexture::update(
         return;
     }
 
-    Texture2D texture = LoadTextureFromImage(image.get());
-    if (texture.id == 0U) {
+    auto texture = ::biofuel::engine::graphics::TextureResource::fromImage(image.get());
+    if (!texture.valid()) {
         return;
     }
 
-    m_texture.reset(texture);
+    m_texture = std::move(texture);
     m_sequence = (*preview)->sequence;
 }
 

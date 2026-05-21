@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cmath>
 #include <string_view>
+#include <utility>
 
 namespace biofuel::game::presentation::sprites {
 
@@ -120,14 +121,14 @@ void NekoCat::load() {
             std::array<char, 256> path{};
             std::snprintf(path.data(), path.size(), "assets/sprites/neko/%s%d.png", prefix, frame);
 
-            Texture2D tex = LoadTexture(path.data());
-            if (tex.id != 0) {
-                SetTextureFilter(tex, TEXTURE_FILTER_POINT);
+            auto texture = ::biofuel::engine::graphics::TextureResource::load(path.data());
+            if (texture.valid()) {
+                SetTextureFilter(texture.get(), TEXTURE_FILTER_POINT);
             }
 
             std::array<char, 32> key{};
             std::snprintf(key.data(), key.size(), "%s%d", prefix, frame);
-            m_textures.emplace(std::string{key.data()}, ::biofuel::engine::graphics::TextureResource{tex});
+            m_textures.emplace(std::string{key.data()}, std::move(texture));
         }
     }
 
@@ -149,9 +150,9 @@ void NekoCat::load() {
                 std::snprintf(path.data(), path.size(), "assets/sprites/neko/%s%d.png", prefix, frame);
             }
 
-            Texture2D tex = LoadTexture(path.data());
-            if (tex.id != 0) {
-                SetTextureFilter(tex, TEXTURE_FILTER_POINT);
+            auto texture = ::biofuel::engine::graphics::TextureResource::load(path.data());
+            if (texture.valid()) {
+                SetTextureFilter(texture.get(), TEXTURE_FILTER_POINT);
             }
 
             std::array<char, 32> key{};
@@ -160,7 +161,7 @@ void NekoCat::load() {
             } else {
                 std::snprintf(key.data(), key.size(), "%s%d", prefix, frame);
             }
-            m_textures.emplace(std::string{key.data()}, ::biofuel::engine::graphics::TextureResource{tex});
+            m_textures.emplace(std::string{key.data()}, std::move(texture));
         }
     }
 

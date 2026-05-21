@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/core/Types.hpp"
 #include <raylib.h>
 #include <utility>
 
@@ -10,6 +11,14 @@ public:
     TextureResource() = default;
     explicit TextureResource(Texture2D texture) noexcept : m_texture(texture) {}
     ~TextureResource() noexcept { reset(); }
+
+    [[nodiscard]] static TextureResource load(const char* fileName) noexcept {
+        return TextureResource{LoadTexture(fileName)};
+    }
+
+    [[nodiscard]] static TextureResource fromImage(const Image& image) noexcept {
+        return TextureResource{LoadTextureFromImage(image)};
+    }
 
     TextureResource(const TextureResource&) = delete;
     TextureResource& operator=(const TextureResource&) = delete;
@@ -53,6 +62,14 @@ public:
     ImageResource() = default;
     explicit ImageResource(Image image) noexcept : m_image(image) {}
     ~ImageResource() noexcept { reset(); }
+
+    [[nodiscard]] static ImageResource loadFromMemory(
+        const char* fileType,
+        const u8* fileData,
+        const i32 dataSize) noexcept
+    {
+        return ImageResource{LoadImageFromMemory(fileType, fileData, dataSize)};
+    }
 
     ImageResource(const ImageResource&) = delete;
     ImageResource& operator=(const ImageResource&) = delete;
