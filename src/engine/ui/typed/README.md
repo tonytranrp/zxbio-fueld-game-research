@@ -58,3 +58,20 @@ be toggled through screen override events, which is useful for debug tools.
 - Keep stack policy explicit in specs.
 - Render elements are compile-time types, not heap widgets.
 - Prefer `RenderContext` over global lookups inside typed render elements.
+
+## Audit notes
+
+- `ScreenRegistry`, `ScreenValidation`, `ScreenDispatch`, and `RenderPipeline`
+  form a small typed screen system. The duplicated lifecycle bridge functions
+  are visible, but they preserve straightforward call paths and readable
+  validation errors.
+- Boost.SML is not justified for the current screen stack. Transitions are a
+  simple `None` / `TransitionIn` / `TransitionOut` flow owned by
+  `ScreenSlot` and `ScreenManager`; an SML graph would add dependency and
+  indirection without deleting enough boilerplate.
+- `magic_enum` or `frozen` may be useful later for enum names or constexpr
+  policy lookup tables, but current policy switches are game-owned and guarded
+  by compile-time validators.
+- Boost.PFR, `glaze`, `fmt`, and Highway/SIMD do not target current UI typed
+  code: there is no aggregate reflection, JSON serialization, direct formatting
+  gap, or measured vectorizable hot loop in this layer.

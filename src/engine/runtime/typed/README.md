@@ -63,3 +63,19 @@ static_assert(validateAssetCatalog<FarmPrototypeCatalog>());
 - Runtime users should not include generated registry headers directly.
 - Catalog entries must point at already registered typed assets or shaders.
 - Labels use stable lowercase dotted names.
+
+## Audit notes
+
+- `AssetCatalog.hpp` has the most visible repetition: wrapper entries such as
+  `ShaderEntry<T>` and `SoundEntry<T>`, traits, and validation concepts all
+  encode the asset kind at compile time. This is deliberate until a replacement
+  deletes that local code while preserving clear registration errors.
+- Boost.PFR is not currently justified here: the repetition is tag/category
+  metadata, not aggregate-field reflection, serialization, or comparison.
+- Boost.MP11 is also deferred for this layer. The local registries provide
+  concise domain errors such as "asset catalog entry must already be
+  registered"; a generic typelist dependency should only be added if it removes
+  meaningful local code without making those errors opaque.
+- `glaze` should not replace `nlohmann/json` from this layer alone. Existing
+  JSON usage lives in runtime/world and procedural-hand config code, not in the
+  typed registry declarations.
