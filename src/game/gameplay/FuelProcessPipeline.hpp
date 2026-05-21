@@ -1,12 +1,8 @@
 #pragma once
 
-#include "game/gameplay/stages/WashCrop.hpp"
-#include "game/gameplay/stages/GrindCrop.hpp"
-#include "game/gameplay/stages/Ferment.hpp"
+#include "game/gameplay/stages/PassThroughStages.hpp"
 #include "game/gameplay/stages/Distill.hpp"
-#include "game/gameplay/stages/PressExtract.hpp"
 #include "game/gameplay/stages/Transesterify.hpp"
-#include "game/gameplay/stages/Pretreat.hpp"
 #include "game/gameplay/stages/ProcessTypes.hpp"
 #include "game/data/FuelFarmData.hpp"
 #include "game/gameplay/PipelineEventObserver.hpp"

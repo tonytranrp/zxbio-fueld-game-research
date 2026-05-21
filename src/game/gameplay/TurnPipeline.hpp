@@ -3,7 +3,7 @@
 #include "game/gameplay/stages/SeasonAdvance.hpp"
 #include "game/gameplay/stages/CropGrowth.hpp"
 #include "game/gameplay/stages/EcologyUpdate.hpp"
-#include "game/gameplay/stages/EconomyUpdate.hpp"
+#include "game/gameplay/stages/PassThroughStages.hpp"
 #include "game/gameplay/PipelineEventObserver.hpp"
 #include <pb/pipeline.hpp>
 #include <pb/runtime/sequential.hpp>

@@ -312,7 +312,7 @@ using WashCrop = PassThrough<ProcessingInput>;
 using EconomyUpdate = PassThrough<TurnOutput>;
 ```
 
-A `PassThrough<T>` stage satisfies the `pb::core::Stage` concept without any .cpp file, keeping stub stages to a single header line. When a stage's real implementation is added later, replace the `using` alias with a concrete struct and add the corresponding .cpp file.
+A `PassThrough<T>` stage satisfies the `pb::core::Stage` concept without any .cpp file. Current placeholder stage aliases live together in `PassThroughStages.hpp`; when a stage gains real behavior, move that alias back to a dedicated concrete header/source pair.
 
 ## The event observer bridge
 
@@ -448,18 +448,13 @@ stages/
 ├── SeasonAdvance.hpp/.cpp     Turn pipeline stage 1
 ├── CropGrowth.hpp/.cpp        Turn pipeline stage 2
 ├── EcologyUpdate.hpp/.cpp     Turn pipeline stage 3
-├── EconomyUpdate.hpp          Turn pipeline stage 4 (PassThrough)
 ├── ValidateCrop.hpp/.cpp      Harvest pipeline stage 1
 ├── CalculateYield.hpp/.cpp    Harvest pipeline stage 2
 ├── UpdateInventory.hpp/.cpp   Harvest pipeline stage 3
-├── WashCrop.hpp              Fuel process stage (all pipelines, PassThrough)
-├── GrindCrop.hpp             Fuel process stage (ethanol, cellulosic, PassThrough)
-├── Ferment.hpp               Fuel process stage (ethanol, cellulosic, PassThrough)
 ├── Distill.hpp/.cpp          Fuel process stage (ethanol, cellulosic)
-├── PressExtract.hpp          Fuel process stage (biodiesel, PassThrough)
 ├── Transesterify.hpp/.cpp    Fuel process stage (biodiesel)
-├── Pretreat.hpp              Fuel process stage (cellulosic only, PassThrough)
-├── PassThrough.hpp           Generic pass-through utility for stub/placeholder stages
+├── PassThrough.hpp           Generic pass-through utility
+├── PassThroughStages.hpp     Current placeholder stage aliases
 ├── QueueResearch.hpp/.cpp     Tech tree stage 1
 ├── AdvanceResearch.hpp/.cpp   Tech tree stage 2
 └── UnlockTech.hpp/.cpp        Tech tree stage 3
