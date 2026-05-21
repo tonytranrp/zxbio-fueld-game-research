@@ -26,6 +26,10 @@ struct CatalogCounter {
     }
 };
 
+struct MetaSmokeA {};
+struct MetaSmokeB {};
+struct MetaSmokeC {};
+
 } // namespace
 
 int main() {
@@ -41,6 +45,15 @@ int main() {
     static_assert(::biofuel::engine::tasks::EngineStartupModules::valid());
     static_assert(::biofuel::engine::tasks::EngineStartupModules::size() >= 9U);
     static_assert(validateScreenRegistry<AppScreenRegistry>());
+    static_assert(DebugPanelRegistry::valid());
+    static_assert(DebugPanelRegistry::size == 5U);
+    using MetaSmokeRegistry = ::biofuel::typed::Registry<MetaSmokeA, MetaSmokeB, MetaSmokeC>;
+    static_assert(MetaSmokeRegistry::valid());
+    static_assert(MetaSmokeRegistry::template contains<MetaSmokeB>);
+    static_assert(MetaSmokeRegistry::template index<MetaSmokeA> == 0U);
+    static_assert(MetaSmokeRegistry::template index<MetaSmokeB> == 1U);
+    static_assert(MetaSmokeRegistry::template index<MetaSmokeC> == 2U);
+    static_assert(!::biofuel::typed::Registry<MetaSmokeA, MetaSmokeB, MetaSmokeA>::valid());
 
     bool ok = true;
 
@@ -58,12 +71,17 @@ int main() {
     ok = check(clamped.x == 0.0f && clamped.y == 1.0f, "normalized camera clamp failed") && ok;
 
     ::biofuel::engine::debug::DebugOverlayService overlay;
+    ok = check(overlay.panelEnabled<FrameTimingDebugPanel>(), "debug frame timing panel default state failed") && ok;
+    ok = check(!overlay.panelEnabled<PhysicsDebugPanel>(), "debug physics panel default state failed") && ok;
     overlay.setEnabled(false);
     overlay.setPanelEnabled<FrameTimingDebugPanel>(true);
     overlay.setPanelEnabled<PhysicsDebugPanel>(false);
     ok = check(!overlay.enabled(), "debug overlay global enabled state failed") && ok;
     ok = check(overlay.panelEnabled<FrameTimingDebugPanel>(), "debug panel enabled state failed") && ok;
     ok = check(!overlay.panelEnabled<PhysicsDebugPanel>(), "debug panel disabled state failed") && ok;
+    overlay.setPanelEnabled<PhysicsDebugPanel>(true);
+    overlay.shutdown();
+    ok = check(!overlay.panelEnabled<PhysicsDebugPanel>(), "debug panel shutdown reset failed") && ok;
     overlay.toggle();
     ok = check(overlay.enabled(), "debug overlay toggle failed") && ok;
 

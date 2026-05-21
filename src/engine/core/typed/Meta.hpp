@@ -26,19 +26,27 @@ inline constexpr bool ContainsV = Contains<T, TList>::value;
 template<typename T, typename TList>
 struct TypeIndex;
 
+namespace detail {
+
+inline constexpr std::size_t kTypeNotFound = static_cast<std::size_t>(-1);
+
+template<typename T, std::size_t Index, typename... Ts>
+struct TypeIndexInPack : std::integral_constant<std::size_t, kTypeNotFound> {};
+
+template<typename T, std::size_t Index, typename Head, typename... Tail>
+struct TypeIndexInPack<T, Index, Head, Tail...>
+    : std::conditional_t<
+        std::is_same_v<T, Head>,
+        std::integral_constant<std::size_t, Index>,
+        TypeIndexInPack<T, Index + 1U, Tail...>> {};
+
+} // namespace detail
+
 template<typename T, typename... Ts>
 struct TypeIndex<T, TypeList<Ts...>> {
-private:
-    static consteval std::size_t compute() {
-        std::size_t index = 0;
-        bool found = false;
-        ((std::is_same_v<T, Ts> ? (found = true, false) : (!found ? (++index, false) : false)), ...);
-        return found ? index : static_cast<std::size_t>(-1);
-    }
-
-public:
-    static constexpr std::size_t value = compute();
-    static_assert(value != static_cast<std::size_t>(-1), "Type is not registered in this TypeList.");
+    static constexpr std::size_t value = detail::TypeIndexInPack<T, 0U, Ts...>::value;
+    static_assert(value != detail::kTypeNotFound,
+        "TypeIndex<T, TypeList<...>> requires T to be registered in the TypeList.");
 };
 
 template<typename T, typename TList>

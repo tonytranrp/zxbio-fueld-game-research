@@ -18,6 +18,46 @@ function(require_contains label contents needle)
     endif()
 endfunction()
 
+set(RAYLIB_LIFETIME_PATTERN
+    "(Load(Texture|TextureFromImage|Image|ImageFromMemory|RenderTexture|Shader|ShaderFromMemory|Sound|MusicStream|Model|ModelFromMesh|ModelAnimations|Font|FontEx)|Unload(Texture|Image|RenderTexture|Shader|Sound|MusicStream|Model|ModelAnimations|Font)|InitAudioDevice|CloseAudioDevice|InitWindow|CloseWindow)")
+
+set(ALLOWED_RAYLIB_LIFETIME_FILES
+    "src/engine/app/App.cpp"
+    "src/engine/app/AppLifecycle.cpp"
+    "src/engine/audio/AudioManager.cpp"
+    "src/engine/custom/procedural/materials/ProceduralTextureCache.cpp"
+    "src/engine/custom/procedural/mesh/ProceduralMeshCache.cpp"
+    "src/engine/fonts/FontUtils.cpp"
+    "src/engine/graphics/RaylibResource.hpp"
+    "src/engine/graphics/RenderSurface.hpp"
+    "src/engine/graphics/ShaderManager.cpp"
+    "src/engine/models/ModelSystem.cpp"
+    "src/engine/video/VideoManager.cpp"
+    "src/engine/vision/hand_tracking/HandTrackingService.cpp")
+
+file(GLOB_RECURSE RAYLIB_LIFETIME_SCAN_FILES
+    "${SOURCE_DIR}/src/engine/*.cpp"
+    "${SOURCE_DIR}/src/engine/*.hpp"
+    "${SOURCE_DIR}/src/engine/*.h"
+    "${SOURCE_DIR}/src/game/*.cpp"
+    "${SOURCE_DIR}/src/game/*.hpp"
+    "${SOURCE_DIR}/src/game/*.h")
+foreach(full_path IN LISTS RAYLIB_LIFETIME_SCAN_FILES)
+    file(RELATIVE_PATH relative_path "${SOURCE_DIR}" "${full_path}")
+    string(REPLACE "\\" "/" relative_path "${relative_path}")
+    file(READ "${full_path}" raylib_lifetime_contents)
+    string(REGEX REPLACE "(^|\n)[ \t]*//[^\n]*" "\\1" raylib_lifetime_contents "${raylib_lifetime_contents}")
+    if(raylib_lifetime_contents MATCHES "${RAYLIB_LIFETIME_PATTERN}")
+        if(relative_path MATCHES "^src/game/")
+            message(FATAL_ERROR "Runtime safety guard failed: game code must not own raw Raylib resource lifetime calls (${relative_path})")
+        endif()
+        list(FIND ALLOWED_RAYLIB_LIFETIME_FILES "${relative_path}" allowed_lifetime_file)
+        if(allowed_lifetime_file EQUAL -1)
+            message(FATAL_ERROR "Runtime safety guard failed: raw Raylib lifetime calls must stay inside approved engine managers/caches/RAII helpers (${relative_path})")
+        endif()
+    endif()
+endforeach()
+
 read_required("src/engine/audio/AudioManager.hpp" AUDIO_MANAGER_HPP)
 read_required("src/engine/audio/AudioManager.cpp" AUDIO_MANAGER)
 read_required("tests/runtime/ArchitecturePlanRuntimeSmoke.cpp" ARCHITECTURE_PLAN_RUNTIME_SMOKE)

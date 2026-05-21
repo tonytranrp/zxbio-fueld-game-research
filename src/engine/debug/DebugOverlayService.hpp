@@ -2,10 +2,9 @@
 
 #include "engine/core/Types.hpp"
 #include "engine/core/typed/Meta.hpp"
+#include <array>
 #include <concepts>
-#include <string>
 #include <string_view>
-#include <unordered_map>
 
 namespace biofuel::engine::debug {
 
@@ -91,6 +90,8 @@ struct DebugPanelRegistryValidator;
 template<typename... TPanels>
 struct DebugPanelRegistryValidator<::biofuel::typed::Registry<TPanels...>> {
     static consteval bool valid() {
+        static_assert(::biofuel::typed::Registry<TPanels...>::valid(),
+            "Debug panel registry entries must be unique.");
         static_assert((RegisteredDebugPanel<TPanels> && ...),
             "Every debug panel in DebugPanelRegistry needs DebugPanelSpec<T>.");
         static_assert(((DebugPanelSpec<TPanels>::Name.size() > 0U) && ...),
@@ -103,12 +104,21 @@ struct DebugPanelRegistryValidator<::biofuel::typed::Registry<TPanels...>> {
 
 static_assert(DebugPanelRegistryValidator<DebugPanelRegistry>::valid());
 
+namespace detail {
+
+template<typename... TPanels>
+consteval std::array<bool, sizeof...(TPanels)> defaultPanelEnabled(::biofuel::typed::Registry<TPanels...>) {
+    return {DebugPanelSpec<TPanels>::DefaultEnabled...};
+}
+
+} // namespace detail
+
 class DebugOverlayService final {
 public:
     DebugOverlayService() noexcept = default;
 
     void init() noexcept {}
-    void shutdown() noexcept { m_panelEnabled.clear(); }
+    void shutdown() noexcept { m_panelEnabled = detail::defaultPanelEnabled(DebugPanelRegistry{}); }
 
     void setEnabled(const bool enabled) noexcept { m_enabled = enabled; }
     void toggle() noexcept { m_enabled = !m_enabled; }
@@ -117,14 +127,17 @@ public:
     template<typename TPanel>
     void setPanelEnabled(const bool enabled) {
         static_assert(RegisteredDebugPanel<TPanel>, "Debug panel must have DebugPanelSpec<T>.");
-        m_panelEnabled[std::string(DebugPanelSpec<TPanel>::Name)] = enabled;
+        static_assert(DebugPanelRegistry::template contains<TPanel>,
+            "Debug panel must be listed in DebugPanelRegistry before it can be toggled.");
+        m_panelEnabled[DebugPanelRegistry::template index<TPanel>] = enabled;
     }
 
     template<typename TPanel>
     [[nodiscard]] bool panelEnabled() const {
         static_assert(RegisteredDebugPanel<TPanel>, "Debug panel must have DebugPanelSpec<T>.");
-        const auto found = m_panelEnabled.find(std::string(DebugPanelSpec<TPanel>::Name));
-        return found == m_panelEnabled.end() ? DebugPanelSpec<TPanel>::DefaultEnabled : found->second;
+        static_assert(DebugPanelRegistry::template contains<TPanel>,
+            "Debug panel must be listed in DebugPanelRegistry before it can be queried.");
+        return m_panelEnabled[DebugPanelRegistry::template index<TPanel>];
     }
 
     void render(const DebugOverlayContext& context) const;
@@ -135,7 +148,7 @@ private:
 #else
     bool m_enabled = false;
 #endif
-    std::unordered_map<std::string, bool, ::biofuel::TransparentHash, std::equal_to<>> m_panelEnabled;
+    std::array<bool, DebugPanelRegistry::size> m_panelEnabled = detail::defaultPanelEnabled(DebugPanelRegistry{});
 };
 
 } // namespace biofuel::engine::debug

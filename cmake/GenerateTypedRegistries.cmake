@@ -9,6 +9,10 @@ if(NOT DEFINED TYPED_MODULE_HEADERS)
     message(FATAL_ERROR "TYPED_MODULE_HEADERS is required; registry generation must use an explicit module manifest")
 endif()
 
+if(POLICY CMP0054)
+    cmake_policy(SET CMP0054 NEW)
+endif()
+
 set(EVENT_INCLUDES "")
 set(SERVICE_INCLUDES "")
 set(ASSET_INCLUDES "")
