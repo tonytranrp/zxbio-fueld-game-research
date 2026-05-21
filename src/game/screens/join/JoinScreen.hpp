@@ -1,5 +1,5 @@
 #include "game/screens/GameScreenIds.hpp"
-﻿#pragma once
+#pragma once
 
 #include "engine/ui/Screen.hpp"
 #include "game/presentation/hands/HandModelOverlay.hpp"

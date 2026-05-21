@@ -1,5 +1,5 @@
 #include "game/screens/GameScreenIds.hpp"
-﻿#pragma once
+#pragma once
 
 #include "game/screens/join/JoinScreen.hpp"
 #include "engine/ui/typed/RenderLayers.hpp"
