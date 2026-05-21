@@ -15,7 +15,7 @@ engine/graphics/shaders/
 |-- BlurCompositeModule.hpp
 |-- CrossfadeModule.hpp
 |-- LoadingPreludeModule.hpp
-|-- MainMenuBgModule.hpp
+|-- ProceduralBackdropModule.hpp
 `-- MenuOptionModule.hpp
 ```
 

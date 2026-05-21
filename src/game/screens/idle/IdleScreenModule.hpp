@@ -4,7 +4,7 @@
 #include "engine/ui/typed/RenderLayers.hpp"
 #include "engine/ui/typed/ScreenSpec.hpp"
 #include "engine/ui/typed/render/RenderElements.hpp"
-#include "engine/graphics/shaders/MainMenuBgModule.hpp"
+#include "engine/graphics/shaders/ProceduralBackdropModule.hpp"
 #include <raylib.h>
 
 namespace biofuel::engine::ui::typed::idle {

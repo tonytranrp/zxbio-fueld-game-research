@@ -8,7 +8,7 @@
 #include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/graphics/Render.hpp"
-#include "engine/graphics/shaders/MainMenuBgModule.hpp"
+#include "engine/graphics/shaders/ProceduralBackdropModule.hpp"
 #include "engine/audio/AudioManager.hpp"
 #include "engine/input/InputServiceModule.hpp"
 #include <raylib.h>
@@ -33,7 +33,7 @@ template<>
 struct RenderElementExecutor<mainmenu::BackdropElement, ::biofuel::game::screens::MainMenuScreen> {
     static void render(::biofuel::game::screens::MainMenuScreen& screen, RenderContext& context) {
         screen.m_backdrop.setFloat(
-            ::biofuel::engine::graphics::shader::MainMenuBgModule::UNIFORM_UDIMENSION_SHIFT,
+            ::biofuel::engine::graphics::shader::ProceduralBackdropModule::UNIFORM_UDIMENSION_SHIFT,
             screen.m_dimensionShift
         );
         screen.m_backdrop.setFloat("uIdleDim", screen.m_idleTransitionDim);
@@ -687,7 +687,7 @@ void MainMenuScreen::ensureHandTrackingForModelOverlay() {
 
 game::presentation::effects::ScreenBackdropConfig MainMenuScreen::backdropConfig(Color fallback) const noexcept {
     return game::presentation::effects::ScreenBackdropConfig{
-        .shaderName = ::biofuel::engine::graphics::shader::MainMenuBgModule::NAME,
+        .shaderName = ::biofuel::engine::graphics::shader::ProceduralBackdropModule::NAME,
         .fallbackColor = fallback,
         .revealDelay = BG_REVEAL_DELAY,
         .revealDuration = BG_REVEAL_DURATION,

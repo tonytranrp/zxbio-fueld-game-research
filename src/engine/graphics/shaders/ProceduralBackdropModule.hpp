@@ -7,15 +7,15 @@
 namespace biofuel::engine::graphics::shader {
 
 // ==============================================================================
-// MainMenuBgModule — Raymarched fractal background for the main menu
+// ProceduralBackdropModule — Raymarched fractal background for the main menu
 // ==============================================================================
 //
 // Adapted from ShaderToy s3s3WN. Uses gl_FragCoord so no texture binding
 // is required — draw any full-screen geometry (e.g. DrawRectangle) with
 // this shader active and it will fill the viewport.
 //
-// GLSL source lives in assets/shaders/mainmenu_bg.glsl and is embedded at
-// build time via CMake into shader_source::mainmenu_bg_source.
+// GLSL source lives in assets/shaders/procedural_backdrop.glsl and is embedded at
+// build time via CMake into shader_source::procedural_backdrop_source.
 //
 // Uniforms (shader-owned):
 //   iResolution      (vec3)  — viewport width, height, 1.0
@@ -31,10 +31,10 @@ namespace biofuel::engine::graphics::shader {
 //   uCameraYaw       (float) — via Components/Camera/CameraComponent
 // ==============================================================================
 
-class MainMenuBgModule {
+class ProceduralBackdropModule {
 public:
-    static constexpr std::string_view NAME = "mainmenu_bg";
-    static constexpr std::string_view FRAGMENT_SOURCE = shader_source::mainmenu_bg_source;
+    static constexpr std::string_view NAME = "procedural_backdrop";
+    static constexpr std::string_view FRAGMENT_SOURCE = shader_source::procedural_backdrop_source;
     static constexpr const char* VERTEX_SOURCE = nullptr;
     static constexpr ShaderModuleConfig CONFIG{
         .name = NAME,
@@ -56,25 +56,25 @@ public:
 } // namespace biofuel::engine::graphics::shader
 
 namespace biofuel::engine::runtime::typed::shader {
-struct MainMenuBg {};
-namespace main_menu_bg {
-BIOFUEL_SHADER_UNIFORM(IResolution, ::biofuel::engine::graphics::shader::MainMenuBgModule::UNIFORM_IRESOLUTION, SHADER_UNIFORM_VEC3);
-BIOFUEL_SHADER_UNIFORM(ITime, ::biofuel::engine::graphics::shader::MainMenuBgModule::UNIFORM_ITIME, SHADER_UNIFORM_FLOAT);
-BIOFUEL_SHADER_UNIFORM(Brightness, ::biofuel::engine::graphics::shader::MainMenuBgModule::UNIFORM_UBRIGHTNESS, SHADER_UNIFORM_FLOAT);
-BIOFUEL_SHADER_UNIFORM(RevealProgress, ::biofuel::engine::graphics::shader::MainMenuBgModule::UNIFORM_UREVEAL_PROGRESS, SHADER_UNIFORM_FLOAT);
-BIOFUEL_SHADER_UNIFORM(DimensionShift, ::biofuel::engine::graphics::shader::MainMenuBgModule::UNIFORM_UDIMENSION_SHIFT, SHADER_UNIFORM_FLOAT);
-} // namespace main_menu_bg
+struct ProceduralBackdrop {};
+namespace procedural_backdrop {
+BIOFUEL_SHADER_UNIFORM(IResolution, ::biofuel::engine::graphics::shader::ProceduralBackdropModule::UNIFORM_IRESOLUTION, SHADER_UNIFORM_VEC3);
+BIOFUEL_SHADER_UNIFORM(ITime, ::biofuel::engine::graphics::shader::ProceduralBackdropModule::UNIFORM_ITIME, SHADER_UNIFORM_FLOAT);
+BIOFUEL_SHADER_UNIFORM(Brightness, ::biofuel::engine::graphics::shader::ProceduralBackdropModule::UNIFORM_UBRIGHTNESS, SHADER_UNIFORM_FLOAT);
+BIOFUEL_SHADER_UNIFORM(RevealProgress, ::biofuel::engine::graphics::shader::ProceduralBackdropModule::UNIFORM_UREVEAL_PROGRESS, SHADER_UNIFORM_FLOAT);
+BIOFUEL_SHADER_UNIFORM(DimensionShift, ::biofuel::engine::graphics::shader::ProceduralBackdropModule::UNIFORM_UDIMENSION_SHIFT, SHADER_UNIFORM_FLOAT);
+} // namespace procedural_backdrop
 } // namespace biofuel::engine::runtime::typed::shader
 
 namespace biofuel::engine::runtime::typed {
 BIOFUEL_EMBEDDED_SHADER_ASSET(
-    shader::MainMenuBg,
-    ::biofuel::engine::graphics::shader::MainMenuBgModule,
+    shader::ProceduralBackdrop,
+    ::biofuel::engine::graphics::shader::ProceduralBackdropModule,
     false,
-    shader::main_menu_bg::IResolution,
-    shader::main_menu_bg::ITime,
-    shader::main_menu_bg::Brightness,
-    shader::main_menu_bg::RevealProgress,
-    shader::main_menu_bg::DimensionShift);
-BIOFUEL_SHADER_MODULE(MainMenuBgShaderModule, shader::MainMenuBg)
+    shader::procedural_backdrop::IResolution,
+    shader::procedural_backdrop::ITime,
+    shader::procedural_backdrop::Brightness,
+    shader::procedural_backdrop::RevealProgress,
+    shader::procedural_backdrop::DimensionShift);
+BIOFUEL_SHADER_MODULE(ProceduralBackdropShaderModule, shader::ProceduralBackdrop)
 } // namespace biofuel::engine::runtime::typed

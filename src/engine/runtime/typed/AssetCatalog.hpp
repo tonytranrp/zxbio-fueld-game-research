@@ -186,7 +186,7 @@ struct AssetCatalog<EngineStartupCatalog> {
         ShaderEntry<shader::Crossfade>,
         ShaderEntry<shader::LoadingPrelude>,
         ShaderEntry<shader::MenuOption>,
-        ShaderEntry<shader::MainMenuBg>,
+        ShaderEntry<shader::ProceduralBackdrop>,
         VideoEntry<video::IdleAmbient>,
         SoundEntry<sound::MenuMove>,
         SoundEntry<sound::MenuAccept>,

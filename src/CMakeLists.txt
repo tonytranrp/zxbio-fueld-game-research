@@ -40,7 +40,7 @@ foreach(ENGINE_SOURCE IN LISTS ENGINE_SOURCES)
     endif()
 endforeach()
 
-set(SHADER_NAMES blur_h blur_v blur_composite crossfade loading_prelude mainmenu_bg menu_option)
+set(SHADER_NAMES blur_h blur_v blur_composite crossfade loading_prelude procedural_backdrop menu_option)
 set(SHADER_SOURCE_FILES "")
 foreach(NAME ${SHADER_NAMES})
     list(APPEND SHADER_SOURCE_FILES "${SHADER_DIR}/${NAME}.glsl")
@@ -69,7 +69,7 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/BlurVModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/CrossfadeModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/LoadingPreludeModule.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/MainMenuBgModule.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/ProceduralBackdropModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/MenuOptionModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/input/InputServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/custom/procedural/hand/HandPoseServiceModule.hpp"

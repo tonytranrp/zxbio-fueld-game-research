@@ -6,7 +6,7 @@
 #include "engine/graphics/shaders/BlurVModule.hpp"
 #include "engine/graphics/shaders/CrossfadeModule.hpp"
 #include "engine/graphics/shaders/LoadingPreludeModule.hpp"
-#include "engine/graphics/shaders/MainMenuBgModule.hpp"
+#include "engine/graphics/shaders/ProceduralBackdropModule.hpp"
 #include "engine/graphics/shaders/MenuOptionModule.hpp"
 #include "engine/graphics/shaders/TypedShaderModule.hpp"
 #include "engine/runtime/Runtime.hpp"
@@ -102,7 +102,7 @@ void AppLifecycle::addStartupTasks(LoadingTaskQueue& tasks, const StartupLifecyc
         ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::MenuOption>(shaderManager);
     }});
     tasks.add({"Compiling background shader...", 2.0f, [&shaderManager]() {
-        ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::MainMenuBg>(shaderManager);
+        ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::ProceduralBackdrop>(shaderManager);
     }});
 
     auto& modelService = ::biofuel::engine::runtime::Runtime::model();

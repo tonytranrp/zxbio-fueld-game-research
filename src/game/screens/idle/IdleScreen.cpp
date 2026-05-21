@@ -5,7 +5,7 @@
 #include "engine/runtime/Runtime.hpp"
 #include "engine/graphics/Render.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
-#include "engine/graphics/shaders/MainMenuBgModule.hpp"
+#include "engine/graphics/shaders/ProceduralBackdropModule.hpp"
 #include "engine/audio/AudioManager.hpp"
 #include "engine/video/VideoManager.hpp"
 #include <filesystem>
@@ -166,7 +166,7 @@ void IdleScreen::onInput() {
 
 void IdleScreen::startFallbackBackdrop() {
     m_backdrop.configure(game::presentation::effects::ScreenBackdropConfig{
-        .shaderName = ::biofuel::engine::graphics::shader::MainMenuBgModule::NAME,
+        .shaderName = ::biofuel::engine::graphics::shader::ProceduralBackdropModule::NAME,
         .fallbackColor = BG_COLOR,
         .revealDelay = 0.0f,
         .revealDuration = 0.01f,

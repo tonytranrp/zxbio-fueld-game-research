@@ -12,12 +12,12 @@ namespace biofuel::game::presentation::effects {
 
 namespace {
 
-using BgShader = ::biofuel::engine::runtime::typed::shader::MainMenuBg;
-namespace BgUniforms = ::biofuel::engine::runtime::typed::shader::main_menu_bg;
+using BgShader = ::biofuel::engine::runtime::typed::shader::ProceduralBackdrop;
+namespace BgUniforms = ::biofuel::engine::runtime::typed::shader::procedural_backdrop;
 
 [[nodiscard]] Shader backdropShader(std::string_view name, ::biofuel::engine::graphics::ShaderManager& shaderManager) noexcept {
-    if (name == ::biofuel::engine::runtime::typed::ShaderAsset<::biofuel::engine::runtime::typed::shader::MainMenuBg>::Name) {
-        return ::biofuel::engine::runtime::typed::Shaders::get<::biofuel::engine::runtime::typed::shader::MainMenuBg>(shaderManager);
+    if (name == ::biofuel::engine::runtime::typed::ShaderAsset<::biofuel::engine::runtime::typed::shader::ProceduralBackdrop>::Name) {
+        return ::biofuel::engine::runtime::typed::Shaders::get<::biofuel::engine::runtime::typed::shader::ProceduralBackdrop>(shaderManager);
     }
     if (name == ::biofuel::engine::runtime::typed::ShaderAsset<::biofuel::engine::runtime::typed::shader::LoadingPrelude>::Name) {
         return ::biofuel::engine::runtime::typed::Shaders::get<::biofuel::engine::runtime::typed::shader::LoadingPrelude>(shaderManager);

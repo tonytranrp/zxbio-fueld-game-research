@@ -22,18 +22,18 @@ struct AnimationTrack {
 };
 
 namespace track {
-struct PausePanelSlide {
-    static constexpr std::string_view Name = "pause.panel_slide";
+struct PanelSlide {
+    static constexpr std::string_view Name = "screen.panel_slide";
     static constexpr f32 Duration = 0.3f;
 };
 
-struct MainMenuBackdropReveal {
-    static constexpr std::string_view Name = "main_menu.backdrop_reveal";
+struct ScreenBackdropReveal {
+    static constexpr std::string_view Name = "screen.backdrop_reveal";
     static constexpr f32 Duration = 1.35f;
 };
 
-struct MainMenuDimensionShift {
-    static constexpr std::string_view Name = "main_menu.dimension_shift";
+struct ScreenDimensionShift {
+    static constexpr std::string_view Name = "screen.dimension_shift";
     static constexpr f32 Duration = 3.0f;
 };
 
@@ -44,17 +44,17 @@ struct ScreenCrossfade {
 } // namespace track
 
 template<>
-struct EasingPolicy<track::PausePanelSlide> {
+struct EasingPolicy<track::PanelSlide> {
     static constexpr auto Function = Easing::easeOutCubic;
 };
 
 template<>
-struct EasingPolicy<track::MainMenuBackdropReveal> {
+struct EasingPolicy<track::ScreenBackdropReveal> {
     static constexpr auto Function = Easing::easeOutCubic;
 };
 
 template<>
-struct EasingPolicy<track::MainMenuDimensionShift> {
+struct EasingPolicy<track::ScreenDimensionShift> {
     static constexpr auto Function = Easing::easeInOutCubic;
 };
 
@@ -64,9 +64,9 @@ struct EasingPolicy<track::ScreenCrossfade> {
 };
 
 using ScreenAnimationRegistry = biofuel::typed::Registry<
-    track::PausePanelSlide,
-    track::MainMenuBackdropReveal,
-    track::MainMenuDimensionShift,
+    track::PanelSlide,
+    track::ScreenBackdropReveal,
+    track::ScreenDimensionShift,
     track::ScreenCrossfade>;
 
 static_assert(ScreenAnimationRegistry::valid());

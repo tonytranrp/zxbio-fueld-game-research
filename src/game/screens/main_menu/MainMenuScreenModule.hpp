@@ -3,7 +3,7 @@
 #include "game/screens/main_menu/MainMenuScreen.hpp"
 #include "engine/ui/typed/RenderLayers.hpp"
 #include "engine/ui/typed/ScreenSpec.hpp"
-#include "engine/graphics/shaders/MainMenuBgModule.hpp"
+#include "engine/graphics/shaders/ProceduralBackdropModule.hpp"
 
 namespace biofuel::engine::ui::typed::mainmenu {
 

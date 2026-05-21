@@ -24,7 +24,7 @@ active animations and advances them once per fixed update through
 
 ```cpp
 auto slide = std::make_unique<Animation<f32>>(
-    "pause.panel_slide",
+    "screen.panel_slide",
     1.0f,
     0.0f,
     0.3f,
