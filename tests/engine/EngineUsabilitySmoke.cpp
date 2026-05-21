@@ -1,6 +1,7 @@
 #include "engine/core/units/EngineUnits.hpp"
 #include "engine/debug/DebugOverlayService.hpp"
 #include "engine/runtime/typed/AssetCatalog.hpp"
+#include "engine/tasks/TaskModuleRegistry.hpp"
 #include "engine/ui/typed/ScreenCatalog.hpp"
 #include <cstdlib>
 #include <iostream>
@@ -37,6 +38,8 @@ int main() {
     static_assert(!std::is_convertible_v<WorldMeters2D, ScreenPixels2D>);
     static_assert(!std::is_convertible_v<NormalizedCameraCoord2D, ScreenPixels2D>);
     static_assert(validateAssetCatalog<EngineStartupCatalog>());
+    static_assert(::biofuel::engine::tasks::EngineStartupModules::valid());
+    static_assert(::biofuel::engine::tasks::EngineStartupModules::size() >= 9U);
     static_assert(validateScreenRegistry<AppScreenRegistry>());
 
     bool ok = true;

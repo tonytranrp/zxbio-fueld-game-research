@@ -99,18 +99,8 @@ using EngineStartupModules = TaskModuleList<
 >;
 #endif
 
-// Compile-time validation: every module is a valid TaskModule + pipeline
-static_assert(TaskModule<EventTaskModule>);
-static_assert(TaskModule<TaskManagerTaskModule>);
-static_assert(TaskModule<ScreenTaskModule>);
-static_assert(TaskModule<AnimationTaskModule>);
-static_assert(TaskModule<PhysicsTaskModule>);
-static_assert(TaskModule<HandPoseTaskModule>);
-static_assert(TaskModule<ModelTaskModule>);
-static_assert(TaskModule<AudioTaskModule>);
-static_assert(TaskModule<VideoTaskModule>);
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
-static_assert(TaskModule<HandTrackingTaskModule>);
-#endif
+// Compile-time validation: every startup module exposes the typed pipeline,
+// label, weight, and init work required by TaskModuleList.
+static_assert(EngineStartupModules::valid());
 
 } // namespace biofuel::engine::tasks
