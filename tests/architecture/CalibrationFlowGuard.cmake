@@ -18,7 +18,7 @@ function(require_contains label contents needle)
     endif()
 endfunction()
 
-read_required("src/engine/ui/typed/ScreenTypes.hpp" SCREEN_TYPES)
+read_required("src/game/screens/GameScreenIds.hpp" GAME_SCREEN_IDS)
 read_required("src/game/screens/GameScreenCatalog.hpp" GAME_SCREEN_CATALOG)
 read_required("src/game/screens/main_menu/MainMenuScreen.cpp" MAIN_MENU_SCREEN)
 read_required("src/game/screens/main_menu/MainMenuScreen.hpp" MAIN_MENU_HEADER)
@@ -34,9 +34,9 @@ read_required("tools/python/biofuel_hand_tracking/default_config.json" HAND_TRAC
 read_required("src/engine/app/App.cpp" APP_CPP)
 
 require_contains(
-    "ScreenId must include Calibration"
-    "${SCREEN_TYPES}"
-    "Calibration,")
+    "Game screen IDs must include Calibration"
+    "${GAME_SCREEN_IDS}"
+    "inline constexpr auto Calibration")
 require_contains(
     "Game screen catalog must include CalibrationScreen module"
     "${GAME_SCREEN_CATALOG}"
