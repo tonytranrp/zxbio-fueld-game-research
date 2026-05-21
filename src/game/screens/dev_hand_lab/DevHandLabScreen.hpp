@@ -6,6 +6,7 @@
 #include "engine/custom/procedural/hand/HandPhysicsInteraction.hpp"
 #include "engine/custom/procedural/hand/RobotHandModule.hpp"
 #include "game/screens/dev_hand_lab/HandLabTypes.hpp"
+#include "game/presentation/hands/HandPreviewTexture.hpp"
 #include <limits>
 #include <raylib.h>
 #include <string_view>
@@ -52,8 +53,7 @@ private:
     Vector2 m_lastMouse{0.0f, 0.0f};
     bool m_loadingComplete = false;
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
-    Texture2D m_previewTexture{};
-    u64 m_previewTextureSequence = std::numeric_limits<u64>::max();
+    ::biofuel::game::presentation::hands::HandPreviewTexture m_previewTexture;
     TrackedHandPose m_trackedLeft{};
     TrackedHandPose m_trackedRight{};
     ::biofuel::engine::custom::procedural::hand::MappedTrackedHands m_trackingMapped{};
@@ -79,7 +79,6 @@ private:
     void applyTrackedFrame(const ::biofuel::engine::vision::hand_tracking::HandTrackingFrame& frame, f32 dt) noexcept;
     void resetTrackingCalibration() noexcept;
     void updatePreviewTexture() noexcept;
-    void unloadPreviewTexture() noexcept;
 #endif
 };
 

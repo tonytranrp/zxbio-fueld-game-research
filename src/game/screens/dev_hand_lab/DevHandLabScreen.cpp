@@ -94,7 +94,7 @@ DevHandLabScreen::~DevHandLabScreen() {
         m_handPhysics.shutdown(::biofuel::engine::runtime::Runtime::physics().world3D());
     }
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
-    unloadPreviewTexture();
+    m_previewTexture.release();
 #endif
 }
 
@@ -118,7 +118,7 @@ void DevHandLabScreen::onExit() {
     m_handPhysics.shutdown(::biofuel::engine::runtime::Runtime::physics().world3D());
 #ifdef BIOFUEL_ENABLE_HAND_TRACKING
     ::biofuel::engine::runtime::Runtime::handTracking().stop();
-    unloadPreviewTexture();
+    m_previewTexture.release();
     m_trackedLeft.valid = false;
     m_trackedRight.valid = false;
 #endif
@@ -147,7 +147,7 @@ void DevHandLabScreen::onInput() {
     }
     if (IsKeyPressed(KEY_X)) {
         ::biofuel::engine::runtime::Runtime::handTracking().stop();
-        unloadPreviewTexture();
+        m_previewTexture.release();
         m_handRetargeter.resetTracking();
         m_trackedLeft.valid = false;
         m_trackedRight.valid = false;
@@ -300,81 +300,7 @@ void DevHandLabScreen::resetTrackingCalibration() noexcept {
 }
 
 void DevHandLabScreen::updatePreviewTexture() noexcept {
-    auto& tracking = ::biofuel::engine::runtime::Runtime::handTracking();
-    const auto status = tracking.status();
-    if (!status.previewEnabled) {
-        return;
-    }
-    const auto preview = tracking.latestPreviewFrameAfter(m_previewTextureSequence);
-    if (!preview) {
-        return;
-    }
-    const bool hasRgbaPreview = !(*preview)->rgbaBytes.empty() && (*preview)->width > 0U && (*preview)->height > 0U;
-    const bool hasJpegPreview = !(*preview)->jpegBytes.empty();
-    if (!hasRgbaPreview && !hasJpegPreview) {
-        return;
-    }
-
-    if (hasRgbaPreview) {
-        const i32 width = static_cast<i32>((*preview)->width);
-        const i32 height = static_cast<i32>((*preview)->height);
-        const usize requiredBytes = static_cast<usize>(width) * static_cast<usize>(height) * 4U;
-        if ((*preview)->rgbaBytes.size() < requiredBytes) {
-            return;
-        }
-        if (m_previewTexture.id != 0U && m_previewTexture.width == width && m_previewTexture.height == height) {
-            UpdateTexture(m_previewTexture, (*preview)->rgbaBytes.data());
-            m_previewTextureSequence = (*preview)->sequence;
-            return;
-        }
-
-        Image image{
-            .data = const_cast<u8*>((*preview)->rgbaBytes.data()),
-            .width = width,
-            .height = height,
-            .mipmaps = 1,
-            .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
-        };
-        Texture2D texture = LoadTextureFromImage(image);
-        if (texture.id == 0U) {
-            return;
-        }
-        unloadPreviewTexture();
-        m_previewTexture = texture;
-        m_previewTextureSequence = (*preview)->sequence;
-        return;
-    }
-
-    if ((*preview)->jpegBytes.size() > static_cast<usize>(std::numeric_limits<i32>::max())) {
-        return;
-    }
-    Image image = LoadImageFromMemory(".jpg", (*preview)->jpegBytes.data(), static_cast<i32>((*preview)->jpegBytes.size()));
-    if (image.data == nullptr) {
-        return;
-    }
-    ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-    if (m_previewTexture.id != 0U && m_previewTexture.width == image.width && m_previewTexture.height == image.height) {
-        UpdateTexture(m_previewTexture, image.data);
-        UnloadImage(image);
-        m_previewTextureSequence = (*preview)->sequence;
-        return;
-    }
-    Texture2D texture = LoadTextureFromImage(image);
-    UnloadImage(image);
-    if (texture.id == 0U) {
-        return;
-    }
-    unloadPreviewTexture();
-    m_previewTexture = texture;
-    m_previewTextureSequence = (*preview)->sequence;
-}
-
-void DevHandLabScreen::unloadPreviewTexture() noexcept {
-    if (m_previewTexture.id != 0U) {
-        UnloadTexture(m_previewTexture);
-        m_previewTexture = Texture2D{};
-        m_previewTextureSequence = std::numeric_limits<u64>::max();
-    }
+    m_previewTexture.update(::biofuel::engine::runtime::Runtime::handTracking());
 }
 
 void DevHandLabScreen::startHandTrackingWithPreview() noexcept {
@@ -509,7 +435,8 @@ void DevHandLabScreen::drawLiveTrackingOverlay() const noexcept {
     const auto wizard = m_handRetargeter.calibrationState();
 
     const Rectangle panel = previewPanelBounds();
-    const Rectangle preview = previewImageBounds(panel, m_previewTexture);
+    const Texture2D previewTexture = m_previewTexture.texture();
+    const Rectangle preview = previewImageBounds(panel, previewTexture);
 
     DrawRectangleRec(Rectangle{panel.x - 2.0f, panel.y - 2.0f, panel.width + 4.0f, panel.height + 4.0f}, Color{0, 0, 0, 116});
     DrawRectangleRec(panel, Color{4, 10, 13, 224});
@@ -524,13 +451,13 @@ void DevHandLabScreen::drawLiveTrackingOverlay() const noexcept {
     Renderer::drawText(line.data(), static_cast<i32>(panel.x + 12.0f), static_cast<i32>(panel.y + 12.0f), 13, Color{226, 244, 236, 255});
 
     DrawRectangleRec(preview, Color{9, 16, 19, 255});
-    if (m_previewTexture.id != 0U) {
+    if (m_previewTexture.valid()) {
         const Rectangle src{
-            static_cast<f32>(m_previewTexture.width),
+            static_cast<f32>(previewTexture.width),
             0.0f,
-            -static_cast<f32>(m_previewTexture.width),
-            static_cast<f32>(m_previewTexture.height)};
-        DrawTexturePro(m_previewTexture, src, preview, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+            -static_cast<f32>(previewTexture.width),
+            static_cast<f32>(previewTexture.height)};
+        DrawTexturePro(previewTexture, src, preview, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
         if (const auto frame = tracking.latestFrame(); frame && frame->valid) {
             drawHandLandmarkOverlay(preview, *frame);
         }

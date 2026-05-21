@@ -78,6 +78,8 @@ NekoCat::NekoCat(NekoCat&& other) noexcept
     , m_state(other.m_state)
     , m_loaded(other.m_loaded)
 {
+    m_cachedTexture = nullptr;
+    other.m_cachedTexture = nullptr;
     other.m_loaded = false;
 }
 
@@ -96,6 +98,8 @@ NekoCat& NekoCat::operator=(NekoCat&& other) noexcept {
         m_direction = other.m_direction;
         m_state = other.m_state;
         m_loaded = other.m_loaded;
+        m_cachedTexture = nullptr;
+        other.m_cachedTexture = nullptr;
         other.m_loaded = false;
     }
     return *this;
@@ -123,7 +127,7 @@ void NekoCat::load() {
 
             std::array<char, 32> key{};
             std::snprintf(key.data(), key.size(), "%s%d", prefix, frame);
-            m_textures[std::string{key.data()}] = tex;
+            m_textures.emplace(std::string{key.data()}, ::biofuel::engine::graphics::TextureResource{tex});
         }
     }
 
@@ -156,7 +160,7 @@ void NekoCat::load() {
             } else {
                 std::snprintf(key.data(), key.size(), "%s%d", prefix, frame);
             }
-            m_textures[std::string{key.data()}] = tex;
+            m_textures.emplace(std::string{key.data()}, ::biofuel::engine::graphics::TextureResource{tex});
         }
     }
 
@@ -170,12 +174,8 @@ void NekoCat::load() {
 void NekoCat::unload() noexcept {
     if (!m_loaded) return;
 
-    for (auto& [key, tex] : m_textures) {
-        if (tex.id != 0) {
-            UnloadTexture(tex);
-        }
-    }
     m_textures.clear();
+    m_cachedTexture = nullptr;
     m_loaded = false;
 }
 
@@ -217,13 +217,13 @@ const Texture2D& NekoCat::getTextureForCurrentFrame() const noexcept {
     auto it = m_textures.find(std::string_view{key.data()});
     if (it != m_textures.end()) {
         // Cache for subsequent render() calls at the same pose+frame
-        m_cachedTexture = &it->second;
-        return it->second;
+        m_cachedTexture = &it->second.get();
+        return it->second.get();
     }
 
     // Fallback: return the first texture we find, or a static empty texture
     if (!m_textures.empty()) {
-        m_cachedTexture = &m_textures.begin()->second;
+        m_cachedTexture = &m_textures.begin()->second.get();
         return *m_cachedTexture;
     }
 

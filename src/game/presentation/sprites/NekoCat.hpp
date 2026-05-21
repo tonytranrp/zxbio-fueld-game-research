@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/Types.hpp"
+#include "engine/graphics/RaylibResource.hpp"
 #include <raylib.h>
 #include <string>
 #include <unordered_map>
@@ -70,7 +71,7 @@ public:
     NekoCat() = default;
     ~NekoCat();
 
-    // ---- Move-only: Texture2D ownership must not be duplicated ----
+    // ---- Move-only: texture resource ownership must not be duplicated ----
     NekoCat(const NekoCat&) = delete;
     NekoCat& operator=(const NekoCat&) = delete;
     NekoCat(NekoCat&& other) noexcept;
@@ -144,7 +145,7 @@ private:
     // TransparentHash + std::equal_to<> enables heterogeneous lookup via
     // std::string_view so getTextureForCurrentFrame() can search without
     // constructing a temporary std::string on every render() call.
-    std::unordered_map<std::string, Texture2D,
+    std::unordered_map<std::string, ::biofuel::engine::graphics::TextureResource,
                        biofuel::TransparentHash,
                        std::equal_to<>> m_textures;
 
