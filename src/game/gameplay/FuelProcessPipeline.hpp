@@ -5,9 +5,8 @@
 #include "game/gameplay/stages/Transesterify.hpp"
 #include "game/gameplay/stages/ProcessTypes.hpp"
 #include "game/data/FuelFarmData.hpp"
-#include "game/gameplay/PipelineEventObserver.hpp"
+#include "game/gameplay/PipelineRunner.hpp"
 #include <pb/pipeline.hpp>
-#include <pb/runtime/sequential.hpp>
 
 namespace biofuel::game::gameplay {
 
@@ -122,9 +121,7 @@ public:
     [[nodiscard]] stages::ProcessingOutput run(stages::ProcessingInput input);
 
 private:
-    using EngineType = decltype(pb::runtime::compile<FuelProcessRoutingPipeline>(pb::runtime::sequential{}));
-    PipelineEventObserver m_observer;
-    EngineType m_engine;
+    SequentialPipelineRunner<FuelProcessRoutingPipeline> m_runner;
 };
 
 } // namespace biofuel::game::gameplay

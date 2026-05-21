@@ -68,7 +68,7 @@ void WorldPhysicsIntegration::bakeTileColliders(
                 continue;
             }
 
-            if (tile->type == TileType::Water || tile->type == TileType::Fallow) {
+            if (!tileHasPhysicsCollider(tile->type)) {
                 continue;
             }
 

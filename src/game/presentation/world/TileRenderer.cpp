@@ -3,38 +3,30 @@
 
 namespace biofuel::game::presentation::world {
 
+namespace {
+
+[[nodiscard]] constexpr Color toColor(const gameplay::TileRenderColor color) noexcept {
+    return Color{color.r, color.g, color.b, color.a};
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // Colour lookup
 // ---------------------------------------------------------------------------
 
 Color TileRenderer::colorForTileType(const gameplay::TileType type) noexcept {
-    switch (type) {
-    case gameplay::TileType::Fallow:     return Color{139,  90,  43, 255}; // Brown
-    case gameplay::TileType::Corn:       return Color{218, 165,  32, 255}; // Golden yellow
-    case gameplay::TileType::Sugarcane:  return Color{144, 238, 144, 255}; // Light green
-    case gameplay::TileType::Soybean:    return Color{ 34, 139,  34, 255}; // Dark green
-    case gameplay::TileType::Switchgrass:return Color{107, 142,  35, 255}; // Medium green
-    case gameplay::TileType::Algae:      return Color{  0, 128, 128, 255}; // Teal
-    case gameplay::TileType::Forest:     return Color{  0, 100,   0, 255}; // Forest green
-    case gameplay::TileType::Water:      return Color{ 65, 105, 225, 255}; // Blue
-    case gameplay::TileType::Built:      return Color{128, 128, 128, 255}; // Gray
+    if (!gameplay::isKnownTileType(type)) {
+        return Color{128, 128, 128, 255};
     }
-    return Color{128, 128, 128, 255}; // fallback gray
+    return toColor(gameplay::tileRenderColor(type));
 }
 
 const char* TileRenderer::tileTypeName(const gameplay::TileType type) noexcept {
-    switch (type) {
-    case gameplay::TileType::Fallow:     return "Fallow";
-    case gameplay::TileType::Corn:       return "Corn";
-    case gameplay::TileType::Sugarcane:  return "Sugarcane";
-    case gameplay::TileType::Soybean:    return "Soybean";
-    case gameplay::TileType::Switchgrass:return "Switchgrass";
-    case gameplay::TileType::Algae:      return "Algae";
-    case gameplay::TileType::Forest:     return "Forest";
-    case gameplay::TileType::Water:      return "Water";
-    case gameplay::TileType::Built:      return "Built";
+    if (!gameplay::isKnownTileType(type)) {
+        return "Unknown";
     }
-    return "Unknown";
+    return gameplay::tileTypeName(type).data();
 }
 
 // ---------------------------------------------------------------------------

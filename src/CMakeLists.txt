@@ -340,7 +340,12 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     target_link_libraries(BiofuelFarmStateSmokeTest PRIVATE biofuel_game)
     add_test(NAME BiofuelFarmStateSmoke COMMAND BiofuelFarmStateSmokeTest)
 
-add_executable(BiofuelHandPresenceAnimatorSmokeTest
+    add_executable(BiofuelPassThroughStageAliasesSmokeTest
+        "${CMAKE_SOURCE_DIR}/tests/game/PassThroughStageAliasesSmoke.cpp")
+    target_link_libraries(BiofuelPassThroughStageAliasesSmokeTest PRIVATE biofuel_game)
+    add_test(NAME BiofuelPassThroughStageAliasesSmoke COMMAND BiofuelPassThroughStageAliasesSmokeTest)
+
+    add_executable(BiofuelHandPresenceAnimatorSmokeTest
         "${CMAKE_SOURCE_DIR}/tests/game/HandPresenceAnimatorSmoke.cpp")
     target_link_libraries(BiofuelHandPresenceAnimatorSmokeTest PRIVATE biofuel_game)
     add_test(NAME BiofuelHandPresenceAnimatorSmoke COMMAND BiofuelHandPresenceAnimatorSmokeTest)

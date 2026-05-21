@@ -36,13 +36,10 @@ template struct PipelineEngineStage<CellulosicPipeline>;
 
 // ── Runner ────────────────────────────────────────────────────────────────
 
-FuelProcessPipelineRunner::FuelProcessPipelineRunner()
-    : m_engine(pb::runtime::compile<FuelProcessRoutingPipeline>(pb::runtime::sequential{})) {
-    m_engine.set_observer(&m_observer);
-}
+FuelProcessPipelineRunner::FuelProcessPipelineRunner() = default;
 
 stages::ProcessingOutput FuelProcessPipelineRunner::run(stages::ProcessingInput input) {
-    auto result = m_engine.run(std::move(input));
+    auto result = m_runner.run(std::move(input));
     if (result.has_value()) {
         return std::move(result).value();
     }

@@ -3,9 +3,8 @@
 #include "game/gameplay/stages/QueueResearch.hpp"
 #include "game/gameplay/stages/AdvanceResearch.hpp"
 #include "game/gameplay/stages/UnlockTech.hpp"
-#include "game/gameplay/PipelineEventObserver.hpp"
+#include "game/gameplay/PipelineRunner.hpp"
 #include <pb/pipeline.hpp>
-#include <pb/runtime/sequential.hpp>
 
 namespace biofuel::game::gameplay {
 
@@ -28,10 +27,7 @@ public:
     [[nodiscard]] stages::TechTreeOutput run(stages::TechTreeInput input);
 
 private:
-    using EngineType = decltype(pb::runtime::compile<TechTreePipeline>(
-        pb::runtime::sequential{}));
-    PipelineEventObserver m_observer;
-    EngineType m_engine;
+    SequentialPipelineRunner<TechTreePipeline> m_runner;
 };
 
 } // namespace biofuel::game::gameplay

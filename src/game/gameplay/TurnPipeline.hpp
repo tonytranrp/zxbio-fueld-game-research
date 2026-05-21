@@ -4,9 +4,8 @@
 #include "game/gameplay/stages/CropGrowth.hpp"
 #include "game/gameplay/stages/EcologyUpdate.hpp"
 #include "game/gameplay/stages/PassThroughStages.hpp"
-#include "game/gameplay/PipelineEventObserver.hpp"
+#include "game/gameplay/PipelineRunner.hpp"
 #include <pb/pipeline.hpp>
-#include <pb/runtime/sequential.hpp>
 
 namespace biofuel::game::gameplay {
 
@@ -33,10 +32,7 @@ public:
     [[nodiscard]] stages::TurnOutput run(stages::TurnInput input);
 
 private:
-    using EngineType = decltype(pb::runtime::compile<TurnPipeline>(
-        pb::runtime::sequential{}));
-    PipelineEventObserver m_observer;
-    EngineType m_engine;
+    SequentialPipelineRunner<TurnPipeline> m_runner;
 };
 
 } // namespace biofuel::game::gameplay

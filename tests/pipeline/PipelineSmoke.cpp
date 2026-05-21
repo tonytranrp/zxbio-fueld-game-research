@@ -1,3 +1,8 @@
+#include "game/gameplay/FuelProcessPipeline.hpp"
+#include "game/gameplay/PipelineRunner.hpp"
+#include "game/gameplay/TechTreePipeline.hpp"
+#include "game/data/FuelFarmData.hpp"
+
 // Pipeline-c- compilation and execution smoke test.
 // Validates that Pipeline-c- compiles under strict flags and produces
 // correct results for trivial pipeline operations.
@@ -128,6 +133,84 @@ int main() {
             ++failures;
         } else {
             std::printf("PASS: Observer on_stage_success was called\n");
+        }
+    }
+
+    // ---- Test 6: Gameplay SequentialPipelineRunner exposes observer and is reusable ----
+    {
+        biofuel::game::gameplay::SequentialPipelineRunner<DoubleAddPipeline> runner;
+        const int first = runner.run(5);
+        const int second = runner.run(8);
+        if (first != 11 || second != 17) {
+            std::printf("FAIL: SequentialPipelineRunner reuse output mismatch\n");
+            ++failures;
+        } else if (runner.observer().has_errors()) {
+            std::printf("FAIL: SequentialPipelineRunner observer recorded unexpected errors\n");
+            ++failures;
+        } else {
+            std::printf("PASS: SequentialPipelineRunner observer is hooked and runner is reusable\n");
+        }
+    }
+
+    // ---- Test 7: Gameplay fuel runner keeps branch output semantics ----
+    {
+        biofuel::game::gameplay::FuelProcessPipelineRunner runner;
+        const biofuel::game::gameplay::stages::ProcessingInput input{
+            .cropId = biofuel::game::data::CropId::Soybean,
+            .quantityGallons = 48,
+            .sourceTileX = 3,
+            .sourceTileY = 4,
+        };
+        const biofuel::game::gameplay::stages::ProcessingOutput output = runner.run(input);
+        if (output.fuelGallons != 48 ||
+            output.revenueCents != 14880 ||
+            output.fuelKind != biofuel::game::data::FuelKind::Biodiesel) {
+            std::printf("FAIL: FuelProcessPipelineRunner biodiesel branch output mismatch\n");
+            ++failures;
+        } else {
+            std::printf("PASS: FuelProcessPipelineRunner biodiesel branch output matches crop data\n");
+        }
+    }
+
+    // ---- Test 8: Gameplay fuel runner falls back safely for unknown crop ids ----
+    {
+        biofuel::game::gameplay::FuelProcessPipelineRunner runner;
+        const biofuel::game::gameplay::stages::ProcessingInput input{
+            .cropId = static_cast<biofuel::game::data::CropId>(255U),
+            .quantityGallons = 99,
+            .sourceTileX = 1,
+            .sourceTileY = 2,
+        };
+        const biofuel::game::gameplay::stages::ProcessingOutput output = runner.run(input);
+        if (output.fuelGallons != 0 ||
+            output.revenueCents != 0 ||
+            output.fuelKind != biofuel::game::data::FuelKind::Ethanol) {
+            std::printf("FAIL: FuelProcessPipelineRunner unknown crop fallback output mismatch\n");
+            ++failures;
+        } else {
+            std::printf("PASS: FuelProcessPipelineRunner unknown crop falls back to default output\n");
+        }
+    }
+
+    // ---- Test 9: Gameplay tech runner keeps sequential stage semantics ----
+    {
+        biofuel::game::gameplay::TechTreePipelineRunner runner;
+        const biofuel::game::gameplay::stages::TechTreeInput input{
+            .tier = biofuel::game::gameplay::stages::ResearchTier::Tier2,
+            .status = biofuel::game::gameplay::stages::ResearchStatus::Available,
+            .turnsRemaining = 1,
+            .moneyCents = 1000,
+            .researchCostCents = 250,
+        };
+        const biofuel::game::gameplay::stages::TechTreeOutput output = runner.run(input);
+        if (output.status != biofuel::game::gameplay::stages::ResearchStatus::Completed ||
+            output.turnsRemaining != 0 ||
+            output.moneyCents != 750 ||
+            !output.unlocked) {
+            std::printf("FAIL: TechTreePipelineRunner queue/advance/unlock output mismatch\n");
+            ++failures;
+        } else {
+            std::printf("PASS: TechTreePipelineRunner queue/advance/unlock output matches expected state\n");
         }
     }
 

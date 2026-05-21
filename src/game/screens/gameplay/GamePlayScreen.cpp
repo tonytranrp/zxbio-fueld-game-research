@@ -3,6 +3,7 @@
 #include "engine/graphics/Render.hpp"
 #include "engine/physics/PhysicsSystem.hpp"
 #include "engine/runtime/Runtime.hpp"
+#include "game/gameplay/SampleFarm.hpp"
 #include <raylib.h>
 #include <string_view>
 
@@ -47,36 +48,9 @@ namespace {
     return Vector2{meters.x * scale, meters.y * scale};
 }
 
-/// Create a sample FarmState with a mix of tile types for physics testing.
-[[nodiscard]] std::unique_ptr<FarmState> createSampleFarm() {
-    constexpr usize kWidth = 12;
-    constexpr usize kHeight = 10;
-    auto farm = std::make_unique<FarmState>(kWidth, kHeight);
-
-    // Place a border of "built" (solid) tiles around the perimeter
-    for (usize x = 0U; x < kWidth; ++x) {
-        (void)farm->setTileType(x, 0U, TileType::Built);
-        (void)farm->setTileType(x, kHeight - 1U, TileType::Built);
-    }
-    for (usize y = 1U; y < kHeight - 1U; ++y) {
-        (void)farm->setTileType(0U, y, TileType::Built);
-        (void)farm->setTileType(kWidth - 1U, y, TileType::Built);
-    }
-
-    // Place a few obstacles in the interior
-    (void)farm->setTileType(3U, 3U, TileType::Forest);
-    (void)farm->setTileType(4U, 3U, TileType::Forest);
-    (void)farm->setTileType(7U, 5U, TileType::Forest);
-    (void)farm->setTileType(7U, 6U, TileType::Forest);
-    (void)farm->setTileType(8U, 5U, TileType::Forest);
-    (void)farm->setTileType(8U, 6U, TileType::Forest);
-
-    // Water pool in the corner
-    (void)farm->setTileType(2U, 7U, TileType::Water);
-    (void)farm->setTileType(2U, 8U, TileType::Water);
-    (void)farm->setTileType(3U, 8U, TileType::Water);
-
-    return farm;
+[[nodiscard]] constexpr Color tileColorFor(const TileType type) noexcept {
+    const TileRenderColor color = tileRenderColor(type);
+    return Color{color.r, color.g, color.b, color.a};
 }
 
 } // namespace
@@ -148,19 +122,6 @@ void GamePlayScreen::onRender() {
         const f32 tilePx = m_metersToPixels; // 1 tile = 1 meter = tilePx pixels
         const i32 tilePxI32 = static_cast<i32>(tilePx);
 
-        // Precomputed color LUT indexed by TileType — avoids a switch branch
-        // on every tile in the inner loop.
-        static constexpr Color kTileColors[] = {
-            /* Fallow     */ Color{30, 35, 40, 255},
-            /* Corn       */ Color{90, 80, 20, 255},
-            /* Sugarcane  */ Color{50, 50, 50, 255},
-            /* Soybean    */ Color{50, 50, 50, 255},
-            /* Switchgrass*/ Color{50, 50, 50, 255},
-            /* Algae      */ Color{50, 50, 50, 255},
-            /* Forest     */ Color{30, 80, 30, 255},
-            /* Water      */ Color{25, 55, 120, 255},
-            /* Built      */ Color{80, 70, 60, 255},
-        };
         static constexpr Color kGridLineColor{60, 60, 60, 100};
 
         for (usize y = 0U; y < h; ++y) {
@@ -168,8 +129,7 @@ void GamePlayScreen::onRender() {
             const i32 ryI32 = static_cast<i32>(ry);
             for (usize x = 0U; x < w; ++x) {
                 const Tile& tile = m_farmState->atUnsafe(x, y);
-                const u8 typeIdx = static_cast<u8>(tile.type);
-                const Color tileColor = (typeIdx < 9U) ? kTileColors[typeIdx] : Color{50, 50, 50, 255};
+                const Color tileColor = tileColorFor(tile.type);
 
                 const i32 rxI32 = static_cast<i32>(static_cast<f32>(x) * tilePx);
                 DrawRectangle(rxI32, ryI32, tilePxI32, tilePxI32, tileColor);

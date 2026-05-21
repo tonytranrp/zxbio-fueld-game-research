@@ -1,6 +1,7 @@
 #include "game/gameplay/TurnPipeline.hpp"
 #include "game/gameplay/FarmState.hpp"
 #include "game/data/FuelFarmData.hpp"
+#include <array>
 #include <cstdlib>
 #include <cstdio>
 
@@ -17,6 +18,8 @@ bool check(const bool condition, const char* message) {
 } // namespace
 
 int main() {
+    using biofuel::i32;
+    using biofuel::usize;
     using namespace biofuel::game::gameplay;
     using namespace biofuel::game::data;
 
@@ -101,6 +104,44 @@ int main() {
         auto r4 = runner.run(stages::TurnInput{r3.farmState});
         ok = check(r4.farmState.season() == Season::Spring, "turn 4: should be Spring") && ok;
         ok = check(r4.farmState.year() == 2, "turn 4: should be year 2") && ok;
+    }
+
+    // --- Scenario 5: EcologyUpdate uses TileType metadata soil traits ---
+    {
+        FarmState farm(10, 10);
+        struct SoilCase {
+            TileType type;
+            i32 expectedSoil;
+        };
+        constexpr std::array<SoilCase, kTileTypeCount> cases{{
+            {TileType::Fallow, 55},
+            {TileType::Corn, 48},
+            {TileType::Sugarcane, 48},
+            {TileType::Soybean, 53},
+            {TileType::Switchgrass, 49},
+            {TileType::Algae, 49},
+            {TileType::Forest, 55},
+            {TileType::Water, 50},
+            {TileType::Built, 50},
+        }};
+
+        for (usize i = 0U; i < cases.size(); ++i) {
+            (void)farm.setTileType(i, 0U, cases[i].type);
+            Tile* tile = farm.tileAt(i, 0U);
+            if (tile != nullptr) {
+                tile->soilHealth = 50;
+                tile->moisture = 50;
+            }
+        }
+
+        auto output = runner.run(stages::TurnInput{farm});
+        for (usize i = 0U; i < cases.size(); ++i) {
+            const Tile* tile = output.farmState.tileAt(i, 0U);
+            ok = check(tile != nullptr && tile->soilHealth == cases[i].expectedSoil,
+                "metadata-driven soil delta failed") && ok;
+            ok = check(tile != nullptr && tile->moisture == 35,
+                "summer moisture delta failed") && ok;
+        }
     }
 
     if (ok) {

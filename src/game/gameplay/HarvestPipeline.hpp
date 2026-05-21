@@ -3,9 +3,8 @@
 #include "game/gameplay/stages/ValidateCrop.hpp"
 #include "game/gameplay/stages/CalculateYield.hpp"
 #include "game/gameplay/stages/UpdateInventory.hpp"
-#include "game/gameplay/PipelineEventObserver.hpp"
+#include "game/gameplay/PipelineRunner.hpp"
 #include <pb/pipeline.hpp>
-#include <pb/runtime/sequential.hpp>
 
 namespace biofuel::game::gameplay {
 
@@ -32,10 +31,7 @@ public:
     [[nodiscard]] stages::HarvestOutput run(stages::HarvestInput input);
 
 private:
-    using EngineType = decltype(pb::runtime::compile<HarvestPipeline>(
-        pb::runtime::sequential{}));
-    PipelineEventObserver m_observer;
-    EngineType m_engine;
+    SequentialPipelineRunner<HarvestPipeline> m_runner;
 };
 
 } // namespace biofuel::game::gameplay

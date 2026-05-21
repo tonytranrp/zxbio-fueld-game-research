@@ -46,6 +46,10 @@ struct TilePhysicsTraits {
     f32 density = 0.0F;
 };
 
+struct TileEcologyTraits {
+    i32 soilHealthDeltaPerTurn = 0;
+};
+
 struct TileTypeMetadata {
     TileType type = TileType::Fallow;
     std::string_view name{};
@@ -56,18 +60,19 @@ struct TileTypeMetadata {
     bool solid = false;
     bool physicsCollider = false;
     TilePhysicsTraits physics{};
+    TileEcologyTraits ecology{};
 };
 
 inline constexpr std::array<TileTypeMetadata, kTileTypeCount> kTileTypeMetadata{{
-    {TileType::Fallow, "Fallow", TileRenderColor{139,  90,  43, 255}, std::nullopt, false, true,  false, false, TilePhysicsTraits{TilePhysicsMaterial::Soil,       0.85F, 0.0F, 0.0F}},
-    {TileType::Corn, "Corn", TileRenderColor{218, 165,  32, 255}, data::CropId::Corn, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Crop,       0.70F, 0.0F, 0.0F}},
-    {TileType::Sugarcane, "Sugarcane", TileRenderColor{144, 238, 144, 255}, data::CropId::Sugarcane, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Crop,       0.72F, 0.0F, 0.0F}},
-    {TileType::Soybean, "Soybean", TileRenderColor{ 34, 139,  34, 255}, data::CropId::Soybean, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Crop,       0.68F, 0.0F, 0.0F}},
-    {TileType::Switchgrass, "Switchgrass", TileRenderColor{107, 142,  35, 255}, data::CropId::Switchgrass, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Crop,       0.74F, 0.0F, 0.0F}},
-    {TileType::Algae, "Algae", TileRenderColor{  0, 128, 128, 255}, data::CropId::Algae, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Water,      0.35F, 0.0F, 0.0F}},
-    {TileType::Forest, "Forest", TileRenderColor{  0, 100,   0, 255}, std::nullopt, false, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Vegetation, 0.95F, 0.0F, 0.0F}},
-    {TileType::Water, "Water", TileRenderColor{ 65, 105, 225, 255}, std::nullopt, false, false, false, false, TilePhysicsTraits{TilePhysicsMaterial::Water,      0.20F, 0.0F, 0.0F}},
-    {TileType::Built, "Built", TileRenderColor{128, 128, 128, 255}, std::nullopt, false, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Structure,  0.90F, 0.0F, 0.0F}},
+    {TileType::Fallow, "Fallow", TileRenderColor{139,  90,  43, 255}, std::nullopt, false, true,  false, false, TilePhysicsTraits{TilePhysicsMaterial::Soil,       0.85F, 0.0F, 0.0F}, TileEcologyTraits{ 5}},
+    {TileType::Corn, "Corn", TileRenderColor{218, 165,  32, 255}, data::CropId::Corn, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Crop,       0.70F, 0.0F, 0.0F}, TileEcologyTraits{-2}},
+    {TileType::Sugarcane, "Sugarcane", TileRenderColor{144, 238, 144, 255}, data::CropId::Sugarcane, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Crop,       0.72F, 0.0F, 0.0F}, TileEcologyTraits{-2}},
+    {TileType::Soybean, "Soybean", TileRenderColor{ 34, 139,  34, 255}, data::CropId::Soybean, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Crop,       0.68F, 0.0F, 0.0F}, TileEcologyTraits{ 3}},
+    {TileType::Switchgrass, "Switchgrass", TileRenderColor{107, 142,  35, 255}, data::CropId::Switchgrass, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Crop,       0.74F, 0.0F, 0.0F}, TileEcologyTraits{-1}},
+    {TileType::Algae, "Algae", TileRenderColor{  0, 128, 128, 255}, data::CropId::Algae, true, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Water,      0.35F, 0.0F, 0.0F}, TileEcologyTraits{-1}},
+    {TileType::Forest, "Forest", TileRenderColor{  0, 100,   0, 255}, std::nullopt, false, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Vegetation, 0.95F, 0.0F, 0.0F}, TileEcologyTraits{ 5}},
+    {TileType::Water, "Water", TileRenderColor{ 65, 105, 225, 255}, std::nullopt, false, false, false, false, TilePhysicsTraits{TilePhysicsMaterial::Water,      0.20F, 0.0F, 0.0F}, TileEcologyTraits{ 0}},
+    {TileType::Built, "Built", TileRenderColor{128, 128, 128, 255}, std::nullopt, false, false, true, true, TilePhysicsTraits{TilePhysicsMaterial::Structure,  0.90F, 0.0F, 0.0F}, TileEcologyTraits{ 0}},
 }};
 
 static_assert(kTileTypeMetadata.size() == kTileTypeCount,
@@ -116,6 +121,10 @@ static_assert(tileMetadataMatchesEnumOrder(),
 
 [[nodiscard]] constexpr TilePhysicsTraits tilePhysicsTraits(const TileType type) noexcept {
     return tileMetadata(type).physics;
+}
+
+[[nodiscard]] constexpr TileEcologyTraits tileEcologyTraits(const TileType type) noexcept {
+    return tileMetadata(type).ecology;
 }
 
 [[nodiscard]] constexpr bool tileCropMappingsComplete() noexcept {

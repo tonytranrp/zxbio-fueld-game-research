@@ -1,4 +1,5 @@
 #include "game/gameplay/stages/PassThroughStages.hpp"
+#include <pb/pipeline.hpp>
 #include <cstdlib>
 #include <cstdio>
 #include <type_traits>
@@ -26,6 +27,12 @@ int main() {
     static_assert(std::same_as<PressExtract, PassThrough<ProcessingInput>>);
     static_assert(std::same_as<Pretreat, PassThrough<ProcessingInput>>);
     static_assert(std::same_as<EconomyUpdate, PassThrough<TurnOutput>>);
+    static_assert(pb::core::Stage<WashCrop>);
+    static_assert(pb::core::Stage<GrindCrop>);
+    static_assert(pb::core::Stage<Ferment>);
+    static_assert(pb::core::Stage<PressExtract>);
+    static_assert(pb::core::Stage<Pretreat>);
+    static_assert(pb::core::Stage<EconomyUpdate>);
 
     bool ok = true;
 
@@ -35,16 +42,31 @@ int main() {
         .sourceTileX = 3,
         .sourceTileY = 4,
     };
+    const auto checkProcessingPassthrough = [&](const ProcessingInput& actual, const char* stageName) {
+        const bool matches = actual.cropId == processInput.cropId &&
+                             actual.quantityGallons == processInput.quantityGallons &&
+                             actual.sourceTileX == processInput.sourceTileX &&
+                             actual.sourceTileY == processInput.sourceTileY;
+        if (!matches) {
+            std::printf("FAIL: %s changed ProcessingInput\n", stageName);
+        }
+        return matches;
+    };
 
     const ProcessingInput washed = WashCrop{}(processInput);
-    ok = check(washed.cropId == processInput.cropId, "WashCrop changed cropId") && ok;
-    ok = check(washed.quantityGallons == processInput.quantityGallons, "WashCrop changed quantity") && ok;
-    ok = check(washed.sourceTileX == processInput.sourceTileX && washed.sourceTileY == processInput.sourceTileY,
-        "WashCrop changed source tile") && ok;
+    ok = checkProcessingPassthrough(washed, "WashCrop") && ok;
+
+    const ProcessingInput ground = GrindCrop{}(processInput);
+    ok = checkProcessingPassthrough(ground, "GrindCrop") && ok;
+
+    const ProcessingInput fermented = Ferment{}(processInput);
+    ok = checkProcessingPassthrough(fermented, "Ferment") && ok;
+
+    const ProcessingInput pressed = PressExtract{}(processInput);
+    ok = checkProcessingPassthrough(pressed, "PressExtract") && ok;
 
     const ProcessingInput pretreated = Pretreat{}(processInput);
-    ok = check(pretreated.cropId == processInput.cropId, "Pretreat changed cropId") && ok;
-    ok = check(pretreated.quantityGallons == processInput.quantityGallons, "Pretreat changed quantity") && ok;
+    ok = checkProcessingPassthrough(pretreated, "Pretreat") && ok;
 
     FarmState farm{2, 2};
     (void)farm.setTileType(1, 1, TileType::Corn);
