@@ -3,6 +3,7 @@
 #include "engine/runtime/Runtime.hpp"
 #include "engine/ui/Screen.hpp"
 #include "engine/ui/ScreenManager.hpp"
+#include "game/screens/GameScreenIds.hpp"
 #include <raylib.h>
 
 namespace biofuel::game::screens {
@@ -31,6 +32,14 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     }
 
     using enum ::biofuel::engine::ui::typed::ScreenId;
+    constexpr auto Loading = screen_id::Loading;
+    constexpr auto PausePopup = screen_id::PausePopup;
+    constexpr auto Calibration = screen_id::Calibration;
+    constexpr auto Idle = screen_id::Idle;
+    constexpr auto Video = screen_id::Video;
+    constexpr auto MainMenu = screen_id::MainMenu;
+    constexpr auto Join = screen_id::Join;
+    constexpr auto GamePlay = screen_id::GamePlay;
     switch (current->screenId()) {
     case Loading:
     case PausePopup:
