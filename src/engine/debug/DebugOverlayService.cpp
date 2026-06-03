@@ -19,7 +19,7 @@ using ::biofuel::engine::graphics::Renderer;
 template<typename TPanel>
 [[nodiscard]] constexpr i32 panelHeight() noexcept {
     if constexpr (std::is_same_v<TPanel, MemoryTelemetryDebugPanel>) {
-        return 138;
+        return 210;
     } else if constexpr (std::is_same_v<TPanel, PhysicsDebugPanel>) {
         return 70;
     } else if constexpr (std::is_same_v<TPanel, HandTrackingDebugPanel>) {
@@ -74,36 +74,86 @@ void renderPanelContent<FrameTimingDebugPanel>(const DebugOverlayContext& contex
 
 template<>
 void renderPanelContent<MemoryTelemetryDebugPanel>(const DebugOverlayContext&, const Rectangle rect) {
+    constexpr f64 kMiB = 1024.0 * 1024.0;
     const i32 x = static_cast<i32>(rect.x) + 8;
+    const i32 panelRight = static_cast<i32>(rect.x + rect.width) - 8;
     i32 y = static_cast<i32>(rect.y) + 26;
+
     const auto memory = MemoryTelemetry::processMemory();
     drawLine(
         TextFormat(
-            "RAM %.1f MiB | Private %.1f MiB",
-            static_cast<double>(memory.workingSetBytes) / (1024.0 * 1024.0),
-            static_cast<double>(memory.privateBytes) / (1024.0 * 1024.0)),
+            "RAM %.1f MiB (resident) | Private %.1f MiB",
+            static_cast<double>(memory.workingSetBytes) / kMiB,
+            static_cast<double>(memory.privateBytes) / kMiB),
         x,
         y,
-        Color{160, 180, 176, 255});
-    y += 16;
+        Color{170, 222, 196, 255});
+    y += 18;
 
+    // Collect the tracked resource kinds and sort them by their largest byte
+    // footprint so the biggest consumers float to the top of the list. Fixed-
+    // size storage — no per-frame heap allocation.
+    struct Row {
+        ResourceKind kind = ResourceKind::Count;
+        ResourceStats stats{};
+        i64 bytes = 0;
+    };
+    std::array<Row, static_cast<size_t>(ResourceKind::Count)> rows{};
+    size_t rowCount = 0;
+    i64 maxBytes = 0;
     for (size_t index = 0; index < static_cast<size_t>(ResourceKind::Count); ++index) {
         const auto kind = static_cast<ResourceKind>(index);
         const auto stats = MemoryTelemetry::stats(kind);
         if (stats.liveCount == 0 && stats.peakCount == 0 && stats.liveBytes == 0 && stats.peakBytes == 0) {
             continue;
         }
-        drawLine(
-            TextFormat(
-                "%s: live %lld peak %lld",
-                MemoryTelemetry::name(kind).data(),
-                static_cast<long long>(stats.liveCount),
-                static_cast<long long>(stats.peakCount)),
-            x,
-            y,
-            Color{130, 152, 148, 255});
-        y += 14;
-        if (y > static_cast<i32>(rect.y + rect.height) - 14) {
+        const i64 bytes = std::max<i64>(stats.liveBytes, stats.peakBytes);
+        rows[rowCount++] = Row{kind, stats, bytes};
+        maxBytes = std::max<i64>(maxBytes, bytes);
+    }
+    std::sort(rows.begin(), rows.begin() + static_cast<std::ptrdiff_t>(rowCount),
+        [](const Row& a, const Row& b) { return a.bytes > b.bytes; });
+
+    if (rowCount == 0) {
+        drawLine("(no tracked game resources yet)", x, y, Color{120, 140, 136, 255});
+        return;
+    }
+
+    for (size_t i = 0; i < rowCount; ++i) {
+        const Row& row = rows[i];
+        const double liveMiB = static_cast<double>(row.stats.liveBytes) / kMiB;
+        const double peakMiB = static_cast<double>(row.stats.peakBytes) / kMiB;
+        if (row.bytes > 0) {
+            drawLine(
+                TextFormat(
+                    "%-15s %6.2f MiB  (peak %.2f, x%lld)",
+                    MemoryTelemetry::name(row.kind).data(),
+                    liveMiB,
+                    peakMiB,
+                    static_cast<long long>(row.stats.liveCount)),
+                x, y, Color{198, 216, 210, 255});
+        } else {
+            // Count-only resources (e.g. shaders) report no byte footprint yet.
+            drawLine(
+                TextFormat(
+                    "%-15s      -- MiB  (live x%lld, peak x%lld)",
+                    MemoryTelemetry::name(row.kind).data(),
+                    static_cast<long long>(row.stats.liveCount),
+                    static_cast<long long>(row.stats.peakCount)),
+                x, y, Color{140, 160, 156, 255});
+        }
+        y += 13;
+
+        // Proportional usage bar relative to the biggest tracked consumer.
+        const i32 barW = std::max(1, panelRight - x);
+        Renderer::drawRect(x, y, barW, 3, Color{28, 42, 38, 200});
+        if (maxBytes > 0 && row.bytes > 0) {
+            const i32 fill = static_cast<i32>(static_cast<i64>(barW) * row.bytes / maxBytes);
+            Renderer::drawRect(x, y, fill, 3, Color{96, 200, 150, 235});
+        }
+        y += 7;
+
+        if (y > static_cast<i32>(rect.y + rect.height) - 10) {
             break;
         }
     }

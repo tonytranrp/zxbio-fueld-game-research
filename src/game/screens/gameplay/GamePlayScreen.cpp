@@ -1,57 +1,14 @@
 #include "GamePlayScreen.hpp"
 
 #include "engine/graphics/Render.hpp"
-#include "engine/physics/PhysicsSystem.hpp"
-#include "engine/runtime/Runtime.hpp"
-#include "game/gameplay/SampleFarm.hpp"
 #include <raylib.h>
-#include <string_view>
 
 namespace biofuel::game::screens {
 
-using namespace ::biofuel::engine::physics;
-using namespace ::biofuel::game::gameplay;
-
-// =============================================================================
-// WASD Direction helpers
-// =============================================================================
-
 namespace {
 
-[[nodiscard]] presentation::sprites::Direction readWASDDirection() noexcept {
-    using presentation::sprites::Direction;
-
-    const bool w = IsKeyDown(KEY_W);
-    const bool a = IsKeyDown(KEY_A);
-    const bool s = IsKeyDown(KEY_S);
-    const bool d = IsKeyDown(KEY_D);
-
-    if (w && d)  return Direction::UpRight;
-    if (w && a)  return Direction::UpLeft;
-    if (s && d)  return Direction::DownRight;
-    if (s && a)  return Direction::DownLeft;
-    if (w)       return Direction::Up;
-    if (s)       return Direction::Down;
-    if (a)       return Direction::Left;
-    if (d)       return Direction::Right;
-
-    return Direction::Idle;
-}
-
-/// Convert NekoCat screen-pixel position to physics meters.
-[[nodiscard]] constexpr Vector2 pixelsToMeters(f32 px, f32 py, f32 scale) noexcept {
-    return Vector2{px / scale, py / scale};
-}
-
-/// Convert physics meters to NekoCat screen-pixel position.
-[[nodiscard]] constexpr Vector2 metersToPixels(Vector2 meters, f32 scale) noexcept {
-    return Vector2{meters.x * scale, meters.y * scale};
-}
-
-[[nodiscard]] constexpr Color tileColorFor(const TileType type) noexcept {
-    const TileRenderColor color = tileRenderColor(type);
-    return Color{color.r, color.g, color.b, color.a};
-}
+constexpr Color kSkyTop{116, 170, 226, 255};
+constexpr Color kSkyHorizon{206, 224, 236, 255};
 
 } // namespace
 
@@ -62,212 +19,134 @@ namespace {
 GamePlayScreen::GamePlayScreen() = default;
 
 GamePlayScreen::~GamePlayScreen() noexcept {
-    shutdownPhysicsWorld();
+    releaseCursor();
+    m_voxels.unloadAll();
 }
 
 void GamePlayScreen::onEnter() {
-    ensureHandTrackingForModelOverlay();
+    ::biofuel::engine::world::voxel::VoxelWorld::Config config{};
+    config.viewRadiusChunks = 6;
+    config.maxBuildsPerFrame = 3;
+    config.seed = 20260602U;
+    config.seaLevel = config.baseHeight + 6;   // flood low valleys into lakes
+    m_voxels.configure(config);
+
+    // Spawn slightly inside the first chunk and prime the surrounding chunks so
+    // the world is solid the moment the player appears. Ground collision uses the
+    // noise function directly, so the player never falls even before meshes load.
+    const Vector3 spawn{8.0f, 0.0f, 8.0f};
+    for (i32 i = 0; i < 60; ++i) {
+        m_voxels.update(spawn);
+        if (m_voxels.lastBuiltThisFrame() == 0U) {
+            break;
+        }
+    }
+    m_player.reset(Vector3{spawn.x, m_voxels.groundHeight(spawn.x, spawn.z), spawn.z});
+
+    ::biofuel::game::presentation::hands::ensureModelOnlyHandTracking();
     m_handOverlay.onEnter();
-
-    // Initialize NekoCat at screen center.
-    m_neko.load();
-
-    // Set up the physics world and farm grid.
-    initPhysicsWorld();
-
-    // Initialize NekoCat pixel position from physics.
-    syncNekoCatFromPhysics();
+    captureCursor();
 }
 
 void GamePlayScreen::onExit() {
-    shutdownPhysicsWorld();
-    m_neko.unload();
+    releaseCursor();
     m_handOverlay.onExit();
+    m_voxels.unloadAll();
+}
+
+void GamePlayScreen::onPause() {
+    // An overlay (e.g. the pause popup) is taking the foreground — give the OS
+    // cursor back so the player can click menu buttons.
+    releaseCursor();
+}
+
+void GamePlayScreen::onResume() {
+    // Back in control of the world: re-capture the cursor for mouse-look.
+    captureCursor();
 }
 
 void GamePlayScreen::onUpdate(const f32 dt) {
-    const presentation::sprites::Direction direction = readWASDDirection();
-
-    // Apply velocity to the player physics body from WASD input.
-    applyWASDVelocity(dt);
-
-    // Step the physics simulation.
-    if (m_physicsSystem) {
-        m_physicsSystem->stepFixed(dt);
-    }
-
-    // Sync NekoCat's screen position from the physics body.
-    syncNekoCatFromPhysics();
-
-    // Update NekoCat animation with the WASD direction for sprite orientation.
-    m_neko.update(dt, direction);
-
+    // Chunk streaming runs at the fixed step (60 Hz is plenty); the player itself
+    // is driven per render frame in onInput() so mouse-look and jump react to
+    // every input poll rather than only the ~1/N frames a fixed step samples.
+    m_voxels.update(m_player.feetPosition());
     m_handOverlay.update(dt);
 }
 
+void GamePlayScreen::onInput() {
+    // Runs once per rendered frame. Driving the kinematic controller here (with
+    // the real frame delta) keeps mouse-look smooth and never drops a jump press
+    // regardless of how far render rate runs ahead of the fixed update.
+    const f32 dt = GetFrameTime();
+    m_player.update(dt, [this](const f32 x, const f32 z) noexcept {
+        return m_voxels.groundHeight(x, z);
+    });
+}
+
 void GamePlayScreen::onRender() {
-    using namespace ::biofuel::engine::graphics;
+    renderSky();
 
-    ClearBackground(Color{18, 24, 28, 255});
+    const Camera3D camera = m_player.camera();
+    BeginMode3D(camera);
+    m_voxels.render();
+    m_voxels.renderWater(static_cast<f32>(GetTime()));
+    EndMode3D();
 
-    Renderer::drawText(
-        "FUEL FARM — Physics Test",
-        20, 20, 24,
-        Color{215, 190, 96, 255});
-
-    // Render farm grid debug overlay
-    if (m_farmState) {
-        const usize w = m_farmState->width();
-        const usize h = m_farmState->height();
-        const f32 tilePx = m_metersToPixels; // 1 tile = 1 meter = tilePx pixels
-        const i32 tilePxI32 = static_cast<i32>(tilePx);
-
-        static constexpr Color kGridLineColor{60, 60, 60, 100};
-
-        for (usize y = 0U; y < h; ++y) {
-            const f32 ry = static_cast<f32>(y) * tilePx;
-            const i32 ryI32 = static_cast<i32>(ry);
-            for (usize x = 0U; x < w; ++x) {
-                const Tile& tile = m_farmState->atUnsafe(x, y);
-                const Color tileColor = tileColorFor(tile.type);
-
-                const i32 rxI32 = static_cast<i32>(static_cast<f32>(x) * tilePx);
-                DrawRectangle(rxI32, ryI32, tilePxI32, tilePxI32, tileColor);
-                DrawRectangleLines(rxI32, ryI32, tilePxI32, tilePxI32, kGridLineColor);
-            }
-        }
-    }
-
-    // Render NekoCat at physics-driven position.
-    m_neko.render();
-
+    // Model-only hand-tracking overlay (renders the AR hand model when the
+    // player has calibrated; no-op otherwise). Draws its own 3D pass.
     m_handOverlay.render();
-}
 
-void GamePlayScreen::onInput() {}
-
-// =============================================================================
-// Physics initialization
-// =============================================================================
-
-void GamePlayScreen::initPhysicsWorld() {
-    m_physicsSystem = std::make_unique<PhysicsSystem>();
-    m_physicsSystem->init();
-    m_physicsSystem->setFixedTimestep(1.0f / 60.0f);
-    m_physicsSystem->setMaxSubSteps(4);
-
-    PhysicsWorld2D world = m_physicsSystem->world2D();
-    world.setGravity(Vector2{0.0f, 0.0f}); // top-down — no gravity
-
-    // Configure world-physics integration
-    m_worldPhysics.setTileSizeMeters(1.0f);
-    m_worldPhysics.setBuildingFootprint(2, 2);
-    m_metersToPixels = 64.0f; // 64 pixels per meter
-
-    // Create sample farm and bake colliders
-    m_farmState = createSampleFarm();
-    m_worldPhysics.bakeTileColliders(*m_farmState, world);
-
-    // Create the player's dynamic physics body
-    createPlayerBody();
-}
-
-void GamePlayScreen::shutdownPhysicsWorld() noexcept {
-    if (m_physicsSystem) {
-        PhysicsWorld2D world = m_physicsSystem->world2D();
-        m_worldPhysics.clearAllColliders(world);
-        if (m_playerBody) {
-            world.removeBody(m_playerBody);
-            m_playerBody = PhysicsBody2D{};
-        }
-        m_physicsSystem->shutdown();
-        m_physicsSystem.reset();
-    }
-    m_farmState.reset();
-}
-
-void GamePlayScreen::createPlayerBody() {
-    if (!m_physicsSystem) return;
-
-    PhysicsWorld2D world = m_physicsSystem->world2D();
-
-    // Place the player at tile (5, 5) center → physics (5.5, 5.5) meters.
-    PhysicsBodyDesc2D desc{};
-    desc.kind = PhysicsBodyKind::Dynamic;
-    desc.position = Vector2{5.5f, 5.5f};
-    desc.linearDamping = 8.0f;   // friction-like deceleration
-    desc.canSleep = false;
-    desc.lockRotation = true;
-
-    m_playerBody = world.createBody(desc);
-
-    // Attach a circle collider slightly smaller than a tile.
-    CircleColliderDesc colliderDesc{};
-    colliderDesc.radius = 0.35f;    // 70% of half-tile width
-    colliderDesc.density = 1.0f;
-    colliderDesc.sensor = false;
-    colliderDesc.collisionGroup = CollisionGroup::all();
-
-    [[maybe_unused]] const PhysicsCollider2D playerCollider = world.attachCircle(m_playerBody, colliderDesc);
+    renderHud();
 }
 
 // =============================================================================
-// Per-frame sync
+// Rendering helpers
 // =============================================================================
 
-void GamePlayScreen::syncNekoCatFromPhysics() noexcept {
-    if (!m_physicsSystem || !m_playerBody) return;
+void GamePlayScreen::renderSky() const {
+    // ClearBackground also clears the depth buffer for the 3D pass; the gradient
+    // is then painted as a flat sky behind the world.
+    ClearBackground(kSkyHorizon);
+    const i32 w = ::biofuel::engine::graphics::Renderer::screenWidth();
+    const i32 h = ::biofuel::engine::graphics::Renderer::screenHeight();
+    DrawRectangleGradientV(0, 0, w, h, kSkyTop, kSkyHorizon);
+}
 
-    const PhysicsWorld2D world = m_physicsSystem->world2D();
-    const PhysicsBodyPose2D pose = world.bodyPose(m_playerBody);
+void GamePlayScreen::renderHud() const {
+    using ::biofuel::engine::graphics::Renderer;
+    const i32 w = Renderer::screenWidth();
+    const i32 h = Renderer::screenHeight();
 
-    if (pose.valid) {
-        const Vector2 pixelPos = metersToPixels(pose.position, m_metersToPixels);
-        // Offset by half the sprite size so the sprite center aligns with the physics body.
-        constexpr f32 kSpriteHalf = 32.0f * 3.0f * 0.5f; // half of 96px sprite
-        m_neko.setPosition(pixelPos.x - kSpriteHalf, pixelPos.y - kSpriteHalf);
+    const i32 cx = w / 2;
+    const i32 cy = h / 2;
+    DrawLine(cx - 8, cy, cx + 8, cy, Color{255, 255, 255, 180});
+    DrawLine(cx, cy - 8, cx, cy + 8, Color{255, 255, 255, 180});
+
+    Renderer::drawText("FUEL FARM — Voxel World", 20, 18, 24, Color{245, 232, 180, 235});
+    Renderer::drawText("WASD move  •  Mouse look  •  SHIFT sprint  •  SPACE jump  •  ESC pause",
+                       20, 48, 16, Color{210, 220, 224, 220});
+
+    const Vector3 p = m_player.feetPosition();
+    DrawText(TextFormat("pos %.0f, %.0f, %.0f   speed %.1f m/s   %s   chunks %zu",
+                        static_cast<double>(p.x), static_cast<double>(p.y), static_cast<double>(p.z),
+                        static_cast<double>(m_player.speed()),
+                        m_player.grounded() ? "grounded" : "airborne",
+                        m_voxels.loadedChunkCount()),
+             20, h - 28, 16, Color{180, 196, 200, 220});
+}
+
+void GamePlayScreen::captureCursor() noexcept {
+    if (!m_cursorCaptured) {
+        DisableCursor();
+        m_cursorCaptured = true;
     }
 }
 
-void GamePlayScreen::applyWASDVelocity(const f32 dt) noexcept {
-    if (!m_physicsSystem || !m_playerBody) return;
-
-    const presentation::sprites::Direction dir = readWASDDirection();
-    const PhysicsWorld2D world = m_physicsSystem->world2D();
-
-    // Compute velocity vector from WASD input.
-    f32 vx = 0.0f;
-    f32 vy = 0.0f;
-
-    switch (dir) {
-    case presentation::sprites::Direction::Up:        vy = -1.0f; break;
-    case presentation::sprites::Direction::Down:       vy =  1.0f; break;
-    case presentation::sprites::Direction::Left:       vx = -1.0f; break;
-    case presentation::sprites::Direction::Right:      vx =  1.0f; break;
-    case presentation::sprites::Direction::UpLeft:     vx = -0.707f; vy = -0.707f; break;
-    case presentation::sprites::Direction::UpRight:    vx =  0.707f; vy = -0.707f; break;
-    case presentation::sprites::Direction::DownLeft:   vx = -0.707f; vy =  0.707f; break;
-    case presentation::sprites::Direction::DownRight:  vx =  0.707f; vy =  0.707f; break;
-    case presentation::sprites::Direction::Idle:       break;
+void GamePlayScreen::releaseCursor() noexcept {
+    if (m_cursorCaptured) {
+        EnableCursor();
+        m_cursorCaptured = false;
     }
-
-    const Vector2 velocity{
-        vx * m_playerSpeed,
-        vy * m_playerSpeed,
-    };
-
-    world.setBodyLinearVelocity(m_playerBody, velocity);
-
-    // Suppress unused warning when dt is not used (velocity is absolute, not accumulated).
-    (void)dt;
-}
-
-// =============================================================================
-// Hand tracking
-// =============================================================================
-
-void GamePlayScreen::ensureHandTrackingForModelOverlay() {
-    game::presentation::hands::ensureModelOnlyHandTracking();
 }
 
 } // namespace biofuel::game::screens

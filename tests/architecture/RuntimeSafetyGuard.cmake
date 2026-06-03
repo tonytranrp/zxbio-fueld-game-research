@@ -32,6 +32,9 @@ set(ALLOWED_RAYLIB_LIFETIME_FILES
     "src/engine/graphics/RenderSurface.hpp"
     "src/engine/graphics/ShaderManager.cpp"
     "src/engine/models/ModelSystem.cpp"
+    "src/engine/world/Terrain3D.cpp"
+    "src/engine/world/voxel/VoxelWorld.cpp"
+    "src/engine/video/VideoFfmpegBackend.cpp"
     "src/engine/video/VideoManager.cpp"
     "src/engine/vision/hand_tracking/HandTrackingService.cpp")
 
@@ -192,21 +195,23 @@ require_contains(
     "${SCREEN_MANAGER_HPP}"
     "void renderSlotToBackbuffer(typed::ScreenSlot& slot, i32 width, i32 height);")
 
-read_required("src/engine/ui/ScreenManager.cpp" SCREEN_MANAGER_CPP)
+# Crossfade transition rendering lives in ScreenManagerRendering.cpp (split out
+# of ScreenManager.cpp for readability); the safety invariants below still apply.
+read_required("src/engine/ui/ScreenManagerRendering.cpp" SCREEN_MANAGER_RENDERING_CPP)
 require_contains(
     "ScreenManager::ensureTransitionTextures must require both render surfaces to be valid"
-    "${SCREEN_MANAGER_CPP}"
+    "${SCREEN_MANAGER_RENDERING_CPP}"
     "return m_transitionOut.valid() && m_transitionIn.valid();")
 require_contains(
     "Crossfade must fall back to direct render when render texture allocation fails"
-    "${SCREEN_MANAGER_CPP}"
+    "${SCREEN_MANAGER_RENDERING_CPP}"
     "if (!ensureTransitionTextures(sw, sh)) {
         renderSlotToBackbuffer(incoming, sw, sh);
         return;
     }")
 require_contains(
     "Crossfade shader fallback must not draw an invalid transition texture"
-    "${SCREEN_MANAGER_CPP}"
+    "${SCREEN_MANAGER_RENDERING_CPP}"
     "if (m_transitionIn.valid()) {
             Renderer::drawRenderTexture(m_transitionIn.texture());
         } else {

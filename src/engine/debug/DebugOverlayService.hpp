@@ -46,6 +46,8 @@ struct DebugPanelSpec<MemoryTelemetryDebugPanel> {
     using Panel = MemoryTelemetryDebugPanel;
     static constexpr std::string_view Name = "debug.memory";
     static constexpr std::string_view Title = "Memory";
+    // Off by default; toggle live with F4, or force-on by building with
+    // -DBIOFUEL_DEBUG_MEMORY_STATS=ON.
 #ifdef BIOFUEL_DEBUG_MEMORY_STATS
     static constexpr bool DefaultEnabled = true;
 #else

@@ -46,39 +46,33 @@ void updatePeak(std::atomic<i64>& peak, const i64 value) noexcept {
 
 } // namespace
 
-void MemoryTelemetry::add([[maybe_unused]] const ResourceKind kind, [[maybe_unused]] const i64 count, [[maybe_unused]] const i64 bytes) noexcept {
-#ifndef NDEBUG
+// Tracking is always compiled in (not Debug-only): the bookkeeping is a handful
+// of relaxed atomics touched only when a resource is created/destroyed, so the
+// runtime cost is negligible and the in-game Memory overlay shows real numbers
+// in Release builds too.
+void MemoryTelemetry::add(const ResourceKind kind, const i64 count, const i64 bytes) noexcept {
     auto& stats = slot(kind);
     const i64 liveCount = stats.liveCount.fetch_add(count, std::memory_order_relaxed) + count;
     const i64 liveBytes = stats.liveBytes.fetch_add(bytes, std::memory_order_relaxed) + bytes;
     updatePeak(stats.peakCount, liveCount);
     updatePeak(stats.peakBytes, liveBytes);
-#else
-#endif
 }
 
-void MemoryTelemetry::remove([[maybe_unused]] const ResourceKind kind, [[maybe_unused]] const i64 count, [[maybe_unused]] const i64 bytes) noexcept {
-#ifndef NDEBUG
+void MemoryTelemetry::remove(const ResourceKind kind, const i64 count, const i64 bytes) noexcept {
     auto& stats = slot(kind);
     stats.liveCount.fetch_sub(count, std::memory_order_relaxed);
     stats.liveBytes.fetch_sub(bytes, std::memory_order_relaxed);
-#else
-#endif
 }
 
-void MemoryTelemetry::set([[maybe_unused]] const ResourceKind kind, [[maybe_unused]] const i64 count, [[maybe_unused]] const i64 bytes) noexcept {
-#ifndef NDEBUG
+void MemoryTelemetry::set(const ResourceKind kind, const i64 count, const i64 bytes) noexcept {
     auto& stats = slot(kind);
     stats.liveCount.store(count, std::memory_order_relaxed);
     stats.liveBytes.store(bytes, std::memory_order_relaxed);
     updatePeak(stats.peakCount, count);
     updatePeak(stats.peakBytes, bytes);
-#else
-#endif
 }
 
-void MemoryTelemetry::snapshot([[maybe_unused]] const std::string_view label) noexcept {
-#ifndef NDEBUG
+void MemoryTelemetry::snapshot(const std::string_view label) noexcept {
     const ProcessMemoryStats process = processMemory();
     spdlog::debug(
         "MemoryTelemetry [{}]: process working={:.1f} MiB private={:.1f} MiB",
@@ -102,8 +96,6 @@ void MemoryTelemetry::snapshot([[maybe_unused]] const std::string_view label) no
             mibSigned(resource.liveBytes),
             mibSigned(resource.peakBytes));
     }
-#else
-#endif
 }
 
 ResourceStats MemoryTelemetry::stats(const ResourceKind kind) noexcept {

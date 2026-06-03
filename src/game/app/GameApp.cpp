@@ -1,9 +1,11 @@
 #include "GameApp.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/ui/ScreenManager.hpp"
+#include "engine/debug/DebugOverlayService.hpp"
 #include "game/screens/GameScreenCatalog.hpp"
 #include "game/screens/loading/LoadingScreen.hpp"
 #include "game/screens/pause_popup/PauseController.hpp"
+#include <raylib.h>
 #include <utility>
 
 namespace biofuel::game::app {
@@ -13,11 +15,28 @@ namespace biofuel::game::app {
         .title = "Biofuel Game - Fuel Farm",
         .width = 1280,
         .height = 720,
-        .targetFps = 60,
+        .targetFps = 0,  // 0 = uncapped framerate (SetTargetFPS(0) disables the limiter)
         .fullscreen = false,
         .resizable = true,
         .globalInput = []() {
             ::biofuel::game::screens::PauseController::handleGlobalInput();
+
+            // Debug overlay hotkeys (work in all build configs):
+            //   F3 = toggle the whole overlay
+            //   F4 = toggle the Memory panel (sorted resource breakdown)
+            //   F5 = toggle the Assets panel
+            auto& overlay = ::biofuel::engine::runtime::Runtime::debugOverlay();
+            if (IsKeyPressed(KEY_F3)) {
+                overlay.toggle();
+            }
+            if (IsKeyPressed(KEY_F4)) {
+                overlay.setPanelEnabled<::biofuel::engine::debug::MemoryTelemetryDebugPanel>(
+                    !overlay.panelEnabled<::biofuel::engine::debug::MemoryTelemetryDebugPanel>());
+            }
+            if (IsKeyPressed(KEY_F5)) {
+                overlay.setPanelEnabled<::biofuel::engine::debug::AssetDebugPanel>(
+                    !overlay.panelEnabled<::biofuel::engine::debug::AssetDebugPanel>());
+            }
         },
     };
 
