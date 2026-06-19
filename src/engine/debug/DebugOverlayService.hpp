@@ -22,7 +22,6 @@ struct DebugPanelSpec;
 struct FrameTimingDebugPanel : DebugPanelTag {};
 struct MemoryTelemetryDebugPanel : DebugPanelTag {};
 struct PhysicsDebugPanel : DebugPanelTag {};
-struct HandTrackingDebugPanel : DebugPanelTag {};
 struct AssetDebugPanel : DebugPanelTag {};
 
 template<typename TPanel>
@@ -64,14 +63,6 @@ struct DebugPanelSpec<PhysicsDebugPanel> {
 };
 
 template<>
-struct DebugPanelSpec<HandTrackingDebugPanel> {
-    using Panel = HandTrackingDebugPanel;
-    static constexpr std::string_view Name = "debug.hand_tracking";
-    static constexpr std::string_view Title = "Hand Tracking";
-    static constexpr bool DefaultEnabled = false;
-};
-
-template<>
 struct DebugPanelSpec<AssetDebugPanel> {
     using Panel = AssetDebugPanel;
     static constexpr std::string_view Name = "debug.assets";
@@ -83,7 +74,6 @@ using DebugPanelRegistry = ::biofuel::typed::Registry<
     FrameTimingDebugPanel,
     MemoryTelemetryDebugPanel,
     PhysicsDebugPanel,
-    HandTrackingDebugPanel,
     AssetDebugPanel>;
 
 template<typename TRegistry>

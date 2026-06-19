@@ -8,7 +8,6 @@
 #include "game/screens/join/JoinScreenModule.hpp"
 #include "game/screens/gameplay/GamePlayScreenModule.hpp"
 #include "game/screens/pause_popup/PausePopupScreenModule.hpp"
-#include "game/screens/calibration/CalibrationScreenModule.hpp"
 #include "game/screens/idle/IdleScreenModule.hpp"
 #include "game/screens/video/VideoScreenModule.hpp"
 namespace biofuel::game::screens {
@@ -19,7 +18,6 @@ using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
     JoinScreen,
     GamePlayScreen,
     PausePopupScreen,
-    CalibrationScreen,
     IdleScreen,
     VideoScreen
     >;
@@ -35,7 +33,6 @@ namespace detail {
     case screen_id::Join:
     case screen_id::GamePlay:
     case screen_id::PausePopup:
-    case screen_id::Calibration:
     case screen_id::Idle:
     case screen_id::Video:
         return true;
@@ -51,7 +48,6 @@ namespace detail {
 [[nodiscard]] constexpr bool hasStackPolicySwitchEntry(const ::biofuel::engine::ui::typed::ScreenId id) noexcept {
     switch (id) {
     case screen_id::PausePopup:
-    case screen_id::Calibration:
         return true;
     case screen_id::Loading:
     case screen_id::MainMenu:
@@ -103,7 +99,6 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::Join: return typed::TransitionPolicy<JoinScreen>::VALUE;
     case screen_id::GamePlay: return typed::TransitionPolicy<GamePlayScreen>::VALUE;
     case screen_id::PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
-    case screen_id::Calibration: return typed::TransitionPolicy<CalibrationScreen>::VALUE;
     case screen_id::Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
     case screen_id::Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
@@ -122,7 +117,6 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     using enum typed::ScreenId;
     switch (id) {
     case screen_id::PausePopup: return typed::StackPolicy<PausePopupScreen>::VALUE;
-    case screen_id::Calibration: return typed::StackPolicy<CalibrationScreen>::VALUE;
     case screen_id::Loading:
     case screen_id::MainMenu:
     case screen_id::Join:

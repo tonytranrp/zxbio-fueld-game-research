@@ -17,22 +17,6 @@ if(MSVC)
 endif()
 
 # ------------------------------------------------------------------------------
-# Experimental: Python/MediaPipe hand-tracking subsystem.
-#
-# When OFF (default): all hand-tracking code is compiled out via #ifdef guards.
-#   - HandTrackingService::featureEnabled() returns false
-#   - HandTrackingService::start() returns false immediately
-#   - Runtime::handTracking() accessor is not compiled (linker error if called)
-#   - No Python runtime, ASIO, or worker process overhead
-#
-# When ON: BIOFUEL_ENABLE_HAND_TRACKING is defined globally, pulling in ASIO,
-#   provisioning a build-local Python 3.12 venv, and enabling the full
-#   UDP/TCP hand-tracking pipeline with MediaPipe gesture recognition.
-# ------------------------------------------------------------------------------
-option(BIOFUEL_ENABLE_HAND_TRACKING "Enable optional Python/MediaPipe hand tracking runtime." OFF)
-option(BIOFUEL_ENABLE_DEV_SCREENS "Enable developer-only screens (hand lab, etc.)" OFF)
-
-# ------------------------------------------------------------------------------
 # Build Output Directories
 # ------------------------------------------------------------------------------
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -168,15 +152,6 @@ corrosion_add_cxxbridge(
     REGEN_TARGET biofuel_rapier_bridge_cxx_regen
     FILES lib.rs
 )
-
-if(BIOFUEL_ENABLE_HAND_TRACKING)
-    CPMAddPackage(
-        NAME asio
-        URL https://github.com/chriskohlhoff/asio/archive/refs/tags/asio-1-30-2.tar.gz
-        URL_HASH SHA256=755bd7f85a4b269c67ae0ea254907c078d408cce8e1a352ad2ed664d233780e8
-        DOWNLOAD_ONLY YES
-    )
-endif()
 
 # ------------------------------------------------------------------------------
 # Source Code

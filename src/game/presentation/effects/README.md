@@ -21,7 +21,7 @@ game/presentation/effects/
 
 `ScreenBackdropController` owns screen-facing shader backdrop timing, reveal, brightness, and fallback color behavior.
 
-The main-menu New Game / Continue transition no longer owns model-hand effects here; it uses shader, camera, and UI dismiss motion only. Procedural robot-hand work lives in `engine/custom/procedural/` and the Debug-only dev screen consumes that engine module.
+The main-menu New Game / Continue transition uses shader, camera, and UI dismiss motion only — it does not own any model effects here.
 
 ## How to add an effect
 

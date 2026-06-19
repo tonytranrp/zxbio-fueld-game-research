@@ -53,7 +53,6 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/debug/DebugOverlayServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/animation/AnimationEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/EventServiceModule.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/hand_tracking/HandTrackingEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/input/InputEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/model/ModelEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/mouse/MouseEventModule.hpp"
@@ -72,14 +71,12 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/ProceduralBackdropModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/MenuOptionModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/input/InputServiceModule.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/engine/custom/procedural/hand/HandPoseServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/models/ModelServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/physics/PhysicsServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/tasks/TaskServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/typed/ScreenServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/video/VideoAssetModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/video/VideoServiceModule.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/engine/vision/hand_tracking/HandTrackingServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/window/WindowServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/world/WorldPhysicsEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/world/WorldServiceModule.hpp"
@@ -157,7 +154,6 @@ target_link_libraries(biofuel_engine
 )
 
 target_compile_definitions(biofuel_engine PUBLIC SPDLOG_HEADER_ONLY)
-# BIOFUEL_ENABLE_DEV_SCREENS permanently disabled -- dev screens feature removed
 
 add_library(biofuel_game STATIC ${GAME_SOURCES})
 add_dependencies(biofuel_game GenerateShaderSources GenerateTypedRegistries)
@@ -180,39 +176,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE biofuel_game)
 # ------------------------------------------------------------------------------
 # Optional subsystems and compile definitions
 # ------------------------------------------------------------------------------
-if(BIOFUEL_ENABLE_HAND_TRACKING)
-    set(HAND_TRACKING_PYTHON_ROOT "${CMAKE_BINARY_DIR}/python/hand_tracking")
-    if(WIN32)
-        set(HAND_TRACKING_PYTHON_EXECUTABLE "${HAND_TRACKING_PYTHON_ROOT}/.venv/Scripts/python.exe")
-    else()
-        set(HAND_TRACKING_PYTHON_EXECUTABLE "${HAND_TRACKING_PYTHON_ROOT}/.venv/bin/python")
-    endif()
-
-    add_custom_target(SetupHandTrackingPython
-        COMMAND ${CMAKE_COMMAND}
-            -D OUTPUT_DIR="${HAND_TRACKING_PYTHON_ROOT}"
-            -D REQUIREMENTS_FILE="${CMAKE_SOURCE_DIR}/tools/python/biofuel_hand_tracking/requirements.txt"
-            -P "${CMAKE_SOURCE_DIR}/cmake/SetupHandTrackingPython.cmake"
-        DEPENDS
-            "${CMAKE_SOURCE_DIR}/tools/python/biofuel_hand_tracking/requirements.txt"
-            "${CMAKE_SOURCE_DIR}/cmake/SetupHandTrackingPython.cmake"
-        COMMENT "Provisioning build-local Python 3.12 hand-tracking runtime"
-    )
-    add_dependencies(biofuel_engine SetupHandTrackingPython)
-
-    target_include_directories(biofuel_engine SYSTEM PUBLIC "${asio_SOURCE_DIR}/asio/include")
-    target_compile_definitions(biofuel_engine PUBLIC
-        BIOFUEL_ENABLE_HAND_TRACKING
-        ASIO_STANDALONE
-        ASIO_NO_DEPRECATED
-        BIOFUEL_HAND_TRACKING_PYTHON_EXECUTABLE="${HAND_TRACKING_PYTHON_EXECUTABLE}"
-    )
-    if(WIN32)
-        target_compile_definitions(biofuel_engine PUBLIC _WIN32_WINNT=0x0601 WIN32_LEAN_AND_MEAN NOMINMAX)
-        target_link_libraries(biofuel_engine PUBLIC ws2_32)
-    endif()
-endif()
-
 find_program(FFMPEG_EXECUTABLE ffmpeg)
 if(FFMPEG_EXECUTABLE)
     message(STATUS "ffmpeg found: ${FFMPEG_EXECUTABLE}")
@@ -258,12 +221,10 @@ biofuel_apply_strict_warnings(biofuel_engine)
 biofuel_apply_strict_warnings(biofuel_game)
 biofuel_apply_strict_warnings(${PROJECT_NAME})
 
-option(BIOFUEL_DEV_STARTUP_MENU_TRANSITION "Dev mode: auto-run the main-menu hand transition after load" OFF)
+option(BIOFUEL_DEV_STARTUP_MENU_TRANSITION "Dev mode: auto-run the main-menu dismiss transition after load" OFF)
 if(BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
     target_compile_definitions(biofuel_game PRIVATE BIOFUEL_DEV_STARTUP_MENU_TRANSITION)
 endif()
-
-# BIOFUEL_DEV_STARTUP_HAND_LAB permanently disabled -- startup tool screen removed
 
 option(BIOFUEL_DEBUG_MEMORY_STATS "Debug mode: show memory/resource telemetry overlay." OFF)
 if(BIOFUEL_DEBUG_MEMORY_STATS)
@@ -315,10 +276,6 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     target_link_libraries(BiofuelPhysicsSmokeTest PRIVATE biofuel_engine)
     add_test(NAME BiofuelPhysicsSmoke COMMAND BiofuelPhysicsSmokeTest)
 
-    add_executable(BiofuelHandRetargetSmokeTest "${CMAKE_SOURCE_DIR}/tests/procedural/HandRetargetSmoke.cpp")
-    target_link_libraries(BiofuelHandRetargetSmokeTest PRIVATE biofuel_engine)
-    add_test(NAME BiofuelHandRetargetSmoke COMMAND BiofuelHandRetargetSmokeTest)
-
     add_executable(BiofuelEngineUsabilitySmokeTest "${CMAKE_SOURCE_DIR}/tests/engine/EngineUsabilitySmoke.cpp")
     target_link_libraries(BiofuelEngineUsabilitySmokeTest PRIVATE biofuel_engine)
     add_test(NAME BiofuelEngineUsabilitySmoke COMMAND BiofuelEngineUsabilitySmokeTest)
@@ -345,11 +302,6 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     target_link_libraries(BiofuelPassThroughStageAliasesSmokeTest PRIVATE biofuel_game)
     add_test(NAME BiofuelPassThroughStageAliasesSmoke COMMAND BiofuelPassThroughStageAliasesSmokeTest)
 
-    add_executable(BiofuelHandPresenceAnimatorSmokeTest
-        "${CMAKE_SOURCE_DIR}/tests/game/HandPresenceAnimatorSmoke.cpp")
-    target_link_libraries(BiofuelHandPresenceAnimatorSmokeTest PRIVATE biofuel_game)
-    add_test(NAME BiofuelHandPresenceAnimatorSmoke COMMAND BiofuelHandPresenceAnimatorSmokeTest)
-
     add_executable(BiofuelPipelineSmokeTest
         "${CMAKE_SOURCE_DIR}/tests/pipeline/PipelineSmoke.cpp")
     target_link_libraries(BiofuelPipelineSmokeTest PRIVATE biofuel_game)
@@ -364,12 +316,6 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
         "${CMAKE_SOURCE_DIR}/tests/pipeline/HarvestPipelineSmoke.cpp")
     target_link_libraries(BiofuelHarvestPipelineSmokeTest PRIVATE biofuel_game)
     add_test(NAME BiofuelHarvestPipelineSmoke COMMAND BiofuelHarvestPipelineSmokeTest)
-
-    add_executable(BiofuelArchitecturePlanRuntimeSmokeTest
-        "${CMAKE_SOURCE_DIR}/tests/runtime/ArchitecturePlanRuntimeSmoke.cpp")
-    target_link_libraries(BiofuelArchitecturePlanRuntimeSmokeTest PRIVATE biofuel_engine)
-    add_test(NAME BiofuelArchitecturePlanRuntimeSmoke COMMAND BiofuelArchitecturePlanRuntimeSmokeTest)
-    set_tests_properties(BiofuelArchitecturePlanRuntimeSmoke PROPERTIES TIMEOUT 10)
 
     add_test(NAME BiofuelEngineBoundaryGuard
         COMMAND ${CMAKE_COMMAND}
@@ -389,14 +335,6 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
             -P "${CMAKE_SOURCE_DIR}/tests/architecture/ModelSafetyGuard.cmake")
-    add_test(NAME BiofuelHandTrackingSafetyGuard
-        COMMAND ${CMAKE_COMMAND}
-            -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
-            -P "${CMAKE_SOURCE_DIR}/tests/architecture/HandTrackingSafetyGuard.cmake")
-    add_test(NAME BiofuelCalibrationFlowGuard
-        COMMAND ${CMAKE_COMMAND}
-            -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
-            -P "${CMAKE_SOURCE_DIR}/tests/architecture/CalibrationFlowGuard.cmake")
     add_test(NAME BiofuelVideoSafetyGuard
         COMMAND ${CMAKE_COMMAND}
             -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
@@ -439,15 +377,3 @@ add_custom_command(
         ${CMAKE_SOURCE_DIR}/assets
         $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
 )
-
-if(BIOFUEL_ENABLE_HAND_TRACKING)
-    add_custom_command(
-        TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            $<TARGET_FILE_DIR:${PROJECT_NAME}>/python/hand_tracking
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/tools/python/biofuel_hand_tracking
-            $<TARGET_FILE_DIR:${PROJECT_NAME}>/python/hand_tracking
-        COMMENT "Copying Python hand-tracking worker to output directory"
-    )
-endif()

@@ -140,13 +140,6 @@ void Application::update(const f32 dt) {
     // Video overlays need per-frame pumping for decoded frames and Raylib audio
     // streams even when the top screen freezes gameplay updates below it.
     services.get<::biofuel::engine::runtime::typed::VideoService>().update();
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
-    // Calibration overlays freeze gameplay below them, but camera frames still
-    // need to pump while the top screen owns the calibration UI. Camera work
-    // only runs after explicit consent/start in HandTrackingService.
-    services.get<::biofuel::engine::runtime::typed::HandTrackingService>().update(dt);
-#endif
-    services.get<::biofuel::engine::runtime::typed::HandPoseService>().update(dt);
 #ifdef _WIN32
     flushDragMove();
 #endif

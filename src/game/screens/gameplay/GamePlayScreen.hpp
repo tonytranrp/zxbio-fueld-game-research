@@ -3,9 +3,11 @@
 #include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/Screen.hpp"
 #include "engine/world/voxel/VoxelWorld.hpp"
+#include "engine/world/voxel/VoxelVolume.hpp"
+#include "engine/graphics/RenderSurface.hpp"
 #include "game/gameplay/world3d/FirstPersonController.hpp"
-#include "game/presentation/hands/HandModelOverlay.hpp"
 #include <raylib.h>
+#include <array>
 #include <string_view>
 
 namespace biofuel::game::screens {
@@ -34,13 +36,24 @@ public:
 
 private:
     void renderSky() const;
+    void renderRaster();
+    void renderRaymarch();
+    void loadRaymarchShader();
     void renderHud() const;
     void releaseCursor() noexcept;
     void captureCursor() noexcept;
 
     ::biofuel::engine::world::voxel::VoxelWorld m_voxels;
+    ::biofuel::engine::world::voxel::VoxelVolume m_volume;
     ::biofuel::game::gameplay::world3d::FirstPersonController m_player;
-    ::biofuel::game::presentation::hands::HandModelOverlay m_handOverlay;
+
+    // Raymarched-voxel renderer (John Lin style); toggle with F6.
+    ::biofuel::engine::graphics::RenderSurface m_rayTarget;
+    Shader m_rayShader{};
+    bool m_rayShaderReady = false;
+    bool m_raymarchMode = true;
+    std::array<i32, 16> m_rayLoc{};   // cached uniform locations
+
     bool m_cursorCaptured = false;
 };
 

@@ -8,7 +8,7 @@ Use this note as the index for decision records. Create new records from [[Notes
 - [[Notes/Dependency Decisions 2026-05-21 Worker 2|Dependency Decisions — 2026-05-21 Worker 2]]
 - [[Agents|Project direction and Raylib decision]]
 - [[src/engine/physics/README|Rapier physics integration]]
-- [[src/engine/custom/procedural/pose/README|Pose mapping separated from rigid-body physics]]
+- [[src/engine/world/README|Voxel world streaming and raymarched rendering]]
 
 ## Open Questions
 

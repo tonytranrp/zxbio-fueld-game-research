@@ -12,8 +12,7 @@ game/screens/
 |-- gameplay/
 |-- pause_popup/
 |-- idle/
-|-- video/
-`-- dev_hand_lab/
+`-- video/
 ```
 
 ## How to add a screen

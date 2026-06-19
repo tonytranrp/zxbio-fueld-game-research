@@ -52,6 +52,7 @@ __pycache__/
 # Local-only video test assets. Commit only project-owned/redistributable clips.
 assets/video/*.mp4
 
-# Personal tooling (CommandCode, Sisyphus)
+# Personal tooling (CommandCode, Sisyphus, OMX agent cache)
 .commandcode/
 .sisyphus/
+.omx/

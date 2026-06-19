@@ -16,10 +16,9 @@ This repo is now an Obsidian vault. Open this repository folder directly in Obsi
 - [[src/engine/README|Engine overview]]
 - [[src/game/README|Game overview]]
 - [[src/engine/physics/README|Rapier physics engine]]
-- [[src/engine/custom/procedural/hand/README|Procedural hand engine]]
-- [[src/engine/custom/procedural/pose/README|Hand pose mapping and calibration]]
-- [[src/engine/vision/hand_tracking/README|Hand-tracking service]]
-- [[tools/python/biofuel_hand_tracking/README|Python hand-tracking worker]]
+- [[src/engine/world/README|World: terrain + voxel streaming]]
+- [[src/game/screens/gameplay/README|Gameplay: walkable voxel world]]
+- [[src/engine/graphics/README|Render and shader pipeline]]
 
 ## Project Notes
 

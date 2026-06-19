@@ -76,6 +76,11 @@ public:
     [[nodiscard]] usize loadedChunkCount() const noexcept { return m_chunks.size(); }
     [[nodiscard]] usize lastBuiltThisFrame() const noexcept { return m_builtThisFrame; }
 
+    // Terrain sampling — pure deterministic functions. Public so a GPU volume
+    // (VoxelVolume) can be baked from the same world definition the mesher uses.
+    [[nodiscard]] Block blockAt(i32 worldX, i32 worldY, i32 worldZ) const noexcept;
+    [[nodiscard]] i32 surfaceHeight(i32 worldX, i32 worldZ) const noexcept;
+
 private:
     struct Chunk {
         i32 cx = 0;
@@ -91,8 +96,6 @@ private:
         return (static_cast<std::int64_t>(cx) << 32) ^ (static_cast<std::int64_t>(static_cast<std::uint32_t>(cz)));
     }
 
-    [[nodiscard]] i32 surfaceHeight(i32 worldX, i32 worldZ) const noexcept;
-    [[nodiscard]] Block blockAt(i32 worldX, i32 worldY, i32 worldZ) const noexcept;
     void buildChunkMesh(Chunk& chunk) const;
     void buildChunkWater(Chunk& chunk) const;
     void destroyChunk(Chunk& chunk) noexcept;

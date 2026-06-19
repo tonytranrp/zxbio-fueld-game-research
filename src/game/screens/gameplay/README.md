@@ -1,119 +1,75 @@
 # GamePlayScreen
 
-Temporary gameplay entry screen for Biofuel Game — Fuel Farm. Hosts the Neko
-cat companion as the primary interactive element with WASD-driven 8-directional
-movement, a hand-model overlay, and placeholder UI text.
+Gameplay entry screen for Biofuel Game — Fuel Farm. It is a walkable,
+infinite, Minecraft-style voxel world: blocky terrain streams in around the
+player as they walk, and they can move, sprint, look, and jump through it in
+first person.
 
 ## Quick overview
 
 ```text
 GamePlayScreen
-├── NekoCat (presentation::sprites)    ← animated cat companion
-├── HandModelOverlay (presentation)    ← mediapipe hand tracking overlay
-└── Placeholder HUD text               ← "FUEL FARM" title + status message
+├── VoxelWorld (engine::world::voxel)            ← streaming blocky terrain (chunks)
+├── VoxelVolume (engine::world::voxel)           ← 3D texture the raymarcher reads
+├── FirstPersonController (game::gameplay::world3d) ← WASD + mouse-look + jump
+└── HUD                                          ← crosshair, title, controls, debug stats
 ```
 
-The screen owns a `NekoCat` instance, a `HandModelOverlay`, and renders
-centered placeholder text. All gameplay domain logic is deferred to
-`src/game/gameplay/` for future implementation.
+The screen owns the voxel world, a baked voxel volume for the raymarched
+renderer, and a first-person controller. It can render the world two ways and
+toggle between them at runtime with **F6**:
+
+- **Raymarch mode** (default): a John Lin-style raymarched-voxel shader
+  (`assets/shaders/raymarched_voxels.glsl`) sampling `VoxelVolume`'s 3D texture,
+  rendered at half resolution and point-upscaled for a crisp pixel look.
+- **Raster mode** (fallback): streamed chunk meshes from `VoxelWorld`, drawn in
+  `BeginMode3D`/`EndMode3D` with an animated water pass. Used automatically if
+  the raymarch shader fails to compile.
 
 ## Lifecycle
 
 | Phase        | What happens                                                   |
 |--------------|----------------------------------------------------------------|
-| `onEnter()`  | Initialises hand tracking, positions NekoCat at screen center, calls `m_neko.load()`. |
-| `onUpdate()` | Reads WASD input → drives NekoCat animation + movement. Updates hand overlay. |
-| `onRender()` | Clears background (dark blue-grey `#12181C`), renders NekoCat, HUD text, hand overlay. |
-| `onExit()`   | Calls `m_neko.unload()`, tears down hand overlay.              |
+| `onEnter()`  | Configures `VoxelWorld` (view radius, seed, sea level), spawns the player at ground height, bakes `VoxelVolume`, compiles the raymarch shader, and captures the cursor for mouse-look. |
+| `onExit()`   | Releases the cursor, unloads all chunks, unloads the volume, releases the raymarch render target. |
+| `onPause()`  | Releases the cursor so the player can click an overlay (e.g. the pause popup). |
+| `onResume()` | Re-captures the cursor for mouse-look. |
+| `onUpdate()` | Fixed 60 Hz step: in raymarch mode re-bakes the GPU volume around the player; in raster mode streams chunk meshes. |
+| `onInput()`  | Runs once per rendered frame: drives the `FirstPersonController` with the real frame delta (keeping mouse-look smooth and never dropping a jump), and toggles raymarch/raster with F6. |
+| `onRender()` | Renders the world (raymarch or raster) then the HUD. |
 
-`onInput()` is currently a no-op — all input is polled synchronously in
-`onUpdate()` via `readWASDDirection()`.
+The player is driven in `onInput()` rather than `onUpdate()` so look and jump
+input is sampled at the render rate and never dropped when the render rate runs
+ahead of the fixed update.
 
-## NekoCat integration
+## Controls
 
-`GamePlayScreen` is the primary consumer of `presentation::sprites::NekoCat`.
-It owns the instance as a private member:
+| Input        | Action                  |
+|--------------|-------------------------|
+| W / A / S / D | Move (relative to look) |
+| Mouse        | Look                    |
+| LEFT-SHIFT   | Sprint                  |
+| SPACE        | Jump                    |
+| F6           | Toggle raymarch / raster renderer (only if the raymarch shader compiled) |
+| ESC          | Pause (routed globally by `PauseController`) |
 
-```cpp
-presentation::sprites::NekoCat m_neko;
-```
+## First-person controller
 
-On enter, the cat is positioned at the screen center and its 41 PNG frames are
-loaded into GPU textures. Each frame, `onUpdate()` calls:
-
-```cpp
-m_neko.update(dt, direction);   // advance animation, move, clamp to screen bounds
-```
-
-`onRender()` calls `m_neko.render()` after clearing the background, so the cat
-draws on top of the solid fill. The cat renders at 3× scale (96×96 on-screen
-pixels from 32×32 source art) with nearest-neighbour filtering for crisp edges.
-
-When the screen exits, `m_neko.unload()` releases all GPU textures. The cat
-supports move semantics, so ownership transfers cleanly if the screen instance
-is moved.
-
-## WASD controls
-
-Input is read by a file-static helper in `GamePlayScreen.cpp`:
-
-```cpp
-static presentation::sprites::Direction readWASDDirection() noexcept;
-```
-
-This polls `IsKeyDown()` for W, A, S, D each frame and maps key combinations to
-`Direction` enum values. Compound directions (diagonals) are checked first so
-they take priority over single-key cardinals.
-
-### Key mapping
-
-| Keys held | Direction     | Movement                  |
-|-----------|---------------|---------------------------|
-| W         | `Up`          | North                     |
-| S         | `Down`        | South                     |
-| A         | `Left`        | West                      |
-| D         | `Right`       | East                      |
-| W + A     | `UpLeft`      | Northwest                 |
-| W + D     | `UpRight`     | Northeast                 |
-| S + A     | `DownLeft`    | Southwest                 |
-| S + D     | `DownRight`   | Southeast                 |
-| *(none)*  | `Idle`        | Stationary (triggers idle state cycling) |
-
-### Movement properties
-
-- **Speed:** 200 pixels per second (cardinal).
-- **Diagonal speed:** Normalised by 1/√2 (~0.707) so diagonal movement speed
-  matches cardinal speed.
-- **Bounds clamping:** The cat is clamped to `[0, screenWidth - spriteSize]` ×
-  `[0, screenHeight - spriteSize]` each frame. It cannot leave the window.
-
-### Idle behaviour
-
-When no keys are held, `readWASDDirection()` returns `Direction::Idle`. The cat
-exits `Walking` state and enters the idle cycle, which auto-advances through
-poses every 2.5 seconds:
-
-```
-Awake → Scratching → Washing → Yawning → Sleeping → Awake → ...
-```
-
-The cat retains its last facing direction while idle, so it renders facing the
-direction it was last moving.
-
-## Hand tracking overlay
-
-`HandModelOverlay` provides a mediapipe-based hand skeleton rendered on top of
-the gameplay view. It is initialised in `onEnter()` via
-`ensureModelOnlyHandTracking()` and updated each frame. The overlay is
-independent of the NekoCat — it does not interact with or control the cat.
+Movement, mouse-look, gravity, jump, and ground snapping live in
+`game::gameplay::world3d::FirstPersonController` — a reusable, resource-free
+kinematic body. It integrates against a ground-height callback, so the screen
+passes `m_voxels.groundHeight(x, z)` and the controller works directly off the
+terrain noise function. Because collision uses the noise function rather than
+built geometry, the player never falls through the world even before any chunk
+mesh has been built. It produces a `Camera3D` for both render paths.
 
 ## Rendering order
 
-1. `ClearBackground(Color{18, 24, 28, 255})` — dark blue-grey fill.
-2. `m_neko.render()` — cat at its current position and frame.
-3. Placeholder HUD text — "FUEL FARM" title (gold, 34 px) and status message
-   (light grey, 20 px), both horizontally centered.
-4. `m_handOverlay.render()` — hand skeleton on top.
+1. World — `renderRaymarch()` (default) or `renderRaster()` (sky gradient +
+   chunk meshes + animated water).
+2. `renderHud()` — centered crosshair, "FUEL FARM — Voxel World" title, the
+   controls hint, and a bottom debug line (position, speed, grounded/airborne,
+   loaded chunk count).
 
 ## Transition policy
 
@@ -136,7 +92,7 @@ struct TransitionPolicy<GamePlayScreen> {
 | File                        | Purpose                                    |
 |-----------------------------|--------------------------------------------|
 | `GamePlayScreen.hpp`        | Class declaration, members                 |
-| `GamePlayScreen.cpp`        | Lifecycle, input polling, render order     |
+| `GamePlayScreen.cpp`        | Lifecycle, input, render paths, cursor     |
 | `GamePlayScreenModule.hpp`  | Screen catalog registration + transition   |
 | `README.md`                 | This file                                  |
 
@@ -144,14 +100,12 @@ struct TransitionPolicy<GamePlayScreen> {
 
 Keep farm simulation and domain state in `src/game/gameplay/`. When gameplay
 features are implemented, connect them to `GamePlayScreen` deliberately — the
-screen should remain a thin presentation layer that delegates to domain
-systems.
+screen should remain a thin presentation layer that delegates to domain and
+world systems.
 
 ## See also
 
-- [NekoCat documentation](../../presentation/sprites/README.md) — animation
-  system architecture, sprite loading, and how to add new poses.
+- Voxel world — `src/engine/world/voxel/` (chunk streaming via `VoxelWorld`, the
+  raymarched 3D texture via `VoxelVolume`, and the block model).
 - [Screens overview](../README.md) — screen catalog conventions and coding
   standards.
-- [Hand overlay documentation](../../presentation/hands/README.md) — hand
-  tracking model and rendering.

@@ -3,7 +3,6 @@
 #include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/Screen.hpp"
 #include "game/presentation/effects/ScreenBackdropController.hpp"
-#include "game/presentation/hands/HandModelOverlay.hpp"
 #include <string>
 #include <string_view>
 
@@ -50,10 +49,8 @@ private:
     static constexpr Color BG_COLOR = {12, 12, 20, 255};
 
     void startFallbackBackdrop();
-    void ensureHandTrackingForModelOverlay();
 
     game::presentation::effects::ScreenBackdropController m_backdrop;
-    game::presentation::hands::HandModelOverlay m_handOverlay;
     std::string m_idleVideoName;
     f32 m_inputDelay = 0.0f;
     bool m_inputReady = false;

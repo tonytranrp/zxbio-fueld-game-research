@@ -77,5 +77,5 @@ static_assert(validateAssetCatalog<FarmPrototypeCatalog>());
   registered"; a generic typelist dependency should only be added if it removes
   meaningful local code without making those errors opaque.
 - `glaze` should not replace `nlohmann/json` from this layer alone. Existing
-  JSON usage lives in runtime/world and procedural-hand config code, not in the
-  typed registry declarations.
+  JSON usage lives in runtime/world code, not in the typed registry
+  declarations.

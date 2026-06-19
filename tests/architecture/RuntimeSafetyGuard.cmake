@@ -25,8 +25,6 @@ set(ALLOWED_RAYLIB_LIFETIME_FILES
     "src/engine/app/App.cpp"
     "src/engine/app/AppLifecycle.cpp"
     "src/engine/audio/AudioManager.cpp"
-    "src/engine/custom/procedural/materials/ProceduralTextureCache.cpp"
-    "src/engine/custom/procedural/mesh/ProceduralMeshCache.cpp"
     "src/engine/fonts/FontUtils.cpp"
     "src/engine/graphics/RaylibResource.hpp"
     "src/engine/graphics/RenderSurface.hpp"
@@ -34,9 +32,9 @@ set(ALLOWED_RAYLIB_LIFETIME_FILES
     "src/engine/models/ModelSystem.cpp"
     "src/engine/world/Terrain3D.cpp"
     "src/engine/world/voxel/VoxelWorld.cpp"
+    "src/engine/world/voxel/VoxelVolume.cpp"
     "src/engine/video/VideoFfmpegBackend.cpp"
-    "src/engine/video/VideoManager.cpp"
-    "src/engine/vision/hand_tracking/HandTrackingService.cpp")
+    "src/engine/video/VideoManager.cpp")
 
 file(GLOB_RECURSE RAYLIB_LIFETIME_SCAN_FILES
     "${SOURCE_DIR}/src/engine/*.cpp"
@@ -63,7 +61,6 @@ endforeach()
 
 read_required("src/engine/audio/AudioManager.hpp" AUDIO_MANAGER_HPP)
 read_required("src/engine/audio/AudioManager.cpp" AUDIO_MANAGER)
-read_required("tests/runtime/ArchitecturePlanRuntimeSmoke.cpp" ARCHITECTURE_PLAN_RUNTIME_SMOKE)
 require_contains(
     "AudioManager must centralize stale current-music recovery in the header contract"
     "${AUDIO_MANAGER_HPP}"
@@ -88,9 +85,6 @@ require_contains(
     "AudioManager::resumeMusic must use centralized stale current-music recovery"
     "${AUDIO_MANAGER}"
     "recoverStaleCurrentMusic(\"resumeMusic\")")
-if(ARCHITECTURE_PLAN_RUNTIME_SMOKE MATCHES "detach\\(")
-    message(FATAL_ERROR "Runtime safety guard failed: ArchitecturePlanRuntimeSmoke must not detach worker threads")
-endif()
 require_contains(
     "AudioManager::mute must reapply SFX volumes so existing sounds become silent while muted"
     "${AUDIO_MANAGER}"

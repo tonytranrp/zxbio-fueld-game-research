@@ -21,14 +21,8 @@ cargo test --manifest-path src\engine\physics\rapier_bridge\Cargo.toml --locked
 cargo clippy --manifest-path src\engine\physics\rapier_bridge\Cargo.toml --locked -- -D warnings
 ```
 
-## Python Hand Tracking
-
-```powershell
-python -m compileall tools\python\biofuel_hand_tracking
-```
-
 ## Related Notes
 
 - [[src/engine/physics/README]]
-- [[src/engine/vision/hand_tracking/README]]
-- [[tools/python/biofuel_hand_tracking/README]]
+- [[src/engine/world/README]]
+- [[src/game/screens/gameplay/README]]

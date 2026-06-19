@@ -10,7 +10,6 @@ engine/events/
 |-- EventManager.hpp/.cpp
 |-- EventServiceModule.hpp
 |-- animation/
-|-- hand_tracking/
 |-- input/
 |-- model/
 |-- mouse/
@@ -25,7 +24,6 @@ engine/events/
 | Domain | Purpose |
 | --- | --- |
 | `animation/` | Screen transition and visual effect lifecycle |
-| `hand_tracking/` | Camera consent, worker, frame, hand, and gesture events |
 | `input/` | Keyboard and mouse button events |
 | `model/` | Model lifecycle and animation commands |
 | `mouse/` | Mouse movement, wheel, and position events |

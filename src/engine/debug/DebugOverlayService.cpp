@@ -2,9 +2,6 @@
 #include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/graphics/Render.hpp"
 #include "engine/runtime/Runtime.hpp"
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
-#include "engine/vision/hand_tracking/HandTrackingTypes.hpp"
-#endif
 #include <algorithm>
 #include <array>
 #include <raylib.h>
@@ -22,8 +19,6 @@ template<typename TPanel>
         return 210;
     } else if constexpr (std::is_same_v<TPanel, PhysicsDebugPanel>) {
         return 70;
-    } else if constexpr (std::is_same_v<TPanel, HandTrackingDebugPanel>) {
-        return 86;
     } else if constexpr (std::is_same_v<TPanel, AssetDebugPanel>) {
         return 70;
     } else {
@@ -167,31 +162,6 @@ void renderPanelContent<PhysicsDebugPanel>(const DebugOverlayContext&, const Rec
     drawLine(TextFormat("Recent contacts: %zu", contacts.size()), x, y, Color{160, 180, 176, 255});
     y += 16;
     drawLine("Worlds: 2D + 3D Rapier", x, y, Color{130, 152, 148, 255});
-}
-
-template<>
-void renderPanelContent<HandTrackingDebugPanel>(const DebugOverlayContext&, const Rectangle rect) {
-    const i32 x = static_cast<i32>(rect.x) + 8;
-    i32 y = static_cast<i32>(rect.y) + 26;
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
-    const auto status = ::biofuel::engine::runtime::Runtime::handTracking().status();
-    drawLine(
-        TextFormat(
-            "State: %s | %.1f pps",
-            ::biofuel::engine::vision::hand_tracking::toString(status.state).data(),
-            static_cast<double>(status.packetsPerSecond)),
-        x,
-        y,
-        Color{160, 180, 176, 255});
-    y += 16;
-    drawLine(
-        TextFormat("Preview: %s | Age: %.2fs", status.previewEnabled ? "on" : "off", static_cast<double>(status.secondsSinceLastFrame)),
-        x,
-        y,
-        Color{130, 152, 148, 255});
-#else
-    drawLine("Hand tracking disabled in this build.", x, y, Color{160, 180, 176, 255});
-#endif
 }
 
 template<>

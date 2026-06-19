@@ -23,13 +23,9 @@ BIOFUEL_TASK_STAGE(TaskManagerInit);
 BIOFUEL_TASK_STAGE(ScreenInit);
 BIOFUEL_TASK_STAGE(AnimationInit);
 BIOFUEL_TASK_STAGE(PhysicsInit);
-BIOFUEL_TASK_STAGE(HandPoseInit);
 BIOFUEL_TASK_STAGE(ModelInit);
 BIOFUEL_TASK_STAGE(AudioInit);
 BIOFUEL_TASK_STAGE(VideoInit);
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
-BIOFUEL_TASK_STAGE(HandTrackingInit);
-#endif
 
 #undef BIOFUEL_TASK_STAGE
 
@@ -59,45 +55,25 @@ BIOFUEL_TASK_MODULE(TaskManagerTaskModule,     TaskManagerInit,  "Initializing t
 BIOFUEL_TASK_MODULE(ScreenTaskModule,          ScreenInit,       "Initializing screen stack...",      0.5f, screen().init());
 BIOFUEL_TASK_MODULE(AnimationTaskModule,       AnimationInit,    "Initializing animation system...",   0.5f, animation().init());
 BIOFUEL_TASK_MODULE(PhysicsTaskModule,         PhysicsInit,      "Initializing physics engine...",     0.5f, physics().init());
-BIOFUEL_TASK_MODULE(HandPoseTaskModule,        HandPoseInit,     "Initializing hand pose system...",   0.2f, handPose().init());
 BIOFUEL_TASK_MODULE(ModelTaskModule,           ModelInit,        "Initializing model system...",       0.4f, model().init());
 BIOFUEL_TASK_MODULE(AudioTaskModule,           AudioInit,        "Initializing audio device...",       0.5f, audio().init());
 BIOFUEL_TASK_MODULE(VideoTaskModule,           VideoInit,        "Initializing video system...",       0.4f, video().init());
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
-BIOFUEL_TASK_MODULE(HandTrackingTaskModule,    HandTrackingInit, "Initializing hand tracking bridge...", 0.2f, handTracking().init());
-#endif
 
 #undef BIOFUEL_TASK_MODULE
 
 // ---------------------------------------------------------------------------
 // Master compile-time task module list — order matters
 // ---------------------------------------------------------------------------
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
 using EngineStartupModules = TaskModuleList<
     EventTaskModule,
     TaskManagerTaskModule,
     ScreenTaskModule,
     AnimationTaskModule,
     PhysicsTaskModule,
-    HandTrackingTaskModule,
-    HandPoseTaskModule,
     ModelTaskModule,
     AudioTaskModule,
     VideoTaskModule
 >;
-#else
-using EngineStartupModules = TaskModuleList<
-    EventTaskModule,
-    TaskManagerTaskModule,
-    ScreenTaskModule,
-    AnimationTaskModule,
-    PhysicsTaskModule,
-    HandPoseTaskModule,
-    ModelTaskModule,
-    AudioTaskModule,
-    VideoTaskModule
->;
-#endif
 
 // Compile-time validation: every startup module exposes the typed pipeline,
 // label, weight, and init work required by TaskModuleList.

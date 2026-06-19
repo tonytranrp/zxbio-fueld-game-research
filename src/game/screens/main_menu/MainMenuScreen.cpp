@@ -4,7 +4,6 @@
 #include "MainMenuScreenRenderers.hpp"
 #include "game/screens/join/JoinScreen.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
-#include "game/presentation/hands/CalibrationFlowState.hpp"
 #include "engine/ui/ScreenManager.hpp"
 #include "engine/ui/typed/RenderPipeline.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
@@ -16,16 +15,8 @@
 #include <raylib.h>
 #include <algorithm>
 #include <cmath>
-#include <memory>
 
 namespace biofuel::game::screens {
-
-namespace {
-
-using ::biofuel::game::presentation::hands::CalibrationFlowState;
-using ::biofuel::game::presentation::hands::CalibrationRoute;
-
-} // namespace
 
 void MainMenuScreen::onEnter() {
     m_selected = 0;
@@ -56,14 +47,9 @@ void MainMenuScreen::onEnter() {
     m_idleTransitionActive = false;
     m_revealBackdropOnResume = false;
     m_reportedStableMemory = false;
-    m_handCalibrationReady = ::biofuel::engine::runtime::Runtime::handPose().calibrationValid();
-    m_handOverlay.onEnter();
-    CalibrationFlowState::instance().clear();
-
 }
 
 void MainMenuScreen::onExit() {
-    m_handOverlay.onExit();
     ::biofuel::engine::runtime::Runtime::audio().stopMusic();
 }
 
@@ -111,9 +97,6 @@ void MainMenuScreen::onUpdate(const f32 dt) {
     if (m_introPhase >= IntroPhase::TitleFade) {
         m_titlePulse += dt;
     }
-
-    ensureHandTrackingForModelOverlay();
-    m_handOverlay.update(dt);
 
     // ---- Idle detection (only when screen is fully interactive) ----
     m_idleTrigger.update(dt, !isDismissing() && m_introPhase == IntroPhase::Done && !m_idleTransitionActive);
@@ -176,7 +159,6 @@ void MainMenuScreen::onRender() {
         .frameTime = GetFrameTime(),
     };
     ::biofuel::engine::ui::typed::RenderPipeline<MainMenuScreen>::render(*this, context);
-    m_handOverlay.render();
 }
 
 void MainMenuScreen::onInput() {
@@ -324,7 +306,7 @@ void MainMenuScreen::startIdleDismiss() {
     }
     m_dismiss.active = true;
     m_dismiss.elapsed = 0.0f;
-    // No hands — idle is a quiet text-only transition
+    // Idle is a quiet text-only transition.
 }
 
 void MainMenuScreen::updateDismiss(const f32 dt) noexcept {
@@ -480,16 +462,6 @@ void MainMenuScreen::onResume() {
 }
 
 void MainMenuScreen::onResume(::biofuel::engine::ui::typed::ResumeContext& context) {
-    if (context.poppedScreenId == ::biofuel::game::screens::screen_id::Calibration) {
-        auto& flow = CalibrationFlowState::instance();
-        const bool calibrationCompleted = flow.completed() && flow.route() == CalibrationRoute::Join;
-        flow.clear();
-
-        m_handCalibrationReady = calibrationCompleted;
-        restoreMainMenuAfterCalibration();
-        return;
-    }
-
     if (context.poppedScreenId != ::biofuel::game::screens::screen_id::Idle) {
         m_revealBackdropOnResume = false;
         m_idleTrigger.onInput();
@@ -498,31 +470,6 @@ void MainMenuScreen::onResume(::biofuel::engine::ui::typed::ResumeContext& conte
 
     m_revealBackdropOnResume = true;
     onResume();
-}
-
-void MainMenuScreen::restoreMainMenuAfterCalibration() noexcept {
-    // Calibration is a pre-flight overlay. After it closes, return to the
-    // animated menu and wait for the player to press New Game/Continue again.
-    m_joinTransitionQueued = false;
-    m_dismiss.active = false;
-    m_dismiss.elapsed = 0.0f;
-    m_dimensionShift = 0.0f;
-    m_cameraComponent.reset();
-    m_cameraPhase = CameraPhase::Idle;
-    m_idleTransitionActive = false;
-    m_idleTransitionDim = 0.0f;
-    m_revealBackdropOnResume = false;
-    m_introPhase = IntroPhase::Done;
-    m_backdrop.restartReveal();
-    m_handOverlay.onEnter();
-    m_idleTrigger.onInput();
-}
-
-void MainMenuScreen::ensureHandTrackingForModelOverlay() {
-    if (!m_handCalibrationReady) {
-        return;
-    }
-    game::presentation::hands::ensureModelOnlyHandTracking();
 }
 
 // ------------------------------------------------------------------------------

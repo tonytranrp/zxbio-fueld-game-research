@@ -34,7 +34,6 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     using enum ::biofuel::engine::ui::typed::ScreenId;
     constexpr auto Loading = screen_id::Loading;
     constexpr auto PausePopup = screen_id::PausePopup;
-    constexpr auto Calibration = screen_id::Calibration;
     constexpr auto Idle = screen_id::Idle;
     constexpr auto Video = screen_id::Video;
     constexpr auto MainMenu = screen_id::MainMenu;
@@ -43,7 +42,6 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     switch (current->screenId()) {
     case Loading:
     case PausePopup:
-    case Calibration:
     case Idle:
     case Video:
     case Unknown:

@@ -2,7 +2,7 @@
 
 `game/models/` owns typed runtime model assets, model instances, and the bridge between Raylib models and authored rig/keyframe playback.
 
-The main-menu hand transition no longer uses `.glb` models. It now keeps the shader-only menu transition, while procedural robot-hand work lives in `engine/custom/procedural/` and is currently consumed by `game/screens/dev_hand_lab/`.
+The main-menu transition is shader-only and does not load any runtime models.
 
 ## Current contents
 
@@ -47,4 +47,3 @@ if (!registered.empty()) {
 - Use `ModelAssetSpec` for registration instead of ad hoc screen loading.
 - Keep model IDs stable once gameplay or save data depends on them.
 - Put reusable keyframe clip code in `engine/animation/`.
-- Put procedural model generation in `engine/custom/procedural/`.

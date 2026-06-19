@@ -8,19 +8,7 @@
 
 namespace biofuel::game::screens {
 
-void JoinScreen::onEnter() {
-    game::presentation::hands::ensureModelOnlyHandTracking();
-    m_handOverlay.onEnter();
-}
-
-void JoinScreen::onExit() {
-    m_handOverlay.onExit();
-}
-
-void JoinScreen::onUpdate(const f32 dt) {
-    game::presentation::hands::ensureModelOnlyHandTracking();
-    m_handOverlay.update(dt);
-}
+void JoinScreen::onUpdate(const f32) {}
 
 void JoinScreen::onRender() {
     using namespace ::biofuel::engine::graphics;
@@ -74,8 +62,6 @@ void JoinScreen::onRender() {
         static_cast<i32>(button.y) + 13,
         BUTTON_FONT_SIZE,
         RAYWHITE);
-
-    m_handOverlay.render();
 }
 
 void JoinScreen::onInput() {

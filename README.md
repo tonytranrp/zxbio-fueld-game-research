@@ -22,8 +22,11 @@ The playable codebase is still early-stage, but it already contains:
 - loading screen with deferred startup tasks plus async-safe preflight support
 - screen stack with crossfade transitions
 - animated main menu with embedded background shader
-- intermediate Join screen and temporary GamePlay placeholder
+- intermediate Join screen leading into a walkable first-person voxel world
+  (`GamePlay`): streamed blocky terrain with a raymarched-voxel renderer plus a
+  rasterized fallback, driven by a kinematic first-person controller
 - typed model system with startup-preloaded model assets
+- 2D/3D physics via an embedded Rust Rapier bridge
 - global pause routing with a blur-backed pause popup
 - event bus, input polling, animation manager, and small render/font/UI utilities
 

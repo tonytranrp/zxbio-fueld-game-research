@@ -42,7 +42,7 @@ Two-phase animation via `AnimationManager`:
 
 `PauseController` is global, but intentionally narrow. It opens pause only for
 `MainMenu`, `Join`, and `GamePlay`. It rejects loading, the pause popup itself,
-and transient/diagnostic screens (`Idle`, `Video`, `DevHandLab`) because those
+and transient/diagnostic screens (`Idle`, `Video`) because those
 screens already own ESC for dismissal or navigation.
 
 ## Dependencies

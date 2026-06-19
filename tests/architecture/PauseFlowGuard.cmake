@@ -38,7 +38,6 @@ require_contains(
     "${PAUSE_CONTROLLER}"
     "case Loading:
     case PausePopup:
-    case Calibration:
     case Idle:
     case Video:
     case Unknown:

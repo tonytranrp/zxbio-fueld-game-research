@@ -38,7 +38,7 @@ Physics uses meter-style world units. Pixel screens should use
 of tuning Rapier in raw pixels.
 Reusable interaction systems can tag bodies with `PhysicsShapeRole` when they
 publish higher-level shape lifecycle or grab events.
-For hand-driven props, keep camera/gesture interpretation outside the physics
+For input-driven props, keep higher-level interaction logic outside the physics
 service and feed Rapier bounded kinematic interactors plus dynamic props.
 
 ## Coding standards

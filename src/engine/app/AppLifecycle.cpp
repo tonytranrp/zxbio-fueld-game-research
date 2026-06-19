@@ -133,10 +133,6 @@ void AppLifecycle::shutdownCoreServices() noexcept {
     services.get<::biofuel::engine::runtime::typed::TaskService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::AnimationService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::ScreenService>().shutdown();
-    services.get<::biofuel::engine::runtime::typed::HandPoseService>().shutdown();
-#ifdef BIOFUEL_ENABLE_HAND_TRACKING
-    services.get<::biofuel::engine::runtime::typed::HandTrackingService>().shutdown();
-#endif
     services.get<::biofuel::engine::runtime::typed::ModelService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::PhysicsService>().shutdown();
     services.get<::biofuel::engine::runtime::typed::VideoService>().shutdown();
