@@ -32,14 +32,19 @@ public:
     [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::game::screens::screen_id::Loading; }
     [[nodiscard]] std::string_view getName() const noexcept override { return "LoadingScreen"; }
 
+    // Panel dimensions (px) — the single source of truth, shared by the
+    // render executors and layout helper in the .cpp.
+    static constexpr i32 PANEL_WIDTH = 520;
+    static constexpr i32 PANEL_HEIGHT = 164;
+
 private:
-    static constexpr f32 MIN_DISPLAY_SECONDS = 3.0f;
-    static constexpr f32 DOTS_INTERVAL = 0.4f;
-    static constexpr i32 BAR_WIDTH = 400;
-    static constexpr i32 BAR_HEIGHT = 18;
-    static constexpr i32 TITLE_SIZE = 40;
-    static constexpr i32 STATUS_SIZE = 16;
-    static constexpr f32 PROGRESS_LERP_SPEED = 10.0f;
+    static constexpr f32 MIN_DISPLAY_SECONDS = 3.0f;   // minimum on-screen time before auto-transition
+    static constexpr f32 DOTS_INTERVAL = 0.4f;         // seconds per animated status dot
+    static constexpr i32 BAR_WIDTH = 400;              // progress bar width (px)
+    static constexpr i32 BAR_HEIGHT = 18;              // progress bar height (px)
+    static constexpr i32 TITLE_SIZE = 40;              // title font size (px)
+    static constexpr i32 STATUS_SIZE = 16;             // status text font size (px)
+    static constexpr f32 PROGRESS_LERP_SPEED = 10.0f;  // display-progress smoothing rate
 
     i32 m_appWidth;
     i32 m_appHeight;

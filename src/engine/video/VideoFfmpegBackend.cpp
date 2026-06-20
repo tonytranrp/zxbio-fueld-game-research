@@ -604,17 +604,25 @@ private:
 #endif
     }
 
-    [[nodiscard]] NativePath videoCommand(const bool looping) const {
+    // Common ffmpeg invocation prefix shared by the video and audio pipes:
+    // "<ffmpeg> -nostdin -hide_banner -loglevel quiet [loop] -i <path>".
+    [[nodiscard]] NativePath baseCommand(const bool looping) const {
 #ifdef _WIN32
         return quoteArg(m_ffmpegPath) + L" -nostdin -hide_banner -loglevel quiet" +
-            loopArg(looping) +
-            L" -i " + quoteArg(m_path) +
+            loopArg(looping) + L" -i " + quoteArg(m_path);
+#else
+        return quoteArg(m_ffmpegPath) + " -nostdin -hide_banner -loglevel quiet" +
+            loopArg(looping) + " -i " + quoteArg(m_path);
+#endif
+    }
+
+    [[nodiscard]] NativePath videoCommand(const bool looping) const {
+#ifdef _WIN32
+        return baseCommand(looping) +
             L" -an -vf \"scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=30\""
             L" -f rawvideo -pix_fmt rgba pipe:1";
 #else
-        return quoteArg(m_ffmpegPath) + " -nostdin -hide_banner -loglevel quiet" +
-            loopArg(looping) +
-            " -i " + quoteArg(m_path) +
+        return baseCommand(looping) +
             " -an -vf \"scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=30\""
             " -f rawvideo -pix_fmt rgba pipe:1";
 #endif
@@ -622,15 +630,9 @@ private:
 
     [[nodiscard]] NativePath audioCommand(const bool looping) const {
 #ifdef _WIN32
-        return quoteArg(m_ffmpegPath) + L" -nostdin -hide_banner -loglevel quiet" +
-            loopArg(looping) +
-            L" -i " + quoteArg(m_path) +
-            L" -vn -f s16le -acodec pcm_s16le -ar 44100 -ac 2 pipe:1";
+        return baseCommand(looping) + L" -vn -f s16le -acodec pcm_s16le -ar 44100 -ac 2 pipe:1";
 #else
-        return quoteArg(m_ffmpegPath) + " -nostdin -hide_banner -loglevel quiet" +
-            loopArg(looping) +
-            " -i " + quoteArg(m_path) +
-            " -vn -f s16le -acodec pcm_s16le -ar 44100 -ac 2 pipe:1";
+        return baseCommand(looping) + " -vn -f s16le -acodec pcm_s16le -ar 44100 -ac 2 pipe:1";
 #endif
     }
 

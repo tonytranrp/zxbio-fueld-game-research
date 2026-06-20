@@ -15,14 +15,40 @@ namespace {
 
 using MenuShader = ::biofuel::engine::runtime::typed::shader::MenuOption;
 namespace MenuUniforms = ::biofuel::engine::runtime::typed::shader::menu_option;
+using TypedShaders = ::biofuel::engine::runtime::typed::Shaders;
 
+// Vertical-menu selection accent dimensions (pixels): a bar followed by a small square.
 constexpr i32 VERTICAL_ACCENT_BAR_WIDTH = 14;
 constexpr i32 VERTICAL_ACCENT_BAR_HEIGHT = 2;
 constexpr i32 VERTICAL_ACCENT_SQUARE = 4;
+// Gap (pixels) between the accent bar and the trailing accent square.
+constexpr i32 VERTICAL_ACCENT_BAR_GAP = 4;
+// Horizontal pixel offset of the "(locked)" tag from the label's right edge.
+constexpr i32 VERTICAL_LOCKED_LABEL_OFFSET_X = 12;
+// Vertical pixel offset of the "(locked)" tag below the item baseline.
+constexpr i32 VERTICAL_LOCKED_LABEL_OFFSET_Y = 8;
+// Font size (pixels) of the vertical-menu "(locked)" tag.
+constexpr i32 VERTICAL_LOCKED_LABEL_FONT_SIZE = 14;
+// Pixel gap between the selected vertical item and its left-side accent.
+constexpr i32 VERTICAL_ACCENT_LEFT_MARGIN = 30;
+
+// Maximum number of horizontal carousel items kept in the visual-state pool.
 constexpr i32 HORIZONTAL_VISIBLE_LIMIT = 8;
+// Largest absolute slot offset (in slot units) at which an item still renders;
+// items farther from center than this are culled. Range: > 0.
 constexpr f32 HORIZONTAL_SLOT_VISIBILITY = 1.35f;
+// Preview emphasis applied to a hovered-but-unselected item. Range: 0..1.
 constexpr f32 HORIZONTAL_HOVER_PREVIEW_STRENGTH = 0.35f;
+// Inter-glyph spacing (pixels) passed to text measurement/drawing.
 constexpr f32 HORIZONTAL_FONT_SPACING = 1.0f;
+// Fraction of hover strength that nudges the interpolated font size. Range: 0..1.
+constexpr f32 HORIZONTAL_HOVER_FONT_BIAS = 0.18f;
+// Vertical pixel lift applied to a hovered-but-unselected item.
+constexpr i32 HORIZONTAL_HOVER_LIFT = 2;
+// Pixel gap below a locked item's baseline for its "LOCKED" tag.
+constexpr i32 HORIZONTAL_LOCKED_LABEL_GAP = 2;
+// Blend fraction of hover strength mixed into the locked tag's glow color. Range: 0..1.
+constexpr f32 HORIZONTAL_LOCKED_LABEL_HOVER_BLEND = 0.4f;
 
 std::array<HorizontalMenuItemVisualState, HORIZONTAL_VISIBLE_LIMIT> g_horizontalStates{};
 
@@ -109,7 +135,7 @@ void rebuildHorizontalStates(
         const i32 fontSize = lerpInt(
             layout.sideFontSize,
             layout.centerFontSize,
-            saturate(selectedStrength + hoverStrength * 0.18f));
+            saturate(selectedStrength + hoverStrength * HORIZONTAL_HOVER_FONT_BIAS));
 
         state.itemIndex = itemIndex;
         state.slotOffset = slotOffset;
@@ -122,7 +148,7 @@ void rebuildHorizontalStates(
         state.fontSize = fontSize;
         state.centerX = centerX + static_cast<i32>(std::lround(slotOffset * static_cast<f32>(layout.sideOffsetX)));
         state.baselineY = centerY + static_cast<i32>(std::lround(std::abs(slotOffset) * static_cast<f32>(layout.sideOffsetY)))
-            - (hovered && !selected ? 2 : 0);
+            - (hovered && !selected ? HORIZONTAL_HOVER_LIFT : 0);
         state.hitWidth = Renderer::measureText(GetFontDefault(), items[itemIndex].label, state.fontSize, HORIZONTAL_FONT_SPACING);
         const Color sideColor = state.locked ? layout.colorSideLocked : layout.colorSide;
         const f32 previewBlend = saturate(selectedStrength + hoverStrength);
@@ -131,7 +157,7 @@ void rebuildHorizontalStates(
 }
 
 [[nodiscard]] Shader menuOptionShader() noexcept {
-    return ::biofuel::engine::runtime::typed::Shaders::get<MenuShader>();
+    return TypedShaders::get<MenuShader>();
 }
 
 void renderMenuOptionGlow(
@@ -156,11 +182,11 @@ void renderMenuOptionGlow(
     static MenuGlowLocCache s_cache;
 
     if (s_cache.shaderId != static_cast<u32>(shader.id)) {
-        s_cache.timeLoc = ::biofuel::engine::runtime::typed::Shaders::loc<MenuShader, MenuUniforms::Time>(shader);
-        s_cache.centerLoc = ::biofuel::engine::runtime::typed::Shaders::loc<MenuShader, MenuUniforms::Center>(shader);
-        s_cache.halfSizeLoc = ::biofuel::engine::runtime::typed::Shaders::loc<MenuShader, MenuUniforms::HalfSize>(shader);
-        s_cache.selectionLoc = ::biofuel::engine::runtime::typed::Shaders::loc<MenuShader, MenuUniforms::SelectionStrength>(shader);
-        s_cache.hoverLoc = ::biofuel::engine::runtime::typed::Shaders::loc<MenuShader, MenuUniforms::HoverStrength>(shader);
+        s_cache.timeLoc = TypedShaders::loc<MenuShader, MenuUniforms::Time>(shader);
+        s_cache.centerLoc = TypedShaders::loc<MenuShader, MenuUniforms::Center>(shader);
+        s_cache.halfSizeLoc = TypedShaders::loc<MenuShader, MenuUniforms::HalfSize>(shader);
+        s_cache.selectionLoc = TypedShaders::loc<MenuShader, MenuUniforms::SelectionStrength>(shader);
+        s_cache.hoverLoc = TypedShaders::loc<MenuShader, MenuUniforms::HoverStrength>(shader);
         s_cache.shaderId = static_cast<u32>(shader.id);
     }
 
@@ -183,18 +209,29 @@ void renderMenuOptionGlow(
     };
     const f32 selectionStrength = state.selectedStrength;
     const f32 hoverStrength = state.hoverStrength;
+
+    // Glow text tint: a near-white base that brightens with selection strength,
+    // with alpha driven by selection (primary) and hover (secondary) weighting.
+    constexpr f32 glowRedBase = 210.0f;
+    constexpr f32 glowRedGain = 28.0f;
+    constexpr f32 glowGreenBase = 222.0f;
+    constexpr f32 glowGreenGain = 18.0f;
+    constexpr f32 glowMaxChannel = 255.0f;
+    constexpr f32 glowSelectionAlphaWeight = 0.9f;
+    constexpr f32 glowHoverAlphaWeight = 0.75f;
     const Color glowTint = {
-        static_cast<u8>(210 + selectionStrength * 28.0f),
-        static_cast<u8>(222 + selectionStrength * 18.0f),
-        static_cast<u8>(255),
-        static_cast<u8>(255 * saturate(selectionStrength * 0.9f + hoverStrength * 0.75f))
+        static_cast<u8>(glowRedBase + selectionStrength * glowRedGain),
+        static_cast<u8>(glowGreenBase + selectionStrength * glowGreenGain),
+        static_cast<u8>(glowMaxChannel),
+        static_cast<u8>(glowMaxChannel * saturate(selectionStrength * glowSelectionAlphaWeight
+            + hoverStrength * glowHoverAlphaWeight))
     };
 
-    ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::Time>(shader, timeLoc, &animTime);
-    ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::Center>(shader, centerLoc, center.data());
-    ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::HalfSize>(shader, halfSizeLoc, halfSize.data());
-    ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::SelectionStrength>(shader, selectionLoc, &selectionStrength);
-    ::biofuel::engine::runtime::typed::Shaders::set<MenuShader, MenuUniforms::HoverStrength>(shader, hoverLoc, &hoverStrength);
+    TypedShaders::set<MenuShader, MenuUniforms::Time>(shader, timeLoc, &animTime);
+    TypedShaders::set<MenuShader, MenuUniforms::Center>(shader, centerLoc, center.data());
+    TypedShaders::set<MenuShader, MenuUniforms::HalfSize>(shader, halfSizeLoc, halfSize.data());
+    TypedShaders::set<MenuShader, MenuUniforms::SelectionStrength>(shader, selectionLoc, &selectionStrength);
+    TypedShaders::set<MenuShader, MenuUniforms::HoverStrength>(shader, hoverLoc, &hoverStrength);
 
     const ::biofuel::engine::graphics::ScopedShaderMode shaderScope(shader);
     Renderer::drawTextCentered(
@@ -239,16 +276,16 @@ void renderVerticalMenu(
             const i32 labelW = Renderer::measureText(items[i].label, layout.fontSize);
             Renderer::drawText(
                 "(locked)",
-                centerX + labelW / 2 + 12,
-                itemY + 8,
-                14,
+                centerX + labelW / 2 + VERTICAL_LOCKED_LABEL_OFFSET_X,
+                itemY + VERTICAL_LOCKED_LABEL_OFFSET_Y,
+                VERTICAL_LOCKED_LABEL_FONT_SIZE,
                 layout.colorLockedLabel
             );
         }
 
         if (i == selectedIndex && !items[i].locked) {
             const i32 labelW = Renderer::measureText(items[i].label, layout.fontSize);
-            const i32 accentX = centerX - labelW / 2 - 30;
+            const i32 accentX = centerX - labelW / 2 - VERTICAL_ACCENT_LEFT_MARGIN;
             const i32 accentY = itemY + layout.fontSize / 2;
             Renderer::drawRect(
                 accentX,
@@ -258,7 +295,7 @@ void renderVerticalMenu(
                 layout.colorSelected
             );
             Renderer::drawRect(
-                accentX + VERTICAL_ACCENT_BAR_WIDTH + 4,
+                accentX + VERTICAL_ACCENT_BAR_WIDTH + VERTICAL_ACCENT_BAR_GAP,
                 accentY - VERTICAL_ACCENT_SQUARE / 2,
                 VERTICAL_ACCENT_SQUARE,
                 VERTICAL_ACCENT_SQUARE,
@@ -436,9 +473,10 @@ void renderHorizontalCarousel(
             Renderer::drawTextCentered(
                 "LOCKED",
                 state.centerX,
-                state.baselineY + state.fontSize + 2,
+                state.baselineY + state.fontSize + HORIZONTAL_LOCKED_LABEL_GAP,
                 layout.lockedLabelFontSize,
-                lerpColor(layout.colorLockedLabel, layout.colorSelectedGlow, state.hoverStrength * 0.4f)
+                lerpColor(layout.colorLockedLabel, layout.colorSelectedGlow,
+                    state.hoverStrength * HORIZONTAL_LOCKED_LABEL_HOVER_BLEND)
             );
         }
 
@@ -450,10 +488,14 @@ void renderHorizontalCarousel(
             continue;
         }
 
+        // Selection underline/accents grow from half size to full as the item
+        // settles into the center, clamped to a minimum so they never vanish.
+        constexpr i32 minLineThickness = 1; // pixels
+        constexpr i32 minAccentWidth = 8;   // pixels
         const i32 underlineWidth = lerpInt(layout.underlineWidth / 2, layout.underlineWidth, state.selectedStrength);
-        const i32 underlineHeight = std::max(1, lerpInt(1, layout.underlineHeight, state.selectedStrength));
-        const i32 accentWidth = std::max(8, lerpInt(layout.accentWidth / 2, layout.accentWidth, state.selectedStrength));
-        const i32 accentHeight = std::max(1, lerpInt(1, layout.accentHeight, state.selectedStrength));
+        const i32 underlineHeight = std::max(minLineThickness, lerpInt(minLineThickness, layout.underlineHeight, state.selectedStrength));
+        const i32 accentWidth = std::max(minAccentWidth, lerpInt(layout.accentWidth / 2, layout.accentWidth, state.selectedStrength));
+        const i32 accentHeight = std::max(minLineThickness, lerpInt(minLineThickness, layout.accentHeight, state.selectedStrength));
         const i32 accentGap = lerpInt(layout.accentGap / 2, layout.accentGap, state.selectedStrength);
 
         const i32 underlineX = state.centerX - underlineWidth / 2;

@@ -28,14 +28,17 @@ public:
     [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return ::biofuel::game::screens::screen_id::PausePopup; }
     [[nodiscard]] std::string_view getName() const noexcept override { return "PausePopupScreen"; }
 
+    // Panel dimensions — the single source of truth, shared by the input
+    // hit-testing below and the render executors in the .cpp.
+    static constexpr i32 PANEL_WIDTH = 420;
+    static constexpr i32 PANEL_HEIGHT = 260;
+
 private:
     static constexpr std::array<game::presentation::widgets::MenuItem, 2> s_items = {{
         {.label = "Resume",          .locked = false},
         {.label = "Quit to Desktop", .locked = false},
     }};
 
-    static constexpr i32 PANEL_WIDTH = 420;
-    static constexpr i32 PANEL_HEIGHT = 260;
     static constexpr i32 TITLE_SIZE = 32;
     static constexpr i32 HINT_SIZE = 14;
     static constexpr game::presentation::widgets::MenuLayout MENU_LAYOUT = {

@@ -26,8 +26,21 @@ namespace biofuel::engine::ui::typed {
 
 namespace {
 
-constexpr i32 PAUSE_PANEL_WIDTH = 420;
-constexpr i32 PAUSE_PANEL_HEIGHT = 260;
+// Panel dimensions come from the screen class so they are defined once.
+constexpr i32 PAUSE_PANEL_WIDTH = ::biofuel::game::screens::PausePopupScreen::PANEL_WIDTH;
+constexpr i32 PAUSE_PANEL_HEIGHT = ::biofuel::game::screens::PausePopupScreen::PANEL_HEIGHT;
+
+// Panel chrome layout, measured in pixels from the panel's top-left corner.
+constexpr i32 TITLE_INSET_Y = 28;        // title baseline below the panel top
+constexpr i32 SEPARATOR_Y = 70;          // divider line below the panel top
+constexpr i32 SEPARATOR_INSET_X = 40;    // divider horizontal inset on each side
+constexpr i32 SEPARATOR_HEIGHT = 2;
+constexpr i32 MENU_TOP_GAP = 28;         // menu list top below the divider
+constexpr i32 HINT_BOTTOM_INSET = 32;    // hint baseline above the panel bottom
+
+constexpr Color PANEL_FILL_COLOR = {30, 30, 40, 240};
+constexpr Color PANEL_BORDER_COLOR = {80, 80, 100, 255};
+constexpr Color HINT_TEXT_COLOR = {120, 120, 140, 255};
 
 struct PausePanelGeometry {
     i32 x = 0;
@@ -92,8 +105,8 @@ struct RenderElementExecutor<pausepopup::PopupPanelElement, ::biofuel::game::scr
         }
 
         const auto panel = pausePanelGeometry(screen.m_panelSlidePct, context);
-        Renderer::drawRect(panel.x, panel.y, panel.w, panel.h, {30, 30, 40, 240});
-        Renderer::drawRectLines(panel.x, panel.y, panel.w, panel.h, {80, 80, 100, 255});
+        Renderer::drawRect(panel.x, panel.y, panel.w, panel.h, PANEL_FILL_COLOR);
+        Renderer::drawRectLines(panel.x, panel.y, panel.w, panel.h, PANEL_BORDER_COLOR);
     }
 };
 
@@ -108,7 +121,7 @@ struct RenderElementExecutor<pausepopup::TitleTextElement, ::biofuel::game::scre
         const auto panel = pausePanelGeometry(screen.m_panelSlidePct, context);
         static constexpr std::string_view title = "PAUSED";
         const i32 titleW = Renderer::measureText(title, ::biofuel::game::screens::PausePopupScreen::TITLE_SIZE);
-        Renderer::drawText(title, panel.x + (panel.w - titleW) / 2, panel.y + 28, ::biofuel::game::screens::PausePopupScreen::TITLE_SIZE, RAYWHITE);
+        Renderer::drawText(title, panel.x + (panel.w - titleW) / 2, panel.y + TITLE_INSET_Y, ::biofuel::game::screens::PausePopupScreen::TITLE_SIZE, RAYWHITE);
     }
 };
 
@@ -121,7 +134,12 @@ struct RenderElementExecutor<pausepopup::SeparatorElement, ::biofuel::game::scre
         }
 
         const auto panel = pausePanelGeometry(screen.m_panelSlidePct, context);
-        Renderer::drawRect(panel.x + 40, panel.y + 70, panel.w - 80, 2, {80, 80, 100, 255});
+        Renderer::drawRect(
+            panel.x + SEPARATOR_INSET_X,
+            panel.y + SEPARATOR_Y,
+            panel.w - 2 * SEPARATOR_INSET_X,
+            SEPARATOR_HEIGHT,
+            PANEL_BORDER_COLOR);
     }
 };
 
@@ -137,7 +155,7 @@ struct RenderElementExecutor<pausepopup::VerticalMenuElement, ::biofuel::game::s
             std::span{::biofuel::game::screens::PausePopupScreen::s_items},
             screen.m_selected,
             panel.x + panel.w / 2,
-            panel.y + 70 + 28,
+            panel.y + SEPARATOR_Y + MENU_TOP_GAP,
             ::biofuel::game::screens::PausePopupScreen::MENU_LAYOUT
         );
     }
@@ -154,7 +172,7 @@ struct RenderElementExecutor<pausepopup::HintTextElement, ::biofuel::game::scree
         const auto panel = pausePanelGeometry(screen.m_panelSlidePct, context);
         static constexpr std::string_view hint = "ESC to close  |  UP / DOWN to navigate  |  ENTER to select";
         const i32 hintW = Renderer::measureText(hint, ::biofuel::game::screens::PausePopupScreen::HINT_SIZE);
-        Renderer::drawText(hint, panel.x + (panel.w - hintW) / 2, panel.y + panel.h - 32, ::biofuel::game::screens::PausePopupScreen::HINT_SIZE, {120, 120, 140, 255});
+        Renderer::drawText(hint, panel.x + (panel.w - hintW) / 2, panel.y + panel.h - HINT_BOTTOM_INSET, ::biofuel::game::screens::PausePopupScreen::HINT_SIZE, HINT_TEXT_COLOR);
     }
 };
 

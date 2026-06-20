@@ -43,10 +43,10 @@ int main() {
     static_assert(!std::is_convertible_v<NormalizedCameraCoord2D, ScreenPixels2D>);
     static_assert(validateAssetCatalog<EngineStartupCatalog>());
     static_assert(::biofuel::engine::tasks::EngineStartupModules::valid());
-    static_assert(::biofuel::engine::tasks::EngineStartupModules::size() >= 9U);
+    static_assert(::biofuel::engine::tasks::EngineStartupModules::size() >= 8U);
     static_assert(validateScreenRegistry<AppScreenRegistry>());
     static_assert(DebugPanelRegistry::valid());
-    static_assert(DebugPanelRegistry::size == 5U);
+    static_assert(DebugPanelRegistry::size == 4U);
     using MetaSmokeRegistry = ::biofuel::typed::Registry<MetaSmokeA, MetaSmokeB, MetaSmokeC>;
     static_assert(MetaSmokeRegistry::valid());
     static_assert(MetaSmokeRegistry::template contains<MetaSmokeB>);

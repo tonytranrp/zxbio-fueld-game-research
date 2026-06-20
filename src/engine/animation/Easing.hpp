@@ -10,6 +10,10 @@ namespace biofuel::engine::animation::Easing {
 // All functions take a normalized progress t ∈ [0, 1] and return the eased value.
 // ------------------------------------------------------------------------------
 
+inline constexpr f32 kPi = 3.14159265f;
+inline constexpr f32 kHalfPi = kPi / 2.0f;
+inline constexpr f32 kTwoPi = kPi * 2.0f;
+
 // ---- Linear ----
 [[nodiscard]] inline constexpr f32 linear(f32 t) noexcept {
     return t;
@@ -64,13 +68,13 @@ namespace biofuel::engine::animation::Easing {
 
 // ---- Sine ----
 [[nodiscard]] inline f32 easeInSine(f32 t) noexcept {
-    return 1.0f - std::cos(t * (3.14159265f / 2.0f));
+    return 1.0f - std::cos(t * kHalfPi);
 }
 [[nodiscard]] inline f32 easeOutSine(f32 t) noexcept {
-    return std::sin(t * (3.14159265f / 2.0f));
+    return std::sin(t * kHalfPi);
 }
 [[nodiscard]] inline f32 easeInOutSine(f32 t) noexcept {
-    return -0.5f * (std::cos(3.14159265f * t) - 1.0f);
+    return -0.5f * (std::cos(kPi * t) - 1.0f);
 }
 
 // ---- Exponential ----
@@ -108,13 +112,13 @@ namespace biofuel::engine::animation::Easing {
     const f32 p = 0.3f;
     const f32 s = p / 4.0f;
     const f32 u = t - 1.0f;
-    return -std::pow(2.0f, 10.0f * u) * std::sin((u - s) * (3.14159265f * 2.0f) / p);
+    return -std::pow(2.0f, 10.0f * u) * std::sin((u - s) * kTwoPi / p);
 }
 [[nodiscard]] inline f32 easeOutElastic(f32 t) noexcept {
     if (t == 0.0f || t == 1.0f) return t;
     const f32 p = 0.3f;
     const f32 s = p / 4.0f;
-    return std::pow(2.0f, -10.0f * t) * std::sin((t - s) * (3.14159265f * 2.0f) / p) + 1.0f;
+    return std::pow(2.0f, -10.0f * t) * std::sin((t - s) * kTwoPi / p) + 1.0f;
 }
 [[nodiscard]] inline f32 easeInOutElastic(f32 t) noexcept {
     if (t == 0.0f || t == 1.0f) return t;
@@ -122,10 +126,10 @@ namespace biofuel::engine::animation::Easing {
     const f32 s = p / 4.0f;
     if (t < 0.5f) {
         const f32 u = 2.0f * t - 1.0f;
-        return -0.5f * std::pow(2.0f, 10.0f * u) * std::sin((u - s) * (3.14159265f * 2.0f) / p);
+        return -0.5f * std::pow(2.0f, 10.0f * u) * std::sin((u - s) * kTwoPi / p);
     }
     const f32 u = 2.0f * t - 1.0f;
-    return 0.5f * std::pow(2.0f, -10.0f * u) * std::sin((u - s) * (3.14159265f * 2.0f) / p) + 1.0f;
+    return 0.5f * std::pow(2.0f, -10.0f * u) * std::sin((u - s) * kTwoPi / p) + 1.0f;
 }
 
 // ---- Back (overshoot) ----

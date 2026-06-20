@@ -40,34 +40,34 @@ private:
         {.label = "Quit",     .locked = false},
     }};
 
-    // ---- Color palette ----
-    static constexpr Color COLOR_BG                = {15, 15, 25, 255};
-    static constexpr Color COLOR_GOLD              = {200, 155, 60, 255};
-    static constexpr Color COLOR_GOLD_DIM          = {140, 110, 40, 255};
-    static constexpr Color COLOR_WARM_HI           = {255, 200, 80, 255};
-    static constexpr Color COLOR_GRAY_DIM          = {90, 90, 100, 255};
-    static constexpr Color COLOR_GRAY_LOCKED       = {55, 55, 65, 255};
-    static constexpr Color COLOR_GRAY_LOCKED_LABEL = {80, 80, 90, 255};
-    static constexpr Color COLOR_VERSION           = {60, 60, 70, 255};
+    // ---- Color palette (RGBA, 0..255) ----
+    static constexpr Color COLOR_BG                = {15, 15, 25, 255};    // backdrop fallback fill
+    static constexpr Color COLOR_GOLD              = {200, 155, 60, 255};  // selected menu item
+    static constexpr Color COLOR_GOLD_DIM          = {140, 110, 40, 255};  // dimmed gold accent
+    static constexpr Color COLOR_WARM_HI           = {255, 200, 80, 255};  // selected item glow highlight
+    static constexpr Color COLOR_GRAY_DIM          = {90, 90, 100, 255};   // subtitle / hints text
+    static constexpr Color COLOR_GRAY_LOCKED       = {55, 55, 65, 255};    // locked item base
+    static constexpr Color COLOR_GRAY_LOCKED_LABEL = {80, 80, 90, 255};    // locked item "(locked)" label
+    static constexpr Color COLOR_VERSION           = {60, 60, 70, 255};    // footer version string
 
     // ---- Title area layout (top-left) ----
-    static constexpr i32 TITLE_X                = 40;
-    static constexpr i32 TITLE_Y                = 30;
-    static constexpr i32 TITLE_FONT_SIZE        = 40;
-    static constexpr i32 SUBTITLE_FONT_SIZE     = 16;
-    static constexpr i32 HINTS_FONT_SIZE        = 13;
-    static constexpr i32 TITLE_SUBTITLE_GAP     = 10;
-    static constexpr i32 SUBTITLE_HINTS_GAP     = 8;
-    static constexpr f32 TITLE_PULSE_SPEED      = 1.8f;
-    static constexpr f32 TITLE_PULSE_MIN        = 225.0f;
-    static constexpr f32 TITLE_PULSE_RANGE      = 30.0f;
-    static constexpr f32 BG_REVEAL_DELAY        = 0.08f;
-    static constexpr f32 BG_REVEAL_DURATION     = 1.35f;
-    static constexpr f32 BG_TEXT_SYNC_THRESHOLD = 0.35f;
-    static constexpr f32 KEY_REPEAT_DELAY       = 0.12f;
+    static constexpr i32 TITLE_X                = 40;      // px from left edge
+    static constexpr i32 TITLE_Y                = 30;      // px from top edge
+    static constexpr i32 TITLE_FONT_SIZE        = 40;      // px
+    static constexpr i32 SUBTITLE_FONT_SIZE     = 16;      // px
+    static constexpr i32 HINTS_FONT_SIZE        = 13;      // px
+    static constexpr i32 TITLE_SUBTITLE_GAP     = 10;      // px between title baseline and subtitle
+    static constexpr i32 SUBTITLE_HINTS_GAP     = 8;       // px between subtitle and hints line
+    static constexpr f32 TITLE_PULSE_SPEED      = 1.8f;    // radians/sec for the title glow sine
+    static constexpr f32 TITLE_PULSE_MIN        = 225.0f;  // min channel value of the pulse (0..255)
+    static constexpr f32 TITLE_PULSE_RANGE      = 30.0f;   // peak-to-trough channel swing added to the min
+    static constexpr f32 BG_REVEAL_DELAY        = 0.08f;   // sec before the backdrop reveal starts
+    static constexpr f32 BG_REVEAL_DURATION     = 1.35f;   // sec for the backdrop reveal to finish
+    static constexpr f32 BG_TEXT_SYNC_THRESHOLD = 0.35f;   // reveal progress (0..1) at which intro text begins
+    static constexpr f32 KEY_REPEAT_DELAY       = 0.12f;   // sec between held-key menu navigation steps
 
     // ---- Menu bar layout (bottom-middle) ----
-    static constexpr i32 MENU_BAR_Y_OFFSET = 108;
+    static constexpr i32 MENU_BAR_Y_OFFSET = 108;  // px above the screen bottom (baseline at 1280x720)
     static constexpr game::presentation::widgets::HorizontalMenuLayout MENU_LAYOUT = {
         .sideOffsetX        = 205,
         .sideOffsetY        = 16,
@@ -90,18 +90,18 @@ private:
         .keyRepeatDelay     = KEY_REPEAT_DELAY,
     };
 
-    // ---- Footer layout ----
-    static constexpr i32 FOOTER_FONT_SIZE      = 12;
-    static constexpr i32 FOOTER_MARGIN_X       = 10;
-    static constexpr i32 FOOTER_BOTTOM_OFFSET  = 25;
+    // ---- Footer layout (bottom-right version string) ----
+    static constexpr i32 FOOTER_FONT_SIZE      = 12;  // px
+    static constexpr i32 FOOTER_MARGIN_X       = 10;  // px inset from the right edge
+    static constexpr i32 FOOTER_BOTTOM_OFFSET  = 25;  // px above the screen bottom
 
     // ---- Dismiss slide distances (pixels off-screen) ----
-    static constexpr i32 DISMISS_SLIDE_LEFT = 500;
-    static constexpr i32 DISMISS_SLIDE_DOWN = 200;
+    static constexpr i32 DISMISS_SLIDE_LEFT = 500;  // px the title/hints slide left when dismissed
+    static constexpr i32 DISMISS_SLIDE_DOWN = 200;  // px the menu/footer slide down when dismissed
 
     // ---- Dimension shift (shader warp after dismiss) ----
-    static constexpr f32 DIMENSION_SHIFT_DURATION = 3.0f;
-    static constexpr f32 MENU_FX_WRAP_PERIOD = 1000.0f;
+    static constexpr f32 DIMENSION_SHIFT_DURATION = 3.0f;     // sec to ramp the shader warp 0 → 1
+    static constexpr f32 MENU_FX_WRAP_PERIOD = 1000.0f;       // sec; wrap the FX clock to avoid float precision loss
 
     // ---- Camera look sequence (yaw-only, no position movement) ----
     // Phase 1: instantly look right

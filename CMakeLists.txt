@@ -119,8 +119,10 @@ CPMAddPackage(
 # Pipeline-c- - Compile-time validated pipeline builder for gameplay systems.
 CPMAddPackage(
     NAME pipeline_c
-    URL https://github.com/tonytranrp/Pipeline-c-/archive/refs/heads/main.tar.gz
-    URL_HASH SHA256=a4312156951c3b0fe52c15ab1c4bccb1e9298399d5940b4b701c93dd4c718038
+    # Pinned to an immutable commit (not the moving main branch) so the URL_HASH
+    # stays valid. Bump both the SHA in the URL and URL_HASH together to update.
+    URL https://github.com/tonytranrp/Pipeline-c-/archive/d8bc48f9f4b2c52424dd08e5e82f13052b3bbeb6.tar.gz
+    URL_HASH SHA256=ae5e58178e5c7c6ef7bf91fbb22051b1abd5dd3165639c4d95084e450f335dce
     OPTIONS
         "PB_BUILD_TESTS OFF"
         "PB_BUILD_EXAMPLES OFF"

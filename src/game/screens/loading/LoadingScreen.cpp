@@ -17,12 +17,39 @@ namespace biofuel::engine::ui::typed {
 
 namespace {
 
+// Panel dimensions come from the screen class so they are defined once.
+constexpr i32 LOADING_PANEL_WIDTH = ::biofuel::game::screens::LoadingScreen::PANEL_WIDTH;
+constexpr i32 LOADING_PANEL_HEIGHT = ::biofuel::game::screens::LoadingScreen::PANEL_HEIGHT;
+
+// Panel placement and chrome layout, measured in pixels.
+constexpr i32 PANEL_VERTICAL_OFFSET = 88;   // panel top above screen vertical center
+constexpr i32 TITLE_ABOVE_PANEL = 78;       // title baseline above the panel top
+constexpr i32 BAR_TOP_INSET = 62;           // progress bar top below the panel top
+constexpr i32 BAR_FILL_PADDING = 2;         // inset of the fill from the bar outline (per side)
+constexpr i32 STATUS_BELOW_BAR = 18;        // status text baseline below the bar bottom
+constexpr i32 SKIP_HINT_BELOW_BAR = 64;     // skip hint baseline below the bar bottom
+constexpr i32 FOOTER_BOTTOM_INSET = 30;     // footer baseline above the screen bottom
+constexpr i32 DOTS_MODULO = 4;              // animated status dots cycle through 0..3
+
+constexpr i32 HINT_SIZE = 14;               // skip-hint font size (px)
+constexpr i32 FOOTER_SIZE = 12;             // footer font size (px)
+
+// Render-only color literals (RGBA).
+constexpr Color TITLE_COLOR = {208, 220, 240, 255};
+constexpr Color PANEL_FILL_COLOR = {14, 19, 28, 182};
+constexpr Color PANEL_BORDER_COLOR = {72, 96, 124, 188};
+constexpr Color BAR_OUTLINE_COLOR = {84, 104, 132, 255};
+constexpr Color BAR_FILL_COLOR = {92, 182, 224, 255};
+constexpr Color STATUS_TEXT_COLOR = {216, 224, 236, 255};
+constexpr Color SKIP_HINT_COLOR = {130, 148, 172, 255};
+constexpr Color FOOTER_TEXT_COLOR = {92, 104, 126, 255};
+
 [[nodiscard]] Rectangle loadingPanelRect(const RenderContext& context) noexcept {
     return Rectangle{
-        static_cast<f32>((context.screenWidth - 520) / 2),
-        static_cast<f32>(context.screenHeight / 2 - 88),
-        520.0f,
-        164.0f
+        static_cast<f32>((context.screenWidth - LOADING_PANEL_WIDTH) / 2),
+        static_cast<f32>(context.screenHeight / 2 - PANEL_VERTICAL_OFFSET),
+        static_cast<f32>(LOADING_PANEL_WIDTH),
+        static_cast<f32>(LOADING_PANEL_HEIGHT)
     };
 }
 
@@ -41,14 +68,13 @@ struct RenderElementExecutor<loading::TitleTextElement, ::biofuel::game::screens
         using namespace ::biofuel::engine::graphics;
         const Rectangle panel = loadingPanelRect(context);
         static constexpr std::string_view TITLE = "FUEL FARM";
-        const Color titleColor = {208, 220, 240, 255};
         const i32 titleW = Renderer::measureText(TITLE, ::biofuel::game::screens::LoadingScreen::TITLE_SIZE);
         Renderer::drawText(
             TITLE,
             (context.screenWidth - titleW) / 2,
-            static_cast<i32>(panel.y) - 78,
+            static_cast<i32>(panel.y) - TITLE_ABOVE_PANEL,
             ::biofuel::game::screens::LoadingScreen::TITLE_SIZE,
-            titleColor
+            TITLE_COLOR
         );
     }
 };
@@ -58,8 +84,8 @@ struct RenderElementExecutor<loading::LoadingPanelElement, ::biofuel::game::scre
     static void render(::biofuel::game::screens::LoadingScreen&, RenderContext& context) {
         using namespace ::biofuel::engine::graphics;
         const Rectangle panel = loadingPanelRect(context);
-        Renderer::drawRect(static_cast<i32>(panel.x), static_cast<i32>(panel.y), static_cast<i32>(panel.width), static_cast<i32>(panel.height), {14, 19, 28, 182});
-        Renderer::drawRectLines(static_cast<i32>(panel.x), static_cast<i32>(panel.y), static_cast<i32>(panel.width), static_cast<i32>(panel.height), {72, 96, 124, 188});
+        Renderer::drawRect(static_cast<i32>(panel.x), static_cast<i32>(panel.y), static_cast<i32>(panel.width), static_cast<i32>(panel.height), PANEL_FILL_COLOR);
+        Renderer::drawRectLines(static_cast<i32>(panel.x), static_cast<i32>(panel.y), static_cast<i32>(panel.width), static_cast<i32>(panel.height), PANEL_BORDER_COLOR);
     }
 };
 
@@ -69,12 +95,12 @@ struct RenderElementExecutor<loading::ProgressBarElement, ::biofuel::game::scree
         using namespace ::biofuel::engine::graphics;
         const Rectangle panel = loadingPanelRect(context);
         const i32 barX = (context.screenWidth - ::biofuel::game::screens::LoadingScreen::BAR_WIDTH) / 2;
-        const i32 barY = static_cast<i32>(panel.y) + 62;
-        Renderer::drawRectLines(barX, barY, ::biofuel::game::screens::LoadingScreen::BAR_WIDTH, ::biofuel::game::screens::LoadingScreen::BAR_HEIGHT, {84, 104, 132, 255});
+        const i32 barY = static_cast<i32>(panel.y) + BAR_TOP_INSET;
+        Renderer::drawRectLines(barX, barY, ::biofuel::game::screens::LoadingScreen::BAR_WIDTH, ::biofuel::game::screens::LoadingScreen::BAR_HEIGHT, BAR_OUTLINE_COLOR);
 
-        const i32 fillW = static_cast<i32>((::biofuel::game::screens::LoadingScreen::BAR_WIDTH - 4) * screen.m_displayProgress);
+        const i32 fillW = static_cast<i32>((::biofuel::game::screens::LoadingScreen::BAR_WIDTH - 2 * BAR_FILL_PADDING) * screen.m_displayProgress);
         if (fillW > 0) {
-            Renderer::drawRect(barX + 2, barY + 2, fillW, ::biofuel::game::screens::LoadingScreen::BAR_HEIGHT - 4, {92, 182, 224, 255});
+            Renderer::drawRect(barX + BAR_FILL_PADDING, barY + BAR_FILL_PADDING, fillW, ::biofuel::game::screens::LoadingScreen::BAR_HEIGHT - 2 * BAR_FILL_PADDING, BAR_FILL_COLOR);
         }
     }
 };
@@ -84,18 +110,18 @@ struct RenderElementExecutor<loading::StatusTextElement, ::biofuel::game::screen
     static void render(::biofuel::game::screens::LoadingScreen& screen, RenderContext& context) {
         using namespace ::biofuel::engine::graphics;
         const Rectangle panel = loadingPanelRect(context);
-        const i32 barY = static_cast<i32>(panel.y) + 62;
+        const i32 barY = static_cast<i32>(panel.y) + BAR_TOP_INSET;
         const bool fullyDone = screen.m_tasksDone && screen.m_displayProgress >= 1.0f;
         std::string status = "Ready.";
         if (screen.m_tasks.isFailed()) {
             status = screen.m_tasks.failureMessage();
         } else if (!fullyDone) {
-            const i32 dotCount = static_cast<i32>(screen.m_elapsed / ::biofuel::game::screens::LoadingScreen::DOTS_INTERVAL) % 4;
+            const i32 dotCount = static_cast<i32>(screen.m_elapsed / ::biofuel::game::screens::LoadingScreen::DOTS_INTERVAL) % DOTS_MODULO;
             status = screen.m_tasks.currentName() + std::string(dotCount, '.');
         }
 
         const i32 statusW = Renderer::measureText(status, ::biofuel::game::screens::LoadingScreen::STATUS_SIZE);
-        Renderer::drawText(status, (context.screenWidth - statusW) / 2, barY + ::biofuel::game::screens::LoadingScreen::BAR_HEIGHT + 18, ::biofuel::game::screens::LoadingScreen::STATUS_SIZE, {216, 224, 236, 255});
+        Renderer::drawText(status, (context.screenWidth - statusW) / 2, barY + ::biofuel::game::screens::LoadingScreen::BAR_HEIGHT + STATUS_BELOW_BAR, ::biofuel::game::screens::LoadingScreen::STATUS_SIZE, STATUS_TEXT_COLOR);
     }
 };
 
@@ -108,16 +134,15 @@ struct RenderElementExecutor<loading::SkipHintElement, ::biofuel::game::screens:
         }
 
         const Rectangle panel = loadingPanelRect(context);
-        const i32 barY = static_cast<i32>(panel.y) + 62;
+        const i32 barY = static_cast<i32>(panel.y) + BAR_TOP_INSET;
         static constexpr std::string_view SKIP_HINT = "Press any key to continue...";
-        constexpr i32 HINT_SIZE = 14;
         const i32 hintW = Renderer::measureText(SKIP_HINT, HINT_SIZE);
         Renderer::drawText(
             SKIP_HINT,
             (context.screenWidth - hintW) / 2,
-            barY + ::biofuel::game::screens::LoadingScreen::BAR_HEIGHT + 64,
+            barY + ::biofuel::game::screens::LoadingScreen::BAR_HEIGHT + SKIP_HINT_BELOW_BAR,
             HINT_SIZE,
-            {130, 148, 172, 255}
+            SKIP_HINT_COLOR
         );
     }
 };
@@ -127,9 +152,8 @@ struct RenderElementExecutor<loading::FooterTextElement, ::biofuel::game::screen
     static void render(::biofuel::game::screens::LoadingScreen&, RenderContext& context) {
         using namespace ::biofuel::engine::graphics;
         static constexpr std::string_view FOOTER = "v0.1.0  |  C++20  |  Raylib 5.5";
-        constexpr i32 FOOTER_SIZE = 12;
         const i32 footerW = Renderer::measureText(FOOTER, FOOTER_SIZE);
-        Renderer::drawText(FOOTER, (context.screenWidth - footerW) / 2, context.screenHeight - 30, FOOTER_SIZE, {92, 104, 126, 255});
+        Renderer::drawText(FOOTER, (context.screenWidth - footerW) / 2, context.screenHeight - FOOTER_BOTTOM_INSET, FOOTER_SIZE, FOOTER_TEXT_COLOR);
     }
 };
 
