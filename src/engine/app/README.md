@@ -16,8 +16,9 @@ engine/app/
 ## Responsibilities
 
 - Create and close the Raylib window.
-- Push the loading screen as the first screen.
-- Poll input, update services, and render the active screen stack.
+- Poll input, update services, and render the active screen stack (the game
+  layer's `startup` callback is what actually pushes the first screen — see
+  `game/app/GameApp.cpp`).
 - Keep media streaming services, such as audio and video, pumping even when a
   modal/overlay screen freezes gameplay-facing updates below it.
 - Apply the fixed timestep accumulator.

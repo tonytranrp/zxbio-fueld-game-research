@@ -24,14 +24,14 @@ engine/events/
 
 | Domain | Purpose |
 | --- | --- |
-| `animation/` | Screen transition and visual effect lifecycle |
+| `animation/` | Screen transition lifecycle |
 | `input/` | Keyboard and mouse button events |
 | `model/` | Model lifecycle and animation commands |
-| `mouse/` | Mouse movement, wheel, and position events |
-| `physics/` | Rapier contacts plus engine shape lifecycle/grab events |
+| `mouse/` | Mouse button and wheel events |
+| `physics/` | Rapier contact events |
 | `screen/` | Screen stack, transition, layer, and debug overrides |
 | `video/` | Video playback start, completion, and errors |
-| `window/` | Window resize, focus, and close events |
+| `window/` | Window close-request events |
 | `world/` | World lifecycle, tile/chunk, heightmap, and building events |
 
 ## Rules

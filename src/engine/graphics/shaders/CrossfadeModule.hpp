@@ -47,7 +47,6 @@ namespace biofuel::engine::runtime::typed {
 BIOFUEL_EMBEDDED_SHADER_ASSET(
     shader::Crossfade,
     ::biofuel::engine::graphics::shader::CrossfadeModule,
-    false,
     shader::crossfade::TextureIn,
     shader::crossfade::Progress);
 BIOFUEL_SHADER_MODULE(CrossfadeShaderModule, shader::Crossfade)

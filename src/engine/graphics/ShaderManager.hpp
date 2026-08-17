@@ -16,7 +16,6 @@ class ShaderManager {
 public:
     [[nodiscard]] static ShaderManager& instance() noexcept;
 
-    void init();
     void shutdown();
 
     // Load a shader from vertex + fragment file paths.

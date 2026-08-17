@@ -52,8 +52,9 @@ void VoxelVolume::rebuild(const VoxelWorld& world, const i32 originX, const i32 
             const i32 wz = originZ + z;
             const i32 h = world.surfaceHeight(wx, wz);
             // Cells well above the surface (and any tree canopy) are always Air;
-            // skip them so the bake stays cheap.
-            const i32 top = std::min(H - 1, h + 12);
+            // skip them so the bake stays cheap. Matches the mesher's canopy
+            // ceiling (VoxelWorld.cpp's kTrunkMaxH + kCanopyPad column top).
+            const i32 top = std::min(H - 1, h + VoxelWorld::kTrunkMaxH + VoxelWorld::kCanopyPad);
             for (i32 y = 0; y <= top; ++y) {
                 const Block b = world.blockAt(wx, originY + y, wz);
                 if (b != Block::Air) {

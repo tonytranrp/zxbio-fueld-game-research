@@ -12,7 +12,7 @@
         static constexpr i32 UniformType = UNIFORM_KIND; \
     }
 
-#define BIOFUEL_EMBEDDED_SHADER_ASSET(TAG_TYPE, RUNTIME_MODULE, PRELOAD, ...) \
+#define BIOFUEL_EMBEDDED_SHADER_ASSET(TAG_TYPE, RUNTIME_MODULE, ...) \
     template<> struct ShaderAsset<TAG_TYPE> { \
         using Tag = TAG_TYPE; \
         using RuntimeModule = RUNTIME_MODULE; \
@@ -20,17 +20,6 @@
         static constexpr std::string_view Name = RuntimeModule::NAME; \
         static constexpr const char* VertexSource = RuntimeModule::VERTEX_SOURCE; \
         static constexpr std::string_view FragmentSource = RuntimeModule::FRAGMENT_SOURCE; \
-        static constexpr bool PreloadOnStartup = PRELOAD; \
-    }
-
-#define BIOFUEL_FILE_SHADER_ASSET(TAG_TYPE, ASSET_NAME, VERT_PATH, FRAG_PATH, PRELOAD, ...) \
-    template<> struct ShaderAsset<TAG_TYPE> { \
-        using Tag = TAG_TYPE; \
-        using Uniforms = ::biofuel::typed::Registry<__VA_ARGS__>; \
-        static constexpr std::string_view Name = ASSET_NAME; \
-        static constexpr std::string_view VertexPath = VERT_PATH; \
-        static constexpr std::string_view FragmentPath = FRAG_PATH; \
-        static constexpr bool PreloadOnStartup = PRELOAD; \
     }
 
 #define BIOFUEL_SHADER_MODULE(MODULE_NAME, ...) \

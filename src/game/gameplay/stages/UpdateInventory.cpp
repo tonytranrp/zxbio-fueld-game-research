@@ -4,14 +4,13 @@
 namespace biofuel::game::gameplay::stages {
 
 [[nodiscard]] HarvestOutput UpdateInventory::operator()(HarvestOutput output) const noexcept {
-    // Apply the harvest mutation to FarmState — reset the harvested tile.
+    // Apply the harvest through FarmState::harvestTile so the tile reset and the
+    // inventory/food/money crediting match a direct manual harvest exactly.
     if (output.harvested && output.farmState != nullptr) {
-        Tile* tile = output.farmState->tileAt(output.tileX, output.tileY);
-        if (tile != nullptr) {
-            tile->type = TileType::Fallow;
-            tile->ageTurns = 0;
-            tile->fertilizer = 0;
-        }
+        const HarvestResult result = output.farmState->harvestTile(output.tileX, output.tileY);
+        output.harvested = result.harvested;
+        output.fuelGallons = result.fuelGallons;
+        output.revenueCents = result.revenueCents;
     }
     return output;
 }

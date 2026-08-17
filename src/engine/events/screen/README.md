@@ -17,7 +17,7 @@ Use them when tooling needs to adjust a typed screen without reaching into the
 screen manager internals.
 
 ```cpp
-Events::publish<typed::screen::ScreenLayerOverride>({
+Events::publish<typed::screen::LayerOverride>({
     .screenId = ScreenId::Slot1,
     .layerName = "debug",
     .enabled = false,

@@ -25,7 +25,10 @@ namespace biofuel::game::app {
             //   F3 = toggle the whole overlay
             //   F4 = toggle the Memory panel (sorted resource breakdown)
             //   F5 = toggle the Assets panel
-            //   F6 = toggle the Frame Timing panel (FPS / frame ms)
+            //   F7 = toggle the Frame Timing panel (FPS / frame ms)
+            // NOTE: F6 is intentionally NOT used here -- GamePlayScreen already
+            // binds F6 to its rasterized/raymarched voxel-renderer toggle, and a
+            // single frame's IsKeyPressed(KEY_F6) would otherwise fire both.
             auto& overlay = ::biofuel::engine::runtime::Runtime::debugOverlay();
             if (IsKeyPressed(KEY_F3)) {
                 overlay.toggle();
@@ -38,7 +41,7 @@ namespace biofuel::game::app {
                 overlay.setPanelEnabled<::biofuel::engine::debug::AssetDebugPanel>(
                     !overlay.panelEnabled<::biofuel::engine::debug::AssetDebugPanel>());
             }
-            if (IsKeyPressed(KEY_F6)) {
+            if (IsKeyPressed(KEY_F7)) {
                 overlay.setPanelEnabled<::biofuel::engine::debug::FrameTimingDebugPanel>(
                     !overlay.panelEnabled<::biofuel::engine::debug::FrameTimingDebugPanel>());
             }

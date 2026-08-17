@@ -79,6 +79,8 @@ struct SharedAssetData {
     ModelAnimation* animations = nullptr;
     i32 animationCount = 0;
     ModelAssetMetrics metrics{};
+    // Non-owning copy of a Raylib Shader handle owned by ShaderManager; the
+    // destructor must not unload it.
     Shader shader{};
     ::biofuel::engine::animation::model::ModelRigBinding rigBinding{};
     std::vector<Transform> bindPoseCopy;

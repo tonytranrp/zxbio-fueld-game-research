@@ -520,6 +520,78 @@ event in question already worked correctly via the raw `entt::dispatcher` regard
 inclusion. Logged here because the same "grep before you delete/rename" discipline applies in
 reverse — verify an architectural boundary before crossing it, not just before removing something.
 
+## B034 - CollisionGroup::groupOnly()/SolverGroup::groupOnly() built a mask that collided with nothing [Solved]
+
+Severity: P2
+
+Evidence:
+
+- `src/engine/physics/PhysicsTypes.hpp` — `CollisionGroup::groupOnly()`, `SolverGroup::groupOnly()`.
+
+Description:
+
+`groupOnly(g)` returned `{g, 0}` — under the bitwise `collidesWith` formula (`mask & other.group`), a
+mask of `0` collides with nothing, so a caller asking to "collide only with my own group" actually got
+"collide with nothing," contradicting the method's own name. Fixed to return `{g, g}`; added compile-time
+regression tests (`testCollisionGroupOnlyLogic`/`testSolverGroupOnlyLogic`) using genuinely bitwise-
+disjoint values so a future regression can't slip through with values that merely look distinct. This
+only fixes the C++-side value type — the bridge still doesn't forward group/mask to Rapier's own
+`InteractionGroups` (still open, see "Known limitations" below).
+
+## B035 - Harvest pipeline computed fuel/revenue but never credited them to FarmState [Solved]
+
+Severity: P2
+
+Evidence:
+
+- `src/game/gameplay/stages/UpdateInventory.cpp`
+- `tests/pipeline/HarvestPipelineSmoke.cpp` (scenario 7)
+
+Description:
+
+`UpdateInventory` computed `fuelGallons`/`revenueCents` in its output but never applied them to
+`FarmState` — running the harvest pipeline looked like it worked but was economically a no-op. Fixed by
+delegating to the existing `FarmState::harvestTile(x, y)` mutator and overwriting the stage's output from
+its result, so the returned `HarvestOutput` always matches what was actually credited. `HarvestPipeline-
+Smoke.cpp` extended with assertions comparing a pipeline-run farm against a manually-harvested farm.
+
+## B036 - Gameplay pipeline stage keys never matched the event observer, so PipelineEventObserver was dead code [Solved]
+
+Severity: P2
+
+Evidence:
+
+- `src/game/gameplay/stages/*.hpp` — `name` members added to 11 stages.
+- `src/game/gameplay/FuelProcessPipeline.cpp` — `thread_local` observer forwarding.
+- `src/game/gameplay/PipelineEventObserver.cpp`
+
+Description:
+
+No gameplay stage defined a `name`, so Pipeline-c- fell back to numeric stage keys ("0", "1", "2"...)
+that never matched any of the string literals `PipelineEventObserver` checked for — the entire event
+bridge was dead from the day it was written. Separately, `FuelProcessPipeline`'s inner sub-engine never
+forwarded the parent runner's observer, so even a correctly-keyed sub-stage's events would have been
+doubly dead. Fixed by adding `static constexpr std::string_view name` to 11 of 17 stages (matching the
+observer's literal checks exactly) and installing a `thread_local` observer pointer the inner engine
+reads on each run (later wrapped in an RAII scope guard for exception safety). Six `PassThrough<T>`-alias
+stages (`WashCrop`, `GrindCrop`, `Ferment`, `PressExtract`, `Pretreat`, `EconomyUpdate`) remain unfixed —
+see "Known limitations" below.
+
+## B037 - bakeTileColliders silently skipped every Built tile [Solved]
+
+Severity: P2
+
+Evidence:
+
+- `src/game/gameplay/WorldPhysicsIntegration.cpp`
+
+Description:
+
+`bakeTileColliders` skipped any tile with `buildingId >= 0`, intending to skip building-footprint tiles
+that get their own separate collider — but `FarmState::setTileType(Built)` also sets `buildingId = 0`, so
+every plain `Built` tile (including `SampleFarm`'s solid perimeter border) matched the guard and silently
+got zero physics colliders. Fixed by removing the guard.
+
 ---
 
 ## Known limitations found this session, NOT fixed (flagged for a future decision)
@@ -527,45 +599,57 @@ reverse — verify an architectural boundary before crossing it, not just before
 These are real, well-evidenced findings from the 2026-08-16 research pass that were deliberately left
 alone rather than fixed unilaterally, either because they require a design decision this log shouldn't
 make on the project owner's behalf, or because the affected subsystem isn't wired into the live game
-yet. Not marked `[Solved]` — nothing below should be read as fixed.
+yet. Not marked `[Solved]` — nothing below should be read as fixed. (Several sibling findings from the
+same research pass *were* since fixed, in a second pass the same day — see B034-B037 above.)
 
 **Physics: `CollisionGroup` never reaches Rapier's `InteractionGroups`.** Colliders configured with
 "disjoint" collision groups still physically collide with each other today — only the C++-side contact
 *event* reporting is filtered by group, not the actual physics response. This is the most likely source
 of a real, currently-live gameplay physics bug if collision groups are relied on anywhere for gameplay
-logic. Separately, `CollisionGroup::groupOnly(g)` (`src/engine/physics/PhysicsTypes.hpp`) returns a mask
-of `0` (collides with nothing), contradicting its own name. Not fixed because the correct membership/
-filter bit semantics to pass into Rapier is a design decision, not a mechanical bug fix.
+logic. Not fixed because the correct membership/filter bit semantics to pass into Rapier is a design
+decision, not a mechanical bug fix. (`CollisionGroup::groupOnly()`'s own mask bug, a separate issue, was
+fixed — see B034.)
 
-**Gameplay pipeline system (`FarmState`/`TurnPipeline`/`HarvestPipeline`/etc.) is not wired into
-`GamePlayScreen` and is not production-ready if it were.** Confirmed real bugs in `src/game/gameplay/`:
-the harvest pipeline computes `fuelGallons`/`revenueCents` but never credits them to `FarmState`
-(`UpdateInventory.cpp`), making it economically a no-op; the entire `PipelineEventObserver` event
-bridge is dead code because no gameplay stage defines `stage_name()`, so Pipeline-c- generates numeric
-stage keys ("0","1","2"...) that never match anything the observer looks for; `FuelProcessPipeline`'s
-inner sub-engine doesn't forward the parent observer either, so its stages' events are doubly dead; and
-`bakeTileColliders` skips any tile with `buildingId >= 0`, but `setTileType(Built)` sets `buildingId=0`,
-so `SampleFarm`'s solid perimeter border silently gets zero physics colliders. Domain data (crop yields,
-BTU/gallon) was cross-checked against `Research/` and is accurate. Not fixed because wiring this system
-up requires deciding how `FarmState` should expose mutation (public setters vs. a delta the caller
-applies) — a design call, and because none of this runs in the shipped game today.
+**Gameplay pipeline system (`FarmState`/`TurnPipeline`/`HarvestPipeline`/etc.) is still not wired into
+`GamePlayScreen`.** The four concrete bugs this session found in `src/game/gameplay/` (harvest pipeline
+crediting nothing, dead event observer, doubly-dead sub-pipeline events, missing Built-tile colliders)
+are now fixed — see B035-B037. What remains open is purely the wiring decision: hooking this system up
+to `GamePlayScreen` requires deciding how `FarmState` should expose mutation (public setters vs. a delta
+the caller applies), and none of it runs in the shipped game today. Also still open: six `PassThrough<T>`-
+alias stages (`WashCrop`, `GrindCrop`, `Ferment`, `PressExtract`, `Pretreat`, `EconomyUpdate`, in
+`PassThroughStages.hpp`) can't each get a distinct observer key without becoming distinct types, which
+would break `PassThroughStageAliasesSmoke.cpp`'s `std::same_as` static_asserts — a design call on
+whether to extend Pipeline-c-'s existing branch-case `label` mechanism to linear stages (which would
+unblock this without breaking the test), left for the project owner. Domain data (crop yields, BTU/
+gallon) was cross-checked against `Research/` and is accurate.
 
-**No top-level `LICENSE` file for this project's own code.** `THIRD-PARTY-NOTICES.md` (added this
-session) covers dependency attribution — every dependency is permissive and commercial-distribution-
-safe — but the project's own license is undecided. That's the project owner's call.
+**No top-level `LICENSE` file for this project's own code.** `THIRD-PARTY-NOTICES.md` covers dependency
+attribution — every dependency is permissive and commercial-distribution-safe — but the project's own
+license is undecided. That's the project owner's call.
 
 **Typed-registry codegen is the one over-complex piece of an otherwise reasonable architecture.** The
 service-locator (`Runtime::service<T>()`) and screen-stack patterns match real shipped engines. The
 CMake-regex-scans-C++-macros registration mechanism recreates what Qt/Unreal do with genuine automatic
 header discovery, but without that, inherits real fragility — B033 above is a direct instance of that
-fragility. A hand-written single X-macro list header (pure C++, no CMake regex parsing) was the research
-pass's concrete recommendation; not attempted this session as it's a larger structural change.
+fragility. A second-pass audit (2026-08-16) hardened `GenerateTypedRegistries.cmake` further: an unknown
+`BIOFUEL_TYPED_MODULE` category or `BIOFUEL_*_MODULE` kind now fails the build loudly instead of silently
+dropping the module. Still open: a newline-intolerant regex on the primary registration path, and a
+hardcoded-namespace/single-alias asymmetry between the primary and helper macro paths (the SERVICE/
+SHADER declare macros don't currently take a registry-alias parameter at all, so this isn't a one-line
+fix). A hand-written single X-macro list header (pure C++, no CMake regex parsing) was the original
+research pass's concrete recommendation; not attempted as it's a larger structural change.
 
-**Rust bridge:** 19 `pub fn`s (Force/Impulse/AngularVelocity/SolverGroup/PhysicsShapeRole/JointType-
-tuning) have no C++ caller anywhere; `JointType::Spherical` is invalid for 2D per Rapier's own feature
-gating but the shared enum lets 2D code specify it anyway; no radian-to-degree conversion point exists
-yet (nothing renders physics rotation currently). All pre-existing and explicitly left unaddressed per
-this session's own scoping decision, not newly discovered.
+**Rust bridge: hygiene items, not bugs.** A second-pass audit (2026-08-16) deleted 17 `pub fn`s that had
+no C++ caller anywhere (Force/Impulse/AngularVelocity/BodyMass/BodyRotation3D — the "19" figure
+previously logged here was stale) and collapsed four value-copying accessor functions by adding `Copy`/
+`Clone` to the shared FFI structs. Still open, all pre-existing and unaddressed by design: `JointType::
+Spherical` is invalid for 2D per Rapier's own feature gating but the shared enum lets 2D code specify it
+anyway; no radian-to-degree conversion point exists yet (nothing renders physics rotation currently); the
+crate's generation-guarded handle (its core safety mechanism) has no stale-generation regression test;
+`u8`-coded kind/phase fields with a silent `_ => Fixed` fallback could be cxx shared enums instead for
+end-to-end type safety; the 1456-line single file is a reasonable candidate for a 5-file module split
+(handles/convert/world2d/world3d), with a concrete plan sketched out by the second-pass audit but not
+executed.
 
 **`VideoScreen::preloadVideo`** is an unused arbitrary-path API (zero callers today). If a future caller
 feeds it dynamic/untrusted input, the POSIX `/bin/sh -c` backend branch (non-shipping, correctly

@@ -3,32 +3,11 @@
 #include "engine/core/Types.hpp"
 #include "Easing.hpp"
 #include <algorithm>
-#include <entt/signal/fwd.hpp>
 #include <raylib.h>
 #include <string>
 #include <functional>
-#include <type_traits>
 
 namespace biofuel::engine::animation {
-
-// ------------------------------------------------------------------------------
-// Animation Events
-// Fired on the global event bus so screens can subscribe via entt sinks.
-// ------------------------------------------------------------------------------
-
-struct AnimationUpdateEvent {
-    std::string name;
-    f32 progress;   // normalized [0, 1]
-    f32 value;      // for f32 animations only
-};
-
-struct AnimationCompleteEvent {
-    std::string name;
-};
-
-struct AnimationCancelEvent {
-    std::string name;
-};
 
 // ------------------------------------------------------------------------------
 // AnimationUtils - Type-safe lerp for Animation<T>
@@ -108,7 +87,7 @@ struct Lerp<Rectangle> {
 // ------------------------------------------------------------------------------
 // Animation<T> - Core animation template
 // Interpolates a value of type T from start to end over a given duration,
-// using a configurable easing function. Fires events on the global entt dispatcher.
+// using a configurable easing function.
 // ------------------------------------------------------------------------------
 
 template<typename T>
@@ -123,8 +102,7 @@ public:
         T start,
         T end,
         f32 duration,
-        Easing::Fn easing = Easing::linear,
-        entt::dispatcher* dispatcher = nullptr
+        Easing::Fn easing = Easing::linear
     ) noexcept
         : m_name{std::move(name)}
         , m_start{start}
@@ -133,7 +111,6 @@ public:
         , m_duration{duration}
         , m_elapsed{0.0f}
         , m_easing{easing != nullptr ? easing : Easing::linear}
-        , m_dispatcher{dispatcher}
         , m_cancelled{false}
         , m_done{false}
         , m_reversing{false}
@@ -162,19 +139,10 @@ public:
             m_onUpdate(this);
         }
 
-        // Fire global event
-        if (m_dispatcher && !m_done) {
-            AnimationUpdateEvent ev{.name = m_name, .progress = rawT, .value = currentRaw()};
-            m_dispatcher->trigger(ev);
-        }
-
         // Fire complete
         if (m_done) {
             if (m_onComplete) {
                 m_onComplete(this);
-            }
-            if (m_dispatcher) {
-                m_dispatcher->trigger(AnimationCompleteEvent{.name = m_name});
             }
         }
     }
@@ -185,9 +153,6 @@ public:
         m_cancelled = true;
         if (m_onCancel) {
             m_onCancel(this);
-        }
-        if (m_dispatcher) {
-            m_dispatcher->trigger(AnimationCancelEvent{.name = m_name});
         }
     }
 
@@ -229,14 +194,6 @@ public:
     }
 
 private:
-    [[nodiscard]] f32 currentRaw() const noexcept {
-        if constexpr (std::is_same_v<T, f32>) {
-            return m_current;
-        } else {
-            return 0.0f;
-        }
-    }
-
     std::string m_name;
     T m_start;
     T m_end;
@@ -244,7 +201,6 @@ private:
     f32 m_duration;
     f32 m_elapsed;
     Easing::Fn m_easing;
-    entt::dispatcher* m_dispatcher = nullptr;
 
     UpdateCb   m_onUpdate;
     CompleteCb m_onComplete;

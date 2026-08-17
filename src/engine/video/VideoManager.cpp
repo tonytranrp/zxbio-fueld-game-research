@@ -221,6 +221,9 @@ void VideoManager::setVolume(std::string_view name, const f32 volume) {
 void VideoManager::mute(std::string_view name) noexcept {
     auto* inst = findVideo(name);
     if (inst && inst->backend) {
+        if (inst->volume > 0.0f) {
+            inst->preMuteVolume = inst->volume;
+        }
         inst->volume = 0.0f;
         inst->backend->setVolume(0.0f);
     }
@@ -229,8 +232,8 @@ void VideoManager::mute(std::string_view name) noexcept {
 void VideoManager::unmute(std::string_view name) noexcept {
     auto* inst = findVideo(name);
     if (inst && inst->backend) {
-        inst->volume = 1.0f;
-        inst->backend->setVolume(1.0f);
+        inst->volume = inst->preMuteVolume;
+        inst->backend->setVolume(inst->preMuteVolume);
     }
 }
 

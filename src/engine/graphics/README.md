@@ -8,6 +8,7 @@ the current UI, screen flow, and model presentation.
 ```text
 engine/graphics/
 |-- Render.hpp/.cpp
+|-- RenderServiceModule.hpp
 |-- RenderSurface.hpp
 |-- ShaderManager.hpp/.cpp
 |-- TransientResourceCache.hpp/.cpp

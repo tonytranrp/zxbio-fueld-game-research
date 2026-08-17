@@ -63,10 +63,10 @@ HarvestResult FarmState::harvestTile(const usize x, const usize y) noexcept {
     }
 
     const i32 gallons = crop->yieldGallonsPerAcre;
-    const i32 revenue = gallons * data::fuelPriceCentsPerGallon(crop->fuelKind);
+    const i64 revenue = static_cast<i64>(gallons) * static_cast<i64>(data::fuelPriceCentsPerGallon(crop->fuelKind));
     m_inventory.fuelGallons += gallons;
     m_inventory.foodUnits += crop->landImpact;
-    m_moneyCents += revenue;
+    m_moneyCents += static_cast<i32>(revenue);
 
     tile->type = TileType::Fallow;
     tile->ageTurns = 0;
@@ -75,7 +75,7 @@ HarvestResult FarmState::harvestTile(const usize x, const usize y) noexcept {
     return HarvestResult{
         .harvested = true,
         .fuelGallons = gallons,
-        .revenueCents = revenue,
+        .revenueCents = static_cast<i32>(revenue),
     };
 }
 

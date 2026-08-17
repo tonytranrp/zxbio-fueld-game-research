@@ -25,8 +25,8 @@ namespace biofuel::engine::graphics::component {
 //
 // Components, by contrast, are fewer in number and called once per frame to
 // set a handful of uniforms. Virtual dispatch cost is negligible here, and
-// the polymorphism it enables (ComponentManager can own any mix of components)
-// justifies the tradeoff.
+// the polymorphism it enables (a screen can own any mix of components behind
+// this one interface type) justifies the tradeoff.
 //
 // ==============================================================================
 

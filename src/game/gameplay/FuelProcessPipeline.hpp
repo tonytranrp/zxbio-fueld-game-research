@@ -4,7 +4,6 @@
 #include "game/gameplay/stages/Distill.hpp"
 #include "game/gameplay/stages/Transesterify.hpp"
 #include "game/gameplay/stages/ProcessTypes.hpp"
-#include "game/data/FuelFarmData.hpp"
 #include "game/gameplay/PipelineRunner.hpp"
 #include <pb/pipeline.hpp>
 

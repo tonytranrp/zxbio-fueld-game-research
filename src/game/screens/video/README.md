@@ -8,6 +8,7 @@ Fullscreen video playback overlay. Follows the IdleScreen pattern.
 game/screens/video/
 |-- VideoScreen.hpp
 |-- VideoScreen.cpp
+|-- VideoScreenModule.hpp
 `-- README.md
 ```
 

@@ -58,5 +58,3 @@ struct RenderElementExecutor<render::BackdropElement<TBackdropTag>, TScreen> {
 };
 
 } // namespace biofuel::engine::ui::typed
-
-#include "engine/ui/typed/render/EffectElements.hpp"

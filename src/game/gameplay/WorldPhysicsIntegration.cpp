@@ -72,10 +72,6 @@ void WorldPhysicsIntegration::bakeTileColliders(
                 continue;
             }
 
-            if (tile->buildingId >= 0) {
-                continue;
-            }
-
             const TileCoord coord{static_cast<i32>(x), static_cast<i32>(y)};
             const PhysicsBody2D body = createTileBody(coord, world);
             if (body) {

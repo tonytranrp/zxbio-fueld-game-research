@@ -12,8 +12,7 @@
 // ------------------------------------------------------------------------------
 
 // ------------------------------------------------------------------------------
-// Stub world domain types (will move to engine/world/WorldTypes.hpp when the
-// world subsystem is fully integrated).
+// Stub world domain types; not yet consulted by any live system.
 // ------------------------------------------------------------------------------
 namespace biofuel::engine::events::world {
 

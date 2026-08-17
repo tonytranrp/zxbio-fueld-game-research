@@ -41,6 +41,13 @@ publish higher-level shape lifecycle or grab events.
 For input-driven props, keep higher-level interaction logic outside the physics
 service and feed Rapier bounded kinematic interactors plus dynamic props.
 
+**Known limitation:** `CollisionGroup` currently filters C++-side contact-event
+*reporting* only — the bridge's collider descriptors have no group field, so
+Rapier itself never sees the group and colliders in "disjoint" groups still
+physically collide. Do not rely on `CollisionGroup` to keep two shapes apart;
+it only controls whether you get notified about a contact, not whether one
+happens.
+
 ## Coding standards
 
 - Keep Rapier internals inside the Rust bridge.

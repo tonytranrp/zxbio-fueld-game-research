@@ -61,24 +61,10 @@ public:
     [[nodiscard]] virtual std::string_view getName() const noexcept { return "Screen"; }
 
     [[nodiscard]] f32 transitionAlpha() const noexcept;
-    [[nodiscard]] bool needsRemoval() const noexcept;
     [[nodiscard]] bool isTransitioning() const noexcept;
-
-    [[nodiscard]] bool passthroughRender() const noexcept { return m_passthroughRender; }
-    [[nodiscard]] bool passthroughUpdate() const noexcept { return m_passthroughUpdate; }
-    [[nodiscard]] bool passthroughInput() const noexcept { return m_passthroughInput; }
-
-    void setRenderPassthrough(bool v) noexcept { m_passthroughRender = v; }
-    void setUpdatePassthrough(bool v) noexcept { m_passthroughUpdate = v; }
-    void setInputPassthrough(bool v) noexcept { m_passthroughInput = v; }
 
     // ---- Transition configuration ----
     void setTransitionDuration(f32 seconds) noexcept { m_transitionDuration = seconds; }
-    void setTransitionEasing(EasingFn fn) noexcept { m_transitionEasing = fn; }
-
-protected:
-    void startTransitionIn();
-    void startTransitionOut();
 
 private:
     void setManager(ScreenManager* mgr) noexcept { m_manager = mgr; }
@@ -89,10 +75,6 @@ private:
     f32 m_transitionProgress = 0.0f;
     f32 m_transitionDuration = 0.5f;
     EasingFn m_transitionEasing = nullptr; // null = use ScreenManager default
-
-    bool m_passthroughRender = false;
-    bool m_passthroughUpdate = false;
-    bool m_passthroughInput = false;
 };
 
 // ---- Inline implementations ----
@@ -111,23 +93,8 @@ inline f32 Screen::transitionAlpha() const noexcept {
     return 1.0f;
 }
 
-inline bool Screen::needsRemoval() const noexcept {
-    return m_transitionState == TransitionState::TransitionOut
-        && m_transitionProgress >= 1.0f;
-}
-
 inline bool Screen::isTransitioning() const noexcept {
     return m_transitionState != TransitionState::None;
-}
-
-inline void Screen::startTransitionIn() {
-    m_transitionState = TransitionState::TransitionIn;
-    m_transitionProgress = 0.0f;
-}
-
-inline void Screen::startTransitionOut() {
-    m_transitionState = TransitionState::TransitionOut;
-    m_transitionProgress = 0.0f;
 }
 
 } // namespace biofuel::engine::ui

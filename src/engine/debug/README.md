@@ -1,6 +1,10 @@
 # engine/debug
 
-Debug-only and telemetry helpers live here.
+Debug overlay and telemetry helpers live here. `MemoryTelemetry`'s tracking is
+always compiled in, including Release builds — it's a handful of relaxed
+atomics touched only on resource add/remove, so the runtime cost is
+negligible and the in-game Memory overlay shows real numbers everywhere.
+"Debug" describes the overlay UI, not when the data is collected.
 
 ## Current contents
 

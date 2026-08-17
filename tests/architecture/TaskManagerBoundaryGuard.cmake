@@ -20,7 +20,7 @@ endfunction()
 
 read_required("src/engine/tasks/TaskManager.hpp" TASK_MANAGER_HEADER)
 read_required("src/engine/tasks/TaskManager.cpp" TASK_MANAGER_CPP)
-read_required("src/engine/core/LoadingTask.hpp" LOADING_TASK_HEADER)
+read_required("src/engine/tasks/LoadingTask.hpp" LOADING_TASK_HEADER)
 read_required("src/game/screens/loading/LoadingScreen.cpp" LOADING_SCREEN)
 read_required("src/engine/app/AppLifecycle.cpp" APP_LIFECYCLE)
 read_required("CMakeLists.txt" ROOT_CMAKE)

@@ -79,10 +79,6 @@ consteval bool validateScreenModule() {
         "Registered screen RenderLayers<T>::Type must be RenderLayerList<T, ...>");
     static_assert(RenderLayerNodesValidator<Layers>::valid(),
         "Registered screen render layers and elements must be valid.");
-    if constexpr (TransitionPolicy<CleanScreen>::VALUE.composer == TransitionComposer::Crossfade) {
-        static_assert(RenderLayerListMatchesScreen<CleanScreen, Layers>::value,
-            "Crossfade screens must use a typed RenderLayerList<TScreen, ...> pipeline.");
-    }
     static_assert(requires(CleanScreen& screen, LifecycleContext& lifecycle) {
         Module::onEnter(screen, lifecycle);
         Module::onExit(screen, lifecycle);

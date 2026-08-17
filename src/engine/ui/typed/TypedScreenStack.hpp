@@ -20,6 +20,13 @@ public:
         return ScreenSlot{std::move(screen), policy};
     }
 
+    template<typename TScreen>
+    void push(std::unique_ptr<TScreen> screen, TransitionPolicyData policy) {
+        static_assert(TRegistry::template contains<TScreen>,
+            "Screen is not registered in this TypedScreenStack registry.");
+        push(ScreenSlot::template typed<TScreen>(std::move(screen), policy));
+    }
+
     void push(ScreenSlot slot) {
         m_slots.push_back(std::move(slot));
     }

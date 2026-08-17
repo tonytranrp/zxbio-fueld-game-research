@@ -8,10 +8,11 @@ live here.
 ```text
 engine/ui/typed/
 |-- ScreenTypes.hpp / ScreenSpec.hpp / ScreenRegistry.hpp
-|-- ScreenModule.hpp / ScreenLifecycle.hpp / ScreenRuntime.hpp
-|-- TypedScreenManager.hpp / TypedScreenStack.hpp / ScreenSlot.hpp
+|-- ScreenModule.hpp / ScreenLifecycle.hpp / ScreenDispatch.hpp
+|-- TypedScreenStack.hpp / ScreenSlot.hpp
 |-- ScreenCommandQueue.hpp / ScreenCatalog.hpp / ScreenValidation.hpp
 |-- RenderContext.hpp/.cpp / RenderLayers.hpp / RenderPipeline.hpp
+|-- ScreenServiceModule.hpp/.cpp
 `-- render/
 ```
 

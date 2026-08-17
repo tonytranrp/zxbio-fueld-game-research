@@ -9,26 +9,28 @@ animation state and apply uniforms through a polymorphic interface.
 ```text
 engine/graphics/components/
 |-- ComponentModule.hpp
-|-- ComponentManager.hpp/.cpp
 `-- Camera/
 ```
 
 ## Architecture
 
 ```text
-ComponentModule
+ComponentModule (interface)
 |-- CameraComponent
 `-- future components
+```
 
-ComponentManager
-|-- updateAll(dt)
-|-- applyAll(shader)
-`-- getAs<T>(name)
+There is no component manager. Screens own the components they need directly
+as members and drive them each frame:
+
+```text
+screen.update(dt)  ->  component.update(dt)
+screen.render()    ->  component.apply(shader)
 ```
 
 Components are called once per frame to set a small number of uniforms. The
-polymorphism cost is acceptable here because the manager can own any mix of
-components without templating every caller.
+polymorphism cost is acceptable here because callers can hold any mix of
+components without templating every call site.
 
 ## How to add a component
 
@@ -36,18 +38,19 @@ components without templating every caller.
 2. Implement `ComponentModule`.
 3. Define GLSL uniform constants as `static constexpr` members.
 4. Add corresponding uniforms to the GLSL shader.
-5. Register with `ComponentManager::add()`.
+5. Own an instance in the screen that uses it and call `update(dt)` /
+   `apply(shader)` from that screen.
 
 ```cpp
-auto camera = std::make_unique<CameraComponent>();
-components.add(std::move(camera));
-components.updateAll(dt);
-components.applyAll(shader);
+CameraComponent m_cameraComponent;
+
+// per frame:
+m_cameraComponent.update(dt);
+m_cameraComponent.apply(shader);
 ```
 
 ## Coding standards
 
 - Components do not own shaders; they write into a `Shader` passed to `apply()`.
 - Prefer typed shader uniform APIs when the shader has a module tag.
-- Keep component names stable for `getAs<T>(name)` lookups.
 - Do not put screen-specific animation policy in reusable components.

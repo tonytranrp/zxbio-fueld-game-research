@@ -26,11 +26,9 @@ set(ALLOWED_RAYLIB_LIFETIME_FILES
     "src/engine/app/AppLifecycle.cpp"
     "src/engine/audio/AudioManager.cpp"
     "src/engine/fonts/FontUtils.cpp"
-    "src/engine/graphics/RaylibResource.hpp"
     "src/engine/graphics/RenderSurface.hpp"
     "src/engine/graphics/ShaderManager.cpp"
     "src/engine/models/ModelSystem.cpp"
-    "src/engine/world/Terrain3D.cpp"
     "src/engine/world/voxel/VoxelWorld.cpp"
     "src/engine/world/voxel/VoxelVolume.cpp"
     "src/engine/video/VideoFfmpegBackend.cpp"
@@ -105,7 +103,7 @@ require_contains(
     "m_currentMusic.clear();
             m_musicPaused = false;")
 
-read_required("src/engine/core/LoadingTask.hpp" LOADING_TASK)
+read_required("src/engine/tasks/LoadingTask.hpp" LOADING_TASK)
 require_contains(
     "LoadingTaskQueue must expose a failed state"
     "${LOADING_TASK}"

@@ -16,12 +16,7 @@ namespace biofuel::engine::graphics::component {
 //
 // Uniform locations are cached on first apply() to avoid per-frame GL lookups.
 //
-// Usage via ComponentManager:
-//   auto camera = std::make_unique<CameraComponent>();
-//   camera->controller().setTarget(...);
-//   components.add(std::move(camera));
-//
-// Usage standalone:
+// Usage:
 //   CameraComponent cam;
 //   cam.controller().setTarget(ShaderCameraState{.yaw = -0.3f}, 2.0f);
 //   cam.update(dt);

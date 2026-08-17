@@ -79,6 +79,7 @@ A stage is a struct satisfying the **Pipeline-c- Stage concept**. The concept re
 namespace biofuel::game::gameplay::stages {
 
 struct MyStage {
+    static constexpr std::string_view name = "MyStage";
     using input_type = MyInput;
     using output_type = MyOutput;
 
@@ -106,7 +107,7 @@ MyOutput MyStage::operator()(MyInput input) const noexcept {
 ### Rules
 
 1. **Stateless.** Stages must not hold mutable state. All data flows through the input/output types.
-2. **`noexcept`.** Every `operator()` must be marked `noexcept`. Pipeline-c- enforces this at compile time.
+2. **`noexcept`.** Stages should be marked `noexcept` by convention; this is not currently enforced by the pipeline library itself.
 3. **Pure transform.** A stage reads its input and returns its output. No side effects, no global state access.
 4. **Type aliases are mandatory.** `input_type` and `output_type` must be defined as public type aliases.
 5. **Use `pb::no_error` when infallible.** If a stage cannot fail, omit `error_type` (it defaults to `pb::no_error`).
@@ -338,11 +339,13 @@ A `PassThrough<T>` stage satisfies the `pb::core::Stage` concept without any .cp
 | `QueueResearch`, `AdvanceResearch`, `UnlockTech` | `TechUnlockedEvent` |
 | Unknown keys | Silently ignored (no crash) |
 
+This mapping reflects live behavior: the stages above declare `name` members matching these keys, so running a pipeline through a runner (which attaches its observer) publishes these events at runtime. Exception: the placeholder aliases `WashCrop`, `GrindCrop`, `Ferment`, `PressExtract`, `Pretreat`, and `EconomyUpdate` all share the generic `PassThrough<T>` type (see "PassThrough utility" below) and cannot declare individual `name` members while they remain aliases, so those rows do not fire yet.
+
 These events are consumed by other engine systems (UI updates, save triggers, achievement tracking) through the standard `Events::publish<T>()` / `Events::on<T>()` EnTT pattern.
 
 ### How stage keys are generated
 
-Pipeline-c- generates stage keys from the struct type name. For `SeasonAdvance`, the key is `"SeasonAdvance"`. The observer also accepts dotted keys (e.g., `"turn.season_advance"`) for forward compatibility with explicit stage naming.
+Pipeline-c- does **not** derive stage keys from the struct type name. A stage's key comes from an optional `name` member (`static constexpr std::string_view name = "...";`) read by `pb::core::stage_traits<T>::key()`; when a stage declares none, the key falls back to `"<unnamed>"` and then to the stage's numeric index in the pipeline. Each gameplay stage struct therefore declares a `name` member whose value matches a key that `PipelineEventObserver` recognizes (e.g. `SeasonAdvance` declares `name = "SeasonAdvance"`, so its runtime key is `"SeasonAdvance"`). The observer also accepts dotted keys (e.g., `"turn.season_advance"`) for forward compatibility with explicit stage naming; no stage currently emits those.
 
 ## FutureServiceModule backends (PLANNED — not yet implemented)
 

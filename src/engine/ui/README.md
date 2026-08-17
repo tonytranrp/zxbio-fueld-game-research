@@ -8,6 +8,8 @@ Reusable screen stack infrastructure lives here.
 engine/ui/
 |-- Screen.hpp
 |-- ScreenManager.hpp/.cpp
+|-- ScreenManagerOverrides.cpp
+|-- ScreenManagerRendering.cpp
 `-- typed/
 ```
 

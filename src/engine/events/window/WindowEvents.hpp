@@ -1,17 +1,9 @@
 #pragma once
 
 // ------------------------------------------------------------------------------
-// Window Events - Focus, minimize, close requests
+// Window Events - Close requests
 // ------------------------------------------------------------------------------
 namespace biofuel::engine::events::window {
-
-struct WindowFocusedEvent {
-    bool focused;
-};
-
-struct WindowMinimizedEvent {
-    bool minimized;
-};
 
 struct WindowCloseRequestedEvent {
     // Can be intercepted to show "are you sure?" dialog

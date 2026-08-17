@@ -8,9 +8,6 @@
 
 namespace biofuel::engine::ui::typed {
 
-template<typename TScreen>
-struct ScreenRenderState {};
-
 template<typename TElement, typename TScreen>
 struct RenderElementExecutor {
     static void render(TScreen& screen, RenderContext& context) {

@@ -2,7 +2,7 @@
 
 #include "game/screens/GameScreenIds.hpp"
 #include "engine/ui/Screen.hpp"
-#include "engine/core/LoadingTask.hpp"
+#include "engine/tasks/LoadingTask.hpp"
 #include "game/presentation/effects/ScreenBackdropController.hpp"
 #include <string>
 

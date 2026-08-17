@@ -8,9 +8,11 @@ Research and implementation repo for a C++20 Raylib game about biofuel productio
 - `Notes/` - Obsidian project maps, templates, and implementation journal
 - `Agents.md` - master project plan and long-form design notes
 - `Research/` - subject-matter research used to shape the game
-- `assets/` - authored runtime assets such as shaders, fonts, sprites, audio, and models
+- `assets/` - authored runtime assets: shaders, audio, and models
 - `src/` - current game source code
+- `tests/` - architecture guards and smoke tests (run via `ctest`, see Build below)
 - `cmake/` - authored CMake helper scripts, including shader embedding
+- `THIRD-PARTY-NOTICES.md` - dependency attribution and licensing status
 
 Generated build output under `build/`, `out/`, and `src/build/` is not part of the maintained source of truth.
 
@@ -21,10 +23,10 @@ The playable codebase is still early-stage, but it already contains:
 - application bootstrap and fixed-timestep loop
 - loading screen with deferred startup tasks plus async-safe preflight support
 - screen stack with crossfade transitions
-- animated main menu with embedded background shader
-- intermediate Join screen leading into a walkable first-person voxel world
-  (`GamePlay`): streamed blocky terrain with a raymarched-voxel renderer plus a
-  rasterized fallback, driven by a kinematic first-person controller
+- animated main menu with an embedded, endlessly-looping ambient background shader
+- a walkable first-person voxel world (`GamePlay`): streamed blocky terrain with
+  a raymarched-voxel renderer plus a rasterized fallback, driven by a kinematic
+  first-person controller
 - typed model system with startup-preloaded model assets
 - 2D/3D physics via an embedded Rust Rapier bridge
 - global pause routing with a blur-backed pause popup
@@ -36,9 +38,10 @@ The playable codebase is still early-stage, but it already contains:
 cmake -S . -B build
 cmake --build build --config Debug
 cmake --build build --config Release
+ctest --test-dir build -C Debug
 ```
 
-The root CMake project fetches Raylib, EnTT, and spdlog through CPM.
+The root CMake project fetches its dependencies (Raylib, EnTT, nlohmann_json, Taskflow, spdlog, Pipeline-c, Corrosion) through CPM; see `THIRD-PARTY-NOTICES.md` for attribution and licensing status of each.
 
 MP4 idle-video playback uses a local `ffmpeg.exe` install on Windows. CMake records the executable when it is available, and runtime falls back to searching `PATH`. Local MP4 files under `assets/video/` are ignored by default unless a clip is project-owned and safe to redistribute.
 

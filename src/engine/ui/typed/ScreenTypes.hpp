@@ -42,13 +42,4 @@ struct StackPolicyData {
     bool inputBelow = false;
 };
 
-struct RenderLayerTag {};
-struct BackdropLayerTag : RenderLayerTag {};
-struct CrossfadeLayerTag : RenderLayerTag {};
-struct BlurCaptureLayerTag : RenderLayerTag {};
-struct VideoLayerTag : RenderLayerTag {};
-struct MenuLayerTag : RenderLayerTag {};
-struct ModelOverlayLayerTag : RenderLayerTag {};
-struct DebugOverlayLayerTag : RenderLayerTag {};
-
 } // namespace biofuel::engine::ui::typed

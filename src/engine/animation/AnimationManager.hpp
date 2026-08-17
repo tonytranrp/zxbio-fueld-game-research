@@ -26,9 +26,10 @@ public:
             std::is_same_v<T, f32> ||
             std::is_same_v<T, Color> ||
             std::is_same_v<T, Vector2> ||
+            std::is_same_v<T, Vector3> ||
             std::is_same_v<T, Rectangle>,
             "AnimationManager only supports Animation<f32>, Animation<Color>, "
-            "Animation<Vector2>, Animation<Rectangle>");
+            "Animation<Vector2>, Animation<Vector3>, Animation<Rectangle>");
         appendTypedAnimation(std::move(anim));
     }
 

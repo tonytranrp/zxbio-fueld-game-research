@@ -44,8 +44,7 @@ constexpr i32 AUDIO_SAMPLE_RATE = 44100;
 constexpr i32 AUDIO_CHANNELS = 2;
 constexpr i32 AUDIO_BITS = 16;
 constexpr i32 AUDIO_FRAMES_PER_CHUNK = 4096;
-constexpr auto IDLE_VIDEO_BUFFER_POLICY =
-    VideoBufferPolicy<::biofuel::engine::runtime::typed::video::IdleAmbient>::value;
+constexpr VideoBufferPolicyData IDLE_VIDEO_BUFFER_POLICY = kIdleBufferPolicy;
 constexpr std::size_t MAX_VIDEO_FRAMES = IDLE_VIDEO_BUFFER_POLICY.maxVideoFrames;
 constexpr std::size_t MAX_AUDIO_CHUNKS = IDLE_VIDEO_BUFFER_POLICY.maxAudioChunks;
 constexpr std::size_t MIN_VIDEO_PREFILL_FRAMES = IDLE_VIDEO_BUFFER_POLICY.minVideoPrefillFrames;
@@ -639,25 +638,37 @@ private:
 
     [[nodiscard]] NativePath videoCommand(const bool looping) const {
 #ifdef _WIN32
+        const std::wstring vfFilter = L"scale=" + std::to_wstring(VIDEO_WIDTH) + L":" + std::to_wstring(VIDEO_HEIGHT)
+            + L":force_original_aspect_ratio=increase,crop=" + std::to_wstring(VIDEO_WIDTH) + L":" + std::to_wstring(VIDEO_HEIGHT)
+            + L",fps=" + std::to_wstring(VIDEO_FPS);
         return baseCommand(looping) +
-            L" -an -vf \"scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=30\""
-            L" -f rawvideo -pix_fmt rgba pipe:1";
+            L" -an -vf \"" + vfFilter + L"\" -f rawvideo -pix_fmt rgba pipe:1";
 #else
+        const std::string vfFilter = "scale=" + std::to_string(VIDEO_WIDTH) + ":" + std::to_string(VIDEO_HEIGHT)
+            + ":force_original_aspect_ratio=increase,crop=" + std::to_string(VIDEO_WIDTH) + ":" + std::to_string(VIDEO_HEIGHT)
+            + ",fps=" + std::to_string(VIDEO_FPS);
         return baseCommand(looping) +
-            " -an -vf \"scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=30\""
-            " -f rawvideo -pix_fmt rgba pipe:1";
+            " -an -vf \"" + vfFilter + "\" -f rawvideo -pix_fmt rgba pipe:1";
 #endif
     }
 
     [[nodiscard]] NativePath audioCommand(const bool looping) const {
 #ifdef _WIN32
-        return baseCommand(looping) + L" -vn -f s16le -acodec pcm_s16le -ar 44100 -ac 2 pipe:1";
+        return baseCommand(looping) + L" -vn -f s16le -acodec pcm_s16le -ar " + std::to_wstring(AUDIO_SAMPLE_RATE)
+            + L" -ac " + std::to_wstring(AUDIO_CHANNELS) + L" pipe:1";
 #else
-        return baseCommand(looping) + " -vn -f s16le -acodec pcm_s16le -ar 44100 -ac 2 pipe:1";
+        return baseCommand(looping) + " -vn -f s16le -acodec pcm_s16le -ar " + std::to_string(AUDIO_SAMPLE_RATE)
+            + " -ac " + std::to_string(AUDIO_CHANNELS) + " pipe:1";
 #endif
     }
 
-    void videoReaderLoop() {
+    void readerLoop(
+        PipeProcess& process,
+        std::deque<std::vector<unsigned char>>& queue,
+        std::deque<std::vector<unsigned char>>& freePool,
+        const std::size_t maxQueueDepth,
+        const std::size_t chunkBytes,
+        std::atomic<bool>* const gotData) {
         while (!m_stop.load(std::memory_order_relaxed)) {
             while (m_paused.load(std::memory_order_relaxed) && !m_stop.load(std::memory_order_relaxed)) {
                 sleepForMilliseconds(4);
@@ -665,32 +676,39 @@ private:
             while (!m_stop.load(std::memory_order_relaxed)) {
                 {
                     std::scoped_lock lock{m_mutex};
-                    if (m_videoFrames.size() < MAX_VIDEO_FRAMES) {
+                    if (queue.size() < maxQueueDepth) {
                         break;
                     }
                 }
                 sleepForMilliseconds(1);
             }
-            // Pull a recycled frame buffer instead of allocating ~3.5 MB per
-            // decoded frame.
-            std::vector<unsigned char> frame;
+            // Pull a recycled buffer instead of allocating a fresh multi-MB
+            // chunk per decoded unit.
+            std::vector<unsigned char> chunk;
             {
                 std::scoped_lock lock{m_mutex};
-                if (!m_freeVideoFrames.empty()) {
-                    frame = std::move(m_freeVideoFrames.back());
-                    m_freeVideoFrames.pop_back();
+                if (!freePool.empty()) {
+                    chunk = std::move(freePool.back());
+                    freePool.pop_back();
                 }
             }
-            if (frame.size() < FRAME_BYTES) {
-                frame.resize(FRAME_BYTES);
+            if (chunk.size() < chunkBytes) {
+                chunk.resize(chunkBytes);
             }
-            if (!m_videoProcess.readExact(frame.data(), FRAME_BYTES, m_stop)) {
+            if (!process.readExact(chunk.data(), chunkBytes, m_stop)) {
                 break;
             }
+            if (gotData != nullptr) {
+                gotData->store(true, std::memory_order_relaxed);
+            }
             std::scoped_lock lock{m_mutex};
-            m_videoFrames.push_back(std::move(frame));
+            queue.push_back(std::move(chunk));
             updateTelemetryLocked();
         }
+    }
+
+    void videoReaderLoop() {
+        readerLoop(m_videoProcess, m_videoFrames, m_freeVideoFrames, MAX_VIDEO_FRAMES, FRAME_BYTES, nullptr);
 
         if (!m_looping.load(std::memory_order_relaxed) && !m_stop.load(std::memory_order_relaxed)) {
             m_completed.store(true, std::memory_order_relaxed);
@@ -698,38 +716,8 @@ private:
     }
 
     void audioReaderLoop() {
-        while (!m_stop.load(std::memory_order_relaxed)) {
-            while (m_paused.load(std::memory_order_relaxed) && !m_stop.load(std::memory_order_relaxed)) {
-                sleepForMilliseconds(4);
-            }
-            while (!m_stop.load(std::memory_order_relaxed)) {
-                {
-                    std::scoped_lock lock{m_mutex};
-                    if (m_audioChunks.size() < MAX_AUDIO_CHUNKS) {
-                        break;
-                    }
-                }
-                sleepForMilliseconds(1);
-            }
-            std::vector<unsigned char> chunk;
-            {
-                std::scoped_lock lock{m_mutex};
-                if (!m_freeAudioChunks.empty()) {
-                    chunk = std::move(m_freeAudioChunks.back());
-                    m_freeAudioChunks.pop_back();
-                }
-            }
-            if (chunk.size() != m_audioScratch.size()) {
-                chunk.resize(m_audioScratch.size());
-            }
-            if (!m_audioProcess.readExact(chunk.data(), chunk.size(), m_stop)) {
-                break;
-            }
-            m_audioHadData.store(true, std::memory_order_relaxed);
-            std::scoped_lock lock{m_mutex};
-            m_audioChunks.push_back(std::move(chunk));
-            updateTelemetryLocked();
-        }
+        readerLoop(m_audioProcess, m_audioChunks, m_freeAudioChunks, MAX_AUDIO_CHUNKS, m_audioScratch.size(),
+                   &m_audioHadData);
         m_audioDecodeEnded.store(true, std::memory_order_relaxed);
     }
 

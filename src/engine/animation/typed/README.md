@@ -1,5 +1,8 @@
 # engine/animation/typed
 
+Status: design sketch only -- no code in this folder implements the contract
+described below yet.
+
 Typed animation labels and policies live here. These are compile-time contracts
 for animation names, default durations, and easing choices.
 

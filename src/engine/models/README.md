@@ -33,7 +33,8 @@ advance them through `ModelSystem::update(dt)`, and render via
 
 ## Invariants
 
-- Raylib `Model`/`ModelAnimation`/`Shader` lifetime is owned here; callers hold
+- Raylib `Model`/`ModelAnimation` lifetime is owned here; `Shader` is a
+  non-owning reference into `ShaderManager`. Callers hold
   `shared_ptr<ModelInstance>` and never free GPU resources directly.
 - The `ModelAssetId` enum is currently empty — no built-in assets are registered;
   the registry is populated by spec entries when assets are added.

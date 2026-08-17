@@ -33,6 +33,10 @@ enum class Block : u8 {
 class VoxelWorld {
 public:
     static constexpr i32 kChunkSize = 16;   // blocks per chunk on X and Z
+    // Public so VoxelVolume can size its canopy-clearance ceiling from the
+    // same tree constants the mesher uses.
+    static constexpr i32 kTrunkMaxH = 7;    // tallest procedural tree trunk
+    static constexpr i32 kCanopyPad = 3;    // Y headroom above max trunk for the canopy
 
     struct Config {
         i32 viewRadiusChunks = 6;   // chunks kept meshed around the player

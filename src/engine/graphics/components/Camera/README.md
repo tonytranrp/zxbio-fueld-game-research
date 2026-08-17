@@ -2,7 +2,7 @@
 
 Shader camera components smoothly animate camera transformations for
 shader-based raymarchers. `CameraComponent` implements `ComponentModule` so it
-can be updated and applied through `ComponentManager`.
+can be updated and applied through a common interface.
 
 ## Current contents
 
@@ -23,26 +23,23 @@ shader.
 
 ## How to use it
 
+There is no component manager — own a `CameraComponent` directly (e.g. as a
+screen member) and drive it each frame:
+
 ```cpp
 #include "engine/graphics/components/Camera/CameraComponent.hpp"
 
-CameraComponent cam;
-cam.controller().setTarget(
+CameraComponent m_cameraComponent;
+
+// when starting a move:
+m_cameraComponent.controller().setTarget(
     ShaderCameraState{.yaw = -0.30f},
     2.0f,
     Easing::easeInOutCubic);
 
-cam.update(dt);
-cam.apply(shader);
-```
-
-With `ComponentManager`:
-
-```cpp
-auto camera = std::make_unique<CameraComponent>();
-components.add(std::move(camera));
-components.updateAll(dt);
-components.applyAll(shader);
+// per frame:
+m_cameraComponent.update(dt);
+m_cameraComponent.apply(shader);
 ```
 
 ## GLSL integration

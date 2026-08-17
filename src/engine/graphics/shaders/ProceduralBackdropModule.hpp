@@ -70,7 +70,6 @@ namespace biofuel::engine::runtime::typed {
 BIOFUEL_EMBEDDED_SHADER_ASSET(
     shader::ProceduralBackdrop,
     ::biofuel::engine::graphics::shader::ProceduralBackdropModule,
-    false,
     shader::procedural_backdrop::IResolution,
     shader::procedural_backdrop::ITime,
     shader::procedural_backdrop::Brightness,

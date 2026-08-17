@@ -56,6 +56,7 @@ private:
     Texture2D m_tex{};
     bool m_loaded = false;
     i32 m_originX = 0;
+    // Reserved for a possible future vertical recentering; currently always 0.
     i32 m_originY = 0;
     i32 m_originZ = 0;
     i32 m_centerX = 0;

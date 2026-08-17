@@ -24,12 +24,12 @@ namespace biofuel::game::gameplay::stages {
     }
 
     const i32 gallons = crop->yieldGallonsPerAcre;
-    const i32 revenue = gallons * data::fuelPriceCentsPerGallon(crop->fuelKind);
+    const i64 revenue = static_cast<i64>(gallons) * static_cast<i64>(data::fuelPriceCentsPerGallon(crop->fuelKind));
 
     return HarvestOutput{
         .harvested = true,
         .fuelGallons = gallons,
-        .revenueCents = revenue,
+        .revenueCents = static_cast<i32>(revenue),
         .farmState = input.farmState,
         .tileX = input.x,
         .tileY = input.y,

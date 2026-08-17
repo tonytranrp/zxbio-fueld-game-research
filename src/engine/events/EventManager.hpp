@@ -7,7 +7,7 @@
 // ------------------------------------------------------------------------------
 // EventManager - Central event bus manager
 // Owns the entt::dispatcher, provides init/shutdown lifecycle.
-// Thread-safe lazy initialization via mutex guard (B004).
+// Thread-safe lazy initialization via mutex guard.
 // ------------------------------------------------------------------------------
 namespace biofuel::engine::events {
 

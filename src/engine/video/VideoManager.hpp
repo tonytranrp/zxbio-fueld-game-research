@@ -70,6 +70,7 @@ private:
         bool ended = false;
         bool error = false;
         f32 volume = 1.0f;
+        f32 preMuteVolume = 1.0f;   // saved by mute(), restored by unmute()
         std::string errorMessage;
     };
 

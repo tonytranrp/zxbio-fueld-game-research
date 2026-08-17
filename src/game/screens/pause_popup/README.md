@@ -8,6 +8,7 @@ Semi-transparent blurred overlay with a vertical menu. `PauseController` routes 
 game/screens/pause_popup/
 |-- PausePopupScreen.hpp
 |-- PausePopupScreen.cpp
+|-- PausePopupScreenModule.hpp
 |-- PauseController.hpp
 |-- PauseController.cpp
 `-- README.md
@@ -41,7 +42,7 @@ Two-phase animation via `AnimationManager`:
 ### Global pause eligibility
 
 `PauseController` is global, but intentionally narrow. It opens pause only for
-`MainMenu`, `Join`, and `GamePlay`. It rejects loading, the pause popup itself,
+`MainMenu` and `GamePlay`. It rejects loading, the pause popup itself,
 and transient/diagnostic screens (`Idle`, `Video`) because those
 screens already own ESC for dismissal or navigation.
 

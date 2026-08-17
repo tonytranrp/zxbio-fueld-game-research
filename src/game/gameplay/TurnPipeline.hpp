@@ -11,7 +11,9 @@ namespace biofuel::game::gameplay {
 
 /// P0: Turn processing pipeline.
 /// Applies: SeasonAdvance → CropGrowth → EcologyUpdate → EconomyUpdate
-/// Produces identical results to calling FarmState::advanceSeason() for each turn.
+/// Does MORE than calling FarmState::advanceSeason() alone: CropGrowth adds
+/// seasonal growth on top of advanceSeason()'s own base aging (deliberate,
+/// see stages/CropGrowth.hpp; TurnPipelineSmoke.cpp asserts the combined total).
 using TurnPipeline = pb::core::from<stages::TurnInput>
     ::then<stages::SeasonAdvance>
     ::then<stages::CropGrowth>

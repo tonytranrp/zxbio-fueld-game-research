@@ -81,7 +81,9 @@
 //   BIOFUEL_EMBEDDED_SHADER_ASSET(...);
 //   BIOFUEL_SHADER_MODULE(BlurHShaderModule, shader::BlurH)
 //
-// Runtime loading goes through ::biofuel::engine::runtime::typed::Shaders::load<TShader>().
+// Runtime loading goes through ::biofuel::engine::runtime::typed::Shaders::load<TShader>(shaderManager)
+// (see AppLifecycle.cpp's local ensureShaderLoaded<TShader>() helper for the idempotent
+// loaded()-then-load() pattern used at startup).
 //
 // ==============================================================================
 

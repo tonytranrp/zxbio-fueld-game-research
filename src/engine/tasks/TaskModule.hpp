@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/core/LoadingTask.hpp"
+#include "engine/tasks/LoadingTask.hpp"
 #include "engine/core/Types.hpp"
 #include <pb/pipeline.hpp>
 #include <concepts>

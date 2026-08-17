@@ -19,10 +19,6 @@ ShaderManager& ShaderManager::instance() noexcept {
 // Lifecycle
 // ------------------------------------------------------------------------------
 
-void ShaderManager::init() {
-    // Shaders are loaded on-demand via load()
-}
-
 void ShaderManager::shutdown() {
     for (auto& [name, shader] : m_shaders) {
         if (IsShaderValid(shader)) {

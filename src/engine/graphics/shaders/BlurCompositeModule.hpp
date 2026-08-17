@@ -37,7 +37,6 @@ namespace biofuel::engine::runtime::typed {
 BIOFUEL_EMBEDDED_SHADER_ASSET(
     shader::BlurComposite,
     ::biofuel::engine::graphics::shader::BlurCompositeModule,
-    false,
     shader::blur_composite::Desaturation,
     shader::blur_composite::VignetteStrength,
     shader::blur_composite::DimStrength);

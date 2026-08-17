@@ -55,7 +55,6 @@ void FirstPersonController::update(const f32 dt, const HeightFn& groundHeightAt)
     }
 
     // --- Jump + gravity + ground snapping ------------------------------------
-    const f32 groundUnderfoot = groundHeightAt(m_position.x, m_position.z);
     if (m_grounded && IsKeyPressed(KEY_SPACE)) {
         m_verticalVelocity = m_config.jumpSpeed;
         m_grounded = false;
@@ -64,8 +63,7 @@ void FirstPersonController::update(const f32 dt, const HeightFn& groundHeightAt)
     m_verticalVelocity -= m_config.gravity * dt;
     m_position.y += m_verticalVelocity * dt;
 
-    // Sample again after the horizontal step so walking up slopes lifts us.
-    const f32 ground = std::max(groundUnderfoot, groundHeightAt(m_position.x, m_position.z));
+    const f32 ground = groundHeightAt(m_position.x, m_position.z);
     if (m_position.y <= ground) {
         m_position.y = ground;
         m_verticalVelocity = 0.0f;

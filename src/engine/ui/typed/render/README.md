@@ -6,8 +6,7 @@ Reusable typed render element definitions live here.
 
 ```text
 engine/ui/typed/render/
-|-- RenderElements.hpp
-`-- EffectElements.hpp
+`-- RenderElements.hpp
 ```
 
 ## How to use it

@@ -50,8 +50,4 @@ void TransientResourceCache::releaseAll() noexcept {
     m_surfaces.clear();
 }
 
-bool TransientResourceCache::hasSurface(const std::string_view key) const noexcept {
-    return m_surfaces.find(key) != m_surfaces.end();
-}
-
 } // namespace biofuel::engine::graphics

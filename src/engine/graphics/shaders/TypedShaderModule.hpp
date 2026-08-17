@@ -60,11 +60,6 @@ public:
     }
 
     template<typename TShader>
-    static void load() {
-        load<TShader>(ServiceModule<ShaderService>::get());
-    }
-
-    template<typename TShader>
     [[nodiscard]] static ::Shader get(const ::biofuel::engine::graphics::ShaderManager& shaders) noexcept {
         return ShaderModule<TShader>::shader(shaders);
     }
@@ -77,23 +72,6 @@ public:
     template<typename TShader>
     [[nodiscard]] static bool loaded(const ::biofuel::engine::graphics::ShaderManager& shaders) noexcept {
         return ShaderModule<TShader>::loaded(shaders);
-    }
-
-    template<typename TShader>
-    [[nodiscard]] static bool loaded() noexcept {
-        return loaded<TShader>(ServiceModule<ShaderService>::get());
-    }
-
-    template<typename TShader>
-    static void ensure(::biofuel::engine::graphics::ShaderManager& shaders) {
-        if (!loaded<TShader>(shaders)) {
-            load<TShader>(shaders);
-        }
-    }
-
-    template<typename TShader>
-    static void ensure() {
-        ensure<TShader>(ServiceModule<ShaderService>::get());
     }
 
     template<typename TShader, typename TUniform>

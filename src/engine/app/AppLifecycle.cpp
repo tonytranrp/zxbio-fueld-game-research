@@ -48,7 +48,6 @@ void AppLifecycle::openWindow(const WindowLifecycleConfig config) {
 
 void AppLifecycle::prepareLoadingPrelude() {
     auto& shaderManager = ::biofuel::engine::runtime::Runtime::shader();
-    shaderManager.init();
     ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::LoadingPrelude>(shaderManager);
     ensureShaderLoaded<::biofuel::engine::runtime::typed::shader::MenuOption>(shaderManager);
 }

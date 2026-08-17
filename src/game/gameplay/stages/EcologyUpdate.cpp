@@ -36,21 +36,18 @@ void applyClampedDelta(i32& value, const i32 delta) noexcept {
 
     for (usize y = 0; y < farm.height(); ++y) {
         for (usize x = 0; x < farm.width(); ++x) {
-            Tile* tile = farm.tileAt(x, y);
-            if (tile == nullptr) {
-                continue;
-            }
+            Tile& tile = farm.atUnsafe(x, y);
 
             // Soil health mechanics:
             // - Fallow/Forest: +5 soil health per turn (recovery)
             // - Legume (Soybean): +3 soil health per turn (nitrogen fixation)
             // - Monocrop (Corn, Sugarcane): -2 soil health per turn (depletion)
             // - Switchgrass/Algae: -1 soil health per turn (moderate)
-            applyClampedDelta(tile->soilHealth, tileEcologyTraits(tile->type).soilHealthDeltaPerTurn);
+            applyClampedDelta(tile.soilHealth, tileEcologyTraits(tile.type).soilHealthDeltaPerTurn);
 
             // Moisture mechanics by season:
             // Spring: +10 moisture, Summer: -15 moisture, Fall: -5, Winter: +5
-            applyClampedDelta(tile->moisture, moistureDelta);
+            applyClampedDelta(tile.moisture, moistureDelta);
         }
     }
 

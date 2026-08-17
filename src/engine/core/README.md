@@ -8,7 +8,6 @@ small because everything in the project can include it.
 ```text
 engine/core/
 |-- Types.hpp
-|-- LoadingTask.hpp
 |-- units/
 `-- typed/
 ```
@@ -25,23 +24,10 @@ f32 progress = 0.0f;
 usize selected = 0U;
 ```
 
-Use `LoadingTaskQueue` when a screen needs visible, weighted startup work:
-
-```cpp
-biofuel::LoadingTaskQueue queue;
-queue.add({"Compile shaders", 2.0f, [] { Runtime::shader().init(); }});
-queue.processNext();
-```
-
-If the queue owns an active async task, clear it with the task manager so only
-that task is cancelled:
-
-```cpp
-queue.clear(Runtime::tasks());
-```
-
-The reset implementation is intentionally private so callers cannot discard an
-active async task id without first requesting cancellation through `TaskManager`.
+`LoadingTaskQueue` (visible, weighted startup work for a loading screen) lives
+in `engine/tasks/LoadingTask.hpp` now — see `engine/tasks/README.md` for its
+usage example. It depends on `TaskManager`, which is why it moved out of this
+dependency-light folder.
 
 Use `core/units` wrappers at subsystem boundaries:
 

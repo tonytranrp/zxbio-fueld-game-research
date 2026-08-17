@@ -272,7 +272,7 @@ void LoadingScreen::onInput() {
     if (m_allowSkip && !m_transitioned) {
         // Use state-polling (IsKeyDown/IsMouseButtonDown) instead of
         // queue-draining (GetKeyPressed) - InputSystem::poll() already
-        // consumes the key queue before onInput() runs (B005).
+        // consumes the key queue before onInput() runs (B019).
         if (IsKeyDown(KEY_SPACE) || IsKeyDown(KEY_ENTER) ||
             IsMouseButtonDown(MOUSE_BUTTON_LEFT) ||
             IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {

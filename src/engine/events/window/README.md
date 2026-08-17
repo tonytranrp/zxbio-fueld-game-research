@@ -12,14 +12,11 @@ engine/events/window/
 
 ## How to use it
 
-Publish these events when the Raylib window changes size, focus, or close state
-and another system needs to react.
+Publish these events when the Raylib window requests close and another system
+needs to react.
 
 ```cpp
-Events::publish<typed::window::WindowResized>({
-    .width = GetScreenWidth(),
-    .height = GetScreenHeight(),
-});
+Events::publish<typed::window::CloseRequested>();
 ```
 
 ## Coding standards

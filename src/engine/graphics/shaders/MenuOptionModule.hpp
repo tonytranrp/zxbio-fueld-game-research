@@ -41,7 +41,6 @@ namespace biofuel::engine::runtime::typed {
 BIOFUEL_EMBEDDED_SHADER_ASSET(
     shader::MenuOption,
     ::biofuel::engine::graphics::shader::MenuOptionModule,
-    true,
     shader::menu_option::Time,
     shader::menu_option::Center,
     shader::menu_option::HalfSize,

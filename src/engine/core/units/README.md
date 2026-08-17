@@ -35,7 +35,10 @@ WorldMeters2D typed = WorldMeters2D::fromVector2(raylibPoint);
 ## Unit ownership
 
 - `ScreenPixels2D`: UI and render-space pixel positions.
-- `WorldMeters2D` / `WorldMeters3D`: physics and meter-style world positions.
+- `WorldMeters2D`: physics and meter-style world positions. (There is no
+  `WorldMeters3D` yet — 3D physics positions currently pass through as plain
+  `Vector3`; add one here, mirroring `NormalizedCameraCoord3D`'s structure,
+  if 3D world-meter type-safety is ever needed.)
 - `NormalizedCameraCoord2D` / `NormalizedCameraCoord3D`: camera values in
   normalized image space.
 - `TileCoord`: integer tile-grid coordinates.

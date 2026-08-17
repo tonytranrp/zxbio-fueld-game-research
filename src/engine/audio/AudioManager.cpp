@@ -5,6 +5,14 @@
 
 namespace biofuel::engine::audio {
 
+namespace {
+
+[[nodiscard]] i64 estimateSoundBytes(const Sound& s) noexcept {
+    return static_cast<i64>(s.frameCount) * static_cast<i64>(s.stream.channels) * static_cast<i64>(s.stream.sampleSize / 8);
+}
+
+} // namespace
+
 AudioManager& AudioManager::instance() noexcept {
     static AudioManager mgr;
     return mgr;
@@ -64,7 +72,7 @@ void AudioManager::loadSound(std::string_view name, std::string_view path) {
     ::biofuel::engine::debug::MemoryTelemetry::add(
         ::biofuel::engine::debug::ResourceKind::AudioAsset,
         1,
-        static_cast<i64>(s.frameCount) * static_cast<i64>(s.stream.channels) * static_cast<i64>(s.stream.sampleSize / 8));
+        estimateSoundBytes(s));
     applySfxVolume(key);
 }
 
@@ -79,7 +87,7 @@ void AudioManager::unloadSound(std::string_view name) {
         ::biofuel::engine::debug::MemoryTelemetry::remove(
             ::biofuel::engine::debug::ResourceKind::AudioAsset,
             1,
-            static_cast<i64>(sound.frameCount) * static_cast<i64>(sound.stream.channels) * static_cast<i64>(sound.stream.sampleSize / 8));
+            estimateSoundBytes(sound));
         UnloadSound(it->second);
         m_sounds.erase(it);
     }
@@ -95,7 +103,7 @@ void AudioManager::unloadAllSounds() noexcept {
         ::biofuel::engine::debug::MemoryTelemetry::remove(
             ::biofuel::engine::debug::ResourceKind::AudioAsset,
             1,
-            static_cast<i64>(s.frameCount) * static_cast<i64>(s.stream.channels) * static_cast<i64>(s.stream.sampleSize / 8));
+            estimateSoundBytes(s));
         UnloadSound(s);
     }
     m_sounds.clear();

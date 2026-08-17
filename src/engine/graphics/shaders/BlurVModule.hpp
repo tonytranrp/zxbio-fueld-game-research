@@ -44,7 +44,6 @@ namespace biofuel::engine::runtime::typed {
 BIOFUEL_EMBEDDED_SHADER_ASSET(
     shader::BlurV,
     ::biofuel::engine::graphics::shader::BlurVModule,
-    false,
     shader::blur_v::TexelSize,
     shader::blur_v::Radius);
 BIOFUEL_SHADER_MODULE(BlurVShaderModule, shader::BlurV)

@@ -40,18 +40,6 @@ public:
     template<typename TEvent>
     using Payload = typename EventChannel<TEvent>::Payload;
 
-    static void init() {
-        ::biofuel::engine::events::EventManager::instance().init();
-    }
-
-    static void shutdown() {
-        ::biofuel::engine::events::EventManager::instance().shutdown();
-    }
-
-    static void clear() {
-        ::biofuel::engine::events::EventManager::instance().clear();
-    }
-
     template<typename TEvent>
     static void publish(const Payload<TEvent>& payload) {
         EventChannel<TEvent>::publish(payload);
@@ -65,10 +53,6 @@ public:
     template<typename TEvent>
     [[nodiscard]] static auto sink() {
         return EventChannel<TEvent>::sink();
-    }
-
-    [[nodiscard]] static entt::dispatcher& bridgeDispatcher() {
-        return ::biofuel::engine::events::EventManager::instance().dispatcher();
     }
 };
 

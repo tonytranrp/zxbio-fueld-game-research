@@ -20,8 +20,6 @@ public:
     void update(f64 nowSeconds) noexcept;
     void releaseAll() noexcept;
 
-    [[nodiscard]] bool hasSurface(std::string_view key) const noexcept;
-
     TransientResourceCache(const TransientResourceCache&) = delete;
     TransientResourceCache& operator=(const TransientResourceCache&) = delete;
     TransientResourceCache(TransientResourceCache&&) = delete;

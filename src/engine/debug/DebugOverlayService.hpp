@@ -37,7 +37,7 @@ struct DebugPanelSpec<FrameTimingDebugPanel> {
     using Panel = FrameTimingDebugPanel;
     static constexpr std::string_view Name = "debug.frame_timing";
     static constexpr std::string_view Title = "Frame Timing";
-    // Off by default; toggle live with F6.
+    // Off by default; toggle live with F7.
     static constexpr bool DefaultEnabled = false;
 };
 

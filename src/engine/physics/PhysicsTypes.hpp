@@ -271,7 +271,7 @@ struct CollisionGroup {
 
     [[nodiscard]] static constexpr CollisionGroup all() noexcept { return CollisionGroup{0x0001, 0xFFFF}; }
     [[nodiscard]] static constexpr CollisionGroup none() noexcept { return CollisionGroup{0, 0}; }
-    [[nodiscard]] static constexpr CollisionGroup groupOnly(const u16 g) noexcept { return CollisionGroup{g, 0}; }
+    [[nodiscard]] static constexpr CollisionGroup groupOnly(const u16 g) noexcept { return CollisionGroup{g, g}; }
 
     [[nodiscard]] constexpr bool operator==(const CollisionGroup&) const noexcept = default;
     [[nodiscard]] constexpr bool operator!=(const CollisionGroup&) const noexcept = default;
@@ -294,7 +294,7 @@ struct SolverGroup {
 
     [[nodiscard]] static constexpr SolverGroup all() noexcept { return SolverGroup{0, 0xFFFF}; }
     [[nodiscard]] static constexpr SolverGroup none() noexcept { return SolverGroup{0, 0}; }
-    [[nodiscard]] static constexpr SolverGroup groupOnly(const u16 g) noexcept { return SolverGroup{g, 0}; }
+    [[nodiscard]] static constexpr SolverGroup groupOnly(const u16 g) noexcept { return SolverGroup{g, g}; }
 
     [[nodiscard]] constexpr bool operator==(const SolverGroup&) const noexcept = default;
     [[nodiscard]] constexpr bool operator!=(const SolverGroup&) const noexcept = default;
@@ -625,6 +625,20 @@ constexpr bool testCollisionGroupLogic = []() constexpr {
 }();
 static_assert(testCollisionGroupLogic, "CollisionGroup::collidesWith logic failed");
 
+// --- Verify groupOnly() actually collides with its own group (regression test:
+// groupOnly used to build {g, 0}, a mask that collides with nothing). group/mask
+// are bitflags here, so the two "different" groups must use disjoint bits
+// (0x0001 vs 0x0002) -- values like 5 and 6 share a bit and would collide under
+// this bitwise scheme even though they're numerically distinct. ---
+constexpr bool testCollisionGroupOnlyLogic = []() constexpr {
+    constexpr CollisionGroup a = CollisionGroup::groupOnly(0x0001);
+    constexpr CollisionGroup b = CollisionGroup::groupOnly(0x0001);
+    constexpr CollisionGroup c = CollisionGroup::groupOnly(0x0002);
+    return a.collidesWith(b) && b.collidesWith(a)
+        && !a.collidesWith(c) && !c.collidesWith(a);
+}();
+static_assert(testCollisionGroupOnlyLogic, "CollisionGroup::groupOnly must collide with its own group");
+
 // --- Verify SolverGroup logic ---
 static_assert(SolverGroup::all().mask == 0xFFFF, "SolverGroup::all mask must be 0xFFFF");
 static_assert(SolverGroup::none().mask == 0,     "SolverGroup::none mask must be 0");
@@ -638,6 +652,17 @@ constexpr bool testSolverGroupLogic = []() constexpr {
         && !a.interactsWith(c) && !c.interactsWith(a);
 }();
 static_assert(testSolverGroupLogic, "SolverGroup::interactsWith logic failed");
+
+// --- Verify groupOnly() actually interacts with its own group (same regression
+// class as CollisionGroup::groupOnly above; same disjoint-bit requirement) ---
+constexpr bool testSolverGroupOnlyLogic = []() constexpr {
+    constexpr SolverGroup a = SolverGroup::groupOnly(0x0001);
+    constexpr SolverGroup b = SolverGroup::groupOnly(0x0001);
+    constexpr SolverGroup c = SolverGroup::groupOnly(0x0002);
+    return a.interactsWith(b) && b.interactsWith(a)
+        && !a.interactsWith(c) && !c.interactsWith(a);
+}();
+static_assert(testSolverGroupOnlyLogic, "SolverGroup::groupOnly must interact with its own group");
 
 // --- Verify handle types are aggregate-initializable from u64 literal ---
 static_assert(PhysicsBody2D{42}.value == 42,          "PhysicsBody2D aggregate init failed");

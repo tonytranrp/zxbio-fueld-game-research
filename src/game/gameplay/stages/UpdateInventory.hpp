@@ -1,12 +1,17 @@
 #pragma once
 
 #include "game/gameplay/stages/HarvestTypes.hpp"
+#include <string_view>
 
 namespace biofuel::game::gameplay::stages {
 
-/// Harvest finalization stage — resets the harvested tile to fallow using the
-/// farmState/tileX/tileY fields in HarvestOutput, keeping the pipeline self-contained.
+/// Harvest finalization stage — applies the harvest mutation through
+/// FarmState::harvestTile() (tile reset plus inventory/food/money crediting)
+/// using the farmState/tileX/tileY fields in HarvestOutput, keeping the
+/// pipeline equivalent to a direct manual harvest.
 struct UpdateInventory {
+    static constexpr std::string_view name = "UpdateInventory";
+
     using input_type = HarvestOutput;
     using output_type = HarvestOutput;
 

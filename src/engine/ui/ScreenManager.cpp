@@ -5,7 +5,6 @@
 #include "engine/graphics/TransientResourceCache.hpp"
 #include "engine/graphics/shaders/CrossfadeModule.hpp"
 #include "engine/graphics/shaders/TypedShaderModule.hpp"
-#include "engine/animation/Easing.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include <spdlog/spdlog.h>

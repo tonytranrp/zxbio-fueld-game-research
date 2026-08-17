@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine/core/Types.hpp"
-#include "engine/core/LoadingTask.hpp"
+#include "engine/tasks/LoadingTask.hpp"
 #include "engine/events/screen/ScreenEvents.hpp"
 #include "engine/graphics/RenderSurface.hpp"
 #include "engine/ui/typed/ScreenCommandQueue.hpp"

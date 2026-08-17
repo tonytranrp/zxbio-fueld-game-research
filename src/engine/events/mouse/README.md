@@ -16,9 +16,10 @@ Use mouse events for shared systems that need pointer movement, wheel, or button
 state without being coupled to a specific screen.
 
 ```cpp
-Events::publish<typed::mouse::MouseMoved>({
-    .x = GetMouseX(),
-    .y = GetMouseY(),
+Events::publish<typed::mouse::Pressed>({
+    .button = MOUSE_BUTTON_LEFT,
+    .x = static_cast<f32>(GetMouseX()),
+    .y = static_cast<f32>(GetMouseY()),
 });
 ```
 

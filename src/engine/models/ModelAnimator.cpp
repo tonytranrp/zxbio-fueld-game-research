@@ -13,6 +13,12 @@
 
 namespace biofuel::engine::models {
 
+// Fallback clip FPS used when a state has no explicit durationSeconds. Real
+// imported models may be authored at 30 or 60 FPS and would play back at the
+// wrong speed under this assumption; a per-asset FPS field on ModelAssetSpec
+// threaded through ModelAnimator::configure() is the intended follow-up.
+constexpr f32 kDefaultClipFps = 24.0f;
+
 void ModelAnimator::configure(
     const std::span<const ModelAnimationStateSpec> states,
     const std::string_view defaultIdleState,
@@ -172,7 +178,7 @@ f32 ModelAnimator::resolveDurationSeconds(
     if (state.clipIndex >= 0 && state.clipIndex < clipCount && clips != nullptr) {
         const i32 frameCount = clips[state.clipIndex].frameCount;
         if (frameCount > 0) {
-            return static_cast<f32>(frameCount) / 24.0f;
+            return static_cast<f32>(frameCount) / kDefaultClipFps;
         }
     }
 

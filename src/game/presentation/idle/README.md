@@ -12,27 +12,27 @@ game/presentation/idle/
 
 ## IdleTrigger
 
-`IdleTrigger` is a self-contained idle timer that any screen can own. It does not trigger idle transitions itself — it only tracks inactivity and reports readiness. The owning screen decides what to do with that signal.
+`IdleTrigger` is a self-contained idle timer that any screen can own. It does not decide what "idle" means for the screen — it just tracks inactivity and fires a callback exactly once when the timeout is reached. The owning screen supplies that callback (e.g. push `IdleScreen`) and decides when to re-arm it.
 
 ## How to use it
 
 ```cpp
-systems::idle::IdleTrigger m_idleTrigger;
+biofuel::game::presentation::idle::IdleTrigger m_idleTrigger{5.0f};
 // ...
-m_idleTrigger.onInput();               // reset on any input
-m_idleTrigger.update(dt);              // accumulate idle time
-if (m_idleTrigger.ready()) {           // check threshold
-    // push IdleScreen, etc.
-}
+m_idleTrigger.setCallback([this] { /* push IdleScreen, etc. */ });
+// In update:   m_idleTrigger.update(dt, /*active=*/true);
+// In input:    if (anyInput) m_idleTrigger.onInput();
+// In onExit:   m_idleTrigger.reset();
 ```
 
 ### Key details
 
-- A `noexcept` struct with no heap allocations — safe to place directly in screen state
-- Idle threshold defaults to 30.0s, configurable at construction or via `setThreshold()`
-- `onInput()` resets the internal accumulator to zero
-- `ready()` returns true when `accumulator >= threshold` and stays true until reset
-- `reset()` clears the accumulator back to zero without changing the threshold
+- A `noexcept`-methods class with no heap allocations of its own (aside from the `std::function` callback's small-buffer storage) — safe to place directly in screen state
+- Idle timeout defaults to 5.0s, set at construction or via `setTimeout()`
+- `update(dt, active)` accumulates idle time only while `active` is true, and only until the callback has fired once
+- Once the timer reaches the timeout, `m_onIdle()` fires **exactly once** and the trigger latches (`hasFired()` becomes `true`) until `reset()` or `onInput()` is called
+- `onInput()` resets the accumulator to zero **and** clears the fired latch, so any input re-arms the trigger
+- `reset()` does the same as `onInput()` — clears both the accumulator and the fired latch
 - Fully isolated from screens, models, events, and rendering
 
 ## Dependencies

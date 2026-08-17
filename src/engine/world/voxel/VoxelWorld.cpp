@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <rlgl.h>
 #include <vector>
 
@@ -10,7 +11,7 @@ namespace biofuel::engine::world::voxel {
 
 namespace {
 
-// --- Deterministic value-noise fBm (same family as Terrain3D) ----------------
+// --- Deterministic value-noise fBm -------------------------------------------
 
 [[nodiscard]] f32 hashToUnit(i32 x, i32 z, u32 seed) noexcept {
     u32 h = static_cast<u32>(x) * 374761393U + static_cast<u32>(z) * 668265263U + seed * 362437U;
@@ -87,7 +88,6 @@ constexpr f32 kCaveThreshold = 0.64f;
 
 constexpr i32 kTreeCellSize = 5;
 constexpr i32 kTrunkMinH = 4;
-constexpr i32 kTrunkMaxH = 7;
 constexpr i32 kCanopyRadius = 2;
 constexpr i32 kTreeScanCells = 1;
 
@@ -105,7 +105,7 @@ struct TreeInfo { bool present = false; i32 rootX = 0; i32 rootZ = 0; i32 trunkH
     t.present = (h & 0xFFU) < 76U;   // ~30% of cells host a tree
     t.rootX = cx * kTreeCellSize + static_cast<i32>((h >> 8) & 3U);
     t.rootZ = cz * kTreeCellSize + static_cast<i32>((h >> 10) & 3U);
-    t.trunkH = kTrunkMinH + static_cast<i32>((h >> 12) % static_cast<u32>(kTrunkMaxH - kTrunkMinH + 1));
+    t.trunkH = kTrunkMinH + static_cast<i32>((h >> 12) % static_cast<u32>(VoxelWorld::kTrunkMaxH - kTrunkMinH + 1));
     return t;
 }
 
@@ -281,6 +281,40 @@ constexpr AoCorner kAoCorners[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
     return 3 - ((s1 ? 1 : 0) + (s2 ? 1 : 0) + (cd ? 1 : 0));
 }
 
+// Builds a Raylib Model from CPU-side attribute buffers, copying each array
+// into GPU-owned MemAlloc'd memory. Returns a default-constructed Model{}
+// when the vertex buffer is empty (caller derives its has-mesh flag from
+// model.meshCount > 0).
+[[nodiscard]] Model makeModelFromBuffers(
+    const std::vector<f32>& pos,
+    const std::vector<f32>& nrm,
+    const std::vector<f32>& uv,
+    const std::vector<u8>& col,
+    const Texture2D atlas,
+    const bool atlasReady) {
+    const i32 vertexCount = static_cast<i32>(pos.size() / 3);
+    if (vertexCount == 0) {
+        return Model{};
+    }
+    Mesh mesh{};
+    mesh.vertexCount = vertexCount;
+    mesh.triangleCount = vertexCount / 3;
+    mesh.vertices = static_cast<f32*>(MemAlloc(static_cast<u32>(pos.size()) * sizeof(f32)));
+    mesh.normals = static_cast<f32*>(MemAlloc(static_cast<u32>(nrm.size()) * sizeof(f32)));
+    mesh.texcoords = static_cast<f32*>(MemAlloc(static_cast<u32>(uv.size()) * sizeof(f32)));
+    mesh.colors = static_cast<u8*>(MemAlloc(static_cast<u32>(col.size()) * sizeof(u8)));
+    std::copy(pos.begin(), pos.end(), mesh.vertices);
+    std::copy(nrm.begin(), nrm.end(), mesh.normals);
+    std::copy(uv.begin(), uv.end(), mesh.texcoords);
+    std::copy(col.begin(), col.end(), mesh.colors);
+    UploadMesh(&mesh, false);
+    Model model = LoadModelFromMesh(mesh);
+    if (atlasReady && model.materialCount > 0) {
+        model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = atlas;
+    }
+    return model;
+}
+
 } // namespace
 
 VoxelWorld::~VoxelWorld() noexcept {
@@ -361,7 +395,7 @@ void VoxelWorld::buildChunkMesh(Chunk& chunk) const {
 
     // Y window: cave floor below, tree canopy ceiling above.
     const i32 yLo = std::max(0, kCaveFloorY - 1);
-    const i32 yHi = maxH + kTrunkMaxH + 3;
+    const i32 yHi = maxH + kTrunkMaxH + kCanopyPad;
     const i32 ySpan = (yHi >= yLo) ? (yHi - yLo + 1) : 1;
 
     // Pass 2: fill a padded 3D Block volume (one blockAt per cell).
@@ -374,7 +408,7 @@ void VoxelWorld::buildChunkMesh(Chunk& chunk) const {
         for (i32 px = 0; px < pad; ++px) {
             const i32 colH = heights[static_cast<usize>(pz) * static_cast<usize>(pad) + static_cast<usize>(px)];
             const i32 wx = originX + px - 1, wz = originZ + pz - 1;
-            const i32 colTop = std::min(yHi, colH + kTrunkMaxH + 3);
+            const i32 colTop = std::min(yHi, colH + kTrunkMaxH + kCanopyPad);
             for (i32 y = yLo; y <= colTop; ++y) {
                 blocks[packBlocks(px, y, pz)] = blockAt(wx, y, wz);
             }
@@ -459,7 +493,7 @@ void VoxelWorld::buildChunkMesh(Chunk& chunk) const {
     for (i32 lz = 0; lz < kChunkSize; ++lz) {
         for (i32 lx = 0; lx < kChunkSize; ++lx) {
             const i32 px = lx + 1, pz = lz + 1;
-            const i32 colTop = std::min(yHi, heightAtPad(lx, lz) + kTrunkMaxH + 3);
+            const i32 colTop = std::min(yHi, heightAtPad(lx, lz) + kTrunkMaxH + kCanopyPad);
             for (i32 y = yLo; y <= colTop; ++y) {
                 const Block block = blockAtPad(px, y, pz);
                 if (block == Block::Air) continue;
@@ -474,28 +508,8 @@ void VoxelWorld::buildChunkMesh(Chunk& chunk) const {
         }
     }
 
-    const i32 vertexCount = static_cast<i32>(positions.size() / 3);
-    if (vertexCount == 0) {
-        chunk.hasMesh = false;
-        return;
-    }
-    Mesh mesh{};
-    mesh.vertexCount = vertexCount;
-    mesh.triangleCount = vertexCount / 3;
-    mesh.vertices = static_cast<f32*>(MemAlloc(static_cast<u32>(positions.size()) * sizeof(f32)));
-    mesh.normals = static_cast<f32*>(MemAlloc(static_cast<u32>(normals.size()) * sizeof(f32)));
-    mesh.texcoords = static_cast<f32*>(MemAlloc(static_cast<u32>(texcoords.size()) * sizeof(f32)));
-    mesh.colors = static_cast<u8*>(MemAlloc(static_cast<u32>(colors.size()) * sizeof(u8)));
-    std::copy(positions.begin(), positions.end(), mesh.vertices);
-    std::copy(normals.begin(), normals.end(), mesh.normals);
-    std::copy(texcoords.begin(), texcoords.end(), mesh.texcoords);
-    std::copy(colors.begin(), colors.end(), mesh.colors);
-    UploadMesh(&mesh, false);
-    chunk.model = LoadModelFromMesh(mesh);
-    if (m_atlasReady && chunk.model.materialCount > 0) {
-        chunk.model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = m_atlas;
-    }
-    chunk.hasMesh = true;
+    chunk.model = makeModelFromBuffers(positions, normals, texcoords, colors, m_atlas, m_atlasReady);
+    chunk.hasMesh = chunk.model.meshCount > 0;
 }
 
 void VoxelWorld::buildChunkWater(Chunk& chunk) const {
@@ -525,28 +539,8 @@ void VoxelWorld::buildChunkWater(Chunk& chunk) const {
             }
         }
     }
-    const i32 vc = static_cast<i32>(positions.size() / 3);
-    if (vc == 0) {
-        chunk.hasWater = false;
-        return;
-    }
-    Mesh mesh{};
-    mesh.vertexCount = vc;
-    mesh.triangleCount = vc / 3;
-    mesh.vertices = static_cast<f32*>(MemAlloc(static_cast<u32>(positions.size()) * sizeof(f32)));
-    mesh.normals = static_cast<f32*>(MemAlloc(static_cast<u32>(normals.size()) * sizeof(f32)));
-    mesh.texcoords = static_cast<f32*>(MemAlloc(static_cast<u32>(texcoords.size()) * sizeof(f32)));
-    mesh.colors = static_cast<u8*>(MemAlloc(static_cast<u32>(colors.size()) * sizeof(u8)));
-    std::copy(positions.begin(), positions.end(), mesh.vertices);
-    std::copy(normals.begin(), normals.end(), mesh.normals);
-    std::copy(texcoords.begin(), texcoords.end(), mesh.texcoords);
-    std::copy(colors.begin(), colors.end(), mesh.colors);
-    UploadMesh(&mesh, false);
-    chunk.waterModel = LoadModelFromMesh(mesh);
-    if (m_atlasReady && chunk.waterModel.materialCount > 0) {
-        chunk.waterModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = m_atlas;
-    }
-    chunk.hasWater = true;
+    chunk.waterModel = makeModelFromBuffers(positions, normals, texcoords, colors, m_atlas, m_atlasReady);
+    chunk.hasWater = chunk.waterModel.meshCount > 0;
 }
 
 void VoxelWorld::ensureAtlas() {
@@ -610,7 +604,7 @@ void VoxelWorld::update(const Vector3 playerPosition) {
     i32 bestCx = 0;
     i32 bestCz = 0;
     for (i32 builds = 0; builds < m_config.maxBuildsPerFrame; ++builds) {
-        i64 bestDist = (1LL << 62);
+        i64 bestDist = std::numeric_limits<i64>::max();
         bool found = false;
         for (i32 dz = -radius; dz <= radius; ++dz) {
             for (i32 dx = -radius; dx <= radius; ++dx) {
@@ -642,7 +636,7 @@ void VoxelWorld::update(const Vector3 playerPosition) {
 }
 
 void VoxelWorld::render() const noexcept {
-    for (const auto& [key, chunk] : m_chunks) {
+    for (const auto& [_, chunk] : m_chunks) {
         if (chunk.hasMesh) {
             DrawModel(chunk.model,
                       Vector3{static_cast<f32>(chunk.cx * kChunkSize), 0.0f, static_cast<f32>(chunk.cz * kChunkSize)},
@@ -654,7 +648,7 @@ void VoxelWorld::render() const noexcept {
 void VoxelWorld::renderWater(const f32 timeSeconds) const noexcept {
     BeginBlendMode(BLEND_ALPHA);
     rlDisableBackfaceCulling();
-    for (const auto& [key, chunk] : m_chunks) {
+    for (const auto& [_, chunk] : m_chunks) {
         if (!chunk.hasWater) continue;
         const f32 phase = static_cast<f32>(chunk.cx) * 0.7f + static_cast<f32>(chunk.cz) * 1.3f;
         const f32 bob = std::sin(timeSeconds * m_config.waveSpeed + phase) * m_config.waveAmplitude;
@@ -667,7 +661,7 @@ void VoxelWorld::renderWater(const f32 timeSeconds) const noexcept {
 }
 
 void VoxelWorld::unloadAll() noexcept {
-    for (auto& [key, chunk] : m_chunks) {
+    for (auto& [_, chunk] : m_chunks) {
         destroyChunk(chunk);
     }
     m_chunks.clear();

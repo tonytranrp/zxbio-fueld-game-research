@@ -8,21 +8,17 @@
 namespace biofuel::engine::events::input {
 
 struct KeyPressedEvent {
-    i32 key;        // Raylib key code (e.g. KEY_SPACE)
-    bool ctrl;
-    bool shift;
-    bool alt;
+    i32 key = 0;    // Raylib key code (e.g. KEY_SPACE)
+    bool ctrl = false;
+    bool shift = false;
+    bool alt = false;
 };
 
 struct KeyReleasedEvent {
-    i32 key;
-    bool ctrl;
-    bool shift;
-    bool alt;
-};
-
-struct KeyRepeatEvent {
-    i32 key;
+    i32 key = 0;
+    bool ctrl = false;
+    bool shift = false;
+    bool alt = false;
 };
 
 } // namespace biofuel::engine::events::input

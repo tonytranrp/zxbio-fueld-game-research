@@ -8,6 +8,7 @@ Animated loading bar displayed during engine initialization. It processes a weig
 game/screens/loading/
 |-- LoadingScreen.hpp
 |-- LoadingScreen.cpp
+|-- LoadingScreenModule.hpp
 `-- README.md
 ```
 
@@ -37,7 +38,7 @@ Each task reports its name and weight. Model tasks show the current asset name s
 
 ## Dependencies
 
-- `LoadingTaskQueue` from `engine/core/LoadingTask.hpp`
+- `LoadingTaskQueue` from `engine/tasks/LoadingTask.hpp`
 - `TaskManager` from `engine/tasks/TaskManager.hpp` for async-safe tasks
 - `ScreenBackdropController` for the shader backdrop
 - `ShaderManager` and embedded screen shader modules

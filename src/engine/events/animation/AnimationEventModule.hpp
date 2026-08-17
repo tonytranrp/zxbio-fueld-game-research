@@ -6,19 +6,13 @@
 namespace biofuel::engine::runtime::typed::animation {
 BIOFUEL_EVENT_TAG(ScreenTransitionStarted, ::biofuel::engine::events::animation::ScreenTransitionStartedEvent);
 BIOFUEL_EVENT_TAG(ScreenTransitionCompleted, ::biofuel::engine::events::animation::ScreenTransitionCompletedEvent);
-BIOFUEL_EVENT_TAG(ScreenOverlayFadeStarted, ::biofuel::engine::events::animation::ScreenOverlayFadeStartedEvent);
-BIOFUEL_EVENT_TAG(ScreenOverlayFadeCompleted, ::biofuel::engine::events::animation::ScreenOverlayFadeCompletedEvent);
 } // namespace biofuel::engine::runtime::typed::animation
 
 namespace biofuel::engine::runtime::typed {
 BIOFUEL_EVENT_SPEC(animation::ScreenTransitionStarted, "animation.screen_transition_started");
 BIOFUEL_EVENT_SPEC(animation::ScreenTransitionCompleted, "animation.screen_transition_completed");
-BIOFUEL_EVENT_SPEC(animation::ScreenOverlayFadeStarted, "animation.screen_overlay_fade_started");
-BIOFUEL_EVENT_SPEC(animation::ScreenOverlayFadeCompleted, "animation.screen_overlay_fade_completed");
 BIOFUEL_EVENT_MODULE(AnimationEventModule, ScreenEvents,
     animation::ScreenTransitionStarted,
-    animation::ScreenTransitionCompleted,
-    animation::ScreenOverlayFadeStarted,
-    animation::ScreenOverlayFadeCompleted)
+    animation::ScreenTransitionCompleted)
 } // namespace biofuel::engine::runtime::typed
 

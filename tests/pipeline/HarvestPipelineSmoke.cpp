@@ -124,6 +124,12 @@ int main() {
             ok = check(pipeResult.harvested == manResult.harvested, "harvest status mismatch") && ok;
             ok = check(pipeResult.fuelGallons == manResult.fuelGallons, "fuelGallons mismatch vs manual harvest") && ok;
             ok = check(pipeResult.revenueCents == manResult.revenueCents, "revenueCents mismatch vs manual harvest") && ok;
+            ok = check(pipelineFarm.inventory().fuelGallons == manualFarm.inventory().fuelGallons,
+                "inventory fuelGallons mismatch vs manual harvest") && ok;
+            ok = check(pipelineFarm.inventory().foodUnits == manualFarm.inventory().foodUnits,
+                "inventory foodUnits mismatch vs manual harvest") && ok;
+            ok = check(pipelineFarm.moneyCents() == manualFarm.moneyCents(),
+                "moneyCents mismatch vs manual harvest") && ok;
             ++x;
         }
     }
