@@ -2,7 +2,6 @@
 #include "MainMenuScreen.hpp"
 #include "MainMenuScreenModule.hpp"
 #include "MainMenuScreenRenderers.hpp"
-#include "game/screens/join/JoinScreen.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
 #include "engine/ui/ScreenManager.hpp"
 #include "engine/ui/typed/RenderPipeline.hpp"
@@ -27,7 +26,6 @@ void MainMenuScreen::onEnter() {
     m_menuSlide = {};
     m_dismiss = {};
     m_dimensionShift = 0.0f;
-    m_joinTransitionQueued = false;
     m_cameraComponent.reset();
     m_cameraPhase = CameraPhase::Idle;
 
@@ -103,7 +101,6 @@ void MainMenuScreen::onUpdate(const f32 dt) {
 
     // Idle → IdleScreen transition
     updateIdleTransition(dt);
-    transitionToJoinIfReady();
 }
 
 void MainMenuScreen::startIntro() {
@@ -340,20 +337,6 @@ void MainMenuScreen::updateDimensionShift(const f32 dt) noexcept {
 
     // Advance to next phase when current animation completes
     advanceCameraSequence();
-}
-
-void MainMenuScreen::transitionToJoinIfReady() {
-    if (m_joinTransitionQueued || m_idleTransitionActive || isTransitioning()) {
-        return;
-    }
-    if (!m_dismiss.isDone() || m_dimensionShift < 1.0f) {
-        return;
-    }
-
-    if (auto* sm = manager()) {
-        m_joinTransitionQueued = true;
-        sm->queueReplace<JoinScreen>();
-    }
 }
 
 void MainMenuScreen::startCameraSequence() noexcept {

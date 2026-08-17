@@ -8,7 +8,6 @@ Concrete Fuel Farm screens live here.
 game/screens/
 |-- loading/
 |-- main_menu/
-|-- join/
 |-- gameplay/
 |-- pause_popup/
 |-- idle/

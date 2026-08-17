@@ -43,10 +43,9 @@ require_contains(
     case Unknown:
     case Count:")
 require_contains(
-    "PauseController true branch must be limited to MainMenu, Join, and GamePlay"
+    "PauseController true branch must be limited to MainMenu and GamePlay"
     "${PAUSE_CONTROLLER}"
     "case MainMenu:
-    case Join:
     case GamePlay:
         return true;")
 require_contains(

@@ -20,13 +20,17 @@ game/screens/main_menu/
 3. `onRender()` renders the shader backdrop plus title, subtitle, hints, horizontal carousel menu, and footer through typed render elements.
 4. `onInput()` navigates the carousel with LEFT/RIGHT and activates with ENTER or mouse click. Pause is routed globally by `PauseController`.
 
-When New Game or Continue is activated, the UI dismisses and the main-menu shader/camera transition holds its final state, then queues `JoinScreen`. `JoinScreen` is responsible for entering the temporary `GamePlayScreen` placeholder.
+When New Game or Continue is activated, the UI dismisses and the main-menu shader/camera
+transition (turn right, sweep left, speed up, shift from warm reds to a cosmic palette) plays
+once and then holds its final state forever — `m_dimensionShift` clamps at `1.0` and the screen
+never transitions away. There is currently no screen after this; the warped backdrop is the
+end state while gameplay is being rebuilt around imported 3D models instead of the old voxel
+world (see `Research/plans/07-visual-direction-and-3d-models.md`).
 
 ## Dependencies
 
 - `Screen` / `ScreenManager` for lifecycle and navigation
 - `ScreenBackdropController` for the shader backdrop
-- `JoinScreen` for the post-transition Join step
 - `IdleTrigger` and `IdleScreen` for idle video behavior
 - `MenuHelper` for horizontal carousel rendering and input
 - `Easing` for intro, dismiss, menu-slide, and camera easing

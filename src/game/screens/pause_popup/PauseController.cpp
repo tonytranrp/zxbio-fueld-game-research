@@ -37,7 +37,6 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     constexpr auto Idle = screen_id::Idle;
     constexpr auto Video = screen_id::Video;
     constexpr auto MainMenu = screen_id::MainMenu;
-    constexpr auto Join = screen_id::Join;
     constexpr auto GamePlay = screen_id::GamePlay;
     switch (current->screenId()) {
     case Loading:
@@ -48,7 +47,6 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     case Count:
         return false;
     case MainMenu:
-    case Join:
     case GamePlay:
         return true;
     }

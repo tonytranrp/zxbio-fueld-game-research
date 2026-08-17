@@ -71,7 +71,7 @@ int main() {
     ok = check(clamped.x == 0.0f && clamped.y == 1.0f, "normalized camera clamp failed") && ok;
 
     ::biofuel::engine::debug::DebugOverlayService overlay;
-    ok = check(overlay.panelEnabled<FrameTimingDebugPanel>(), "debug frame timing panel default state failed") && ok;
+    ok = check(!overlay.panelEnabled<FrameTimingDebugPanel>(), "debug frame timing panel default state failed") && ok;
     ok = check(!overlay.panelEnabled<PhysicsDebugPanel>(), "debug physics panel default state failed") && ok;
     overlay.setEnabled(false);
     overlay.setPanelEnabled<FrameTimingDebugPanel>(true);

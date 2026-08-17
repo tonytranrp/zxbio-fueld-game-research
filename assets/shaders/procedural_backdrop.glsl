@@ -3,6 +3,12 @@
 // Voxel DDA Raymarcher — adapted from ShaderToy @xor
 // https://www.shadertoy.com/view/XctSz8
 // Compatible with raylib''s default vertex shader
+//
+// Ambient enhancements for the settled "cosmic dimension" end-state:
+//   - long-period mood drift (subliminal palette/nebula variation, ~9-15 min)
+//   - luma-squared self-bloom (cheap single-pass glow, no blur pass needed)
+//   - animated film grain (breaks banding in dark gradients, adds texture)
+// No new uniforms; all driven from iTime + uDimensionShift.
 
 in vec2 fragTexCoord;
 in vec4 fragColor;
@@ -62,6 +68,12 @@ float cosmicSparkles(vec2 uv, float shift) {
             sin(float(i) * 1.73 + iTime * 0.10) * 0.65,
             cos(float(i) * 2.41 + iTime * 0.09) * 0.45
         );
+        // Slow wander of the whole sparkle field (~5 min) so the pinpoints
+        // don't sit in an obviously repeating pattern over a long idle.
+        pos += vec2(
+            sin(iTime * 0.020 + float(i) * 1.3),
+            cos(iTime * 0.017 + float(i) * 0.7)
+        ) * 0.15;
         float d = length(uv - pos);
         float twinkle = sin(iTime * (1.5 + float(i) * 0.5) + float(i) * 3.7) * 0.5 + 0.5;
         sparkles += smoothstep(0.006, 0.0, d) * twinkle;
@@ -84,10 +96,18 @@ void main()
     float shift = clamp(uDimensionShift, 0.0, 1.0);
     float shiftEase = shift * shift * (3.0 - 2.0 * shift);
 
+    // Long-period ambient drift: subliminal mood oscillation so the settled
+    // cosmic state never reads as a tight, repeating loop. Periods ~9.5 and
+    // ~15 min; only affects the shifted end-state, the warm intro is untouched.
+    float mood = sin(iTime * 0.011) * 0.5 + 0.5;
+    float mood2 = cos(iTime * 0.007) * 0.5 + 0.5;
+
     vec2 screenUv = (2. * gl_FragCoord.xy - R) / -R.y;
 
-    // Dimension shift: subtle FOV expansion
+    // Dimension shift: subtle FOV expansion, plus a very slow cosmic "breathing"
+    // (~125s period, +-1.2%) so the settled view is never perfectly static.
     float fovScale = mix(1.0, 1.18, shiftEase);
+    fovScale *= 1.0 + sin(iTime * 0.05) * 0.012 * shiftEase;
     vec2 uv = screenUv * mix(1.16, 1.0, revealEase) * fovScale;
     uv.y += mix(0.08, 0.0, revealEase);
 
@@ -136,9 +156,23 @@ void main()
         vec3(0.16, 0.14, 0.28)     // deep cosmic violet
     );
 
+    // Secondary cosmic mood — a slightly more violet/teal-leaning variant the
+    // settled state slowly drifts toward and away from over ~9-15 minutes, so
+    // the infinite end-state never looks like a frozen or looping palette.
+    vec3 cosmicArrB[7] = vec3[7](
+        vec3(0.24, 0.28, 0.46),    // cooler slate blue
+        vec3(0.16, 0.22, 0.42),    // deeper navy
+        vec3(0.20, 0.18, 0.38),    // indigo
+        vec3(0.18, 0.12, 0.32),    // violet
+        vec3(0.18, 0.40, 0.48),    // teal
+        vec3(0.22, 0.24, 0.40),    // platinum-blue
+        vec3(0.20, 0.10, 0.32)     // deep violet
+    );
+
     vec3 colArr[7];
     for (int i = 0; i < 7; i++) {
-        colArr[i] = mix(warmArr[i], cosmicArr[i], shiftEase);
+        vec3 cosmic = mix(cosmicArr[i], cosmicArrB[i], mood);
+        colArr[i] = mix(warmArr[i], cosmic, shiftEase);
     }
 
     vec3 axisDir = sign(rd);
@@ -226,12 +260,22 @@ void main()
 
     // ---- Cosmic dimension shift effects ----
     if (shiftEase > 0.01) {
-        // Apply ACES tone mapping FIRST to prevent blown-out highlights
-        // before adding any additive cosmic effects
+        // Single-pass self-bloom: isolate bright areas via a luma-squared mask
+        // and add them back additively BEFORE ACES, so the tonemap rolls the
+        // glow off softly instead of clipping. No blur pass / texture needed.
+        // (Technique: luma-squaring to isolate brights — see NVIDIA bloom docs.)
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        float bright = smoothstep(0.30, 0.90, lum);
+        col += col * bright * (0.30 * shiftEase);
+
+        // Apply ACES tone mapping AFTER the self-bloom so the glow is compressed
+        // rather than blown out.
         col = mix(col, tonemapACES(col * 2.2), shiftEase * 0.85);
 
-        // Very subtle nebula-like luminosity variation across blocks
-        float nebulaWave = sin(p.x * 0.8 + iTime * 0.12) * sin(p.z * 0.6 + iTime * 0.08) * 0.5 + 0.5;
+        // Very subtle nebula-like luminosity variation across blocks.
+        // Slow mood phase drift makes the nebula slowly migrate over minutes.
+        float nebulaWave = sin(p.x * 0.8 + iTime * 0.12 + mood * 3.1416)
+                         * sin(p.z * 0.6 + iTime * 0.08 + mood2 * 3.1416) * 0.5 + 0.5;
         vec3 nebulaColor = mix(
             vec3(0.08, 0.06, 0.18),  // deep violet
             vec3(0.06, 0.10, 0.20),  // deep navy blue
@@ -246,6 +290,13 @@ void main()
         // Very soft radial darkening at edges (not full vignette — just depth)
         float edgeDim = smoothstep(0.5, 1.4, length(screenUv));
         col *= mix(1.0, 1.0 - edgeDim * 0.45, shiftEase * 0.5);
+
+        // Animated film grain: faint per-pixel hash noise, time-animated so it
+        // shimmers rather than being static. Breaks banding in the dark cosmic
+        // gradients and gives the void an organic, non-flat texture. Uses the
+        // existing hash(); amplitude kept very small.
+        float grain = hash(vec3(gl_FragCoord.xy, iTime * 60.0)) - 0.5;
+        col += grain * 0.04 * shiftEase;
     }
 
     float revealMask = smoothstep(-0.2, 0.95, revealEase - length(screenUv) * 0.42);

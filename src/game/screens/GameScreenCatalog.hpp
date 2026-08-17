@@ -5,7 +5,6 @@
 #include "engine/ui/typed/ScreenValidation.hpp"
 #include "game/screens/loading/LoadingScreenModule.hpp"
 #include "game/screens/main_menu/MainMenuScreenModule.hpp"
-#include "game/screens/join/JoinScreenModule.hpp"
 #include "game/screens/gameplay/GamePlayScreenModule.hpp"
 #include "game/screens/pause_popup/PausePopupScreenModule.hpp"
 #include "game/screens/idle/IdleScreenModule.hpp"
@@ -15,7 +14,6 @@ namespace biofuel::game::screens {
 using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
     LoadingScreen,
     MainMenuScreen,
-    JoinScreen,
     GamePlayScreen,
     PausePopupScreen,
     IdleScreen,
@@ -30,7 +28,6 @@ namespace detail {
     switch (id) {
     case screen_id::Loading:
     case screen_id::MainMenu:
-    case screen_id::Join:
     case screen_id::GamePlay:
     case screen_id::PausePopup:
     case screen_id::Idle:
@@ -51,7 +48,6 @@ namespace detail {
         return true;
     case screen_id::Loading:
     case screen_id::MainMenu:
-    case screen_id::Join:
     case screen_id::GamePlay:
     case screen_id::Idle:
     case screen_id::Video:
@@ -96,7 +92,6 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     switch (id) {
     case screen_id::Loading: return typed::TransitionPolicy<LoadingScreen>::VALUE;
     case screen_id::MainMenu: return typed::TransitionPolicy<MainMenuScreen>::VALUE;
-    case screen_id::Join: return typed::TransitionPolicy<JoinScreen>::VALUE;
     case screen_id::GamePlay: return typed::TransitionPolicy<GamePlayScreen>::VALUE;
     case screen_id::PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
     case screen_id::Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
@@ -119,7 +114,6 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::PausePopup: return typed::StackPolicy<PausePopupScreen>::VALUE;
     case screen_id::Loading:
     case screen_id::MainMenu:
-    case screen_id::Join:
     case screen_id::GamePlay:
     case screen_id::Idle:
     case screen_id::Video:
