@@ -112,12 +112,18 @@ struct RenderElementExecutor<loading::StatusTextElement, ::biofuel::game::screen
         const Rectangle panel = loadingPanelRect(context);
         const i32 barY = static_cast<i32>(panel.y) + BAR_TOP_INSET;
         const bool fullyDone = screen.m_tasksDone && screen.m_displayProgress >= 1.0f;
-        std::string status = "Ready.";
+        static constexpr std::string_view READY_STATUS = "Ready.";
+        std::string_view status = READY_STATUS;
         if (screen.m_tasks.isFailed()) {
             status = screen.m_tasks.failureMessage();
         } else if (!fullyDone) {
             const i32 dotCount = static_cast<i32>(screen.m_elapsed / ::biofuel::game::screens::LoadingScreen::DOTS_INTERVAL) % DOTS_MODULO;
-            status = screen.m_tasks.currentName() + std::string(dotCount, '.');
+            if (screen.m_statusTaskName != screen.m_tasks.currentName() || screen.m_statusDotCount != dotCount) {
+                screen.m_statusTaskName = screen.m_tasks.currentName();
+                screen.m_statusDotCount = dotCount;
+                screen.m_statusText = screen.m_statusTaskName + std::string(static_cast<std::size_t>(dotCount), '.');
+            }
+            status = screen.m_statusText;
         }
 
         const i32 statusW = Renderer::measureText(status, ::biofuel::game::screens::LoadingScreen::STATUS_SIZE);
@@ -186,6 +192,9 @@ void LoadingScreen::onEnter() {
     m_allowSkip = false;
     m_transitioned = false;
     m_reportedStartupMemory = false;
+    m_statusText.clear();
+    m_statusTaskName.clear();
+    m_statusDotCount = -1;
 
     m_backdrop.configure(game::presentation::effects::ScreenBackdropConfig{
         .shaderName = ::biofuel::engine::graphics::shader::LoadingPreludeModule::NAME,
@@ -262,7 +271,7 @@ void LoadingScreen::onRender() {
 void LoadingScreen::onInput() {
     if (m_allowSkip && !m_transitioned) {
         // Use state-polling (IsKeyDown/IsMouseButtonDown) instead of
-        // queue-draining (GetKeyPressed) â€” InputSystem::poll() already
+        // queue-draining (GetKeyPressed) - InputSystem::poll() already
         // consumes the key queue before onInput() runs (B005).
         if (IsKeyDown(KEY_SPACE) || IsKeyDown(KEY_ENTER) ||
             IsMouseButtonDown(MOUSE_BUTTON_LEFT) ||

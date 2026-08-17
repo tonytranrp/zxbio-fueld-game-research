@@ -34,4 +34,9 @@ struct VideoManager::Backend {
 // Factory for the platform default backend (FFmpeg subprocess).
 [[nodiscard]] std::unique_ptr<VideoManager::Backend> makeBackend();
 
+// Applies the process-global Raylib audio settings the default backend depends
+// on. Must be called exactly once during VideoManager init, before any backend
+// load() — Raylib offers no per-stream variant of this setting.
+void initGlobalAudioSettings();
+
 } // namespace biofuel::engine::video

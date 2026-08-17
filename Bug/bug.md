@@ -373,3 +373,200 @@ Evidence:
 Description:
 
 The README example cannot compile against the current model registry. This is a documentation bug that makes the folder-level standards/example less reliable for adding the next model asset.
+
+---
+
+Audit date: 2026-08-16 (professional-codebase cleanup pass)
+
+Scope audited: the full `src/`, `cmake/`, `tests/`, and documentation tree, via 15 parallel deep-research
+passes (one per subsystem) plus 5 rounds of direct fix application, run against the repo as it stood
+after adopting an existing branch's cleanup work via fast-forward merge and deleting the confirmed-dead
+old terrain/world subsystem (~2000 lines: `WorldSystem`, `WorldManager`, `HeightmapWorld3D`,
+`TerrainGenerator`, `VoxelChunkRenderer`, `Terrain3D`).
+
+Verification notes:
+
+- `cmake --build build --config Debug --parallel` passed, 0 warnings.
+- `ctest -C Debug --output-on-failure` — 21/21 passed.
+- `cargo test --manifest-path src/engine/physics/rapier_bridge/Cargo.toml --locked` — 4/4 passed.
+- `cargo clippy --manifest-path src/engine/physics/rapier_bridge/Cargo.toml --locked -- -D warnings` passed.
+- Net change: 84 tracked files modified/deleted, 2 new files, +1112/-2572 lines.
+
+## B027 - ModelSystem could use-after-free during shutdown [Solved]
+
+Severity: P1
+
+Evidence:
+
+- `src/engine/models/ModelSystem.hpp:66-79` — `SharedAssetData` (Raylib model + animation resources).
+- `ModelInstance` objects hold `shared_ptr<const SharedAssetData>` and can outlive `ModelSystem::shutdown()`.
+
+Description:
+
+`ModelSystem` previously had its own `unloadAsset()` path that could free a `SharedAssetData`'s Raylib
+resources while a live `ModelInstance` still held a `shared_ptr` to it, spanning a shutdown boundary.
+Fixed by making `SharedAssetData`'s own destructor the sole lifetime authority (it now unloads its
+Raylib resources itself, `ModelSystem.hpp:67-72`), so the `shared_ptr` refcount — not an explicit unload
+call — decides when resources actually free. `unloadAsset()` was deleted as redundant/unsafe.
+
+## B028 - Physics collider-group membership was never purged on body destruction [Solved]
+
+Severity: P2
+
+Evidence:
+
+- `src/engine/physics/PhysicsSystem.cpp:58-59` — `bodyColliders2D`/`bodyColliders3D` reverse-lookup maps.
+- `src/engine/physics/PhysicsSystem.cpp:639` — `trackBodyCollider()`.
+
+Description:
+
+Collider handles were tracked per body at creation (`trackBodyCollider`, called from every collider-add
+path) but nothing removed them when the owning body was destroyed, leaking stale handles into the
+collider-group bookkeeping. Fixed by adding the reverse-lookup maps so body destruction can now purge
+every collider it owned.
+
+## B029 - TaskManager result history grew without bound [Solved]
+
+Severity: P2
+
+Evidence:
+
+- `src/engine/tasks/TaskManager.cpp:68` — eviction loop.
+- `src/engine/tasks/TaskManager.cpp:103` — `kHistoryCap = 256`.
+
+Description:
+
+Completed-task records accumulated for the lifetime of the process with no eviction, a slow unbounded
+memory-growth path for any long play session that schedules many background tasks. Fixed with a
+256-record cap and eviction of the oldest entries once exceeded.
+
+## B030 - Rapier contact-force events were never captured despite being requested [Solved]
+
+Severity: P2
+
+Evidence:
+
+- `src/engine/physics/rapier_bridge/src/lib.rs:228-233` — `contact_force_event_count_2d/3d`,
+  `contact_force_event_2d/3d`, `clear_contact_force_events_2d/3d` cxx-bridge exports.
+- `src/engine/physics/rapier_bridge/src/lib.rs:369,388` — `contact_force_events: Receiver<...>` fields.
+
+Description:
+
+Rapier only emits `ContactForceEvent`s for colliders whose `ActiveEvents` bitflag includes
+`CONTACT_FORCE_EVENTS`; the collider builders never set it, so the feature was silently a no-op
+regardless of any C++-side code written against it. Fixed by adding the flag to collider construction
+and implementing real event storage/drain mirroring the existing `drained_contacts` pattern. No C++
+consumer exists yet (tracked as a known limitation below, not a bug) — this fix makes the Rust-side
+plumbing correct and ready for one.
+
+## B031 - Shader build-time validation would fail on every shader if the Vulkan SDK were installed [Solved]
+
+Severity: P2
+
+Evidence:
+
+- `src/CMakeLists.txt` (shader-validation block, ~line 239) — `glslc --target-env=opengl` invocation.
+- glslc refuses a `.glsl` extension without an explicit `-fshader-stage=`; every shader in
+  `assets/shaders/` uses a literal `.glsl` extension.
+
+Description:
+
+The project's own build message told a developer to "Install Vulkan SDK for shader validation," but
+doing so would have made every subsequent build fail — glslc errors on `.glsl` files with no stage
+flag, and none was passed. Nobody had hit this yet because nobody had glslc installed. Fixed by adding
+`-fshader-stage=fragment` (all 8 shaders confirmed fragment shaders) and a `glslangValidator -S frag`
+fallback for machines without the full Vulkan SDK. Also closed a coverage gap: `raymarched_voxels.glsl`
+(loaded from disk at runtime, not text-embedded) was never validated even when glslc was present; it
+now has its own validation entry, kept separate from `SHADER_NAMES` so it isn't wrongly text-embedded.
+
+## B032 - Window could stick to the cursor if drag capture was stolen mid-drag [Solved]
+
+Severity: P3
+
+Evidence:
+
+- `src/engine/window/DragHandler.hpp:52` — `WM_CAPTURECHANGED` constant (added).
+- `src/engine/window/DragHandler.hpp:138-144` — new handler.
+
+Description:
+
+`DragHandler`'s custom window-drag subclass ended a drag on `WM_LBUTTONUP`. If Windows stole mouse
+capture mid-drag for any OS-level reason, no `WM_LBUTTONUP` would ever arrive, so the dragging flag
+never reset and every subsequent `WM_MOUSEMOVE` kept moving the window — it would stick to the cursor
+until a full click. Fixed by handling `WM_CAPTURECHANGED` the same way as button-up, without
+re-releasing capture that's already gone, and still forwarding the message to the original wndproc.
+
+## B033 - Engine typed-event manifest briefly included a game-layer header, breaking the engine/game compile boundary [Solved]
+
+Severity: P1 (self-caught same session, never reached a committed state)
+
+Evidence:
+
+- `src/CMakeLists.txt` — `ENGINE_TYPED_MODULE_HEADERS` (engine-scoped only, by design).
+- `src/CMakeLists.txt:137-142` — `biofuel_engine`'s `target_include_directories` deliberately does not
+  expose `src/game/`; only an `engine-include-root/engine/` junction is visible to it.
+
+Description:
+
+While closing what looked like a live event-registration gap for `game/gameplay/FutureEventModule.hpp`,
+it was added to the engine-scoped typed-module manifest. The generated registry header is compiled as
+part of `biofuel_engine`, which structurally cannot see `game/` headers — this is the project's own
+one-way engine→game dependency boundary, enforced at compile time via a scoped include-root junction,
+not an oversight. The build failed immediately (`C1083: Cannot open include file`) on re-verification.
+Root-caused and reverted in the same session before landing in a green build. Re-examining the original
+finding: it was also overstated — `Events::publish<T>()`'s compile-time gate only requires
+`EventSpec<T>` to exist (`src/engine/runtime/typed/Events.hpp:13-16`), not registry membership, so the
+event in question already worked correctly via the raw `entt::dispatcher` regardless of manifest
+inclusion. Logged here because the same "grep before you delete/rename" discipline applies in
+reverse — verify an architectural boundary before crossing it, not just before removing something.
+
+---
+
+## Known limitations found this session, NOT fixed (flagged for a future decision)
+
+These are real, well-evidenced findings from the 2026-08-16 research pass that were deliberately left
+alone rather than fixed unilaterally, either because they require a design decision this log shouldn't
+make on the project owner's behalf, or because the affected subsystem isn't wired into the live game
+yet. Not marked `[Solved]` — nothing below should be read as fixed.
+
+**Physics: `CollisionGroup` never reaches Rapier's `InteractionGroups`.** Colliders configured with
+"disjoint" collision groups still physically collide with each other today — only the C++-side contact
+*event* reporting is filtered by group, not the actual physics response. This is the most likely source
+of a real, currently-live gameplay physics bug if collision groups are relied on anywhere for gameplay
+logic. Separately, `CollisionGroup::groupOnly(g)` (`src/engine/physics/PhysicsTypes.hpp`) returns a mask
+of `0` (collides with nothing), contradicting its own name. Not fixed because the correct membership/
+filter bit semantics to pass into Rapier is a design decision, not a mechanical bug fix.
+
+**Gameplay pipeline system (`FarmState`/`TurnPipeline`/`HarvestPipeline`/etc.) is not wired into
+`GamePlayScreen` and is not production-ready if it were.** Confirmed real bugs in `src/game/gameplay/`:
+the harvest pipeline computes `fuelGallons`/`revenueCents` but never credits them to `FarmState`
+(`UpdateInventory.cpp`), making it economically a no-op; the entire `PipelineEventObserver` event
+bridge is dead code because no gameplay stage defines `stage_name()`, so Pipeline-c- generates numeric
+stage keys ("0","1","2"...) that never match anything the observer looks for; `FuelProcessPipeline`'s
+inner sub-engine doesn't forward the parent observer either, so its stages' events are doubly dead; and
+`bakeTileColliders` skips any tile with `buildingId >= 0`, but `setTileType(Built)` sets `buildingId=0`,
+so `SampleFarm`'s solid perimeter border silently gets zero physics colliders. Domain data (crop yields,
+BTU/gallon) was cross-checked against `Research/` and is accurate. Not fixed because wiring this system
+up requires deciding how `FarmState` should expose mutation (public setters vs. a delta the caller
+applies) — a design call, and because none of this runs in the shipped game today.
+
+**No top-level `LICENSE` file for this project's own code.** `THIRD-PARTY-NOTICES.md` (added this
+session) covers dependency attribution — every dependency is permissive and commercial-distribution-
+safe — but the project's own license is undecided. That's the project owner's call.
+
+**Typed-registry codegen is the one over-complex piece of an otherwise reasonable architecture.** The
+service-locator (`Runtime::service<T>()`) and screen-stack patterns match real shipped engines. The
+CMake-regex-scans-C++-macros registration mechanism recreates what Qt/Unreal do with genuine automatic
+header discovery, but without that, inherits real fragility — B033 above is a direct instance of that
+fragility. A hand-written single X-macro list header (pure C++, no CMake regex parsing) was the research
+pass's concrete recommendation; not attempted this session as it's a larger structural change.
+
+**Rust bridge:** 19 `pub fn`s (Force/Impulse/AngularVelocity/SolverGroup/PhysicsShapeRole/JointType-
+tuning) have no C++ caller anywhere; `JointType::Spherical` is invalid for 2D per Rapier's own feature
+gating but the shared enum lets 2D code specify it anyway; no radian-to-degree conversion point exists
+yet (nothing renders physics rotation currently). All pre-existing and explicitly left unaddressed per
+this session's own scoping decision, not newly discovered.
+
+**`VideoScreen::preloadVideo`** is an unused arbitrary-path API (zero callers today). If a future caller
+feeds it dynamic/untrusted input, the POSIX `/bin/sh -c` backend branch (non-shipping, correctly
+escaped today) would deserve re-review at that point.

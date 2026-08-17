@@ -7,16 +7,10 @@
 
 namespace biofuel::engine::input {
 
-namespace {
-
-bool g_keyPressedThisPoll = false;
-
-} // namespace
-
-void InputSystem::poll() noexcept {
-    g_keyPressedThisPoll = false;
+bool InputSystem::poll() noexcept {
+    bool keyPressedThisPoll = false;
     for (i32 key = GetKeyPressed(); key != 0; key = GetKeyPressed()) {
-        g_keyPressedThisPoll = true;
+        keyPressedThisPoll = true;
         const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
         const bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
         const bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
@@ -41,10 +35,8 @@ void InputSystem::poll() noexcept {
     if (WindowShouldClose()) {
         ::biofuel::engine::runtime::typed::Events::publish<::biofuel::engine::runtime::typed::window::CloseRequested>();
     }
-}
 
-bool InputSystem::keyPressedThisPoll() noexcept {
-    return g_keyPressedThisPoll;
+    return keyPressedThisPoll;
 }
 
 } // namespace biofuel::engine::input

@@ -74,7 +74,8 @@ CPMAddPackage(
 )
 set(BUILD_SHARED_LIBS OFF)
 
-# entt - Entity Component System (header-only)
+# entt - used here only for entt::dispatcher (the typed signal/event-bus part);
+# the ECS/registry half is not used in this codebase. (header-only)
 CPMAddPackage(
     NAME entt
     URL https://github.com/skypjack/entt/archive/refs/tags/v3.14.0.tar.gz

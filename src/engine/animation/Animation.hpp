@@ -3,7 +3,7 @@
 #include "engine/core/Types.hpp"
 #include "Easing.hpp"
 #include <algorithm>
-#include <entt/signal/dispatcher.hpp>
+#include <entt/signal/fwd.hpp>
 #include <raylib.h>
 #include <string>
 #include <functional>

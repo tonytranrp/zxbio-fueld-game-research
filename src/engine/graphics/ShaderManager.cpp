@@ -49,16 +49,23 @@ void ShaderManager::load(std::string_view name, std::string_view vertPath, std::
     const char* vPath = vertPath.empty() ? nullptr : vertStr.c_str();
     const char* fPath = fragPath.empty() ? nullptr : fragStr.c_str();
 
+    // Reserve the map slot before compiling so storing the shader cannot
+    // throw; a throw after a successful LoadShader would leak the compiled
+    // shader's GPU handles.
+    const std::string key{name};
+    Shader& slot = m_shaders[key];
+
     Shader shader = LoadShader(vPath, fPath);
 
     if (!IsShaderValid(shader)) {
+        m_shaders.erase(key);
         spdlog::error("ShaderManager: failed to load shader '{}' (vert: {}, frag: {})",
             name, vertPath.empty() ? "<default>" : vertPath, fragPath.empty() ? "<default>" : fragPath);
         return;
     }
 
+    slot = shader;
     spdlog::info("ShaderManager: loaded shader '{}'", name);
-    m_shaders.emplace(std::string{name}, shader);
     ::biofuel::engine::debug::MemoryTelemetry::add(
         ::biofuel::engine::debug::ResourceKind::Shader,
         1,
@@ -68,15 +75,22 @@ void ShaderManager::load(std::string_view name, std::string_view vertPath, std::
 void ShaderManager::loadFromMemory(std::string_view name, const char* vertCode, const char* fragCode) {
     unloadExisting(name);
 
+    // Reserve the map slot before compiling so storing the shader cannot
+    // throw; a throw after a successful LoadShaderFromMemory would leak the
+    // compiled shader's GPU handles.
+    const std::string key{name};
+    Shader& slot = m_shaders[key];
+
     Shader shader = LoadShaderFromMemory(vertCode, fragCode);
 
     if (!IsShaderValid(shader)) {
+        m_shaders.erase(key);
         spdlog::error("ShaderManager: failed to compile shader '{}' from memory", name);
         return;
     }
 
+    slot = shader;
     spdlog::info("ShaderManager: compiled shader '{}' from memory", name);
-    m_shaders.emplace(std::string{name}, shader);
     ::biofuel::engine::debug::MemoryTelemetry::add(
         ::biofuel::engine::debug::ResourceKind::Shader,
         1,

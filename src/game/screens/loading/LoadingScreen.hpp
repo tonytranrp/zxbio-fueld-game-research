@@ -4,6 +4,7 @@
 #include "engine/ui/Screen.hpp"
 #include "engine/core/LoadingTask.hpp"
 #include "game/presentation/effects/ScreenBackdropController.hpp"
+#include <string>
 
 namespace biofuel::game::screens {
 
@@ -58,6 +59,13 @@ private:
     bool m_allowSkip = false;
     bool m_transitioned = false;
     bool m_reportedStartupMemory = false;
+
+    // Status-line cache: rebuilt only when the current task name or animated
+    // dot count changes, instead of on every render frame.
+    std::string m_statusText;
+    std::string m_statusTaskName;
+    i32 m_statusDotCount = -1;
+
     game::presentation::effects::ScreenBackdropController m_backdrop;
 
     void buildTasks();

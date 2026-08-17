@@ -9,20 +9,20 @@ TransientResourceCache& TransientResourceCache::instance() noexcept {
     return cache;
 }
 
-RenderSurface& TransientResourceCache::acquireSurface(
+std::shared_ptr<RenderSurface> TransientResourceCache::acquireSurface(
     const std::string_view key,
     const i32 width,
     const i32 height)
 {
     auto& entry = m_surfaces[std::string{key}];
     if (!entry.surface) {
-        entry.surface = std::make_unique<RenderSurface>();
+        entry.surface = std::make_shared<RenderSurface>();
     }
 
     entry.leased = true;
     entry.expiresAt = 0.0;
     entry.surface->ensureSize(width, height);
-    return *entry.surface;
+    return entry.surface;
 }
 
 void TransientResourceCache::releaseSurface(const std::string_view key, const f32 ttlSeconds) noexcept {

@@ -2,7 +2,7 @@
 
 Reusable runtime code lives here: app startup, core types, typed registries,
 events, physics, graphics, media, animation, input, window helpers, UI stack,
-computer-vision integrations, and custom procedural systems.
+world systems, and model loading.
 
 ## Folder map
 
@@ -15,6 +15,7 @@ engine/
 |-- physics/    Rapier-backed 2D/3D rigid-body simulation
 |-- tasks/      task/job scheduling wrapper and async loading helpers
 |-- graphics/   renderer, render surfaces, shaders, shader components
+|-- models/     model loading, animation pairing, and typed model registry
 |-- animation/  value animation and model keyframe playback
 |-- audio/      audio asset and playback service
 |-- video/      FFmpeg-backed video playback service
@@ -22,8 +23,7 @@ engine/
 |-- input/      shared input polling service
 |-- window/     platform window helpers
 |-- ui/         screen stack and typed render pipeline
-|-- vision/     optional camera/computer-vision services
-|-- custom/     production custom engine modules
+|-- world/      voxel world streaming, rendering, and world events
 `-- debug/      telemetry and debug helpers
 ```
 

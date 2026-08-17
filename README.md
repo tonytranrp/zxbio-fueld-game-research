@@ -46,7 +46,7 @@ MP4 idle-video playback uses a local `ffmpeg.exe` install on Windows. CMake reco
 
 This repo prefers conservative modern C++:
 
-- project aliases from `src/Core/Types.hpp` for numeric types
+- project aliases from `src/engine/core/Types.hpp` for numeric types
 - `std::string_view`, `std::span`, `constexpr`, `[[nodiscard]]`, and `noexcept` where they clarify intent
 - concrete helpers and RAII wrappers before generic/template-heavy abstractions
 - existing utility boundaries such as `Renderer`, `ShaderManager`, `ModelSystem`, and `TaskManager` instead of scattered raw Raylib or scheduler calls

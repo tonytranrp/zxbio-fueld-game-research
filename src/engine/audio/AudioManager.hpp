@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace biofuel::engine::audio {
 
@@ -81,8 +82,19 @@ private:
     void applyMasterVolume() noexcept;
     [[nodiscard]] bool recoverStaleCurrentMusic(std::string_view caller) noexcept;
 
+    // One-shot Sound aliases created by playSoundAtVolume(); each shares its
+    // source's sample data, so an alias must be unloaded (here or on source
+    // unload) before its source is UnloadSound()'d.
+    struct PendingAlias {
+        Sound alias;
+        const Sound* source;
+    };
+    void purgeFinishedAliases() noexcept;
+    void purgeAliasesForSource(const Sound* source) noexcept;
+
     std::unordered_map<std::string, Sound, TransparentHash, std::equal_to<>> m_sounds;
     std::unordered_map<std::string, Music, TransparentHash, std::equal_to<>> m_musicTracks;
+    std::vector<PendingAlias> m_pendingAliases;
 
     std::string m_currentMusic;
     bool m_musicPaused = false;

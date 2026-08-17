@@ -16,7 +16,7 @@ This repo is now an Obsidian vault. Open this repository folder directly in Obsi
 - [[src/engine/README|Engine overview]]
 - [[src/game/README|Game overview]]
 - [[src/engine/physics/README|Rapier physics engine]]
-- [[src/engine/world/README|World: terrain + voxel streaming]]
+- [[src/engine/world/voxel/README|World: voxel streaming]]
 - [[src/game/screens/gameplay/README|Gameplay: walkable voxel world]]
 - [[src/engine/graphics/README|Render and shader pipeline]]
 

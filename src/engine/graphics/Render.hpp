@@ -110,7 +110,6 @@ public:
     }
 
     // ---- Sprites & textures ----
-    static void drawSprite(Texture2D texture, i32 x, i32 y, i32 width, i32 height) noexcept;
     static BIOFUEL_FORCE_INLINE void drawFullscreen(Color color) noexcept {
         drawRect(0, 0, screenWidth(), screenHeight(), color);
     }

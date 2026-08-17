@@ -61,6 +61,24 @@ struct TaskManager::Impl final {
         }
     }
 
+    // Bounds the completed-task history. Called under mutex after a new record
+    // is inserted: if the map exceeds the cap, evict the oldest (lowest-id)
+    // terminal records first. Pending/running tasks are never evicted.
+    void evictOldestTerminal() {
+        while (records.size() > kHistoryCap) {
+            auto oldest = records.end();
+            for (auto it = records.begin(); it != records.end(); ++it) {
+                if (isTerminal(it->second.state) && (oldest == records.end() || it->first < oldest->first)) {
+                    oldest = it;
+                }
+            }
+            if (oldest == records.end()) {
+                break; // nothing terminal to evict; keep running tasks
+            }
+            records.erase(oldest);
+        }
+    }
+
     [[nodiscard]] std::shared_ptr<std::stop_source> sourceFor(const TaskId id) const {
         std::scoped_lock lock{mutex};
         const auto it = records.find(id);
@@ -81,6 +99,8 @@ struct TaskManager::Impl final {
         }
         return out;
     }
+
+    static constexpr usize kHistoryCap = 256U;
 
     tf::Executor executor;
     mutable std::mutex mutex;
@@ -129,6 +149,7 @@ TaskManager::TaskId TaskManager::schedule(std::string name, Work work) {
             .name = std::move(name),
             .stopSource = stopSource,
         });
+        m_impl->evictOldestTerminal();
     }
 
     auto impl = m_impl;

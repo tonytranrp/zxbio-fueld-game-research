@@ -16,7 +16,8 @@ engine/events/
 |-- physics/
 |-- screen/
 |-- video/
-`-- window/
+|-- window/
+`-- world/
 ```
 
 ## Event domains
@@ -31,6 +32,7 @@ engine/events/
 | `screen/` | Screen stack, transition, layer, and debug overrides |
 | `video/` | Video playback start, completion, and errors |
 | `window/` | Window resize, focus, and close events |
+| `world/` | World lifecycle, tile/chunk, heightmap, and building events |
 
 ## Rules
 

@@ -8,6 +8,7 @@
 #include "engine/animation/AnimationManager.hpp"
 #include "engine/animation/PremadeAnimations.hpp"
 #include "engine/animation/Easing.hpp"
+#include <entt/signal/dispatcher.hpp>
 #include <raylib.h>
 
 namespace biofuel::game::screens {
@@ -227,6 +228,13 @@ void PausePopupScreen::onEnter() {
 }
 
 void PausePopupScreen::onExit() {
+    // Cancel any in-flight slide animations: their callbacks capture this, and
+    // the global AnimationManager would otherwise fire them on a destroyed
+    // screen if it is popped while a slide is still running.
+    auto& mgr = ::biofuel::engine::runtime::Runtime::animation();
+    mgr.cancelAll("pause_in_slide");
+    mgr.cancelAll("pause_out_slide");
+
     m_blurEffect.shutdown();
     ::biofuel::engine::debug::MemoryTelemetry::snapshot("pause.close.exit");
 }

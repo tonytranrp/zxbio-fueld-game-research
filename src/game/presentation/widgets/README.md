@@ -17,22 +17,6 @@ game/presentation/widgets/
 - Handle keyboard navigation and activation
 - Perform mouse hover and click hit-testing
 - Return multi-value mouse results through `MenuHitResult`
-- **`InputCooldown`** — reusable debounce timer struct for input cooldowns between screens
-
-### InputCooldown
-
-### How to use it
-
-```cpp
-game::presentation::widgets::InputCooldown m_cooldown;
-// In onEnter():
-m_cooldown.reset(0.12f);
-// In onUpdate():
-m_cooldown.update(dt);
-if (m_cooldown.ready()) { /* handle input */ }
-```
-
-A lightweight, `noexcept` struct with configurable delay. Both `MainMenuScreen` and `PausePopupScreen` use identical cooldown patterns — this struct unifies them.
 
 ## Style rules
 

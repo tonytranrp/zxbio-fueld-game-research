@@ -1,6 +1,6 @@
 #pragma once
 
-#include <entt/entt.hpp>
+#include <entt/signal/dispatcher.hpp>
 #include <memory>
 #include <mutex>
 

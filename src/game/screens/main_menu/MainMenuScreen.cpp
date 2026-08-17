@@ -234,10 +234,6 @@ void MainMenuScreen::activateSelected() {
     }
 }
 
-bool MainMenuScreen::isLocked(const i32 index) const {
-    return s_items[index].locked;
-}
-
 f32 MainMenuScreen::backgroundRevealProgress() const noexcept {
     return m_backdrop.revealProgress();
 }
@@ -290,23 +286,24 @@ i32 MainMenuScreen::inferMenuDirection(const i32 oldIndex, const i32 newIndex) c
 // ------------------------------------------------------------------------------
 
 void MainMenuScreen::startDismiss() {
-    if (m_dismiss.active) {
-        return;
-    }
-    m_dismiss.active = true;
-    m_dismiss.elapsed = 0.0f;
-
-    // Reset idle so starting a game doesn't trigger an idle transition
-    m_idleTrigger.onInput();
+    // Reset idle so starting a game doesn't trigger an idle transition.
+    beginDismiss(true);
 }
 
 void MainMenuScreen::startIdleDismiss() {
+    // Idle is a quiet text-only transition.
+    beginDismiss(false);
+}
+
+void MainMenuScreen::beginDismiss(const bool resetIdleTrigger) {
     if (m_dismiss.active) {
         return;
     }
     m_dismiss.active = true;
     m_dismiss.elapsed = 0.0f;
-    // Idle is a quiet text-only transition.
+    if (resetIdleTrigger) {
+        m_idleTrigger.onInput();
+    }
 }
 
 void MainMenuScreen::updateDismiss(const f32 dt) noexcept {

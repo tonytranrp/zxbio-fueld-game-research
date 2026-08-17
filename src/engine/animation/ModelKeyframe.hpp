@@ -130,7 +130,7 @@ struct KeyframeClip {
 
 struct ModelRigBinding {
     std::vector<std::string> boneNames;
-    std::unordered_map<std::string, i32> boneIndices;
+    std::unordered_map<std::string, i32, TransparentHash, std::equal_to<>> boneIndices;
 
     [[nodiscard]] i32 findBoneIndex(std::string_view boneName) const noexcept;
     [[nodiscard]] bool empty() const noexcept { return boneNames.empty(); }
@@ -144,7 +144,7 @@ struct ModelKeyframeState {
     Vector3 rootTranslation{0.0f, 0.0f, 0.0f};
     Quaternion rootRotation{0.0f, 0.0f, 0.0f, 1.0f};
     Vector3 rootScale{1.0f, 1.0f, 1.0f};
-    std::unordered_map<std::string, f32> scalars;
+    std::unordered_map<std::string, f32, TransparentHash, std::equal_to<>> scalars;
 };
 
 class ModelKeyframePlayer final {

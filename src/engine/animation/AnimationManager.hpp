@@ -32,11 +32,6 @@ public:
         appendTypedAnimation(std::move(anim));
     }
 
-    void add(std::unique_ptr<Animation<f32>> anim);
-    void add(std::unique_ptr<Animation<Color>> anim);
-    void add(std::unique_ptr<Animation<Vector2>> anim);
-    void add(std::unique_ptr<Animation<Rectangle>> anim);
-
     // ---- Per-frame update ----
     void update(f32 dt);
 

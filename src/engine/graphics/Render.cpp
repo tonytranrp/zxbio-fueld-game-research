@@ -80,17 +80,6 @@ void Renderer::drawTextCentered(
     drawText(font, text, centerX - textWidth / 2, y, fontSize, color, spacing);
 }
 
-void Renderer::drawSprite(Texture2D texture, i32 x, i32 y, i32 width, i32 height) noexcept {
-    DrawTexturePro(
-        texture,
-        {0.0f, 0.0f, static_cast<f32>(texture.width), static_cast<f32>(texture.height)},
-        {static_cast<f32>(x), static_cast<f32>(y), static_cast<f32>(width), static_cast<f32>(height)},
-        {0.0f, 0.0f},
-        0.0f,
-        WHITE
-    );
-}
-
 void Renderer::drawRenderTexture(Texture2D texture, i32 x, i32 y, Color tint) noexcept {
     DrawTextureRec(
         texture,

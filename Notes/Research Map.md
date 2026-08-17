@@ -15,7 +15,7 @@ The research docs are the main source for gameplay vocabulary, balance tables, a
 
 - Crop and feedstock data should land in [[src/game/data/README]].
 - Seasonal/economy/ecology behavior should land in [[src/game/gameplay/README]].
-- Hybrid 2D/3D visual ideas connect to [[src/game/models/README]] and [[src/engine/graphics/README]].
+- Model/visual-pipeline research lands in [[src/game/models/README]] and [[src/engine/graphics/README]]. (An earlier hybrid 2D/3D visual concept was abandoned in favor of the first-person 3D voxel world.)
 - Verified source bugs are tracked in [[Bug/bug]].
 
 ## Useful Tags

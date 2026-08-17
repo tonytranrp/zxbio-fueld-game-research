@@ -79,7 +79,6 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/video/VideoServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/window/WindowServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/world/WorldPhysicsEventModule.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/engine/world/WorldServiceModule.hpp"
 )
 
 set(GENERATED_SHADER_HEADER "${GENERATED_DIR}/ShaderSources.hpp")
@@ -237,24 +236,37 @@ if(BIOFUEL_DEV_STARTUP_IDLE_VIDEO)
 endif()
 
 # ------------------------------------------------------------------------------
-# Optional shader validation with glslc (Vulkan SDK / shaderc)
+# Optional shader validation with glslc (Vulkan SDK / shaderc) or glslangValidator
 # ------------------------------------------------------------------------------
 if(WIN32)
     set(NULL_DEVICE "NUL")
 else()
     set(NULL_DEVICE "/dev/null")
 endif()
+# SHADER_NAMES covers the 7 shaders text-embedded into ShaderSources.hpp.
+# raymarched_voxels is loaded from disk by GamePlayScreen at runtime and is NOT
+# embedded, but it still needs syntax validation, so it is validated separately.
+set(SHADER_VALIDATION_NAMES ${SHADER_NAMES} raymarched_voxels)
 find_program(GLSLC glslc)
+find_program(GLSLANG_VALIDATOR glslangValidator)
 if(GLSLC)
-    foreach(SHADER IN ITEMS ${SHADER_NAMES})
+    foreach(SHADER IN ITEMS ${SHADER_VALIDATION_NAMES})
         add_custom_command(
             TARGET ${PROJECT_NAME} PRE_BUILD
-            COMMAND ${GLSLC} --target-env=opengl -o ${NULL_DEVICE} "${SHADER_DIR}/${SHADER}.glsl"
+            COMMAND ${GLSLC} -fshader-stage=fragment --target-env=opengl -o ${NULL_DEVICE} "${SHADER_DIR}/${SHADER}.glsl"
+            COMMENT "Validating shader: ${SHADER}.glsl"
+        )
+    endforeach()
+elseif(GLSLANG_VALIDATOR)
+    foreach(SHADER IN ITEMS ${SHADER_VALIDATION_NAMES})
+        add_custom_command(
+            TARGET ${PROJECT_NAME} PRE_BUILD
+            COMMAND ${GLSLANG_VALIDATOR} -S frag "${SHADER_DIR}/${SHADER}.glsl"
             COMMENT "Validating shader: ${SHADER}.glsl"
         )
     endforeach()
 else()
-    message(STATUS "glslc not found - shader validation skipped. Install Vulkan SDK for shader validation.")
+    message(STATUS "glslc and glslangValidator not found - shader validation skipped. Install Vulkan SDK (glslc) or a standalone glslangValidator for shader validation.")
 endif()
 
 if(APPLE)

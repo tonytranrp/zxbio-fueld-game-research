@@ -1,4 +1,4 @@
-﻿#include "PauseController.hpp"
+#include "PauseController.hpp"
 #include "PausePopupScreen.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/ui/Screen.hpp"

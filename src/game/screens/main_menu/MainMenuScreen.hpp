@@ -170,6 +170,7 @@ private:
     // ---- Dismiss animation ----
     void startDismiss();         // game transition (New Game/Continue)
     void startIdleDismiss();     // idle transition — text only
+    void beginDismiss(bool resetIdleTrigger); // shared body of the two above
     void updateDismiss(f32 dt) noexcept;
     [[nodiscard]] bool isDismissing() const noexcept;
 
@@ -181,7 +182,6 @@ private:
 
     // ---- Methods ----
     void activateSelected();
-    [[nodiscard]] bool isLocked(i32 index) const;
 };
 
 } // namespace biofuel::game::screens

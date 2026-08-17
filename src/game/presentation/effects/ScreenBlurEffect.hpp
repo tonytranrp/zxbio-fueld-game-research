@@ -3,6 +3,7 @@
 #include "engine/core/Types.hpp"
 #include "engine/graphics/RenderSurface.hpp"
 #include <raylib.h>
+#include <memory>
 #include <string_view>
 
 namespace biofuel::engine::ui {
@@ -68,9 +69,9 @@ private:
     inline static constexpr std::string_view BLUR_A_CACHE_KEY = "pause.blur.a";
     inline static constexpr std::string_view BLUR_B_CACHE_KEY = "pause.blur.b";
 
-    ::biofuel::engine::graphics::RenderSurface* m_captureSurface = nullptr;
-    ::biofuel::engine::graphics::RenderSurface* m_blurSurfaceA = nullptr;
-    ::biofuel::engine::graphics::RenderSurface* m_blurSurfaceB = nullptr;
+    std::shared_ptr<::biofuel::engine::graphics::RenderSurface> m_captureSurface;
+    std::shared_ptr<::biofuel::engine::graphics::RenderSurface> m_blurSurfaceA;
+    std::shared_ptr<::biofuel::engine::graphics::RenderSurface> m_blurSurfaceB;
 
     BlurConfig m_config{};
     State m_state = State::Idle;

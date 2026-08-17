@@ -44,7 +44,7 @@ tracks, scalar channels, and transition blending.
 
 - Keep animation code value-oriented and reusable.
 - Add `AnimationUtils::Lerp<T>` before animating a new value type.
-- Give animations stable names from `typed/AnimationTracks.hpp` when possible.
+- Give animations stable, lowercase dotted names grouped by feature.
 - Do not let callbacks own screen lifetime; they may run after a screen starts
   exiting.
 - Model keyframe tracks should use seconds and normalized progress explicitly.

@@ -21,7 +21,7 @@ namespace {
 } // namespace
 
 i32 ModelRigBinding::findBoneIndex(const std::string_view boneName) const noexcept {
-    const auto it = boneIndices.find(std::string{boneName});
+    const auto it = boneIndices.find(boneName);
     if (it == boneIndices.end()) {
         return -1;
     }
@@ -195,7 +195,7 @@ void ModelKeyframePlayer::apply(const std::span<const Transform> bindPose, const
 }
 
 f32 ModelKeyframePlayer::scalar(const std::string_view channelName, const f32 fallback) const noexcept {
-    const auto it = m_state.scalars.find(std::string{channelName});
+    const auto it = m_state.scalars.find(channelName);
     if (it == m_state.scalars.end()) {
         return fallback;
     }

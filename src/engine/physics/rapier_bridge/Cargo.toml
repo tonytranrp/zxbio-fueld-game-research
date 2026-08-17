@@ -14,3 +14,9 @@ rapier3d = "=0.32.0"
 
 [build-dependencies]
 cxx-build = "=1.0.194"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

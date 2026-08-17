@@ -368,6 +368,7 @@ pub struct RapierWorld2D {
     collision_events: Receiver<r2::CollisionEvent>,
     contact_force_events: Receiver<r2::ContactForceEvent>,
     drained_contacts: Vec<ffi::BridgeContactEvent>,
+    drained_contact_forces: Vec<ffi::BridgeContactForceEvent2D>,
 }
 
 pub struct RapierWorld3D {
@@ -386,6 +387,7 @@ pub struct RapierWorld3D {
     collision_events: Receiver<r3::CollisionEvent>,
     contact_force_events: Receiver<r3::ContactForceEvent>,
     drained_contacts: Vec<ffi::BridgeContactEvent>,
+    drained_contact_forces: Vec<ffi::BridgeContactForceEvent3D>,
 }
 
 impl RapierWorld2D {
@@ -408,6 +410,7 @@ impl RapierWorld2D {
             collision_events,
             contact_force_events,
             drained_contacts: Vec::with_capacity(32),
+            drained_contact_forces: Vec::with_capacity(32),
         }
     }
 
@@ -419,11 +422,12 @@ impl RapierWorld2D {
         builder
             .density(density.max(0.0))
             .sensor(sensor)
-            .active_events(r2::ActiveEvents::COLLISION_EVENTS)
+            .active_events(r2::ActiveEvents::COLLISION_EVENTS | r2::ActiveEvents::CONTACT_FORCE_EVENTS)
     }
 
     fn drain_events(&mut self) {
         self.drained_contacts.clear();
+        self.drained_contact_forces.clear();
         while let Ok(event) = self.collision_events.try_recv() {
             let (phase, collider_a, collider_b) = match event {
                 r2::CollisionEvent::Started(a, b, _) => (PHASE_STARTED, a, b),
@@ -436,7 +440,17 @@ impl RapierWorld2D {
                 collider_b: pack_collider_2d(collider_b),
             });
         }
-        while self.contact_force_events.try_recv().is_ok() {}
+        while let Ok(event) = self.contact_force_events.try_recv() {
+            self.drained_contact_forces
+                .push(ffi::BridgeContactForceEvent2D {
+                    valid: true,
+                    collider_a: pack_collider_2d(event.collider1),
+                    collider_b: pack_collider_2d(event.collider2),
+                    total_force: bridge_vec2(event.total_force),
+                    max_force_direction: bridge_vec2(event.max_force_direction),
+                    max_force_magnitude: event.max_force_magnitude,
+                });
+        }
     }
 }
 
@@ -460,6 +474,7 @@ impl RapierWorld3D {
             collision_events,
             contact_force_events,
             drained_contacts: Vec::with_capacity(32),
+            drained_contact_forces: Vec::with_capacity(32),
         }
     }
 
@@ -471,11 +486,12 @@ impl RapierWorld3D {
         builder
             .density(density.max(0.0))
             .sensor(sensor)
-            .active_events(r3::ActiveEvents::COLLISION_EVENTS)
+            .active_events(r3::ActiveEvents::COLLISION_EVENTS | r3::ActiveEvents::CONTACT_FORCE_EVENTS)
     }
 
     fn drain_events(&mut self) {
         self.drained_contacts.clear();
+        self.drained_contact_forces.clear();
         while let Ok(event) = self.collision_events.try_recv() {
             let (phase, collider_a, collider_b) = match event {
                 r3::CollisionEvent::Started(a, b, _) => (PHASE_STARTED, a, b),
@@ -488,7 +504,17 @@ impl RapierWorld3D {
                 collider_b: pack_collider_3d(collider_b),
             });
         }
-        while self.contact_force_events.try_recv().is_ok() {}
+        while let Ok(event) = self.contact_force_events.try_recv() {
+            self.drained_contact_forces
+                .push(ffi::BridgeContactForceEvent3D {
+                    valid: true,
+                    collider_a: pack_collider_3d(event.collider1),
+                    collider_b: pack_collider_3d(event.collider2),
+                    total_force: bridge_vec3(event.total_force),
+                    max_force_direction: bridge_vec3(event.max_force_direction),
+                    max_force_magnitude: event.max_force_magnitude,
+                });
+        }
     }
 }
 
@@ -503,6 +529,7 @@ pub fn new_world_3d() -> Box<RapierWorld3D> {
 pub fn step_world_2d(world: &mut RapierWorld2D, dt: f32) {
     if !dt.is_finite() || dt <= 0.0 {
         world.drained_contacts.clear();
+        world.drained_contact_forces.clear();
         return;
     }
     world.integration.dt = dt;
@@ -526,6 +553,7 @@ pub fn step_world_2d(world: &mut RapierWorld2D, dt: f32) {
 pub fn step_world_3d(world: &mut RapierWorld3D, dt: f32) {
     if !dt.is_finite() || dt <= 0.0 {
         world.drained_contacts.clear();
+        world.drained_contact_forces.clear();
         return;
     }
     world.integration.dt = dt;
@@ -1132,18 +1160,31 @@ pub fn set_body_angular_velocity_3d(world: &mut RapierWorld3D, body: u64, value:
     }
 }
 
-pub fn contact_force_event_count_2d(_world: &RapierWorld2D) -> u64 {
-    0
+pub fn contact_force_event_count_2d(world: &RapierWorld2D) -> u64 {
+    world.drained_contact_forces.len() as u64
 }
 
-pub fn contact_force_event_count_3d(_world: &RapierWorld3D) -> u64 {
-    0
+pub fn contact_force_event_count_3d(world: &RapierWorld3D) -> u64 {
+    world.drained_contact_forces.len() as u64
 }
 
-pub fn contact_force_event_2d(
-    _world: &RapierWorld2D,
-    _index: u64,
-) -> ffi::BridgeContactForceEvent2D {
+pub fn contact_force_event_2d(world: &RapierWorld2D, index: u64) -> ffi::BridgeContactForceEvent2D {
+    if let Some(event) = world.drained_contact_forces.get(index as usize) {
+        return ffi::BridgeContactForceEvent2D {
+            valid: event.valid,
+            collider_a: event.collider_a,
+            collider_b: event.collider_b,
+            total_force: ffi::BridgeVec2 {
+                x: event.total_force.x,
+                y: event.total_force.y,
+            },
+            max_force_direction: ffi::BridgeVec2 {
+                x: event.max_force_direction.x,
+                y: event.max_force_direction.y,
+            },
+            max_force_magnitude: event.max_force_magnitude,
+        };
+    }
     ffi::BridgeContactForceEvent2D {
         valid: false,
         collider_a: 0,
@@ -1154,10 +1195,25 @@ pub fn contact_force_event_2d(
     }
 }
 
-pub fn contact_force_event_3d(
-    _world: &RapierWorld3D,
-    _index: u64,
-) -> ffi::BridgeContactForceEvent3D {
+pub fn contact_force_event_3d(world: &RapierWorld3D, index: u64) -> ffi::BridgeContactForceEvent3D {
+    if let Some(event) = world.drained_contact_forces.get(index as usize) {
+        return ffi::BridgeContactForceEvent3D {
+            valid: event.valid,
+            collider_a: event.collider_a,
+            collider_b: event.collider_b,
+            total_force: ffi::BridgeVec3 {
+                x: event.total_force.x,
+                y: event.total_force.y,
+                z: event.total_force.z,
+            },
+            max_force_direction: ffi::BridgeVec3 {
+                x: event.max_force_direction.x,
+                y: event.max_force_direction.y,
+                z: event.max_force_direction.z,
+            },
+            max_force_magnitude: event.max_force_magnitude,
+        };
+    }
     ffi::BridgeContactForceEvent3D {
         valid: false,
         collider_a: 0,
@@ -1168,10 +1224,12 @@ pub fn contact_force_event_3d(
     }
 }
 
-pub fn clear_contact_force_events_2d(_world: &mut RapierWorld2D) {
+pub fn clear_contact_force_events_2d(world: &mut RapierWorld2D) {
+    world.drained_contact_forces.clear();
 }
 
-pub fn clear_contact_force_events_3d(_world: &mut RapierWorld3D) {
+pub fn clear_contact_force_events_3d(world: &mut RapierWorld3D) {
+    world.drained_contact_forces.clear();
 }
 
 #[cfg(test)]

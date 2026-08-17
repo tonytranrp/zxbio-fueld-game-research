@@ -23,6 +23,22 @@ foreach(NAME ${SHADER_NAMES})
     endif()
 
     file(READ "${SHADER_PATH}" SHADER_SOURCE)
+
+    # Cheap fallback sanity check, independent of glslc/glslangValidator:
+    # GLSL has no string literals, so after stripping comments, braces must
+    # balance. Catches the most common mid-edit syntax break (a deleted or
+    # extra brace) on machines with no shader compiler installed; this is not
+    # a substitute for real shader compilation.
+    string(REGEX REPLACE "/\\*[^*]*\\*+([^/*][^*]*\\*+)*/" "" CHECK_SOURCE "${SHADER_SOURCE}")
+    string(REGEX REPLACE "//[^\n]*" "" CHECK_SOURCE "${CHECK_SOURCE}")
+    string(REGEX MATCHALL "[{]" OPEN_BRACES "${CHECK_SOURCE}")
+    string(REGEX MATCHALL "[}]" CLOSE_BRACES "${CHECK_SOURCE}")
+    list(LENGTH OPEN_BRACES OPEN_COUNT)
+    list(LENGTH CLOSE_BRACES CLOSE_COUNT)
+    if(NOT OPEN_COUNT EQUAL CLOSE_COUNT)
+        message(FATAL_ERROR "EmbedShaders.cmake: unbalanced braces in ${SHADER_PATH} ({ count: ${OPEN_COUNT}, } count: ${CLOSE_COUNT}) - likely a syntax error or unusual comment placement")
+    endif()
+
     string(APPEND CONTENT "inline constexpr std::string_view ${NAME}_source = R\"shader(${SHADER_SOURCE})shader\";\n\n")
 endforeach()
 

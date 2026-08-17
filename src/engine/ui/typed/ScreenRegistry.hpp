@@ -15,9 +15,4 @@ struct ScreenRegistry {
         (std::is_same_v<std::remove_cvref_t<TScreen>, TScreens> || ...);
 };
 
-struct UnvalidatedScreenRegistry {
-    template<typename TScreen>
-    static constexpr bool contains = true;
-};
-
 } // namespace biofuel::engine::ui::typed

@@ -9,7 +9,7 @@ Generated output stays outside `src/`; use top-level `build/` or `out/build/`.
 src/
 |-- main.cpp        program entry point
 |-- CMakeLists.txt  source target, generated registries, embedded shaders
-|-- engine/         reusable app/runtime/render/media/input/vision systems
+|-- engine/         reusable app/runtime/render/media/input systems
 `-- game/           Fuel Farm screens, presentation, models, data, gameplay
 ```
 

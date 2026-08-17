@@ -7,7 +7,7 @@ model asset registration, future gameplay contracts, and domain data.
 
 ```text
 game/
-|-- screens/       loading, main menu, pause popup, idle, video, dev tools
+|-- screens/       loading, main menu, join, gameplay, pause popup, idle, video
 |-- presentation/  screen effects, widgets, idle trigger
 |-- models/        game model assets and runtime instances
 |-- gameplay/      future economy/ecology/season/tech/save contracts
@@ -17,7 +17,7 @@ game/
 ## Game boundary
 
 Game code can use `biofuel::engine::runtime::Runtime` and compose engine UI,
-render, audio, video, model, animation, vision, and procedural modules. Reusable
+render, audio, video, model, and animation modules. Reusable
 detectors, math, caches, service backends, or resource owners should live in
 `engine/`.
 

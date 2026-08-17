@@ -8,11 +8,14 @@ The main-menu transition is shader-only and does not load any runtime models.
 
 ```text
 game/models/
-|-- ModelSystem.hpp
-|-- ModelSystem.cpp
-|-- ModelServiceModule.hpp
 `-- README.md
 ```
+
+This folder is currently just a placeholder for game-specific model notes. The
+actual `ModelSystem` implementation (loading, registry, instances, animation
+pairing) lives in `src/engine/models/` (`ModelSystem.hpp/.cpp`,
+`ModelServiceModule.hpp`, `ModelAnimator.cpp`). See that folder's README for
+the runtime model contract.
 
 ## Responsibilities
 

@@ -6,9 +6,18 @@ Future Fuel Farm gameplay service and event contracts live here.
 
 ```text
 game/gameplay/
-|-- FutureSystems.hpp
-|-- FutureServiceModule.hpp
-`-- FutureEventModule.hpp
+|-- FarmState.hpp/.cpp              farm tile/state model
+|-- TurnPipeline.hpp/.cpp           turn pipeline definition + runner
+|-- HarvestPipeline.hpp/.cpp        harvest pipeline definition + runner
+|-- FuelProcessPipeline.hpp/.cpp    fuel-process routing pipeline + runner
+|-- TechTreePipeline.hpp/.cpp       tech-tree pipeline definition + runner
+|-- PipelineRunner.hpp              shared runner helpers
+|-- PipelineEventObserver.hpp/.cpp  Pipeline-c- to EnTT event bridge
+|-- SampleFarm.hpp/.cpp             sample/demo farm state
+|-- WorldPhysicsIntegration.hpp/.cpp  gameplay-to-physics wiring
+|-- FutureEventModule.hpp           typed gameplay event module
+|-- stages/                         pure-functional pipeline stages
+`-- world3d/                         first-person controller for the voxel world
 ```
 
 ## Purpose

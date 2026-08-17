@@ -24,5 +24,5 @@ cargo clippy --manifest-path src\engine\physics\rapier_bridge\Cargo.toml --locke
 ## Related Notes
 
 - [[src/engine/physics/README]]
-- [[src/engine/world/README]]
+- [[src/engine/world/voxel/README]]
 - [[src/game/screens/gameplay/README]]

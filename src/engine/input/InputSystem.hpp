@@ -4,8 +4,9 @@ namespace biofuel::engine::input {
 
 class InputSystem {
 public:
-    static void poll() noexcept;
-    [[nodiscard]] static bool keyPressedThisPoll() noexcept;
+    // Drains Raylib input and publishes typed input/mouse/window events.
+    // Returns whether any key press was consumed this poll.
+    [[nodiscard]] static bool poll() noexcept;
 };
 
 } // namespace biofuel::engine::input

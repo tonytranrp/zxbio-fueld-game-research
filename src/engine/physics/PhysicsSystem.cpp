@@ -55,6 +55,8 @@ struct PhysicsSystem::Impl {
     rust::Box<bridge::RapierWorld3D> world3D = bridge::new_world_3d();
     std::unordered_map<u64, CollisionGroup> colliderGroups2D;
     std::unordered_map<u64, CollisionGroup> colliderGroups3D;
+    std::unordered_map<u64, std::vector<u64>> bodyColliders2D;
+    std::unordered_map<u64, std::vector<u64>> bodyColliders3D;
 };
 
 PhysicsWorld2D::PhysicsWorld2D(PhysicsSystem& system) noexcept
@@ -77,6 +79,7 @@ PhysicsBody2D PhysicsWorld2D::createBody(const PhysicsBodyDesc2D& desc) const {
 
 void PhysicsWorld2D::removeBody(const PhysicsBody2D body) const {
     m_system->ensureInitialized();
+    m_system->purgeBodyColliderGroups(PhysicsWorldKind::World2D, body.value);
     bridge::remove_body_2d(*m_system->m_impl->world2D, body.value);
 }
 
@@ -138,6 +141,7 @@ void PhysicsWorld2D::setBodyLinearVelocity(const PhysicsBody2D body, const Vecto
 
 void PhysicsWorld2D::setBodyType(const PhysicsBody2D body, const PhysicsBodyKind newType) const {
     m_system->ensureInitialized();
+    // Not yet bridged to Rapier: this call is currently a silent no-op.
     // TODO(Phase 5): Wire through bridge when set_body_type_2d is exposed.
     // Rapier supports RigidBody::set_body_type() for Fixed↔Dynamic mutation.
     (void)body;
@@ -146,21 +150,25 @@ void PhysicsWorld2D::setBodyType(const PhysicsBody2D body, const PhysicsBodyKind
 
 void PhysicsWorld2D::wakeBody(const PhysicsBody2D body) const {
     m_system->ensureInitialized();
+    // Not yet bridged to Rapier: this call is currently a silent no-op.
     // TODO(Phase 5): Wire through bridge when wake_body_2d is exposed.
     (void)body;
 }
 
 void PhysicsWorld2D::putBodyToSleep(const PhysicsBody2D body) const {
     m_system->ensureInitialized();
+    // Not yet bridged to Rapier: this call is currently a silent no-op.
     // TODO(Phase 5): Wire through bridge when sleep_body_2d is exposed.
     (void)body;
 }
 
-bool PhysicsWorld2D::isBodySleeping(const PhysicsBody2D body) const {
+std::optional<bool> PhysicsWorld2D::isBodySleeping(const PhysicsBody2D body) const {
     m_system->ensureInitialized();
-    // TODO(Phase 5): Wire through bridge when is_body_sleeping_2d is exposed.
+    // Not yet bridged to Rapier: returns std::nullopt (unknown), not a real
+    // sleep state. TODO(Phase 5): Wire through bridge when is_body_sleeping_2d
+    // is exposed.
     (void)body;
-    return false;
+    return std::nullopt;
 }
 
 PhysicsCollider2D PhysicsWorld2D::attachBox(const PhysicsBody2D body, const BoxColliderDesc2D& desc) const {
@@ -172,6 +180,7 @@ PhysicsCollider2D PhysicsWorld2D::attachBox(const PhysicsBody2D body, const BoxC
     };
     const u64 handle = bridge::attach_box_2d(*m_system->m_impl->world2D, body.value, bridgeDesc);
     m_system->registerColliderGroup(PhysicsWorldKind::World2D, handle, desc.collisionGroup);
+    m_system->trackBodyCollider(PhysicsWorldKind::World2D, body.value, handle);
     return PhysicsCollider2D{handle};
 }
 
@@ -184,6 +193,7 @@ PhysicsCollider2D PhysicsWorld2D::attachCircle(const PhysicsBody2D body, const C
     };
     const u64 handle = bridge::attach_circle_2d(*m_system->m_impl->world2D, body.value, bridgeDesc);
     m_system->registerColliderGroup(PhysicsWorldKind::World2D, handle, desc.collisionGroup);
+    m_system->trackBodyCollider(PhysicsWorldKind::World2D, body.value, handle);
     return PhysicsCollider2D{handle};
 }
 
@@ -197,6 +207,7 @@ PhysicsCollider2D PhysicsWorld2D::attachCapsule(const PhysicsBody2D body, const 
     };
     const u64 handle = bridge::attach_capsule_2d(*m_system->m_impl->world2D, body.value, bridgeDesc);
     m_system->registerColliderGroup(PhysicsWorldKind::World2D, handle, desc.collisionGroup);
+    m_system->trackBodyCollider(PhysicsWorldKind::World2D, body.value, handle);
     return PhysicsCollider2D{handle};
 }
 
@@ -231,15 +242,20 @@ std::optional<PhysicsRayHit2D> PhysicsWorld2D::raycast(
 }
 
 Joint2D PhysicsWorld2D::createJoint(const JointDesc2D& /*desc*/) const {
+    // Not yet bridged to Rapier: returns an inert handle {0} and performs no
+    // simulation work. Callers must not treat the handle as a live joint.
     return Joint2D{0U};
 }
 
 void PhysicsWorld2D::removeJoint(const Joint2D /*joint*/) const {
+    // Not yet bridged to Rapier: this call is currently a silent no-op.
 }
 
-bool PhysicsWorld2D::jointExists(const Joint2D joint) const {
+std::optional<bool> PhysicsWorld2D::jointExists(const Joint2D joint) const {
+    // Not yet bridged to Rapier: returns std::nullopt (unknown), not a real
+    // existence check.
     (void)joint;
-    return false;
+    return std::nullopt;
 }
 
 PhysicsWorld3D::PhysicsWorld3D(PhysicsSystem& system) noexcept
@@ -260,6 +276,7 @@ PhysicsBody3D PhysicsWorld3D::createBody(const PhysicsBodyDesc3D& desc) const {
 
 void PhysicsWorld3D::removeBody(const PhysicsBody3D body) const {
     m_system->ensureInitialized();
+    m_system->purgeBodyColliderGroups(PhysicsWorldKind::World3D, body.value);
     bridge::remove_body_3d(*m_system->m_impl->world3D, body.value);
 }
 
@@ -321,6 +338,7 @@ void PhysicsWorld3D::setBodyLinearVelocity(const PhysicsBody3D body, const Vecto
 
 void PhysicsWorld3D::setBodyType(const PhysicsBody3D body, const PhysicsBodyKind newType) const {
     m_system->ensureInitialized();
+    // Not yet bridged to Rapier: this call is currently a silent no-op.
     // TODO(Phase 5): Wire through bridge when set_body_type_3d is exposed.
     // Rapier supports RigidBody::set_body_type() for Fixed↔Dynamic mutation.
     (void)body;
@@ -329,21 +347,25 @@ void PhysicsWorld3D::setBodyType(const PhysicsBody3D body, const PhysicsBodyKind
 
 void PhysicsWorld3D::wakeBody(const PhysicsBody3D body) const {
     m_system->ensureInitialized();
+    // Not yet bridged to Rapier: this call is currently a silent no-op.
     // TODO(Phase 5): Wire through bridge when wake_body_3d is exposed.
     (void)body;
 }
 
 void PhysicsWorld3D::putBodyToSleep(const PhysicsBody3D body) const {
     m_system->ensureInitialized();
+    // Not yet bridged to Rapier: this call is currently a silent no-op.
     // TODO(Phase 5): Wire through bridge when sleep_body_3d is exposed.
     (void)body;
 }
 
-bool PhysicsWorld3D::isBodySleeping(const PhysicsBody3D body) const {
+std::optional<bool> PhysicsWorld3D::isBodySleeping(const PhysicsBody3D body) const {
     m_system->ensureInitialized();
-    // TODO(Phase 5): Wire through bridge when is_body_sleeping_3d is exposed.
+    // Not yet bridged to Rapier: returns std::nullopt (unknown), not a real
+    // sleep state. TODO(Phase 5): Wire through bridge when is_body_sleeping_3d
+    // is exposed.
     (void)body;
-    return false;
+    return std::nullopt;
 }
 
 PhysicsCollider3D PhysicsWorld3D::attachCuboid(const PhysicsBody3D body, const CuboidColliderDesc& desc) const {
@@ -355,6 +377,7 @@ PhysicsCollider3D PhysicsWorld3D::attachCuboid(const PhysicsBody3D body, const C
     };
     const u64 handle = bridge::attach_cuboid_3d(*m_system->m_impl->world3D, body.value, bridgeDesc);
     m_system->registerColliderGroup(PhysicsWorldKind::World3D, handle, desc.collisionGroup);
+    m_system->trackBodyCollider(PhysicsWorldKind::World3D, body.value, handle);
     return PhysicsCollider3D{handle};
 }
 
@@ -367,6 +390,7 @@ PhysicsCollider3D PhysicsWorld3D::attachBall(const PhysicsBody3D body, const Bal
     };
     const u64 handle = bridge::attach_ball_3d(*m_system->m_impl->world3D, body.value, bridgeDesc);
     m_system->registerColliderGroup(PhysicsWorldKind::World3D, handle, desc.collisionGroup);
+    m_system->trackBodyCollider(PhysicsWorldKind::World3D, body.value, handle);
     return PhysicsCollider3D{handle};
 }
 
@@ -380,6 +404,7 @@ PhysicsCollider3D PhysicsWorld3D::attachCapsule(const PhysicsBody3D body, const 
     };
     const u64 handle = bridge::attach_capsule_3d(*m_system->m_impl->world3D, body.value, bridgeDesc);
     m_system->registerColliderGroup(PhysicsWorldKind::World3D, handle, desc.collisionGroup);
+    m_system->trackBodyCollider(PhysicsWorldKind::World3D, body.value, handle);
     return PhysicsCollider3D{handle};
 }
 
@@ -414,15 +439,20 @@ std::optional<PhysicsRayHit3D> PhysicsWorld3D::raycast(
 }
 
 Joint3D PhysicsWorld3D::createJoint(const JointDesc3D& /*desc*/) const {
+    // Not yet bridged to Rapier: returns an inert handle {0} and performs no
+    // simulation work. Callers must not treat the handle as a live joint.
     return Joint3D{0U};
 }
 
 void PhysicsWorld3D::removeJoint(const Joint3D /*joint*/) const {
+    // Not yet bridged to Rapier: this call is currently a silent no-op.
 }
 
-bool PhysicsWorld3D::jointExists(const Joint3D joint) const {
+std::optional<bool> PhysicsWorld3D::jointExists(const Joint3D joint) const {
+    // Not yet bridged to Rapier: returns std::nullopt (unknown), not a real
+    // existence check.
     (void)joint;
-    return false;
+    return std::nullopt;
 }
 
 PhysicsSystem::PhysicsSystem() = default;
@@ -604,6 +634,44 @@ void PhysicsSystem::unregisterColliderGroup(
     } else {
         m_impl->colliderGroups3D.erase(colliderHandle);
     }
+}
+
+void PhysicsSystem::trackBodyCollider(
+    const PhysicsWorldKind world,
+    const u64 bodyHandle,
+    const u64 colliderHandle)
+{
+    if (colliderHandle == 0U) {
+        return;
+    }
+    auto& bodyColliders = (world == PhysicsWorldKind::World2D)
+                              ? m_impl->bodyColliders2D
+                              : m_impl->bodyColliders3D;
+    bodyColliders[bodyHandle].push_back(colliderHandle);
+}
+
+void PhysicsSystem::purgeBodyColliderGroups(
+    const PhysicsWorldKind world,
+    const u64 bodyHandle)
+{
+    if (!m_impl) {
+        return;
+    }
+    auto& bodyColliders = (world == PhysicsWorldKind::World2D)
+                              ? m_impl->bodyColliders2D
+                              : m_impl->bodyColliders3D;
+    auto& groups = (world == PhysicsWorldKind::World2D)
+                       ? m_impl->colliderGroups2D
+                       : m_impl->colliderGroups3D;
+
+    const auto it = bodyColliders.find(bodyHandle);
+    if (it == bodyColliders.end()) {
+        return;
+    }
+    for (const u64 colliderHandle : it->second) {
+        groups.erase(colliderHandle);
+    }
+    bodyColliders.erase(it);
 }
 
 bool PhysicsSystem::passesCollisionFilter(

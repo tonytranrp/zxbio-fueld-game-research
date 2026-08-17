@@ -51,6 +51,8 @@ constexpr std::size_t MAX_AUDIO_CHUNKS = IDLE_VIDEO_BUFFER_POLICY.maxAudioChunks
 constexpr std::size_t MIN_VIDEO_PREFILL_FRAMES = IDLE_VIDEO_BUFFER_POLICY.minVideoPrefillFrames;
 constexpr std::size_t MIN_AUDIO_PREFILL_CHUNKS = IDLE_VIDEO_BUFFER_POLICY.minAudioPrefillChunks;
 constexpr i32 MAX_AUDIO_PUMPS_PER_UPDATE = 4;
+// Deadline for decoded data to become ready after play(); enforced from
+// update() ticks rather than by blocking the play() caller.
 constexpr f64 PREFILL_TIMEOUT_SECONDS = 1.0;
 
 
@@ -440,7 +442,6 @@ public:
             unload();
             return false;
         }
-        SetAudioStreamBufferSizeDefault(AUDIO_FRAMES_PER_CHUNK);
         m_audio = LoadAudioStream(AUDIO_SAMPLE_RATE, AUDIO_BITS, AUDIO_CHANNELS);
         if (!m_audio.buffer) {
             error = "Failed to create video audio stream";
@@ -490,22 +491,13 @@ public:
         if (!m_audioDecodeEnded.load(std::memory_order_relaxed)) {
             m_audioThread = std::thread([this] { audioReaderLoop(); });
         }
-        if (!waitForPrebuffer()) {
-            error = "Timed out waiting for decoded video data";
-            stop();
-            return false;
-        }
 
-        if (!uploadNextVideoFrame()) {
-            error = "Decoded video prebuffer was empty";
-            stop();
-            return false;
-        }
-        m_nextFrameTime = GetTime() + 1.0 / static_cast<f64>(VIDEO_FPS);
-        pumpAudio();
-        if (m_audioHadData.load(std::memory_order_relaxed)) {
-            PlayAudioStream(m_audio);
-        }
+        // Do not block the caller waiting for the prebuffer (that stalls the
+        // calling frame for up to PREFILL_TIMEOUT_SECONDS): finish starting
+        // playback on the first update() tick, failing there if the deadline
+        // passes without decoded data.
+        m_awaitingFirstFrame = true;
+        m_firstFrameDeadline = GetTime() + PREFILL_TIMEOUT_SECONDS;
         return true;
     }
 
@@ -514,6 +506,7 @@ public:
         m_playing.store(false, std::memory_order_relaxed);
         m_paused.store(false, std::memory_order_relaxed);
         m_audioDecodeEnded.store(true, std::memory_order_relaxed);
+        m_awaitingFirstFrame = false;
         m_videoProcess.stop();
         m_audioProcess.stop();
         if (m_videoThread.joinable()) {
@@ -529,6 +522,8 @@ public:
             std::scoped_lock lock{m_mutex};
             m_videoFrames.clear();
             m_audioChunks.clear();
+            m_freeVideoFrames.clear();
+            m_freeAudioChunks.clear();
             updateTelemetryLocked();
         }
     }
@@ -554,6 +549,30 @@ public:
             return result;
         }
 
+        if (m_awaitingFirstFrame) {
+            if (!prebufferReady()) {
+                if (GetTime() >= m_firstFrameDeadline) {
+                    result.error = true;
+                    result.errorMessage = "Timed out waiting for decoded video data";
+                }
+                return result;
+            }
+            m_awaitingFirstFrame = false;
+            if (!uploadNextVideoFrame()) {
+                result.error = true;
+                result.errorMessage = "Decoded video prebuffer was empty";
+                return result;
+            }
+            m_nextFrameTime = GetTime() + 1.0 / static_cast<f64>(VIDEO_FPS);
+            if (!m_paused.load(std::memory_order_relaxed)) {
+                pumpAudio();
+                if (m_audioHadData.load(std::memory_order_relaxed)) {
+                    PlayAudioStream(m_audio);
+                }
+            }
+            return result;
+        }
+
         if (!m_paused.load(std::memory_order_relaxed)) {
             const f64 now = GetTime();
             std::vector<unsigned char> frame;
@@ -563,12 +582,14 @@ public:
                     m_nextFrameTime = now + 1.0 / static_cast<f64>(VIDEO_FPS);
                     break;
                 }
+                recycleVideoFrame(frame);
                 frame = std::move(nextFrame);
                 m_nextFrameTime += 1.0 / static_cast<f64>(VIDEO_FPS);
             }
             if (!frame.empty()) {
                 UpdateTexture(m_texture, frame.data());
             }
+            recycleVideoFrame(frame);
 
             pumpAudio();
         }
@@ -650,7 +671,19 @@ private:
                 }
                 sleepForMilliseconds(1);
             }
-            std::vector<unsigned char> frame(FRAME_BYTES);
+            // Pull a recycled frame buffer instead of allocating ~3.5 MB per
+            // decoded frame.
+            std::vector<unsigned char> frame;
+            {
+                std::scoped_lock lock{m_mutex};
+                if (!m_freeVideoFrames.empty()) {
+                    frame = std::move(m_freeVideoFrames.back());
+                    m_freeVideoFrames.pop_back();
+                }
+            }
+            if (frame.size() < FRAME_BYTES) {
+                frame.resize(FRAME_BYTES);
+            }
             if (!m_videoProcess.readExact(frame.data(), FRAME_BYTES, m_stop)) {
                 break;
             }
@@ -678,7 +711,17 @@ private:
                 }
                 sleepForMilliseconds(1);
             }
-            std::vector<unsigned char> chunk(m_audioScratch.size());
+            std::vector<unsigned char> chunk;
+            {
+                std::scoped_lock lock{m_mutex};
+                if (!m_freeAudioChunks.empty()) {
+                    chunk = std::move(m_freeAudioChunks.back());
+                    m_freeAudioChunks.pop_back();
+                }
+            }
+            if (chunk.size() != m_audioScratch.size()) {
+                chunk.resize(m_audioScratch.size());
+            }
             if (!m_audioProcess.readExact(chunk.data(), chunk.size(), m_stop)) {
                 break;
             }
@@ -709,7 +752,18 @@ private:
         }
 
         UpdateTexture(m_texture, frame.data());
+        recycleVideoFrame(frame);
         return true;
+    }
+
+    void recycleVideoFrame(std::vector<unsigned char>& frame) {
+        if (frame.empty()) {
+            return;
+        }
+        std::scoped_lock lock{m_mutex};
+        if (m_freeVideoFrames.size() < MAX_VIDEO_FRAMES) {
+            m_freeVideoFrames.push_back(std::move(frame));
+        }
     }
 
     void pumpAudio() {
@@ -731,27 +785,20 @@ private:
             return false;
         }
 
-        const auto& chunk = m_audioChunks.front();
-        std::memcpy(m_audioScratch.data(), chunk.data(), m_audioScratch.size());
+        std::memcpy(m_audioScratch.data(), m_audioChunks.front().data(), m_audioScratch.size());
+        if (m_freeAudioChunks.size() < MAX_AUDIO_CHUNKS) {
+            m_freeAudioChunks.push_back(std::move(m_audioChunks.front()));
+        }
         m_audioChunks.pop_front();
         updateTelemetryLocked();
         return true;
     }
 
-    [[nodiscard]] bool waitForPrebuffer() const {
-        const f64 deadline = GetTime() + PREFILL_TIMEOUT_SECONDS;
-        while (!m_stop.load(std::memory_order_relaxed) && GetTime() < deadline) {
-            {
-                std::scoped_lock lock{m_mutex};
-                if (m_videoFrames.size() >= MIN_VIDEO_PREFILL_FRAMES &&
-                    (m_audioChunks.size() >= MIN_AUDIO_PREFILL_CHUNKS ||
-                        m_audioDecodeEnded.load(std::memory_order_relaxed))) {
-                    return true;
-                }
-            }
-            sleepForMilliseconds(1);
-        }
-        return false;
+    [[nodiscard]] bool prebufferReady() const {
+        std::scoped_lock lock{m_mutex};
+        return m_videoFrames.size() >= MIN_VIDEO_PREFILL_FRAMES &&
+            (m_audioChunks.size() >= MIN_AUDIO_PREFILL_CHUNKS ||
+                m_audioDecodeEnded.load(std::memory_order_relaxed));
     }
 
     NativePath m_path;
@@ -777,9 +824,13 @@ private:
     static constexpr std::size_t FRAME_BYTES =
         static_cast<std::size_t>(VIDEO_WIDTH) * static_cast<std::size_t>(VIDEO_HEIGHT) * 4U;
     std::deque<std::vector<unsigned char>> m_videoFrames;
+    std::deque<std::vector<unsigned char>> m_freeVideoFrames;
     std::vector<unsigned char> m_audioScratch;
     std::deque<std::vector<unsigned char>> m_audioChunks;
+    std::deque<std::vector<unsigned char>> m_freeAudioChunks;
     f64 m_nextFrameTime = 0.0;
+    bool m_awaitingFirstFrame = false;
+    f64 m_firstFrameDeadline = 0.0;
 
     void updateTelemetryLocked() const noexcept {
         ::biofuel::engine::debug::MemoryTelemetry::set(
@@ -792,6 +843,13 @@ private:
             static_cast<i64>(m_audioChunks.size() * m_audioScratch.size()));
     }
 };
+
+void initGlobalAudioSettings() {
+    // SetAudioStreamBufferSizeDefault is a process-global Raylib setting that
+    // sizes every audio stream created afterwards — apply it once at manager
+    // init, not per video load.
+    SetAudioStreamBufferSizeDefault(AUDIO_FRAMES_PER_CHUNK);
+}
 
 std::unique_ptr<VideoManager::Backend> makeBackend() {
     return std::make_unique<FfmpegProcessBackend>();

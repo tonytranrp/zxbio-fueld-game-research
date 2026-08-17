@@ -18,6 +18,7 @@ VideoManager::~VideoManager() noexcept {
 }
 
 void VideoManager::init() {
+    initGlobalAudioSettings();
     m_initialized = true;
 }
 

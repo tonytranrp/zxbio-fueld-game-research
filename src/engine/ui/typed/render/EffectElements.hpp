@@ -1,6 +1,5 @@
 #pragma once
 
-#include "engine/animation/typed/AnimationTracks.hpp"
 #include "engine/runtime/typed/Assets.hpp"
 #include "engine/ui/typed/RenderPipeline.hpp"
 #include <string_view>

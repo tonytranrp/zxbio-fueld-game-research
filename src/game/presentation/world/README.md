@@ -27,6 +27,8 @@ Constants: `kDefaultTileSize` (32 px) and `kGridLineThickness` (1 px).
 
 ## How it is used
 
-Screens that show the 2D farm view call `render()` once per frame with the
-current `FarmState` and camera pan, then use the returned hovered tile to drive
-selection/placement UI.
+`TileRenderer` is currently **unused**. The shipped gameplay is the first-person
+3D voxel `GamePlay` screen, which superseded this 2D farm-grid view. A grep of
+the source tree finds `TileRenderer` referenced only in this folder (its own
+header/source and this README); no screen currently includes or calls it. The
+API above is what callers would use if the 2D farm view is brought back.

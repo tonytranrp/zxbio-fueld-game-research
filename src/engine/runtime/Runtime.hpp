@@ -32,7 +32,6 @@ public:
     [[nodiscard]] static auto& events() { return service<::biofuel::engine::runtime::typed::EventService>(); }
     [[nodiscard]] static auto& render() { return service<::biofuel::engine::runtime::typed::RenderService>(); }
     [[nodiscard]] static auto& debugOverlay() { return service<::biofuel::engine::runtime::typed::DebugOverlayService>(); }
-    [[nodiscard]] static auto& world() { return service<::biofuel::engine::runtime::typed::WorldService>(); }
 };
 
 } // namespace biofuel::engine::runtime

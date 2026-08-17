@@ -17,12 +17,16 @@ FontManager& FontManager::instance() noexcept {
 void FontManager::load(std::string_view name, std::string_view path, i32 baseSize) {
     m_shutDown = false;  // reset in case shutdown() was called before (B014)
     unload(name);
+    // Reserve the map slot before the Raylib load so storing the font cannot
+    // throw; a throw after LoadFontEx would leak the font's GPU handles.
+    Font& slot = m_fonts[std::string{name}];
     Font font = LoadFontEx(std::string{path}.c_str(), baseSize, nullptr, 0);
     if (!IsFontValid(font)) {
+        m_fonts.erase(std::string{name});
         spdlog::warn("FontManager: Failed to load font '{}' from '{}'", name, path);
         return;
     }
-    m_fonts[std::string{name}] = font;
+    slot = font;
 }
 
 void FontManager::unload(std::string_view name) {
@@ -46,13 +50,16 @@ void FontManager::shutdown() noexcept {
     m_shutDown = true;
 }
 
-Font FontManager::get(std::string_view name) const noexcept {
+const Font& FontManager::get(std::string_view name) const noexcept {
     const std::string key{name};
     auto it = m_fonts.find(key);
     if (it != m_fonts.end()) {
         return it->second;
     }
-    return GetFontDefault();
+    // Raylib's default font is process-lifetime static data; caching one copy
+    // lets get() return a reference on the miss path too.
+    static const Font defaultFont = GetFontDefault();
+    return defaultFont;
 }
 
 bool FontManager::has(std::string_view name) const noexcept {

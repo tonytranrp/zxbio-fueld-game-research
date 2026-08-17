@@ -35,28 +35,6 @@ struct EventChannel {
     }
 };
 
-template<typename TEvent>
-struct EventPublisher {
-    using Payload = typename EventChannel<TEvent>::Payload;
-
-    static void publish(const Payload& payload) {
-        EventChannel<TEvent>::publish(payload);
-    }
-
-    static void publish(Payload&& payload = {}) {
-        EventChannel<TEvent>::publish(std::move(payload));
-    }
-};
-
-template<typename TEvent>
-struct EventSink {
-    using Payload = typename EventChannel<TEvent>::Payload;
-
-    [[nodiscard]] static auto get() {
-        return EventChannel<TEvent>::sink();
-    }
-};
-
 class Events {
 public:
     template<typename TEvent>

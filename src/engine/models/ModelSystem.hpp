@@ -13,6 +13,9 @@
 
 namespace biofuel::engine::models {
 
+// NOTE: no assets are registered yet (the enum and BUILT_IN_MODELS are empty),
+// so init()/preload() currently run over a zero-entry registry. Do not add
+// placeholder entries; populate this when real model assets exist.
 enum class ModelAssetId : u32 {
 };
 
@@ -61,6 +64,15 @@ struct ModelRenderState {
 };
 
 struct SharedAssetData {
+    // Owns its Raylib resources: the destructor unloads them, so a shared_ptr
+    // to this struct is the single source of truth for their lifetime. This
+    // keeps ModelInstance objects (which hold shared_ptr<const SharedAssetData>
+    // and may outlive ModelSystem::shutdown()) from referencing freed data.
+    SharedAssetData() = default;
+    ~SharedAssetData() noexcept;
+    SharedAssetData(const SharedAssetData&) = delete;
+    SharedAssetData& operator=(const SharedAssetData&) = delete;
+
     ModelAssetSpec spec{};
     Model prototype{};
     bool prototypeLoaded = false;
@@ -204,7 +216,6 @@ private:
     [[nodiscard]] std::shared_ptr<SharedAssetData> loadAsset(const ModelAssetSpec& spec);
     [[nodiscard]] static ModelAssetMetrics computeMetrics(Model& model) noexcept;
     [[nodiscard]] static ::biofuel::engine::animation::model::ModelRigBinding buildRigBinding(const Model& model) noexcept;
-    static void unloadAsset(SharedAssetData& asset) noexcept;
     void pruneInstances();
     [[nodiscard]] std::shared_ptr<ModelInstance> findInstance(u64 instanceId) const;
     [[nodiscard]] std::shared_ptr<ModelInstance> findLiveInstance(ModelAssetId assetId) const;

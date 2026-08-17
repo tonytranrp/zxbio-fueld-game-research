@@ -50,23 +50,6 @@ struct WorldMeters2D {
 static_assert(sizeof(WorldMeters2D) == 8,
               "WorldMeters2D must be exactly 8 bytes (2 f32)");
 
-struct WorldMeters3D {
-    f32 x = 0.0f;
-    f32 y = 0.0f;
-    f32 z = 0.0f;
-
-    constexpr WorldMeters3D() noexcept = default;
-    constexpr WorldMeters3D(const f32 xValue, const f32 yValue, const f32 zValue) noexcept
-        : x(xValue), y(yValue), z(zValue) {}
-
-    [[nodiscard]] constexpr Vector3 toVector3() const noexcept { return Vector3{x, y, z}; }
-    [[nodiscard]] static constexpr WorldMeters3D fromVector3(const Vector3 value) noexcept {
-        return WorldMeters3D{value.x, value.y, value.z};
-    }
-};
-static_assert(sizeof(WorldMeters3D) == 12,
-              "WorldMeters3D must be exactly 12 bytes (3 f32)");
-
 struct ScreenPixels2D {
     f32 x = 0.0f;
     f32 y = 0.0f;

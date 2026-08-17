@@ -42,7 +42,7 @@ public:
 
     void wakeBody(PhysicsBody2D body) const;
     void putBodyToSleep(PhysicsBody2D body) const;
-    [[nodiscard]] bool isBodySleeping(PhysicsBody2D body) const;
+    [[nodiscard]] std::optional<bool> isBodySleeping(PhysicsBody2D body) const;
 
     [[nodiscard]] PhysicsCollider2D attachBox(PhysicsBody2D body, const BoxColliderDesc2D& desc) const;
     [[nodiscard]] PhysicsCollider2D attachCircle(PhysicsBody2D body, const CircleColliderDesc& desc) const;
@@ -55,7 +55,7 @@ public:
     // Joints (stub — not bridged to Rapier yet)
     [[nodiscard]] Joint2D createJoint(const JointDesc2D& desc) const;
     void removeJoint(Joint2D joint) const;
-    [[nodiscard]] bool jointExists(Joint2D joint) const;
+    [[nodiscard]] std::optional<bool> jointExists(Joint2D joint) const;
 
 private:
     PhysicsSystem* m_system = nullptr;
@@ -76,7 +76,7 @@ public:
 
     void wakeBody(PhysicsBody3D body) const;
     void putBodyToSleep(PhysicsBody3D body) const;
-    [[nodiscard]] bool isBodySleeping(PhysicsBody3D body) const;
+    [[nodiscard]] std::optional<bool> isBodySleeping(PhysicsBody3D body) const;
 
     [[nodiscard]] PhysicsCollider3D attachCuboid(PhysicsBody3D body, const CuboidColliderDesc& desc) const;
     [[nodiscard]] PhysicsCollider3D attachBall(PhysicsBody3D body, const BallColliderDesc& desc) const;
@@ -89,7 +89,7 @@ public:
     // Joints (stub — not bridged to Rapier yet)
     [[nodiscard]] Joint3D createJoint(const JointDesc3D& desc) const;
     void removeJoint(Joint3D joint) const;
-    [[nodiscard]] bool jointExists(Joint3D joint) const;
+    [[nodiscard]] std::optional<bool> jointExists(Joint3D joint) const;
 
 private:
     PhysicsSystem* m_system = nullptr;
@@ -134,6 +134,8 @@ public:
     void unregisterColliderGroup(PhysicsWorldKind world, u64 colliderHandle);
 
 private:
+    void trackBodyCollider(PhysicsWorldKind world, u64 bodyHandle, u64 colliderHandle);
+    void purgeBodyColliderGroups(PhysicsWorldKind world, u64 bodyHandle);
     struct Impl;
 
     std::unique_ptr<Impl> m_impl;

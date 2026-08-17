@@ -9,18 +9,14 @@ they help screens render or coordinate UI effects.
 game/presentation/
 |-- effects/  shader backdrops, blur, screen visual helpers
 |-- idle/     idle detection utility
-`-- widgets/  shared menu widgets and input cooldowns
+|-- widgets/  shared menu widgets
+`-- world/   2D farm tile-grid renderer
 ```
 
 ## How to use it
 
 Put code here when multiple game screens need the same visual behavior or UI
 helper and the code is still Fuel Farm specific.
-
-```cpp
-game::presentation::widgets::InputCooldown cooldown;
-cooldown.reset(0.12f);
-```
 
 If the helper becomes reusable across games, move it into `engine/ui/` or
 `engine/graphics/`.

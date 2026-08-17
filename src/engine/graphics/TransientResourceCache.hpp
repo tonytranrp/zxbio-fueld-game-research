@@ -13,7 +13,9 @@ class TransientResourceCache final {
 public:
     [[nodiscard]] static TransientResourceCache& instance() noexcept;
 
-    [[nodiscard]] RenderSurface& acquireSurface(std::string_view key, i32 width, i32 height);
+    // Returns a shared handle: expiring the cache entry does not destroy the
+    // RenderSurface while a caller still holds it.
+    [[nodiscard]] std::shared_ptr<RenderSurface> acquireSurface(std::string_view key, i32 width, i32 height);
     void releaseSurface(std::string_view key, f32 ttlSeconds) noexcept;
     void update(f64 nowSeconds) noexcept;
     void releaseAll() noexcept;
@@ -30,7 +32,7 @@ private:
     ~TransientResourceCache() noexcept = default;
 
     struct SurfaceEntry {
-        std::unique_ptr<RenderSurface> surface;
+        std::shared_ptr<RenderSurface> surface;
         f64 expiresAt = 0.0;
         bool leased = false;
     };

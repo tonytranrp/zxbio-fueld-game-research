@@ -6,7 +6,7 @@ This folder stores authored runtime model assets for the game.
 
 - `.glb` is the standard runtime format for this repo.
 - Other Raylib-supported model formats are allowed when needed.
-- Procedural geometry, such as the Debug hand lab, does not belong here.
+- Procedural geometry (e.g. runtime-generated voxel meshes) does not belong here.
 
 ## Folder rules
 
@@ -25,4 +25,4 @@ assets/models/
 
 ## Registration rule
 
-Runtime models must be registered in `src/game/models/ModelSystem.cpp` through the typed model registry. The registry owns debug name, model path, optional shader pairing, preload behavior, animation metadata, and optional keyframe clip factories.
+Runtime models must be registered in `src/engine/models/ModelSystem.cpp` through the typed model registry. The registry owns debug name, model path, optional shader pairing, preload behavior, animation metadata, and optional keyframe clip factories.

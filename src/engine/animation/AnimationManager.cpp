@@ -79,20 +79,6 @@ void AnimationManager::cancelAll(const std::string& name) {
     endDispatch();
 }
 
-// ---- Explicit template instantiations ----
-void AnimationManager::add(std::unique_ptr<Animation<f32>> anim) {
-    appendTypedAnimation(std::move(anim));
-}
-void AnimationManager::add(std::unique_ptr<Animation<Color>> anim) {
-    appendTypedAnimation(std::move(anim));
-}
-void AnimationManager::add(std::unique_ptr<Animation<Vector2>> anim) {
-    appendTypedAnimation(std::move(anim));
-}
-void AnimationManager::add(std::unique_ptr<Animation<Rectangle>> anim) {
-    appendTypedAnimation(std::move(anim));
-}
-
 void AnimationManager::beginDispatch() noexcept {
     ++m_dispatchDepth;
 }

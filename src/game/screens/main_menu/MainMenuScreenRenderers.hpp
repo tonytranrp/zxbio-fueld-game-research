@@ -78,7 +78,7 @@ struct RenderElementExecutor<mainmenu::TitleBlockElement, MMS> {
                 MMS::COLOR_GRAY_DIM.b,
                 alpha
             };
-            static constexpr std::string_view subtitleStr = "2D Pixel-Art Biofuel Management Sim";
+            static constexpr std::string_view subtitleStr = "A Biofuel Management Sim";
             Renderer::drawText(
                 subtitleStr,
                 MMS::TITLE_X + titleSlideX,

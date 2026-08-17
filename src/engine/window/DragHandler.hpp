@@ -49,6 +49,7 @@ private:
     inline static constexpr unsigned int WM_SYSCOMMAND = 0x0112;
     inline static constexpr unsigned int WM_MOUSEMOVE  = 0x0200;
     inline static constexpr unsigned int WM_LBUTTONUP  = 0x0202;
+    inline static constexpr unsigned int WM_CAPTURECHANGED = 0x0215;
     inline static constexpr unsigned int SC_MOVE       = 0xF010;
     inline static constexpr unsigned int SC_SIZE       = 0xF000;
     inline static constexpr unsigned int SWP_NOZORDER  = 0x0004;
@@ -70,6 +71,12 @@ private:
 // ==============================================================================
 
 inline void DragHandler::install(void* hwnd) noexcept {
+    // Idempotent: if already subclassed for this window, do not re-capture the
+    // (now-subclassed) wndProc as the "original" — that would make a later
+    // uninstall/install recurse infinitely through the wrong original proc.
+    if (s_hwnd == hwnd && s_originalWndProc != 0) {
+        return;
+    }
     s_hwnd = hwnd;
     if (!s_hwnd) return;
     s_originalWndProc = GetWindowLongPtrW(s_hwnd, GWLP_WNDPROC);
@@ -127,6 +134,13 @@ inline long long __stdcall DragHandler::wndProc(void* hWnd, unsigned int msg, un
             s_pending = false;
             ReleaseCapture();
             return 0;
+        }
+        if (msg == WM_CAPTURECHANGED) {
+            // Capture was stolen mid-drag (no WM_LBUTTONUP will arrive); reset
+            // drag state and let the original wndproc see the message too.
+            s_dragging = false;
+            s_pending = false;
+            return CallWindowProcW(s_originalWndProc, hWnd, msg, wParam, lParam);
         }
     }
 

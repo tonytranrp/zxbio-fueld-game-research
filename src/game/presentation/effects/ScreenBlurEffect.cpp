@@ -305,9 +305,9 @@ void ScreenBlurEffect::ensureTextures(const i32 width, const i32 height) {
     }
 
     auto& cache = ::biofuel::engine::graphics::TransientResourceCache::instance();
-    m_captureSurface = &cache.acquireSurface(CAPTURE_CACHE_KEY, width, height);
-    m_blurSurfaceA = &cache.acquireSurface(BLUR_A_CACHE_KEY, scaledWidth, scaledHeight);
-    m_blurSurfaceB = &cache.acquireSurface(BLUR_B_CACHE_KEY, scaledWidth, scaledHeight);
+    m_captureSurface = cache.acquireSurface(CAPTURE_CACHE_KEY, width, height);
+    m_blurSurfaceA = cache.acquireSurface(BLUR_A_CACHE_KEY, scaledWidth, scaledHeight);
+    m_blurSurfaceB = cache.acquireSurface(BLUR_B_CACHE_KEY, scaledWidth, scaledHeight);
     invalidateCache();
     m_cachedWidth = width;
     m_cachedHeight = height;

@@ -16,18 +16,6 @@ public:
     using iterator = Container::iterator;
     using const_iterator = Container::const_iterator;
 
-    template<typename TScreen, typename... TArgs>
-    [[nodiscard]] ScreenSlot makeSlot(TransitionPolicyData policy, TArgs&&... args) const {
-        using CleanScreen = std::remove_cvref_t<TScreen>;
-        static_assert(
-            TRegistry::template contains<CleanScreen>,
-            "TypedScreenStack::makeSlot<TScreen> used with a screen not registered in ScreenRegistry");
-
-        return ScreenSlot::typed<CleanScreen>(
-            std::make_unique<CleanScreen>(std::forward<TArgs>(args)...),
-            policy);
-    }
-
     [[nodiscard]] ScreenSlot makeBridgeSlot(std::unique_ptr<::biofuel::engine::ui::Screen> screen, TransitionPolicyData policy) const {
         return ScreenSlot{std::move(screen), policy};
     }

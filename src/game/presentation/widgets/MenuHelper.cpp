@@ -32,7 +32,8 @@ constexpr i32 VERTICAL_LOCKED_LABEL_FONT_SIZE = 14;
 // Pixel gap between the selected vertical item and its left-side accent.
 constexpr i32 VERTICAL_ACCENT_LEFT_MARGIN = 30;
 
-// Maximum number of horizontal carousel items kept in the visual-state pool.
+// Maximum number of horizontal carousel items tracked in the per-call
+// visual-state buffer returned by buildHorizontalStates.
 constexpr i32 HORIZONTAL_VISIBLE_LIMIT = 8;
 // Largest absolute slot offset (in slot units) at which an item still renders;
 // items farther from center than this are culled. Range: > 0.
@@ -49,8 +50,6 @@ constexpr i32 HORIZONTAL_HOVER_LIFT = 2;
 constexpr i32 HORIZONTAL_LOCKED_LABEL_GAP = 2;
 // Blend fraction of hover strength mixed into the locked tag's glow color. Range: 0..1.
 constexpr f32 HORIZONTAL_LOCKED_LABEL_HOVER_BLEND = 0.4f;
-
-std::array<HorizontalMenuItemVisualState, HORIZONTAL_VISIBLE_LIMIT> g_horizontalStates{};
 
 [[nodiscard]] i32 wrapIndex(const i32 index, const i32 itemCount) noexcept {
     return (index % itemCount + itemCount) % itemCount;
@@ -101,7 +100,7 @@ std::array<HorizontalMenuItemVisualState, HORIZONTAL_VISIBLE_LIMIT> g_horizontal
     };
 }
 
-void rebuildHorizontalStates(
+[[nodiscard]] std::array<HorizontalMenuItemVisualState, HORIZONTAL_VISIBLE_LIMIT> buildHorizontalStates(
     std::span<const MenuItem> items,
     const i32 selectedIndex,
     const i32 hoveredIndex,
@@ -110,16 +109,14 @@ void rebuildHorizontalStates(
     const HorizontalMenuLayout& layout,
     const HorizontalMenuMotion& motion)
 {
-    for (auto& state : g_horizontalStates) {
-        state = {};
-    }
+    std::array<HorizontalMenuItemVisualState, HORIZONTAL_VISIBLE_LIMIT> states{};
 
     if (items.empty()) {
-        return;
+        return states;
     }
 
     const i32 itemCount = static_cast<i32>(items.size());
-    const i32 visibleCount = std::min(itemCount, static_cast<i32>(g_horizontalStates.size()));
+    const i32 visibleCount = std::min(itemCount, static_cast<i32>(states.size()));
     for (i32 itemIndex = 0; itemIndex < visibleCount; ++itemIndex) {
         const i32 offset = shortestCircularOffset(itemIndex, selectedIndex, itemCount);
         const f32 slotOffset = static_cast<f32>(offset) + motion.slotShift;
@@ -127,7 +124,7 @@ void rebuildHorizontalStates(
             continue;
         }
 
-        auto& state = g_horizontalStates[itemIndex];
+        auto& state = states[itemIndex];
         const bool selected = (itemIndex == selectedIndex);
         const bool hovered = (itemIndex == hoveredIndex);
         const f32 selectedStrength = easeOutCubic(1.0f - saturate(std::abs(slotOffset)));
@@ -154,6 +151,7 @@ void rebuildHorizontalStates(
         const f32 previewBlend = saturate(selectedStrength + hoverStrength);
         state.color = lerpColor(sideColor, layout.colorSelected, previewBlend);
     }
+    return states;
 }
 
 [[nodiscard]] Shader menuOptionShader() noexcept {
@@ -452,9 +450,9 @@ void renderHorizontalCarousel(
     const HorizontalMenuMotion& motion,
     const f32 animTime)
 {
-    rebuildHorizontalStates(items, selectedIndex, hoveredIndex, centerX, centerY, layout, motion);
+    const auto states = buildHorizontalStates(items, selectedIndex, hoveredIndex, centerX, centerY, layout, motion);
 
-    for (const auto& state : g_horizontalStates) {
+    for (const auto& state : states) {
         if (!state.visible) {
             continue;
         }
@@ -537,12 +535,12 @@ HorizontalMenuHitResult hitTestHorizontalCarousel(
     const HorizontalMenuLayout& layout,
     const HorizontalMenuMotion& motion)
 {
-    rebuildHorizontalStates(items, selectedIndex, -1, centerX, centerY, layout, motion);
+    const auto states = buildHorizontalStates(items, selectedIndex, -1, centerX, centerY, layout, motion);
 
     const Vector2 mouse = GetMousePosition();
     HorizontalMenuHitResult result;
 
-    for (const auto& state : g_horizontalStates) {
+    for (const auto& state : states) {
         if (!state.visible || state.locked) {
             continue;
         }
@@ -562,10 +560,6 @@ HorizontalMenuHitResult hitTestHorizontalCarousel(
     }
 
     return result;
-}
-
-std::span<const HorizontalMenuItemVisualState> horizontalMenuVisualStates() {
-    return std::span<const HorizontalMenuItemVisualState>{g_horizontalStates};
 }
 
 } // namespace biofuel::game::presentation::widgets

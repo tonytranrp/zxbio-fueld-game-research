@@ -16,7 +16,33 @@ namespace {
 
 constexpr std::array<ModelAssetSpec, 0> BUILT_IN_MODELS{};
 
+// Single unload path for a SharedAssetData's prototype: used both by the
+// mid-life release (releasePrototypeAfterInstance) and by the destructor.
+void unloadPrototypeResources(SharedAssetData& asset) noexcept {
+    if (!asset.prototypeLoaded) {
+        return;
+    }
+
+    UnloadModel(asset.prototype);
+    asset.prototype = {};
+    asset.prototypeLoaded = false;
+    ::biofuel::engine::debug::MemoryTelemetry::remove(
+        ::biofuel::engine::debug::ResourceKind::ModelAsset,
+        1,
+        asset.estimatedBytes);
+}
+
 } // namespace
+
+SharedAssetData::~SharedAssetData() noexcept {
+    if (animations != nullptr && animationCount > 0) {
+        UnloadModelAnimations(animations, static_cast<unsigned int>(animationCount));
+        animations = nullptr;
+        animationCount = 0;
+    }
+
+    unloadPrototypeResources(*this);
+}
 
 ModelInstance::ModelInstance(
     ConstructionToken,
@@ -233,11 +259,9 @@ void ModelSystem::shutdown() {
     }
 
     m_instances.clear();
-    for (auto& [assetId, asset] : m_assets) {
-        if (asset) {
-            unloadAsset(*asset);
-        }
-    }
+    // SharedAssetData frees its own Raylib resources in its destructor, so
+    // dropping the system's references is enough: assets still referenced by
+    // live ModelInstance objects stay valid until the last owner releases them.
     m_assets.clear();
     m_registry.clear();
     m_initialized = false;
@@ -464,30 +488,8 @@ ModelAssetMetrics ModelSystem::computeMetrics(Model& model) noexcept {
     };
 }
 
-void ModelSystem::unloadAsset(SharedAssetData& asset) noexcept {
-    if (asset.animations != nullptr && asset.animationCount > 0) {
-        UnloadModelAnimations(asset.animations, static_cast<unsigned int>(asset.animationCount));
-        asset.animations = nullptr;
-        asset.animationCount = 0;
-    }
-
-    unloadPrototype(asset);
-    asset.bindPoseCopy.clear();
-    asset.keyframeClips.clear();
-}
-
 void ModelSystem::unloadPrototype(SharedAssetData& asset) noexcept {
-    if (!asset.prototypeLoaded) {
-        return;
-    }
-
-    UnloadModel(asset.prototype);
-    asset.prototype = {};
-    asset.prototypeLoaded = false;
-    ::biofuel::engine::debug::MemoryTelemetry::remove(
-        ::biofuel::engine::debug::ResourceKind::ModelAsset,
-        1,
-        asset.estimatedBytes);
+    unloadPrototypeResources(asset);
 }
 
 void ModelSystem::pruneInstances() {

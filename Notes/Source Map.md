@@ -20,7 +20,7 @@ This note links the source tree into a navigable Obsidian map.
 - [[src/engine/animation/README|animation]]
 - [[src/engine/graphics/README|graphics]]
 - [[src/engine/ui/README|UI]]
-- [[src/engine/world/README|world (terrain + voxel)]]
+- [[src/engine/world/voxel/README|world (voxel)]]
 
 ## Game
 

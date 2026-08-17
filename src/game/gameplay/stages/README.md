@@ -6,17 +6,16 @@ The `stages/` folder contains pure-functional pipeline stages for the four core 
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  Service System (FutureServiceModule)            │
-│  EconomyService, EcologyService, SeasonService,  │
-│  TechService, SaveService, GameStateService      │
-│                                                  │
-│  Each service owns one or more PipelineRunner    │
-│  objects and calls runner.run() when the         │
-│  corresponding game logic needs to execute.      │
+│  Service System (PLANNED — not yet implemented)  │
+│  FutureServiceModule and the EconomyService,     │
+│  EcologyService, SeasonService, TechService,     │
+│  SaveService, GameStateService backends do not   │
+│  exist in code yet. Today, pipeline runners are   │
+│  driven directly by gameplay/screens code.       │
 └──────────────┬───────────────────────────────────┘
-               │
+               │ (planned)
 ┌──────────────▼───────────────────────────────────┐
-│  Pipeline Runners                                │
+│  Pipeline Runners (CURRENT)                       │
 │  TurnPipelineRunner, HarvestPipelineRunner,      │
 │  FuelProcessPipelineRunner, TechTreePipelineRunner│
 │                                                  │
@@ -345,9 +344,17 @@ These events are consumed by other engine systems (UI updates, save triggers, ac
 
 Pipeline-c- generates stage keys from the struct type name. For `SeasonAdvance`, the key is `"SeasonAdvance"`. The observer also accepts dotted keys (e.g., `"turn.season_advance"`) for forward compatibility with explicit stage naming.
 
-## FutureServiceModule backends
+## FutureServiceModule backends (PLANNED — not yet implemented)
 
-Each game service holds one or more pipeline runners and calls them when its domain logic executes:
+> **Note:** `FutureServiceModule` and the `EconomyService` / `EcologyService` /
+> `SeasonService` / `TechService` / `SaveService` / `GameStateService` backends
+> do **not** exist in the codebase yet. The pipeline runners, stages, and
+> `PipelineEventObserver` described above are real and built; the service layer
+> that is supposed to own them is still aspirational. The table below describes
+> the intended ownership once that layer is implemented.
+
+Each game service would hold one or more pipeline runners and call them when its
+domain logic executes:
 
 | Service | Runners owned | When invoked |
 |---|---|---|

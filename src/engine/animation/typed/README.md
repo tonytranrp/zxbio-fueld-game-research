@@ -7,8 +7,12 @@ for animation names, default durations, and easing choices.
 
 ```text
 engine/animation/typed/
-`-- AnimationTracks.hpp
+`-- README.md
 ```
+
+This folder currently holds only this README. The typed track tags and easing
+policies described below are the intended contract for when concrete track
+headers are added here.
 
 ## How to use it
 

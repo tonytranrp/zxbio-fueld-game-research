@@ -21,7 +21,10 @@ public:
     void unloadAll() noexcept;
     void shutdown() noexcept;
 
-    [[nodiscard]] Font get(std::string_view name) const noexcept;
+    // Returns a reference to the cached entry; the reference stays valid until
+    // the name is unload()ed or re-load()ed. Callers must not hold it across
+    // those calls.
+    [[nodiscard]] const Font& get(std::string_view name) const noexcept;
     [[nodiscard]] bool has(std::string_view name) const noexcept;
 
 private:

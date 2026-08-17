@@ -37,6 +37,7 @@ void AudioManager::shutdown() noexcept {
 
 void AudioManager::update() noexcept {
     if (!m_initialized) return;
+    purgeFinishedAliases();
     if (!m_currentMusic.empty()) {
         if (recoverStaleCurrentMusic("update")) {
             return;
@@ -70,6 +71,10 @@ void AudioManager::loadSound(std::string_view name, std::string_view path) {
 void AudioManager::unloadSound(std::string_view name) {
     const std::string key(name);
     if (auto it = m_sounds.find(key); it != m_sounds.end()) {
+        // Drop any one-shot aliases that share this source's sample data
+        // before the source is freed; otherwise they would reference freed
+        // sample memory.
+        purgeAliasesForSource(&it->second);
         const Sound sound = it->second;
         ::biofuel::engine::debug::MemoryTelemetry::remove(
             ::biofuel::engine::debug::ResourceKind::AudioAsset,
@@ -81,6 +86,11 @@ void AudioManager::unloadSound(std::string_view name) {
 }
 
 void AudioManager::unloadAllSounds() noexcept {
+    for (auto& entry : m_pendingAliases) {
+        StopSound(entry.alias);
+        UnloadSoundAlias(entry.alias);
+    }
+    m_pendingAliases.clear();
     for (auto& [_, s] : m_sounds) {
         ::biofuel::engine::debug::MemoryTelemetry::remove(
             ::biofuel::engine::debug::ResourceKind::AudioAsset,
@@ -107,12 +117,25 @@ void AudioManager::playSoundPitched(std::string_view name, f32 pitch) {
 }
 
 void AudioManager::playSoundAtVolume(std::string_view name, f32 volume) {
-    const std::string key(name);
-    if (auto it = m_sounds.find(key); it != m_sounds.end()) {
+    if (!m_initialized) return;
+    if (auto it = m_sounds.find(name); it != m_sounds.end()) {
+        // Play through a one-shot alias instead of mutating the cached Sound:
+        // overlapping plays of the same asset would race on the shared volume
+        // field (and the restore-after-play would change the just-started
+        // instance's volume) otherwise.
+        Sound alias = LoadSoundAlias(it->second);
+        if (!IsSoundValid(alias)) {
+            return;
+        }
         const f32 effectiveSfxVolume = m_muted ? 0.0f : m_sfxVolume;
-        SetSoundVolume(it->second, std::clamp(volume, 0.0f, 1.0f) * effectiveSfxVolume);
-        PlaySound(it->second);
-        SetSoundVolume(it->second, effectiveSfxVolume);
+        SetSoundVolume(alias, std::clamp(volume, 0.0f, 1.0f) * effectiveSfxVolume);
+        PlaySound(alias);
+        try {
+            m_pendingAliases.push_back({alias, &it->second});
+        } catch (...) {
+            StopSound(alias);
+            UnloadSoundAlias(alias);
+        }
     }
 }
 
@@ -284,7 +307,7 @@ void AudioManager::unmute() noexcept {
 // -----------------------------------------------------------------------------
 
 void AudioManager::applySfxVolume(std::string_view name) {
-    if (auto it = m_sounds.find(std::string(name)); it != m_sounds.end()) {
+    if (auto it = m_sounds.find(name); it != m_sounds.end()) {
         SetSoundVolume(it->second, m_muted ? 0.0f : m_sfxVolume);
     }
 }
@@ -296,7 +319,7 @@ void AudioManager::applyAllSfxVolumes() noexcept {
 }
 
 void AudioManager::applyMusicVolume(std::string_view name) noexcept {
-    if (auto it = m_musicTracks.find(std::string(name)); it != m_musicTracks.end()) {
+    if (auto it = m_musicTracks.find(name); it != m_musicTracks.end()) {
         SetMusicVolume(it->second, m_musicVolume);
     }
 }
@@ -319,6 +342,31 @@ bool AudioManager::recoverStaleCurrentMusic(std::string_view caller) noexcept {
     m_currentMusic.clear();
     m_musicPaused = false;
     return true;
+}
+
+void AudioManager::purgeFinishedAliases() noexcept {
+    for (usize i = 0U; i < m_pendingAliases.size(); ) {
+        if (!IsSoundPlaying(m_pendingAliases[i].alias)) {
+            UnloadSoundAlias(m_pendingAliases[i].alias);
+            m_pendingAliases[i] = std::move(m_pendingAliases.back());
+            m_pendingAliases.pop_back();
+        } else {
+            ++i;
+        }
+    }
+}
+
+void AudioManager::purgeAliasesForSource(const Sound* source) noexcept {
+    for (usize i = 0U; i < m_pendingAliases.size(); ) {
+        if (m_pendingAliases[i].source == source) {
+            StopSound(m_pendingAliases[i].alias);
+            UnloadSoundAlias(m_pendingAliases[i].alias);
+            m_pendingAliases[i] = std::move(m_pendingAliases.back());
+            m_pendingAliases.pop_back();
+        } else {
+            ++i;
+        }
+    }
 }
 
 } // namespace biofuel::engine::audio
