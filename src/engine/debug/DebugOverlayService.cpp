@@ -21,6 +21,8 @@ template<typename TPanel>
         return 70;
     } else if constexpr (std::is_same_v<TPanel, AssetDebugPanel>) {
         return 70;
+    } else if constexpr (std::is_same_v<TPanel, FrameTimingDebugPanel>) {
+        return 96;
     } else {
         return 64;
     }
@@ -62,6 +64,25 @@ void renderPanelContent<FrameTimingDebugPanel>(const DebugOverlayContext& contex
     y += 16;
     drawLine(
         TextFormat("Frame: %.2f ms", static_cast<double>(context.frameTime) * 1000.0),
+        x,
+        y,
+        Color{130, 152, 148, 255});
+    y += 16;
+    // Requires the Rust bridge's "profiler" cargo feature (enabled) --
+    // without it Rapier's own counters silently read 0 forever.
+    const auto& physicsStats = ::biofuel::engine::runtime::Runtime::physics().lastStepStats2D();
+    drawLine(
+        TextFormat("Physics 2D: %.3f ms (broad %.3f / narrow %.3f / solver %.3f)",
+            static_cast<double>(physicsStats.stepTimeMs),
+            static_cast<double>(physicsStats.broadPhaseTimeMs),
+            static_cast<double>(physicsStats.narrowPhaseTimeMs),
+            static_cast<double>(physicsStats.solverTimeMs)),
+        x,
+        y,
+        Color{130, 152, 148, 255});
+    y += 16;
+    drawLine(
+        TextFormat("Contact pairs: %u | Contacts: %u", physicsStats.contactPairs, physicsStats.contacts),
         x,
         y,
         Color{130, 152, 148, 255});

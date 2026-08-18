@@ -15,9 +15,14 @@ namespace biofuel::game::app {
         .title = "Biofuel Game - Fuel Farm",
         .width = 1280,
         .height = 720,
-        .targetFps = 0,  // 0 = uncapped framerate (SetTargetFPS(0) disables the limiter)
+        // Vsync caps rendering to the display's real refresh rate; targetFps is
+        // a backstop in case vsync doesn't engage (e.g. some borderless-window
+        // driver configurations). Previously both were disabled/uncapped, which
+        // measured 700-3000fps redrawing identical frames for no visual benefit.
+        .targetFps = 240,
         .fullscreen = false,
         .resizable = true,
+        .vsync = true,
         .globalInput = []() {
             ::biofuel::game::screens::PauseController::handleGlobalInput();
 

@@ -152,8 +152,6 @@ target_link_libraries(biofuel_engine
         taskflow
 )
 
-target_compile_definitions(biofuel_engine PUBLIC SPDLOG_HEADER_ONLY)
-
 add_library(biofuel_game STATIC ${GAME_SOURCES})
 add_dependencies(biofuel_game GenerateShaderSources GenerateTypedRegistries)
 target_link_libraries(biofuel_game

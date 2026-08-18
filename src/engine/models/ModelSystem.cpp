@@ -307,10 +307,14 @@ std::shared_ptr<ModelInstance> ModelSystem::createInstance(const ModelAssetId as
     }
 
     m_instances[instanceId] = instance;
+    // A shared-prototype instance adds ~0 game-side bytes; an independent
+    // instance (its own bones/animation state) costs roughly the prototype's
+    // on-disk size again -- matches the convention `estimatedBytes` already
+    // uses for the prototype itself (see the assignment below in load()).
     ::biofuel::engine::debug::MemoryTelemetry::add(
         ::biofuel::engine::debug::ResourceKind::ModelInstance,
         1,
-        0);
+        instance->ownsIndependentModel() ? assetIt->second->estimatedBytes : 0);
     instance->m_telemetryCounted = true;
 
     if (assetIt->second->spec.releasePrototypeAfterInstance && instance->ownsIndependentModel()) {

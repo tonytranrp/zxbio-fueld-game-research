@@ -342,10 +342,14 @@ i32 VoxelWorld::surfaceHeight(const i32 worldX, const i32 worldZ) const noexcept
 }
 
 Block VoxelWorld::blockAt(const i32 worldX, const i32 worldY, const i32 worldZ) const noexcept {
+    return blockAt(worldX, worldY, worldZ, surfaceHeight(worldX, worldZ));
+}
+
+Block VoxelWorld::blockAt(const i32 worldX, const i32 worldY, const i32 worldZ, const i32 knownSurfaceHeight) const noexcept {
     if (worldY < 0) {
         return Block::Stone;            // bedrock fill (culls the world floor)
     }
-    const i32 h = surfaceHeight(worldX, worldZ);
+    const i32 h = knownSurfaceHeight;
     const i32 snowLevel = m_config.baseHeight + m_config.amplitude - 7;
     const i32 sandLevel = m_config.seaLevel + 1;    // beach band at the waterline
 
@@ -410,7 +414,7 @@ void VoxelWorld::buildChunkMesh(Chunk& chunk) const {
             const i32 wx = originX + px - 1, wz = originZ + pz - 1;
             const i32 colTop = std::min(yHi, colH + kTrunkMaxH + kCanopyPad);
             for (i32 y = yLo; y <= colTop; ++y) {
-                blocks[packBlocks(px, y, pz)] = blockAt(wx, y, wz);
+                blocks[packBlocks(px, y, pz)] = blockAt(wx, y, wz, colH);
             }
         }
     }
@@ -673,7 +677,7 @@ f32 VoxelWorld::groundHeight(const f32 worldX, const f32 worldZ) const noexcept 
     const i32 bz = static_cast<i32>(std::floor(worldZ));
     const i32 surf = surfaceHeight(bx, bz);
     for (i32 y = surf; y >= 0; --y) {
-        if (blockAt(bx, y, bz) != Block::Air) {
+        if (blockAt(bx, y, bz, surf) != Block::Air) {
             return static_cast<f32>(y + 1);
         }
     }

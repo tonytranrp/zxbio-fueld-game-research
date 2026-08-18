@@ -20,6 +20,7 @@ public:
         i32 targetFps = 60;
         bool fullscreen = false;
         bool resizable = false;
+        bool vsync = false;
         std::function<void(i32 width, i32 height, i32 targetFps)> startup;
         std::function<void()> globalInput;
     };

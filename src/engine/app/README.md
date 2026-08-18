@@ -36,11 +36,18 @@ biofuel::engine::app::Application::Config config{
     .height = 720,
     .targetFps = 60,
     .resizable = true,
+    .vsync = true,
 };
 
 biofuel::engine::app::Application app(config);
 return app.run();
 ```
+
+`vsync` sets `FLAG_VSYNC_HINT` before the window opens, capping render to the
+display's real refresh rate. `render()` has no pacing of its own — it draws
+once per spin of the main loop regardless of whether a fixed-step update ran
+that iteration — so without vsync (or a low `targetFps`) it redraws unchanged
+frames as fast as the loop can spin, burning GPU/power for no visual benefit.
 
 ## Coding standards
 

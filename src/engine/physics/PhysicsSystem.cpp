@@ -36,6 +36,20 @@ namespace {
     return bridge::BridgeVec3{.x = value.x, .y = value.y, .z = value.z};
 }
 
+[[nodiscard]] constexpr PhysicsStepStats fromBridge(const bridge::BridgeStepStats& stats) noexcept {
+    return PhysicsStepStats{
+        .stepTimeMs = stats.step_time_ms,
+        .broadPhaseTimeMs = stats.broad_phase_time_ms,
+        .narrowPhaseTimeMs = stats.narrow_phase_time_ms,
+        .islandConstructionTimeMs = stats.island_construction_time_ms,
+        .solverTimeMs = stats.solver_time_ms,
+        .velocityResolutionTimeMs = stats.velocity_resolution_time_ms,
+        .ccdTimeMs = stats.ccd_time_ms,
+        .contactPairs = stats.ncontact_pairs,
+        .contacts = stats.ncontacts,
+    };
+}
+
 [[nodiscard]] constexpr Vector2 fromBridge(const bridge::BridgeVec2 value) noexcept {
     return Vector2{value.x, value.y};
 }
@@ -514,6 +528,8 @@ void PhysicsSystem::stepFixed(const f32 dt) {
     if (safeDt <= timestep) {
         bridge::step_world_2d(world2D, safeDt);
         bridge::step_world_3d(world3D, safeDt);
+        m_lastStepStats2D = fromBridge(bridge::last_step_stats_2d(world2D));
+        m_lastStepStats3D = fromBridge(bridge::last_step_stats_3d(world3D));
         drainContacts(world2D, world3D);
         return;
     }
@@ -531,6 +547,8 @@ void PhysicsSystem::stepFixed(const f32 dt) {
         bridge::step_world_2d(world2D, subDt);
         bridge::step_world_3d(world3D, subDt);
     }
+    m_lastStepStats2D = fromBridge(bridge::last_step_stats_2d(world2D));
+    m_lastStepStats3D = fromBridge(bridge::last_step_stats_3d(world3D));
     drainContacts(world2D, world3D);
 }
 

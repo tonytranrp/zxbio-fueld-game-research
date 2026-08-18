@@ -41,6 +41,12 @@ void AppLifecycle::openWindow(const WindowLifecycleConfig config) {
     if (config.fullscreen) {
         SetConfigFlags(FLAG_FULLSCREEN_MODE);
     }
+    if (config.vsync) {
+        // Caps rendering to the display's actual refresh rate instead of
+        // redrawing unchanged frames as fast as the loop can spin (the render
+        // step has no pacing of its own -- see Application::run()'s outer loop).
+        SetConfigFlags(FLAG_VSYNC_HINT);
+    }
 
     const std::string title{config.title};
     InitWindow(config.width, config.height, title.c_str());

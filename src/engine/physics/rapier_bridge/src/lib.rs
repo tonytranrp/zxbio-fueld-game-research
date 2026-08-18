@@ -134,6 +134,22 @@ mod ffi {
         max_force_magnitude: f32,
     }
 
+    // Per-stage timing from Rapier's own built-in PhysicsPipeline::counters
+    // (requires the "profiler" cargo feature, enabled in Cargo.toml -- without
+    // it these fields would silently read 0.0 forever).
+    #[derive(Copy, Clone)]
+    struct BridgeStepStats {
+        step_time_ms: f32,
+        broad_phase_time_ms: f32,
+        narrow_phase_time_ms: f32,
+        island_construction_time_ms: f32,
+        solver_time_ms: f32,
+        velocity_resolution_time_ms: f32,
+        ccd_time_ms: f32,
+        ncontact_pairs: u32,
+        ncontacts: u32,
+    }
+
     extern "Rust" {
         type RapierWorld2D;
         type RapierWorld3D;
@@ -236,6 +252,9 @@ mod ffi {
         fn contact_force_event_3d(world: &RapierWorld3D, index: u64) -> BridgeContactForceEvent3D;
         fn clear_contact_force_events_2d(world: &mut RapierWorld2D);
         fn clear_contact_force_events_3d(world: &mut RapierWorld3D);
+
+        fn last_step_stats_2d(world: &RapierWorld2D) -> BridgeStepStats;
+        fn last_step_stats_3d(world: &RapierWorld3D) -> BridgeStepStats;
     }
 }
 
@@ -555,6 +574,21 @@ pub fn step_world_2d(world: &mut RapierWorld2D, dt: f32) {
     world.drain_events();
 }
 
+pub fn last_step_stats_2d(world: &RapierWorld2D) -> ffi::BridgeStepStats {
+    let counters = &world.pipeline.counters;
+    ffi::BridgeStepStats {
+        step_time_ms: counters.step_time_ms() as f32,
+        broad_phase_time_ms: counters.broad_phase_time_ms() as f32,
+        narrow_phase_time_ms: counters.narrow_phase_time_ms() as f32,
+        island_construction_time_ms: counters.island_construction_time_ms() as f32,
+        solver_time_ms: counters.solver_time_ms() as f32,
+        velocity_resolution_time_ms: counters.velocity_resolution_time_ms() as f32,
+        ccd_time_ms: counters.ccd_time_ms() as f32,
+        ncontact_pairs: counters.cd.ncontact_pairs as u32,
+        ncontacts: counters.solver.ncontacts as u32,
+    }
+}
+
 pub fn step_world_3d(world: &mut RapierWorld3D, dt: f32) {
     if !dt.is_finite() || dt <= 0.0 {
         world.drained_contacts.clear();
@@ -577,6 +611,21 @@ pub fn step_world_3d(world: &mut RapierWorld3D, dt: f32) {
         &world.event_handler,
     );
     world.drain_events();
+}
+
+pub fn last_step_stats_3d(world: &RapierWorld3D) -> ffi::BridgeStepStats {
+    let counters = &world.pipeline.counters;
+    ffi::BridgeStepStats {
+        step_time_ms: counters.step_time_ms() as f32,
+        broad_phase_time_ms: counters.broad_phase_time_ms() as f32,
+        narrow_phase_time_ms: counters.narrow_phase_time_ms() as f32,
+        island_construction_time_ms: counters.island_construction_time_ms() as f32,
+        solver_time_ms: counters.solver_time_ms() as f32,
+        velocity_resolution_time_ms: counters.velocity_resolution_time_ms() as f32,
+        ccd_time_ms: counters.ccd_time_ms() as f32,
+        ncontact_pairs: counters.cd.ncontact_pairs as u32,
+        ncontacts: counters.solver.ncontacts as u32,
+    }
 }
 
 pub fn set_gravity_2d(world: &mut RapierWorld2D, gravity: ffi::BridgeVec2) {

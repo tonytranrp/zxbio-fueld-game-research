@@ -12,6 +12,7 @@ struct WindowLifecycleConfig {
     i32 height = 720;
     bool fullscreen = false;
     bool resizable = false;
+    bool vsync = false;
 };
 
 struct StartupLifecycleConfig {

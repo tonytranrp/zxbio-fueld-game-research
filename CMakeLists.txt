@@ -34,6 +34,10 @@ if(MSVC)
     add_compile_options($<$<CONFIG:Release>:/O2>)
     add_compile_options($<$<CONFIG:Release>:/Ob2>)
     add_compile_options($<$<CONFIG:Release>:/Gw>)
+    # Compile the .cpp files within one project in parallel (MSBuild only
+    # parallelizes across projects on its own). No behavior change, all
+    # configs -- this is the standard MSVC multi-TU compile flag.
+    add_compile_options(/MP)
 endif()
 
 # ------------------------------------------------------------------------------
@@ -106,7 +110,9 @@ if(taskflow_SOURCE_DIR AND NOT TARGET taskflow)
     target_include_directories(taskflow SYSTEM INTERFACE "${taskflow_SOURCE_DIR}")
 endif()
 
-# spdlog - Logging (header-only mode)
+# spdlog - Logging (compiled-lib mode -- links spdlog::spdlog, which
+# propagates SPDLOG_COMPILED_LIB; lighter headers, faster compiles of the
+# handful of files that include spdlog than the header-only target would give)
 CPMAddPackage(
     NAME spdlog
     URL https://github.com/gabime/spdlog/archive/refs/tags/v1.14.1.tar.gz

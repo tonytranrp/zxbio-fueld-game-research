@@ -27,6 +27,22 @@ struct PhysicsIntegrationConfig {
     [[nodiscard]] constexpr bool operator==(const PhysicsIntegrationConfig&) const noexcept = default;
 };
 
+// Per-stage timing from Rapier's own built-in step counters (the "profiler"
+// cargo feature must be enabled for the bridge to report real numbers here --
+// see rapier_bridge/Cargo.toml). Reflects the most recent sub-step only when
+// stepFixed() ran more than one this frame.
+struct PhysicsStepStats {
+    f32 stepTimeMs = 0.0f;
+    f32 broadPhaseTimeMs = 0.0f;
+    f32 narrowPhaseTimeMs = 0.0f;
+    f32 islandConstructionTimeMs = 0.0f;
+    f32 solverTimeMs = 0.0f;
+    f32 velocityResolutionTimeMs = 0.0f;
+    f32 ccdTimeMs = 0.0f;
+    u32 contactPairs = 0;
+    u32 contacts = 0;
+};
+
 class PhysicsWorld2D {
 public:
     explicit PhysicsWorld2D(PhysicsSystem& system) noexcept;
@@ -112,6 +128,8 @@ public:
     [[nodiscard]] PhysicsWorld2D world2D() noexcept { return PhysicsWorld2D{*this}; }
     [[nodiscard]] PhysicsWorld3D world3D() noexcept { return PhysicsWorld3D{*this}; }
     [[nodiscard]] std::span<const PhysicsContactEvent> recentContacts() const noexcept { return m_contacts; }
+    [[nodiscard]] const PhysicsStepStats& lastStepStats2D() const noexcept { return m_lastStepStats2D; }
+    [[nodiscard]] const PhysicsStepStats& lastStepStats3D() const noexcept { return m_lastStepStats3D; }
 
     void setFixedTimestep(f32 dt) noexcept;
     [[nodiscard]] f32 fixedTimestep() const noexcept { return m_fixedTimestep; }
@@ -140,6 +158,8 @@ private:
 
     std::unique_ptr<Impl> m_impl;
     std::vector<PhysicsContactEvent> m_contacts;
+    PhysicsStepStats m_lastStepStats2D{};
+    PhysicsStepStats m_lastStepStats3D{};
     PhysicsIntegrationConfig m_integrationConfig{};
     f32 m_fixedTimestep = 1.0f / 60.0f;
     i32 m_maxSubSteps = 4;

@@ -56,7 +56,7 @@ void VoxelVolume::rebuild(const VoxelWorld& world, const i32 originX, const i32 
             // ceiling (VoxelWorld.cpp's kTrunkMaxH + kCanopyPad column top).
             const i32 top = std::min(H - 1, h + VoxelWorld::kTrunkMaxH + VoxelWorld::kCanopyPad);
             for (i32 y = 0; y <= top; ++y) {
-                const Block b = world.blockAt(wx, originY + y, wz);
+                const Block b = world.blockAt(wx, originY + y, wz, h);
                 if (b != Block::Air) {
                     m_data[(static_cast<usize>(y) + static_cast<usize>(z) * static_cast<usize>(H)) * texW
                            + static_cast<usize>(x)] = static_cast<u8>(b);

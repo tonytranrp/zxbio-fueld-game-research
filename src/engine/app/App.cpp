@@ -39,6 +39,7 @@ void Application::init() {
         .height = m_config.height,
         .fullscreen = m_config.fullscreen,
         .resizable = m_config.resizable,
+        .vsync = m_config.vsync,
     });
 #ifdef _WIN32
     setupWindowDragTimer();

@@ -2,9 +2,24 @@
 #include "engine/debug/MemoryTelemetry.hpp"
 #include <array>
 #include <cstring>
+#include <filesystem>
 #include <spdlog/spdlog.h>
 
 namespace biofuel::engine::graphics {
+
+namespace {
+
+// Source-file size in bytes, or 0 for an empty path / a missing file.
+[[nodiscard]] i64 sourceFileBytes(std::string_view path) noexcept {
+    if (path.empty()) {
+        return 0;
+    }
+    std::error_code error;
+    const auto bytes = std::filesystem::file_size(std::filesystem::path{path}, error);
+    return error ? 0 : static_cast<i64>(bytes);
+}
+
+} // namespace
 
 // ------------------------------------------------------------------------------
 // Singleton
@@ -23,13 +38,15 @@ void ShaderManager::shutdown() {
     for (auto& [name, shader] : m_shaders) {
         if (IsShaderValid(shader)) {
             UnloadShader(shader);
+            const auto bytesIt = m_shaderBytes.find(name);
             ::biofuel::engine::debug::MemoryTelemetry::remove(
                 ::biofuel::engine::debug::ResourceKind::Shader,
                 1,
-                0);
+                bytesIt != m_shaderBytes.end() ? bytesIt->second : 0);
         }
     }
     m_shaders.clear();
+    m_shaderBytes.clear();
 }
 
 // ------------------------------------------------------------------------------
@@ -62,10 +79,12 @@ void ShaderManager::load(std::string_view name, std::string_view vertPath, std::
 
     slot = shader;
     spdlog::info("ShaderManager: loaded shader '{}'", name);
+    const i64 bytes = sourceFileBytes(vertPath) + sourceFileBytes(fragPath);
+    m_shaderBytes[key] = bytes;
     ::biofuel::engine::debug::MemoryTelemetry::add(
         ::biofuel::engine::debug::ResourceKind::Shader,
         1,
-        0);
+        bytes);
 }
 
 void ShaderManager::loadFromMemory(std::string_view name, const char* vertCode, const char* fragCode) {
@@ -87,10 +106,13 @@ void ShaderManager::loadFromMemory(std::string_view name, const char* vertCode, 
 
     slot = shader;
     spdlog::info("ShaderManager: compiled shader '{}' from memory", name);
+    const i64 bytes = static_cast<i64>(vertCode ? std::strlen(vertCode) : 0)
+        + static_cast<i64>(fragCode ? std::strlen(fragCode) : 0);
+    m_shaderBytes[key] = bytes;
     ::biofuel::engine::debug::MemoryTelemetry::add(
         ::biofuel::engine::debug::ResourceKind::Shader,
         1,
-        0);
+        bytes);
 }
 
 // ------------------------------------------------------------------------------
@@ -103,10 +125,14 @@ void ShaderManager::unloadExisting(std::string_view name) {
     if (it != m_shaders.end()) {
         if (IsShaderValid(it->second)) {
             UnloadShader(it->second);
+            const auto bytesIt = m_shaderBytes.find(name);
             ::biofuel::engine::debug::MemoryTelemetry::remove(
                 ::biofuel::engine::debug::ResourceKind::Shader,
                 1,
-                0);
+                bytesIt != m_shaderBytes.end() ? bytesIt->second : 0);
+            if (bytesIt != m_shaderBytes.end()) {
+                m_shaderBytes.erase(bytesIt);
+            }
         }
         m_shaders.erase(it);
     }
@@ -121,10 +147,14 @@ void ShaderManager::unload(std::string_view name) {
     if (it != m_shaders.end()) {
         if (IsShaderValid(it->second)) {
             UnloadShader(it->second);
+            const auto bytesIt = m_shaderBytes.find(name);
             ::biofuel::engine::debug::MemoryTelemetry::remove(
                 ::biofuel::engine::debug::ResourceKind::Shader,
                 1,
-                0);
+                bytesIt != m_shaderBytes.end() ? bytesIt->second : 0);
+            if (bytesIt != m_shaderBytes.end()) {
+                m_shaderBytes.erase(bytesIt);
+            }
         }
         m_shaders.erase(it);
         spdlog::info("ShaderManager: unloaded shader '{}'", name);

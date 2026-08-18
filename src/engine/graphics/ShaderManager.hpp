@@ -56,6 +56,10 @@ private:
     void unloadExisting(std::string_view name);
 
     std::unordered_map<std::string, Shader, TransparentHash, std::equal_to<>> m_shaders;
+    // Source-size bytes per loaded shader, tracked separately so unload() can
+    // report the same byte count to MemoryTelemetry that load() reported --
+    // Shader itself carries no size field to read it back from.
+    std::unordered_map<std::string, i64, TransparentHash, std::equal_to<>> m_shaderBytes;
 };
 
 } // namespace biofuel::engine::graphics

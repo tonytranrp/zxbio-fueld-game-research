@@ -83,6 +83,11 @@ public:
     // Terrain sampling — pure deterministic functions. Public so a GPU volume
     // (VoxelVolume) can be baked from the same world definition the mesher uses.
     [[nodiscard]] Block blockAt(i32 worldX, i32 worldY, i32 worldZ) const noexcept;
+    // Same, but skips the internal surfaceHeight(worldX, worldZ) recompute when
+    // the caller already knows this column's height (every caller scanning a
+    // Y column does) -- surfaceHeight is ~4 octaves of noise, so this removes
+    // the dominant cost of a per-voxel blockAt call in the hot paths.
+    [[nodiscard]] Block blockAt(i32 worldX, i32 worldY, i32 worldZ, i32 knownSurfaceHeight) const noexcept;
     [[nodiscard]] i32 surfaceHeight(i32 worldX, i32 worldZ) const noexcept;
 
 private:
