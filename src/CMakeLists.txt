@@ -60,7 +60,6 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/screen/ScreenEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/video/VideoEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/window/WindowEventModule.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/world/WorldEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/fonts/FontServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/RenderServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/BlurCompositeModule.hpp"
@@ -78,7 +77,6 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/video/VideoAssetModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/video/VideoServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/window/WindowServiceModule.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/engine/world/WorldPhysicsEventModule.hpp"
 )
 
 set(GENERATED_SHADER_HEADER "${GENERATED_DIR}/ShaderSources.hpp")
@@ -242,9 +240,7 @@ else()
     set(NULL_DEVICE "/dev/null")
 endif()
 # SHADER_NAMES covers the 7 shaders text-embedded into ShaderSources.hpp.
-# raymarched_voxels is loaded from disk by GamePlayScreen at runtime and is NOT
-# embedded, but it still needs syntax validation, so it is validated separately.
-set(SHADER_VALIDATION_NAMES ${SHADER_NAMES} raymarched_voxels)
+set(SHADER_VALIDATION_NAMES ${SHADER_NAMES})
 find_program(GLSLC glslc)
 find_program(GLSLANG_VALIDATOR glslangValidator)
 if(GLSLC)
@@ -301,31 +297,6 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     add_executable(BiofuelVideoFailureSmokeTest "${CMAKE_SOURCE_DIR}/tests/engine/VideoFailureSmoke.cpp")
     target_link_libraries(BiofuelVideoFailureSmokeTest PRIVATE biofuel_engine)
     add_test(NAME BiofuelVideoFailureSmoke COMMAND BiofuelVideoFailureSmokeTest)
-
-    add_executable(BiofuelFarmStateSmokeTest
-        "${CMAKE_SOURCE_DIR}/tests/game/FarmStateSmoke.cpp")
-    target_link_libraries(BiofuelFarmStateSmokeTest PRIVATE biofuel_game)
-    add_test(NAME BiofuelFarmStateSmoke COMMAND BiofuelFarmStateSmokeTest)
-
-    add_executable(BiofuelPassThroughStageAliasesSmokeTest
-        "${CMAKE_SOURCE_DIR}/tests/game/PassThroughStageAliasesSmoke.cpp")
-    target_link_libraries(BiofuelPassThroughStageAliasesSmokeTest PRIVATE biofuel_game)
-    add_test(NAME BiofuelPassThroughStageAliasesSmoke COMMAND BiofuelPassThroughStageAliasesSmokeTest)
-
-    add_executable(BiofuelPipelineSmokeTest
-        "${CMAKE_SOURCE_DIR}/tests/pipeline/PipelineSmoke.cpp")
-    target_link_libraries(BiofuelPipelineSmokeTest PRIVATE biofuel_game)
-    add_test(NAME BiofuelPipelineSmoke COMMAND BiofuelPipelineSmokeTest)
-
-    add_executable(BiofuelTurnPipelineSmokeTest
-        "${CMAKE_SOURCE_DIR}/tests/pipeline/TurnPipelineSmoke.cpp")
-    target_link_libraries(BiofuelTurnPipelineSmokeTest PRIVATE biofuel_game)
-    add_test(NAME BiofuelTurnPipelineSmoke COMMAND BiofuelTurnPipelineSmokeTest)
-
-    add_executable(BiofuelHarvestPipelineSmokeTest
-        "${CMAKE_SOURCE_DIR}/tests/pipeline/HarvestPipelineSmoke.cpp")
-    target_link_libraries(BiofuelHarvestPipelineSmokeTest PRIVATE biofuel_game)
-    add_test(NAME BiofuelHarvestPipelineSmoke COMMAND BiofuelHarvestPipelineSmokeTest)
 
     add_test(NAME BiofuelEngineBoundaryGuard
         COMMAND ${CMAKE_COMMAND}

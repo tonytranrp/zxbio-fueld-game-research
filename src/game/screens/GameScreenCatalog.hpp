@@ -5,7 +5,6 @@
 #include "engine/ui/typed/ScreenValidation.hpp"
 #include "game/screens/loading/LoadingScreenModule.hpp"
 #include "game/screens/main_menu/MainMenuScreenModule.hpp"
-#include "game/screens/gameplay/GamePlayScreenModule.hpp"
 #include "game/screens/pause_popup/PausePopupScreenModule.hpp"
 #include "game/screens/idle/IdleScreenModule.hpp"
 #include "game/screens/video/VideoScreenModule.hpp"
@@ -14,7 +13,6 @@ namespace biofuel::game::screens {
 using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
     LoadingScreen,
     MainMenuScreen,
-    GamePlayScreen,
     PausePopupScreen,
     IdleScreen,
     VideoScreen
@@ -28,7 +26,6 @@ namespace detail {
     switch (id) {
     case screen_id::Loading:
     case screen_id::MainMenu:
-    case screen_id::GamePlay:
     case screen_id::PausePopup:
     case screen_id::Idle:
     case screen_id::Video:
@@ -48,7 +45,6 @@ namespace detail {
         return true;
     case screen_id::Loading:
     case screen_id::MainMenu:
-    case screen_id::GamePlay:
     case screen_id::Idle:
     case screen_id::Video:
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
@@ -92,7 +88,6 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     switch (id) {
     case screen_id::Loading: return typed::TransitionPolicy<LoadingScreen>::VALUE;
     case screen_id::MainMenu: return typed::TransitionPolicy<MainMenuScreen>::VALUE;
-    case screen_id::GamePlay: return typed::TransitionPolicy<GamePlayScreen>::VALUE;
     case screen_id::PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
     case screen_id::Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
     case screen_id::Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
@@ -114,7 +109,6 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::PausePopup: return typed::StackPolicy<PausePopupScreen>::VALUE;
     case screen_id::Loading:
     case screen_id::MainMenu:
-    case screen_id::GamePlay:
     case screen_id::Idle:
     case screen_id::Video:
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:

@@ -43,10 +43,9 @@ require_contains(
     case Unknown:
     case Count:")
 require_contains(
-    "PauseController true branch must be limited to MainMenu and GamePlay"
+    "PauseController true branch must be limited to MainMenu"
     "${PAUSE_CONTROLLER}"
     "case MainMenu:
-    case GamePlay:
         return true;")
 require_contains(
     "IdleScreen must keep ownership of Escape dismissal"

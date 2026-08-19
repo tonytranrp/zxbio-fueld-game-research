@@ -1,6 +1,10 @@
 # Biofuel Game - Fuel Farm
 
-Research and implementation repo for a C++20 Raylib game about biofuel production, land use, and menu-driven simulation systems.
+Research and implementation repo for a C++20 Raylib game. The concept has changed direction several
+times during development — most recently (2026-08-19), the voxel-world and biofuel-farm-simulation
+gameplay were removed entirely in favor of building gameplay around imported 3D models (Meshy AI
+generation + Blender cleanup). What replaces them is not yet built; the engine (screens, events,
+services, physics, shaders, models) is otherwise intact and reusable.
 
 ## What is in this repo
 
@@ -24,13 +28,15 @@ The playable codebase is still early-stage, but it already contains:
 - loading screen with deferred startup tasks plus async-safe preflight support
 - screen stack with crossfade transitions
 - animated main menu with an embedded, endlessly-looping ambient background shader
-- a walkable first-person voxel world (`GamePlay`): streamed blocky terrain with
-  a raymarched-voxel renderer plus a rasterized fallback, driven by a kinematic
-  first-person controller
-- typed model system with startup-preloaded model assets
-- 2D/3D physics via an embedded Rust Rapier bridge
+- typed model system with startup-preloaded model assets (currently empty — no models imported yet)
+- 2D/3D physics via an embedded Rust Rapier bridge (currently unused by any game-side system)
 - global pause routing with a blur-backed pause popup
 - event bus, input polling, animation manager, and small render/font/UI utilities
+
+There is currently no gameplay screen — the previous voxel-world (`GamePlay`) and biofuel-farm
+simulation (crops, seasons, harvest/fuel-processing pipelines, tech tree) were removed 2026-08-19.
+The main menu's "New Game" button plays its shader transition and then holds indefinitely; nothing
+currently follows it. See `Bug/bug.md` for what was removed and why.
 
 ## Build
 
@@ -68,7 +74,9 @@ Templates are allowed when they remove real shared duplication or belong to an e
 
 ## Research reference
 
-The research set under `Research/` is still the main source for balance inputs and domain language. In particular:
+The research set under `Research/` backed the balance data for the biofuel farm simulation that was
+removed 2026-08-19. Kept for reference in case gameplay returns to a biofuel-economics direction; not
+currently wired to any code. In particular:
 
 - `01-biofuel-fundamentals.md` - fuel categories and generations
 - `03-feedstock-and-crops.md` - feedstocks, yields, and crop traits

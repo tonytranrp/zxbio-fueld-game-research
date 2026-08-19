@@ -29,8 +29,6 @@ set(ALLOWED_RAYLIB_LIFETIME_FILES
     "src/engine/graphics/RenderSurface.hpp"
     "src/engine/graphics/ShaderManager.cpp"
     "src/engine/models/ModelSystem.cpp"
-    "src/engine/world/voxel/VoxelWorld.cpp"
-    "src/engine/world/voxel/VoxelVolume.cpp"
     "src/engine/video/VideoFfmpegBackend.cpp"
     "src/engine/video/VideoManager.cpp")
 

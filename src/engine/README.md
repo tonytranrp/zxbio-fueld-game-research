@@ -2,7 +2,7 @@
 
 Reusable runtime code lives here: app startup, core types, typed registries,
 events, physics, graphics, media, animation, input, window helpers, UI stack,
-world systems, and model loading.
+and model loading.
 
 ## Folder map
 
@@ -23,7 +23,6 @@ engine/
 |-- input/      shared input polling service
 |-- window/     platform window helpers
 |-- ui/         screen stack and typed render pipeline
-|-- world/      voxel world streaming, rendering, and world events
 `-- debug/      telemetry and debug helpers
 ```
 

@@ -592,6 +592,36 @@ that get their own separate collider — but `FarmState::setTileType(Built)` als
 every plain `Built` tile (including `SampleFarm`'s solid perimeter border) matched the guard and silently
 got zero physics colliders. Fixed by removing the guard.
 
+## 2026-08-19 - Voxel world and farm-simulation gameplay removed
+
+Not a bug — a deliberate, requested architecture decision, logged here because it resolves several
+items above and below that referenced the removed code.
+
+Removed entirely, by request, as part of the pivot toward gameplay built around imported Meshy-AI-
+generated 3D models:
+
+- **Voxel world**: `src/engine/world/voxel/` (`VoxelWorld`, `VoxelVolume`), `src/engine/world/`'s
+  `WorldEvents.hpp`/`WorldPhysicsEventModule.hpp`/README, `src/engine/events/world/` (the paired
+  event-tag folder), `src/game/screens/gameplay/` (`GamePlayScreen`), and
+  `assets/shaders/raymarched_voxels.glsl`.
+- **Farm-simulation gameplay**: all of `src/game/gameplay/` — `FarmState`, `TurnPipeline`,
+  `HarvestPipeline`, `FuelProcessPipeline`, `TechTreePipeline`, `PipelineRunner`,
+  `PipelineEventObserver`, `SampleFarm`, `WorldPhysicsIntegration`, `world3d/FirstPersonController`,
+  and every stage under `stages/` — plus `src/game/data/FuelFarmData.hpp` (the crop/fuel balance
+  tables) and `src/game/presentation/world/TileRenderer` (depended on `FarmState` types).
+- Associated tests: `tests/pipeline/` (all three), `tests/game/FarmStateSmoke.cpp`,
+  `tests/game/PassThroughStageAliasesSmoke.cpp`.
+
+This resolves the "Gameplay pipeline system... is still not wired into `GamePlayScreen`" limitation
+below (the whole subsystem is gone, not just unwired) and the six-`PassThrough<T>`-alias naming
+blocker (`stages/` no longer exists). It does **not** touch the physics engine itself
+(`src/engine/physics/`), which remains intact and unused by any game-side system — the
+`InteractionGroups`-forwarding limitation below still applies to it. `Research/`'s biofuel/crop/
+economics documents and `Bug/bug.md`'s own history of the removed code (B002-B037's file citations,
+B035-B037 specifically) were left as-is; they describe code that existed at the time, not current
+state. `Pipeline-c-` (`pb::`) remains a real dependency — its only remaining consumer is the engine's
+own startup-task system (`engine/tasks/TaskModule.hpp`), unrelated to the removed gameplay pipelines.
+
 ---
 
 ## Known limitations found this session, NOT fixed (flagged for a future decision)
@@ -610,18 +640,9 @@ logic. Not fixed because the correct membership/filter bit semantics to pass int
 decision, not a mechanical bug fix. (`CollisionGroup::groupOnly()`'s own mask bug, a separate issue, was
 fixed — see B034.)
 
-**Gameplay pipeline system (`FarmState`/`TurnPipeline`/`HarvestPipeline`/etc.) is still not wired into
-`GamePlayScreen`.** The four concrete bugs this session found in `src/game/gameplay/` (harvest pipeline
-crediting nothing, dead event observer, doubly-dead sub-pipeline events, missing Built-tile colliders)
-are now fixed — see B035-B037. What remains open is purely the wiring decision: hooking this system up
-to `GamePlayScreen` requires deciding how `FarmState` should expose mutation (public setters vs. a delta
-the caller applies), and none of it runs in the shipped game today. Also still open: six `PassThrough<T>`-
-alias stages (`WashCrop`, `GrindCrop`, `Ferment`, `PressExtract`, `Pretreat`, `EconomyUpdate`, in
-`PassThroughStages.hpp`) can't each get a distinct observer key without becoming distinct types, which
-would break `PassThroughStageAliasesSmoke.cpp`'s `std::same_as` static_asserts — a design call on
-whether to extend Pipeline-c-'s existing branch-case `label` mechanism to linear stages (which would
-unblock this without breaking the test), left for the project owner. Domain data (crop yields, BTU/
-gallon) was cross-checked against `Research/` and is accurate.
+**~~Gameplay pipeline system is still not wired into `GamePlayScreen`~~ — moot, the whole subsystem was
+removed 2026-08-19.** See the entry above. `FarmState`/`TurnPipeline`/`HarvestPipeline`/`GamePlayScreen`/
+the `PassThrough<T>`-alias naming blocker no longer exist in this codebase.
 
 **No top-level `LICENSE` file for this project's own code.** `THIRD-PARTY-NOTICES.md` covers dependency
 attribution — every dependency is permissive and commercial-distribution-safe — but the project's own

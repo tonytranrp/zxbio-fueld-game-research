@@ -4,12 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-"Fuel Farm" — a C++20 / Raylib biofuel-production management game, built on a custom engine with a
-Rust physics backend (Rapier, via a `cxx` FFI bridge). Originally planned as 2D pixel art with 3D
-"pop-out" models (see `Agents.md` — now historical, do not treat it as current), the game pivoted to
-a fully 3D first-person voxel world, and is now pivoting again toward importing hand-authored/AI-
-generated 3D models (Meshy AI + Blender cleanup) in place of the voxel block world. Current
-implementation status and coding direction live in `README.md`.
+"Fuel Farm" — a C++20 / Raylib game built on a custom engine with a Rust physics backend (Rapier, via
+a `cxx` FFI bridge). The game concept has changed direction repeatedly: originally 2D pixel art with
+3D "pop-out" models (see `Agents.md` — now historical, do not treat it as current), then a fully 3D
+first-person voxel world with a biofuel-farm-simulation gameplay loop (crops, seasons, harvest/fuel-
+processing pipelines, tech tree). **Both the voxel world and the farm simulation were removed
+entirely on 2026-08-19** — see `Bug/bug.md` for exactly what and why. The direction going forward is
+gameplay built around imported hand-authored/AI-generated 3D models (Meshy AI + Blender cleanup), not
+yet implemented. Current implementation status lives in `README.md`.
 
 ## Build
 
@@ -99,21 +101,19 @@ panic anywhere here kills the whole process). `CollisionGroup`/`SolverGroup` are
 integer IDs — two values only "collide" if `(mask & other.group) != 0 && (other.mask & group) != 0`;
 test with genuinely disjoint bits, not just numerically-different values.
 
-**Gameplay logic runs on the vendored Pipeline-c- library** (`pb::core::from<Input>::then<Stage>::
-...::to<Output>`), used for `TurnPipeline`, `HarvestPipeline`, and `FuelProcessPipeline` in `src/
-game/gameplay/`. A stage's event-observer key comes from a `static constexpr std::string_view name`
-member on the stage type — a stage without one falls back to a numeric index key that won't match
-anything `PipelineEventObserver` looks for. Several `PassThrough<T>` stage aliases (`WashCrop`,
-`GrindCrop`, etc.) are literal type aliases of the same underlying type and can't each get a distinct
-`name` without becoming distinct types — see `game/gameplay/stages/README.md` for the current state
-of that constraint.
+**The vendored Pipeline-c- library** (`pb::core::from<Input>::then<Stage>::...::to<Output>`) is still
+a real dependency, but its only remaining consumer is the engine's own startup-task system
+(`engine/tasks/TaskModule.hpp`'s `TaskModule` concept requires `pb::core::ValidPipeline`) — the
+farming-gameplay pipelines that used to be its main consumer (`TurnPipeline`, `HarvestPipeline`,
+`FuelProcessPipeline` in `game/gameplay/`) were removed 2026-08-19. Don't assume Pipeline-c- usage
+elsewhere in the codebase; grep before reusing the pattern.
 
-**The 3D world** (`GamePlayScreen`) is a walkable first-person voxel world — `VoxelWorld` (chunked
-block storage) plus `VoxelVolume` (SDF raymarcher) with a rasterized-mesh fallback, driven by a
-kinematic `FirstPersonController`. `engine/models/ModelSystem` (a typed asset registry for imported
-`.glb` models) currently has an empty built-in model list — the project is mid-transition from the
-voxel block world toward hand-authored/AI-generated imported models (see `assets/models/README.md`
-and `src/game/models/README.md`), so an empty-but-present model system is expected, not a bug.
+**There is currently no gameplay screen.** `GamePlayScreen` (a walkable first-person voxel world —
+`VoxelWorld` chunked block storage plus `VoxelVolume` SDF raymarcher) was removed 2026-08-19 along
+with the entire `engine/world/` folder it depended on. `engine/models/ModelSystem` (a typed asset
+registry for imported `.glb` models) still has an empty built-in model list — this is now the actual
+starting point for whatever gameplay gets built around imported models next (see
+`assets/models/README.md` and `src/game/models/README.md`), not a mid-transition artifact.
 
 **Shaders** follow the same typed-registry pattern (`ShaderAsset<Tag>` specializations via
 `BIOFUEL_EMBEDDED_SHADER_ASSET`/`BIOFUEL_SHADER_MODULE`), with GLSL source embedded into a generated
