@@ -50,6 +50,7 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/animation/AnimationServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/audio/AudioAssetModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/audio/AudioServiceModule.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/engine/bevy/BevyRenderServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/debug/DebugOverlayServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/animation/AnimationEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/EventServiceModule.hpp"
@@ -145,6 +146,8 @@ target_link_libraries(biofuel_engine
         spdlog::spdlog
         biofuel_rapier_bridge
         biofuel_rapier_bridge_cxx
+        biofuel_bevy_bridge
+        biofuel_bevy_bridge_cxx
         pb::core
     PRIVATE
         taskflow
@@ -350,6 +353,18 @@ add_custom_command(
         "$<TARGET_FILE:raylib>"
         "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
     COMMENT "Copying raylib.dll to output directory"
+)
+
+# biofuel_bevy_bridge is a cdylib (see root CMakeLists.txt) -- Corrosion copies
+# the built .dll into build/lib/, but Windows only searches next to the .exe
+# (build/bin/) at process start, so it needs the same POST_BUILD treatment as
+# raylib.dll above.
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:biofuel_bevy_bridge-shared>"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+    COMMENT "Copying biofuel_bevy_bridge.dll to output directory"
 )
 
 add_custom_command(

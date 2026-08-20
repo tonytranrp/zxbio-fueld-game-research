@@ -30,8 +30,11 @@ namespace biofuel::game::app {
             //   F3 = toggle the whole overlay
             //   F4 = toggle the Memory panel (sorted resource breakdown)
             //   F5 = toggle the Assets panel
+            //   F6 = open the Bevy render pipeline demo screen
             //   F7 = toggle the Frame Timing panel (FPS / frame ms)
-            // F6 is free (the voxel world that used to bind it was removed).
+            if (IsKeyPressed(KEY_F6)) {
+                ::biofuel::engine::runtime::Runtime::screen().queuePush<::biofuel::game::screens::BevyDemoScreen>();
+            }
             auto& overlay = ::biofuel::engine::runtime::Runtime::debugOverlay();
             if (IsKeyPressed(KEY_F3)) {
                 overlay.toggle();

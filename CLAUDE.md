@@ -42,13 +42,15 @@ pollutes `rapier_bridge/target/`, which is gitignored for exactly this reason.
 ## Test
 
 ```bash
-ctest --test-dir build -C Debug          # all tests
-ctest --test-dir build -C Debug -R Farm  # a single test by (partial) name match, e.g. BiofuelFarmStateSmoke
+ctest --test-dir build -C Debug             # all tests
+ctest --test-dir build -C Debug -R Physics  # a single test by (partial) name match, e.g. BiofuelPhysicsSmoke
 ```
 
 Tests fall into two kinds, both run through the same `ctest` suite:
-- **Smoke tests** (`tests/engine/`, `tests/game/`, `tests/physics/`, `tests/pipeline/`) — ordinary
-  runtime behavior checks.
+- **Smoke tests** (`tests/engine/`, `tests/physics/`) — ordinary runtime behavior checks. `tests/
+  game/` and `tests/pipeline/` existed for the farm-simulation gameplay and were removed with it
+  2026-08-19 — don't recreate that layout without checking it's still the right shape for whatever
+  gameplay exists at the time.
 - **Architecture guards** (`tests/architecture/*.cmake`) — CMake scripts that regex-scan actual
   source files for structural invariants (e.g. `EngineBoundaryGuard` fails if `game/` code leaks into
   the engine's include path; `RegistryManifestGuard` fails if typed-registry codegen reverts to

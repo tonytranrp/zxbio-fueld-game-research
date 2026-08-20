@@ -139,7 +139,8 @@ CPMAddPackage(
         "PB_ENABLE_UNITY OFF"
 )
 
-# Corrosion - Cargo/Rust integration for the Rapier physics bridge.
+# Corrosion - Cargo/Rust integration for the Rapier physics bridge and the
+# embedded Bevy renderer. Both crates are members of the rust/ Cargo workspace.
 CPMAddPackage(
     NAME Corrosion
     URL https://github.com/corrosion-rs/corrosion/archive/refs/tags/v0.6.1.tar.gz
@@ -149,7 +150,7 @@ CPMAddPackage(
 )
 
 corrosion_import_crate(
-    MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/engine/physics/rapier_bridge/Cargo.toml"
+    MANIFEST_PATH "${CMAKE_SOURCE_DIR}/rust/rapier_bridge/Cargo.toml"
     LOCKED
     CRATES biofuel_rapier_bridge
     CRATE_TYPES staticlib
@@ -159,6 +160,25 @@ corrosion_add_cxxbridge(
     biofuel_rapier_bridge_cxx
     CRATE biofuel_rapier_bridge
     REGEN_TARGET biofuel_rapier_bridge_cxx_regen
+    FILES lib.rs
+)
+
+# biofuel_bevy_bridge is a cdylib, not a second staticlib: two separate
+# rustc-produced staticlibs can't be linked into one C++ binary (each vendors
+# its own copy of std/cxxbridge symbols). A cdylib is a different, non-
+# conflicting linking mechanism, and Windows needs its .dll copied next to the
+# exe post-build (see src/CMakeLists.txt).
+corrosion_import_crate(
+    MANIFEST_PATH "${CMAKE_SOURCE_DIR}/rust/bevy_bridge/Cargo.toml"
+    LOCKED
+    CRATES biofuel_bevy_bridge
+    CRATE_TYPES cdylib
+)
+
+corrosion_add_cxxbridge(
+    biofuel_bevy_bridge_cxx
+    CRATE biofuel_bevy_bridge
+    REGEN_TARGET biofuel_bevy_bridge_cxx_regen
     FILES lib.rs
 )
 

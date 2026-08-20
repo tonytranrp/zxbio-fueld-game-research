@@ -1,0 +1,25 @@
+[package]
+name = "biofuel_bevy_bridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+cxx = { workspace = true }
+bevy = { version = "=0.19.1", default-features = false, features = [
+    "3d_bevy_render",   # bevy_render + core_pipeline + pbr + gltf + post_process + anti_alias + gizmos
+    "default_app",      # async_executor + bevy_asset + bevy_log + bevy_state + reflect_auto_register
+    "bevy_window",       # Window/WindowPlugin/ExitCondition types (NOT bevy_winit -- no OS window backend)
+    "multi_threaded",    # ECS task-pool parallelism
+    "tonemapping_luts",  # avoids a missing-KTX2-LUT warning from StandardMaterial's default tonemapper
+] }
+
+[build-dependencies]
+cxx-build = { workspace = true }
+
+# panic="abort" and dev opt-level=2 for third-party deps come from the
+# workspace root's rust/Cargo.toml -- Cargo only honors [profile.*] tables
+# at the workspace root, not in a member manifest.

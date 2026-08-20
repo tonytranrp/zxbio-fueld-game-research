@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "rapier_bridge",
+    "bevy_bridge",
+]
+
+[workspace.dependencies]
+cxx = "=1.0.194"
+cxx-build = "=1.0.194"
+
+# Profile tables in a Cargo workspace are ONLY honored at the workspace root --
+# Cargo silently ignores [profile.*] in a member's own manifest. Moving these
+# here (from the old rapier_bridge/Cargo.toml) means Bevy's own large
+# dependency tree inherits the same dev opt-level=2 override for free.
+[profile.dev]
+panic = "abort"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+panic = "abort"
+lto = "fat"
+codegen-units = 1

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/bevy/BevyRenderService.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/tasks/TaskModule.hpp"
 #include "engine/ui/ScreenManager.hpp"
@@ -26,6 +27,7 @@ BIOFUEL_TASK_STAGE(PhysicsInit);
 BIOFUEL_TASK_STAGE(ModelInit);
 BIOFUEL_TASK_STAGE(AudioInit);
 BIOFUEL_TASK_STAGE(VideoInit);
+BIOFUEL_TASK_STAGE(BevyRendererInit);
 
 #undef BIOFUEL_TASK_STAGE
 
@@ -58,6 +60,10 @@ BIOFUEL_TASK_MODULE(PhysicsTaskModule,         PhysicsInit,      "Initializing p
 BIOFUEL_TASK_MODULE(ModelTaskModule,           ModelInit,        "Initializing model system...",       0.4f, model().init());
 BIOFUEL_TASK_MODULE(AudioTaskModule,           AudioInit,        "Initializing audio device...",       0.5f, audio().init());
 BIOFUEL_TASK_MODULE(VideoTaskModule,           VideoInit,        "Initializing video system...",       0.4f, video().init());
+// Real (likely multi-hundred-ms) startup cost: builds a whole headless Bevy
+// App with synchronous_pipeline_compilation, so it belongs on the loading
+// screen rather than lazy-on-first-use.
+BIOFUEL_TASK_MODULE(BevyRendererTaskModule,    BevyRendererInit, "Initializing Bevy renderer...",      0.5f, bevyRenderer().init());
 
 #undef BIOFUEL_TASK_MODULE
 
@@ -72,7 +78,8 @@ using EngineStartupModules = TaskModuleList<
     PhysicsTaskModule,
     ModelTaskModule,
     AudioTaskModule,
-    VideoTaskModule
+    VideoTaskModule,
+    BevyRendererTaskModule
 >;
 
 // Compile-time validation: every startup module exposes the typed pipeline,

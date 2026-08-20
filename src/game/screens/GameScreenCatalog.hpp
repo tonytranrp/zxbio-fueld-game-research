@@ -8,6 +8,7 @@
 #include "game/screens/pause_popup/PausePopupScreenModule.hpp"
 #include "game/screens/idle/IdleScreenModule.hpp"
 #include "game/screens/video/VideoScreenModule.hpp"
+#include "game/screens/bevy_demo/BevyDemoScreenModule.hpp"
 namespace biofuel::game::screens {
 
 using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
@@ -15,7 +16,8 @@ using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
     MainMenuScreen,
     PausePopupScreen,
     IdleScreen,
-    VideoScreen
+    VideoScreen,
+    BevyDemoScreen
     >;
 
 static_assert(::biofuel::engine::ui::typed::validateScreenRegistry<GameScreenRegistry>());
@@ -29,6 +31,7 @@ namespace detail {
     case screen_id::PausePopup:
     case screen_id::Idle:
     case screen_id::Video:
+    case screen_id::BevyDemo:
         return true;
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
     case ::biofuel::engine::ui::typed::ScreenId::Count:
@@ -47,6 +50,7 @@ namespace detail {
     case screen_id::MainMenu:
     case screen_id::Idle:
     case screen_id::Video:
+    case screen_id::BevyDemo:
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
     case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;
@@ -91,6 +95,7 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
     case screen_id::Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
     case screen_id::Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
+    case screen_id::BevyDemo: return typed::TransitionPolicy<BevyDemoScreen>::VALUE;
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
     case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;
@@ -111,6 +116,7 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::MainMenu:
     case screen_id::Idle:
     case screen_id::Video:
+    case screen_id::BevyDemo:
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
     case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;

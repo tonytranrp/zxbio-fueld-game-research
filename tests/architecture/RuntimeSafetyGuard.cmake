@@ -25,6 +25,7 @@ set(ALLOWED_RAYLIB_LIFETIME_FILES
     "src/engine/app/App.cpp"
     "src/engine/app/AppLifecycle.cpp"
     "src/engine/audio/AudioManager.cpp"
+    "src/engine/bevy/BevyRenderService.cpp"
     "src/engine/fonts/FontUtils.cpp"
     "src/engine/graphics/RenderSurface.hpp"
     "src/engine/graphics/ShaderManager.cpp"

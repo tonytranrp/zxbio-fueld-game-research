@@ -1,0 +1,20 @@
+[package]
+name = "biofuel_rapier_bridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+cxx = { workspace = true }
+rapier2d = { version = "=0.32.0", features = ["profiler"] }
+rapier3d = { version = "=0.32.0", features = ["profiler"] }
+
+[build-dependencies]
+cxx-build = { workspace = true }
+
+# Profile settings (panic="abort", dev opt-level=2 for third-party deps,
+# release LTO) now live in the workspace root's rust/Cargo.toml -- Cargo only
+# honors [profile.*] tables at the workspace root, not in a member manifest.
