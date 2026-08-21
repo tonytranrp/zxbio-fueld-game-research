@@ -1,0 +1,11 @@
+# Files copied into new worktrees (gitignore syntax — these are gitignored files
+# that worktree-isolated agents need without re-fetching/rebuilding from scratch).
+# See CLAUDE.md and the worktree research: a fresh checkout lacks build artifacts
+# and the CPM cache. We copy the cheap, essential ones; CPM re-fetches deps.
+
+# CMake compile commands — needed by Serena/clangd/clangd-lsp for semantic nav
+compile_commands.json
+
+# CPM shared cache pointer — if you set CPM_SOURCE_CACHE to a shared dir, copy it
+# (uncomment if you create one)
+# .cpm-cache

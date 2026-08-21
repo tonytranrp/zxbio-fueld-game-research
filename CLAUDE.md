@@ -46,6 +46,10 @@ ctest --test-dir build -C Debug             # all tests
 ctest --test-dir build -C Debug -R Physics  # a single test by (partial) name match, e.g. BiofuelPhysicsSmoke
 ```
 
+**Done-state rule:** a change to engine or game code is not done until `ctest --test-dir build
+-C Debug` passes — run it (or the relevant `-R <name>` subset) before declaring success. A change
+that "looks right" but is unverified is not done; report the actual test result, not an assumption.
+
 Tests fall into two kinds, both run through the same `ctest` suite:
 - **Smoke tests** (`tests/engine/`, `tests/physics/`) — ordinary runtime behavior checks. `tests/
   game/` and `tests/pipeline/` existed for the farm-simulation gameplay and were removed with it
