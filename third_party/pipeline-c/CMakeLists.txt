@@ -58,9 +58,12 @@ add_library(pb_core INTERFACE)
 add_library(pb::core ALIAS pb_core)
 set_target_properties(pb_core PROPERTIES EXPORT_NAME core)
 target_compile_features(pb_core INTERFACE cxx_std_20)
+# SYSTEM so consumers building with their own /W4 /WX warning wall (this
+# game) do not fail on benign header-only warnings from these headers (e.g.
+# MSVC C4459 where a `stage` parameter shadows the pb::core::stage concept).
 target_include_directories(
   pb_core
-  INTERFACE
+  SYSTEM INTERFACE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )

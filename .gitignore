@@ -5,6 +5,7 @@
 
 # Local secrets -- never commit API keys (Meshy, etc).
 .secrets/
+.claude/settings.local.json
 
 # Build trees and generated output
 build/

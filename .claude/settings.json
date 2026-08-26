@@ -1,0 +1,13 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.surplusintelligence.ai/anthropic",
+    "ANTHROPIC_API_KEY": "",
+    "ANTHROPIC_MODEL": "glm-5.2",
+    "ANTHROPIC_SMALL_FAST_MODEL": "glm-5.2",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.2",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.2",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5.2",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "glm-5.2",
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1000000"
+  }
+}
