@@ -578,6 +578,21 @@ bool ScreenManager::blocksUnderlyingUpdates() const noexcept {
     if (m_screens.size() < 2) {
         return false;
     }
+    // The screen below the top is only a genuine, persistent modal-blocking
+    // case (e.g. gameplay under a pushed pause popup) if it's still actually
+    // active. During a replace()'s crossfade, the outgoing screen briefly
+    // coexists in the stack purely to finish its own fade-out animation --
+    // it is not "paused" and must not freeze app-wide services (physics,
+    // models) underneath the incoming screen for the transition's duration.
+    // Without this check, e.g. MainMenuScreen fading out under a freshly
+    // entered ExplorationScreen froze PhysicsService.stepFixed() for the
+    // whole crossfade while the new screen's onUpdate() (gravity, character
+    // movement) kept running regardless, causing an uncorrectable fall
+    // straight through never-stepped level geometry.
+    const auto& belowTop = m_screens[m_screens.size() - 2];
+    if (belowTop.transition.state == typed::SlotTransitionState::TransitionOut) {
+        return false;
+    }
     return !stackPolicyFor(m_screens.back().id).updateBelow;
 }
 
