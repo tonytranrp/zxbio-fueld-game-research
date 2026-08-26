@@ -40,3 +40,11 @@ opt-level = 2
 panic = "abort"
 lto = "fat"
 codegen-units = 1
+# Full debug info for optimized builds. Corrosion maps every CMake config
+# except Debug to this cargo profile (cmake/Corrosion.cmake's default profile
+# option), so both the `release` and `release-debug` CMake presets build with
+# it. Debuginfo only lands in the .pdb next to the exe -- it does not change
+# codegen, so runtime perf is unaffected -- but it makes breakpoints, local
+# variables, and stack frames through this bridge work in optimized builds
+# (they would otherwise be completely blind). Costs rustc/link time and disk.
+debug = true

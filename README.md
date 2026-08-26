@@ -78,7 +78,17 @@ Rust compile in it; a cache hit skips the actual compile entirely. Purely additi
 works identically without it, just slower on a from-scratch `build-ninja/` rebuild.
 
 Other presets: `dev-full` (adds the Bevy bridge, lands in `build-ninja-full/`), `release`
-(Ninja, Release config, lands in `build-ninja-release/`). List them with `cmake --list-presets`.
+(Ninja, Release config, lands in `build-ninja-release/`), and `release-debug` (Ninja,
+RelWithDebInfo config, lands in `build-ninja-reldeb/`). List them with `cmake --list-presets`.
+
+**`release-debug` is the "fast but still debuggable" config** — the one to play or profile
+at full speed in and then step into when something misbehaves. It is optimized like
+`release` (full `/O2`, plus MSVC `/Zo` so locals and line-stepping survive inlining, and
+full Rust debug info for the physics bridge) and produces complete `.pdb` symbols, but
+skips the Release-only LTCG/ICF link passes — those buy a few more percent of perf and a
+smaller exe at the cost of much slower links and mangled stack traces. The debug overlay
+starts hidden in optimized builds (`NDEBUG`); it can still be toggled at runtime with its
+usual hotkey.
 
 Plain/IDE path (no presets -- e.g. opening the folder directly in Visual Studio, or any
 generator you prefer):

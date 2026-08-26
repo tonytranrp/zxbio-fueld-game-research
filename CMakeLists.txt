@@ -34,6 +34,16 @@ if(MSVC)
     add_compile_options($<$<CONFIG:Release>:/O2>)
     add_compile_options($<$<CONFIG:Release>:/Ob2>)
     add_compile_options($<$<CONFIG:Release>:/Gw>)
+    # RelWithDebInfo ("release-debug" preset): /Ob2 matches Release's
+    # auto-inlining (CMake's RelWithDebInfo default of /Ob1 inlines only
+    # explicitly-inline functions, leaving real perf on the table), and /Zo
+    # (Enhanced Optimized Debugging) keeps local-variable and line
+    # information usable when debugging that inlined /O2 code -- without it,
+    # many locals and intermediate lines are invisible to the debugger.
+    # /Zo costs essentially nothing at runtime; both flags only matter in
+    # optimized builds, so there is no Debug entry.
+    add_compile_options($<$<CONFIG:RelWithDebInfo>:/Ob2>)
+    add_compile_options($<$<CONFIG:RelWithDebInfo>:/Zo>)
     # Compile the .cpp files within one project in parallel (MSBuild only
     # parallelizes across projects on its own). No behavior change, all
     # configs -- this is the standard MSVC multi-TU compile flag.

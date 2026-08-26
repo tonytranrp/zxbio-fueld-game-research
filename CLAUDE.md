@@ -37,7 +37,9 @@ cmake --build build --config Debug
 
 An existing Visual-Studio-integrated build directory (e.g. `out/build/x64-Debug`) works the same way
 — just point `cmake --build` at it instead of `build`. See `README.md`'s Build section for the other
-presets (`dev-full`, `release`) and what `BIOFUEL_ENABLE_BEVY_BRIDGE` gates.
+presets (`dev-full`, `release`, `release-debug` — the last is RelWithDebInfo: full `/O2` with
+complete C++ *and* Rust debug symbols, the "fast but still debuggable" config) and what
+`BIOFUEL_ENABLE_BEVY_BRIDGE` gates.
 
 **Windows gotcha:** both `cmake --preset dev`/`cmake --build --preset dev` (Ninja) and, for the
 plain path, `cmake --build` (Visual Studio generator) must run inside a Visual Studio Developer
