@@ -40,6 +40,11 @@ currently follows it. See `Bug/bug.md` for what was removed and why.
 
 ## Build
 
+**New machine with nothing installed?** Double-click `scripts\setup.bat` (Windows). It installs
+every prerequisite (Visual Studio C++ Build Tools, CMake, Ninja, Rust, Git, sccache) via winget,
+then builds the game -- see `scripts\setup.ps1`'s header comment for details. Needs administrator
+rights (it asks for them). Once set up, `scripts\build.bat` alone repeats just the build.
+
 Fast path (default, recommended -- Ninja, no Bevy tech-demo bridge, CPU-only-friendly).
 Run from a Visual Studio Developer Command Prompt (or after `vcvarsall.bat x64`) so
 `cl.exe`/`link.exe` are on `PATH` -- Ninja doesn't auto-detect the MSVC environment the way
