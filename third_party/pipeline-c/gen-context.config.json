@@ -1,0 +1,40 @@
+{
+  "output": ".github/copilot-instructions.md",
+  "outputs": [
+    "copilot"
+  ],
+  "srcDirs": [
+    "include",
+    "src",
+    "tests",
+    "examples",
+    "bench"
+  ],
+  "exclude": [
+    ".git",
+    ".omx",
+    ".context",
+    "build",
+    "out",
+    "build-*",
+    "node_modules",
+    "dist",
+    "coverage",
+    "target",
+    "vendor"
+  ],
+  "maxDepth": 8,
+  "maxSigsPerFile": 30,
+  "maxTokens": 6000,
+  "autoMaxTokens": false,
+  "coverageTarget": 0.85,
+  "modelContextLimit": 128000,
+  "maxTokensHeadroom": 0.1,
+  "secretScan": true,
+  "strategy": "full",
+  "depMap": true,
+  "todos": true,
+  "changes": true,
+  "changesCommits": 5,
+  "testCoverage": false
+}

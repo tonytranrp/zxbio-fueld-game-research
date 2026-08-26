@@ -1,0 +1,98 @@
+name: CI
+
+"on":
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-dev:
+    name: Clang dev preset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang ninja-build
+
+      - name: Show tool versions
+        run: |
+          cmake --version
+          clang++ --version
+          ninja --version
+
+      - name: List CMake presets
+        run: cmake --list-presets=all
+
+      - name: Configure clang-dev-ninja
+        run: cmake --preset clang-dev-ninja
+
+      - name: Build clang-dev-ninja
+        run: cmake --build --preset clang-dev-ninja --parallel
+
+      - name: Test clang-dev-ninja
+        run: ctest --preset clang-dev-ninja --output-on-failure
+
+  package-release:
+    name: Package release preset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang ninja-build
+
+      - name: Configure package-release-clang-ninja
+        run: cmake --preset package-release-clang-ninja
+
+      - name: Build package-release-clang-ninja
+        run: cmake --build --preset package-release-clang-ninja --parallel
+
+      - name: Test package-release-clang-ninja
+        run: ctest --preset package-release-clang-ninja --output-on-failure
+
+      - name: Test package consumer smoke directly
+        run: ctest --preset package-release-clang-ninja --output-on-failure -R pb_package_config_smoke
+
+      - name: Build TGZ package
+        run: cmake --build --preset package-release-clang-ninja --target package
+
+      - name: Upload package archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipebuilder-package-tgz
+          path: build/package-release-clang-ninja/*.tar.gz
+          if-no-files-found: error
+
+  benchmark-smoke:
+    name: Benchmark smoke preset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang ninja-build
+
+      - name: Configure bench-dev-ninja
+        run: cmake --preset bench-dev-ninja
+
+      - name: Build bench-dev-ninja
+        run: cmake --build --preset bench-dev-ninja --parallel
+
+      - name: Test benchmark smoke targets
+        run: ctest --preset bench-dev-ninja --output-on-failure -R '^pb_bench_'

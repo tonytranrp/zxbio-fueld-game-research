@@ -66,9 +66,20 @@ void ScreenBackdropController::render(const f32 transitionAlpha) const {
         return;
     }
 
+    // Shade at a reduced internal resolution, then upscale — the raymarch
+    // cost scales with pixel count, so this is the single biggest lever on
+    // hardware with no dedicated GPU to fall back on.
+    const i32 rw = std::max(1, static_cast<i32>(static_cast<f32>(sw) * kInternalRenderScale));
+    const i32 rh = std::max(1, static_cast<i32>(static_cast<f32>(sh) * kInternalRenderScale));
+    m_surface.ensureSize(rw, rh);
+    const bool useSurface = m_surface.valid();
+    if (useSurface) {
+        SetTextureFilter(m_surface.texture(), TEXTURE_FILTER_BILINEAR);
+    }
+
     const std::array<f32, 3> resolution{
-        static_cast<f32>(sw),
-        static_cast<f32>(sh),
+        static_cast<f32>(useSurface ? rw : sw),
+        static_cast<f32>(useSurface ? rh : sh),
         1.0f
     };
 
@@ -92,8 +103,18 @@ void ScreenBackdropController::render(const f32 transitionAlpha) const {
     ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::Brightness>(m_shader, m_brightnessLoc, &brightness);
     ::biofuel::engine::runtime::typed::Shaders::set<BgShader, BgUniforms::RevealProgress>(m_shader, m_revealLoc, &reveal);
 
-    ScopedShaderMode shaderScope(m_shader);
-    Renderer::drawFullscreen(WHITE);
+    if (useSurface) {
+        {
+            ScopedTextureMode textureScope(m_surface.target());
+            ScopedShaderMode shaderScope(m_shader);
+            Renderer::drawRect(0, 0, rw, rh, WHITE);
+        }
+        Renderer::drawRenderTexture(m_surface.texture(), 0, 0, sw, sh, WHITE);
+    } else {
+        // GPU allocation failed — fall back to direct native-resolution draw.
+        ScopedShaderMode shaderScope(m_shader);
+        Renderer::drawFullscreen(WHITE);
+    }
 }
 
 f32 ScreenBackdropController::revealProgress() const noexcept {

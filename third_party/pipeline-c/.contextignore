@@ -1,0 +1,18 @@
+# Token-saving context ignore file for SigMap/Repomix-style tools.
+.git/
+.omx/
+.context/
+build/
+build-*/
+out/
+node_modules/
+dist/
+coverage/
+target/
+vendor/
+*.generated.*
+*.pb.*
+*_pb.*
+*.min.js
+*.min.css
+*.log

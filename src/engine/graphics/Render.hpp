@@ -4,6 +4,7 @@
 #include <raylib.h>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace biofuel::engine::graphics {
 
@@ -31,11 +32,19 @@ private:
     bool m_active = false;
 };
 
+// Raylib's EndTextureMode() unconditionally rebinds the screen framebuffer —
+// it has no concept of "the previously active render target" — so a naive
+// nested BeginTextureMode/EndTextureMode pair corrupts whichever outer render
+// texture was active (e.g. a screen drawing its own offscreen effect while
+// already being captured into a crossfade/blur surface by ScreenManager).
+// This stack restores the outer target on the way out so texture-mode scopes
+// nest correctly regardless of call order.
 class ScopedTextureMode final {
 public:
     explicit ScopedTextureMode(RenderTexture2D target) noexcept
         : m_active(target.id > 0) {
         if (m_active) {
+            stack().push_back(target);
             BeginTextureMode(target);
         }
     }
@@ -43,6 +52,10 @@ public:
     ~ScopedTextureMode() noexcept {
         if (m_active) {
             EndTextureMode();
+            stack().pop_back();
+            if (!stack().empty()) {
+                BeginTextureMode(stack().back());
+            }
         }
     }
 
@@ -52,6 +65,11 @@ public:
     ScopedTextureMode& operator=(ScopedTextureMode&&) = delete;
 
 private:
+    static std::vector<RenderTexture2D>& stack() noexcept {
+        static std::vector<RenderTexture2D> instance;
+        return instance;
+    }
+
     bool m_active = false;
 };
 

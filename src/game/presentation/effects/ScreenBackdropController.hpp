@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/Types.hpp"
+#include "engine/graphics/RenderSurface.hpp"
 #include "engine/graphics/ShaderManager.hpp"
 #include <raylib.h>
 #include <string>
@@ -41,10 +42,20 @@ public:
     [[nodiscard]] bool ready() const noexcept;
 
 private:
+    // Fullscreen procedural shaders (raymarching, per-pixel noise) are shaded
+    // once per screen pixel — rendering into a downscaled offscreen surface
+    // and upscaling with bilinear filtering cuts that cost roughly in
+    // proportion to the pixel count, at a softness cost too small to notice
+    // on an ambient background. Weak integrated GPUs (no dedicated card to
+    // route to) can't be helped by GPU-selection tricks, only by shading
+    // fewer pixels.
+    static constexpr f32 kInternalRenderScale = 0.5f;
+
     void ensureShader() const;
     [[nodiscard]] f32 shaderTime() const noexcept;
 
     ScreenBackdropConfig m_config{};
+    mutable ::biofuel::engine::graphics::RenderSurface m_surface;
     mutable Shader m_shader{};
     mutable i32 m_resolutionLoc = -1;
     mutable i32 m_timeLoc = -1;

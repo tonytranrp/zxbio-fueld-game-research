@@ -8,7 +8,9 @@
 #include "game/screens/pause_popup/PausePopupScreenModule.hpp"
 #include "game/screens/idle/IdleScreenModule.hpp"
 #include "game/screens/video/VideoScreenModule.hpp"
+#ifdef BIOFUEL_WITH_BEVY_BRIDGE
 #include "game/screens/bevy_demo/BevyDemoScreenModule.hpp"
+#endif
 namespace biofuel::game::screens {
 
 using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
@@ -16,8 +18,10 @@ using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
     MainMenuScreen,
     PausePopupScreen,
     IdleScreen,
-    VideoScreen,
-    BevyDemoScreen
+    VideoScreen
+#ifdef BIOFUEL_WITH_BEVY_BRIDGE
+    , BevyDemoScreen
+#endif
     >;
 
 static_assert(::biofuel::engine::ui::typed::validateScreenRegistry<GameScreenRegistry>());
@@ -31,7 +35,9 @@ namespace detail {
     case screen_id::PausePopup:
     case screen_id::Idle:
     case screen_id::Video:
+#ifdef BIOFUEL_WITH_BEVY_BRIDGE
     case screen_id::BevyDemo:
+#endif
         return true;
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
     case ::biofuel::engine::ui::typed::ScreenId::Count:
@@ -50,7 +56,9 @@ namespace detail {
     case screen_id::MainMenu:
     case screen_id::Idle:
     case screen_id::Video:
+#ifdef BIOFUEL_WITH_BEVY_BRIDGE
     case screen_id::BevyDemo:
+#endif
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
     case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;
@@ -95,7 +103,9 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
     case screen_id::Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
     case screen_id::Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
+#ifdef BIOFUEL_WITH_BEVY_BRIDGE
     case screen_id::BevyDemo: return typed::TransitionPolicy<BevyDemoScreen>::VALUE;
+#endif
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
     case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;
@@ -116,7 +126,9 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::MainMenu:
     case screen_id::Idle:
     case screen_id::Video:
+#ifdef BIOFUEL_WITH_BEVY_BRIDGE
     case screen_id::BevyDemo:
+#endif
     case ::biofuel::engine::ui::typed::ScreenId::Unknown:
     case ::biofuel::engine::ui::typed::ScreenId::Count:
         break;

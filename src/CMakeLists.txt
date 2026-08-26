@@ -13,6 +13,15 @@ file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS
 list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/build/")
 list(FILTER GAME_SOURCES EXCLUDE REGEX "/build/")
 
+# BIOFUEL_ENABLE_BEVY_BRIDGE (see root CMakeLists.txt) gates both the Rust
+# crate and this C++ glue -- these files unconditionally include the
+# cxxbridge-generated header, so they must not be compiled at all when the
+# crate isn't imported.
+if(NOT BIOFUEL_ENABLE_BEVY_BRIDGE)
+    list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/engine/bevy/")
+    list(FILTER GAME_SOURCES EXCLUDE REGEX "/game/screens/bevy_demo/")
+endif()
+
 # ------------------------------------------------------------------------------
 # Shader source embedding - BUILD TIME, not configure time.
 # ------------------------------------------------------------------------------
@@ -50,7 +59,6 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/animation/AnimationServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/audio/AudioAssetModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/audio/AudioServiceModule.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/engine/bevy/BevyRenderServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/debug/DebugOverlayServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/animation/AnimationEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/EventServiceModule.hpp"
@@ -79,6 +87,11 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/video/VideoServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/window/WindowServiceModule.hpp"
 )
+if(BIOFUEL_ENABLE_BEVY_BRIDGE)
+    list(APPEND ENGINE_TYPED_MODULE_HEADERS
+        "${CMAKE_CURRENT_SOURCE_DIR}/engine/bevy/BevyRenderServiceModule.hpp"
+    )
+endif()
 
 set(GENERATED_SHADER_HEADER "${GENERATED_DIR}/ShaderSources.hpp")
 set(GENERATED_TYPED_EVENT_REGISTRY "${GENERATED_DIR}/engine/runtime/typed/generated/GeneratedEventRegistry.hpp")
@@ -146,12 +159,15 @@ target_link_libraries(biofuel_engine
         spdlog::spdlog
         biofuel_rapier_bridge
         biofuel_rapier_bridge_cxx
-        biofuel_bevy_bridge
-        biofuel_bevy_bridge_cxx
         pb::core
     PRIVATE
         taskflow
 )
+
+if(BIOFUEL_ENABLE_BEVY_BRIDGE)
+    target_link_libraries(biofuel_engine PUBLIC biofuel_bevy_bridge biofuel_bevy_bridge_cxx)
+    target_compile_definitions(biofuel_engine PUBLIC BIOFUEL_WITH_BEVY_BRIDGE)
+endif()
 
 add_library(biofuel_game STATIC ${GAME_SOURCES})
 add_dependencies(biofuel_game GenerateShaderSources GenerateTypedRegistries)
@@ -170,6 +186,51 @@ target_include_directories(biofuel_game
 
 add_executable(${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
 target_link_libraries(${PROJECT_NAME} PRIVATE biofuel_game)
+
+# ------------------------------------------------------------------------------
+# Precompiled headers - raylib.h/entt/json/spdlog are each included, directly
+# or transitively, by most translation units in both libraries; precompiling
+# them once instead of re-parsing per TU is a large chunk of total build time
+# on a single-core-bound compile.
+#
+# Each target gets its own PCH rather than biofuel_game reusing biofuel_engine's
+# (CMake's REUSE_FROM): MSVC requires byte-for-byte identical preprocessor
+# definitions between the compile that creates a .pch and every compile that
+# reuses it (C4651, promoted to a hard error by /WX otherwise), but
+# biofuel_engine and biofuel_game deliberately carry different PRIVATE
+# compile definitions (BIOFUEL_DEV_STARTUP_MENU_TRANSITION,
+# BIOFUEL_DEBUG_MEMORY_STATS, BIOFUEL_DEV_STARTUP_IDLE_VIDEO -- see the
+# per-target dev-toggle options below). REUSE_FROM would silently break the
+# moment any one of those is turned on. Two small PCH compiles instead of one
+# costs a few seconds; hand-synchronizing defines across the engine/game
+# boundary forever does not seem worth it.
+# ------------------------------------------------------------------------------
+set(BIOFUEL_PCH_HEADERS
+    <raylib.h>
+    <entt/signal/dispatcher.hpp>
+    <nlohmann/json.hpp>
+    <spdlog/spdlog.h>
+    <memory>
+    <string>
+    <string_view>
+    <vector>
+    <functional>
+    <unordered_map>
+)
+target_precompile_headers(biofuel_engine PRIVATE ${BIOFUEL_PCH_HEADERS})
+target_precompile_headers(biofuel_game PRIVATE ${BIOFUEL_PCH_HEADERS})
+
+# MemoryTelemetry.cpp deliberately never touches raylib (it's pure Win32/Psapi
+# process-memory stats -- see tests/architecture/RuntimeSafetyGuard.cmake's
+# raylib-lifetime allowlist, which it is intentionally not part of). Forcing
+# raylib.h into it via the shared PCH would declare CloseWindow/ShowCursor
+# with C++ linkage before its own <Windows.h> declares the real extern "C"
+# WinAPI versions of the same names (C2733). Simplest fix: this one file
+# skips the PCH and compiles its own includes normally.
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/engine/debug/MemoryTelemetry.cpp"
+    PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+)
 
 # ------------------------------------------------------------------------------
 # Optional subsystems and compile definitions
@@ -359,13 +420,15 @@ add_custom_command(
 # the built .dll into build/lib/, but Windows only searches next to the .exe
 # (build/bin/) at process start, so it needs the same POST_BUILD treatment as
 # raylib.dll above.
-add_custom_command(
-    TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:biofuel_bevy_bridge-shared>"
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
-    COMMENT "Copying biofuel_bevy_bridge.dll to output directory"
-)
+if(BIOFUEL_ENABLE_BEVY_BRIDGE)
+    add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:biofuel_bevy_bridge-shared>"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+        COMMENT "Copying biofuel_bevy_bridge.dll to output directory"
+    )
+endif()
 
 add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD

@@ -15,29 +15,56 @@ yet implemented. Current implementation status lives in `README.md`.
 
 ## Build
 
+Fast path (default since 2026-08-25 — Ninja, `BIOFUEL_ENABLE_BEVY_BRIDGE` off, PCH, persistent CPM
+cache, raylib vendored as a prebuilt binary on Windows; well under 5 minutes even CPU-only — ~100s
+for a from-scratch `build-ninja/` rebuild with warm caches, ~15s incremental, measured on real
+hardware). Install [sccache](https://github.com/mozilla/sccache) (`winget install Mozilla.sccache`)
+for a further speedup after wiping `build-ninja/` — CMake auto-detects and wraps every compile in
+it; purely additive, not required:
+
+```bash
+cmake --preset dev
+cmake --build --preset dev
+ctest --preset dev
+```
+
+Plain/IDE path (any generator, e.g. opening the folder directly in Visual Studio):
+
 ```bash
 cmake -S . -B build
 cmake --build build --config Debug
 ```
 
 An existing Visual-Studio-integrated build directory (e.g. `out/build/x64-Debug`) works the same way
-— just point `cmake --build` at it instead of `build`.
+— just point `cmake --build` at it instead of `build`. See `README.md`'s Build section for the other
+presets (`dev-full`, `release`) and what `BIOFUEL_ENABLE_BEVY_BRIDGE` gates.
 
-**Windows gotcha:** `cmake --build` must run inside a Visual Studio Developer environment
-(`INCLUDE`/`LIB`/`WindowsSdkDir` set). A plain shell (Git Bash, a fresh PowerShell) will fail deep
-into the build with misleading errors like `cannot open include file: 'concepts'` or cxx's
-`algorithm: no include path set` — that's a missing dev environment, not a real compile error. Fix:
-run through `vcvarsall.bat x64` first (e.g. from a small `.bat` wrapper — chaining it inline through
-Git Bash's `cmd.exe /c '...'` is fragile with quoted paths), or launch from a Developer Command
-Prompt / Visual Studio itself.
+**Windows gotcha:** both `cmake --preset dev`/`cmake --build --preset dev` (Ninja) and, for the
+plain path, `cmake --build` (Visual Studio generator) must run inside a Visual Studio Developer
+environment (`INCLUDE`/`LIB`/`WindowsSdkDir` set) — Ninja doesn't auto-detect it the way the Visual
+Studio generator does, so with Ninja even the *configure* step needs it, not just the build step. A
+plain shell (Git Bash, a fresh PowerShell) will fail deep into the build with misleading errors like
+`cannot open include file: 'concepts'` or cxx's `algorithm: no include path set` — that's a missing
+dev environment, not a real compile error. Fix: run through `vcvarsall.bat x64` first, or launch from
+a Developer Command Prompt / Visual Studio itself. Chaining it inline through Git Bash's
+`cmd.exe /c '...'` is fragile with quoted paths **and can silently no-op** (exits 0 having run
+nothing) rather than erroring — don't trust a bare exit-0 from that path. Both a `.bat` wrapper
+invoked via Git Bash's `cmd.exe /c "<path>"` and a single-quoted `cmd.exe /c '<cmd> && <cmd>'`
+passed through the PowerShell tool have been observed; only the latter has actually worked in
+practice here.
 
-Dependencies (Raylib, EnTT, nlohmann_json, Taskflow, spdlog, Pipeline-c, Corrosion) are fetched via
-CPM.cmake, every one pinned to an immutable tag or commit hash with `URL_HASH` — never relax a pin to
-a moving branch reference (Pipeline-c- was bitten by exactly that, twice, historically).
+Most dependencies (EnTT, nlohmann_json, Taskflow, spdlog, Corrosion) are fetched via CPM.cmake,
+every one pinned to an immutable tag or commit hash with `URL_HASH` — never relax a pin to a moving
+branch reference (Pipeline-c- was bitten by exactly that, twice, historically, back when it was
+CPM-fetched). raylib is vendored as a prebuilt binary on Windows (`third_party/raylib-5.5-win64-
+msvc16/`, CPM-built from source on other platforms), and Pipeline-c- is vendored as source under
+`third_party/pipeline-c/` — it's this project's own library, meant to be edited in-tree, not an
+external dependency to re-fetch. See `THIRD-PARTY-NOTICES.md` and each vendored dir's
+`PROVENANCE.md`.
 
-The Rust physics crate (`src/engine/physics/rapier_bridge/`) builds automatically as part of the
-CMake build via Corrosion — no separate `cargo build` step. Running `cargo build` directly there
-pollutes `rapier_bridge/target/`, which is gitignored for exactly this reason.
+The Rust crates (`rust/rapier_bridge/`, `rust/bevy_bridge/`, one Cargo workspace at `rust/`) build
+automatically as part of the CMake build via Corrosion — no separate `cargo build` step. Running
+`cargo build` directly pollutes `rust/target/`, which is gitignored for exactly this reason.
 
 ## Test
 

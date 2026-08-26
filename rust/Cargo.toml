@@ -10,13 +10,30 @@ cxx = "=1.0.194"
 cxx-build = "=1.0.194"
 
 # Profile tables in a Cargo workspace are ONLY honored at the workspace root --
-# Cargo silently ignores [profile.*] in a member's own manifest. Moving these
-# here (from the old rapier_bridge/Cargo.toml) means Bevy's own large
-# dependency tree inherits the same dev opt-level=2 override for free.
+# Cargo silently ignores [profile.*] in a member's own manifest.
 [profile.dev]
 panic = "abort"
 
-[profile.dev.package."*"]
+# Unoptimized (opt-level=0) Rapier is too slow to be usable at runtime, so the
+# physics hot path (rapier2d/3d, their parry2d/3d collision/geometry layer,
+# and the nalgebra linear algebra underneath both) still gets optimized even
+# in dev builds. This used to be a blanket `[profile.dev.package."*"]
+# opt-level = 2` covering every third-party crate -- including Bevy's ~400-
+# crate tree (wgpu, naga, gltf, image codecs...) -- which is a large multiple
+# of total dev build time for code that isn't gameplay-hot. Scope it to just
+# the packages that need it; everything else (including Bevy's tree, when
+# BIOFUEL_ENABLE_BEVY_BRIDGE is on) now compiles at the default dev
+# opt-level=0. If Bevy demo-screen runtime perf becomes a problem, add its
+# specific hot crates (e.g. wgpu, naga) here rather than reverting to "*".
+[profile.dev.package.rapier2d]
+opt-level = 2
+[profile.dev.package.rapier3d]
+opt-level = 2
+[profile.dev.package.parry2d]
+opt-level = 2
+[profile.dev.package.parry3d]
+opt-level = 2
+[profile.dev.package.nalgebra]
 opt-level = 2
 
 [profile.release]

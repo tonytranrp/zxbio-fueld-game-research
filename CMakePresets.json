@@ -1,0 +1,49 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Fast dev build (Ninja, Bevy bridge off)",
+      "description": "Default fast-iteration config for CPU-only machines: Ninja generator, Debug build, Bevy tech-demo bridge excluded. Must be run from a Visual Studio Developer Command Prompt (or after vcvarsall.bat x64) so cl.exe/link.exe are on PATH -- see the Build section in README.md.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BIOFUEL_ENABLE_BEVY_BRIDGE": "OFF"
+      }
+    },
+    {
+      "name": "dev-full",
+      "displayName": "Fast dev build with Bevy bridge (Ninja)",
+      "description": "Same as 'dev' but includes the Bevy tech-demo bridge. Use when working on BevyDemoScreen or engine/bevy/*.",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build-ninja-full",
+      "cacheVariables": {
+        "BIOFUEL_ENABLE_BEVY_BRIDGE": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release build (Ninja, Bevy bridge off)",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build-ninja-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "dev-full", "configurePreset": "dev-full" },
+    { "name": "release", "configurePreset": "release" }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    }
+  ]
+}

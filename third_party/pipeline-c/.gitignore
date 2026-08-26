@@ -1,0 +1,64 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# CMake preset build trees
+build/
+out/
+# Ad-hoc local/worker CMake build trees
+build-*/
+
+# Local AI context/cache outputs
+.context/
+repomix-output.*
+
+# Local Claude Code config (agent definitions, worktrees, hooks, sessions)
+.claude/
+
+# Local IDE / editor caches
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS-generated junk files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment / secrets — never commit
+.env
+.env.*
+*.pem
+*.key

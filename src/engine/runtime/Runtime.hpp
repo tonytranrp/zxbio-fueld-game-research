@@ -32,7 +32,9 @@ public:
     [[nodiscard]] static auto& events() { return service<::biofuel::engine::runtime::typed::EventService>(); }
     [[nodiscard]] static auto& render() { return service<::biofuel::engine::runtime::typed::RenderService>(); }
     [[nodiscard]] static auto& debugOverlay() { return service<::biofuel::engine::runtime::typed::DebugOverlayService>(); }
+#ifdef BIOFUEL_WITH_BEVY_BRIDGE
     [[nodiscard]] static auto& bevyRenderer() { return service<::biofuel::engine::runtime::typed::BevyRendererService>(); }
+#endif
 };
 
 } // namespace biofuel::engine::runtime

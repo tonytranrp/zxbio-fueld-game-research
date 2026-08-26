@@ -1,0 +1,63 @@
+#include <pb/pipeline.hpp>
+
+#include <concepts>
+
+struct value { int n{}; };
+struct s1 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s2 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s3 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s4 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s5 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s6 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s7 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s8 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s9 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s10 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s11 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s12 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s13 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s14 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s15 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s16 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s17 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s18 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s19 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s20 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s21 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s22 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s23 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s24 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s25 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s26 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s27 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s28 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s29 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s30 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s31 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s32 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s33 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s34 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s35 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s36 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s37 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s38 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s39 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s40 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s41 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s42 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s43 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s44 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s45 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s46 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s47 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s48 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s49 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+struct s50 { using input_type = value; using output_type = value; value operator()(value v) const { return {v.n + 1}; } };
+using pipeline = pb::from<value>::then<s1>::then<s2>::then<s3>::then<s4>::then<s5>::then<s6>::then<s7>::then<s8>::then<s9>::then<s10>::then<s11>::then<s12>::then<s13>::then<s14>::then<s15>::then<s16>::then<s17>::then<s18>::then<s19>::then<s20>::then<s21>::then<s22>::then<s23>::then<s24>::then<s25>::then<s26>::then<s27>::then<s28>::then<s29>::then<s30>::then<s31>::then<s32>::then<s33>::then<s34>::then<s35>::then<s36>::then<s37>::then<s38>::then<s39>::then<s40>::then<s41>::then<s42>::then<s43>::then<s44>::then<s45>::then<s46>::then<s47>::then<s48>::then<s49>::then<s50>::to<value>;
+static_assert(pb::valid<pipeline>);
+static_assert(pb::pipeline_size_v<pipeline> == 50);
+static_assert(std::same_as<pb::pipeline_input_t<pipeline>, value>);
+static_assert(std::same_as<pb::pipeline_output_t<pipeline>, value>);
+static_assert(pb::descriptor_view<pipeline>().stage_records().size() == 50);
+static_assert(pb::descriptor_view<pipeline>().edge_records().size() == 49);
+int main() { return 0; }

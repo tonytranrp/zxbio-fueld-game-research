@@ -1,6 +1,8 @@
 #include "App.hpp"
 #include "AppLifecycle.hpp"
+#ifdef BIOFUEL_WITH_BEVY_BRIDGE
 #include "engine/bevy/BevyRenderService.hpp"
+#endif
 #include "engine/graphics/Render.hpp"
 #include "engine/debug/DebugOverlayService.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
@@ -142,11 +144,13 @@ void Application::update(const f32 dt) {
     // Video overlays need per-frame pumping for decoded frames and Raylib audio
     // streams even when the top screen freezes gameplay updates below it.
     services.get<::biofuel::engine::runtime::typed::VideoService>().update();
+#ifdef BIOFUEL_WITH_BEVY_BRIDGE
     // Same reasoning as VideoService above: the embedded Bevy scene keeps
     // rendering under a frozen top screen. Unlike VideoService (deliberately
     // wall-clock-paced), it gets the same fixed dt as PhysicsService.stepFixed()
     // above, so its motion stays in lockstep with the host's fixed timestep.
     services.get<::biofuel::engine::runtime::typed::BevyRendererService>().update(dt);
+#endif
 #ifdef _WIN32
     flushDragMove();
 #endif
