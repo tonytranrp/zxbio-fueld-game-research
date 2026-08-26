@@ -269,7 +269,12 @@ foreach(PB_PACKAGE_SMOKE_REQUIRED_ENTRY IN ITEMS
   "include/pb/pipeline.hpp"
   "lib/cmake/pipebuilder/pipebuilderConfig.cmake"
   "lib/cmake/pipebuilder/pipebuilderTargets.cmake"
-  "lib/libpb_runtime.a"
+  # Static-lib naming is platform-dependent (MSVC: "pb_runtime.lib", no
+  # prefix; GCC/Clang: "libpb_runtime.a") -- @CMAKE_STATIC_LIBRARY_PREFIX@ /
+  # @CMAKE_STATIC_LIBRARY_SUFFIX@ are substituted at configure_file() time
+  # from the same build that produced the archive being checked here, same
+  # pattern as @CMAKE_EXECUTABLE_SUFFIX@ above.
+  "lib/@CMAKE_STATIC_LIBRARY_PREFIX@pb_runtime@CMAKE_STATIC_LIBRARY_SUFFIX@"
 )
   string(FIND "${PB_PACKAGE_SMOKE_ARCHIVE_LIST_OUTPUT}" "${PB_PACKAGE_SMOKE_REQUIRED_ENTRY}" PB_PACKAGE_SMOKE_REQUIRED_ENTRY_INDEX)
   if(PB_PACKAGE_SMOKE_REQUIRED_ENTRY_INDEX EQUAL -1)

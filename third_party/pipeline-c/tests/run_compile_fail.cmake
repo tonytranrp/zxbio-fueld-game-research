@@ -11,6 +11,15 @@ if(NOT DEFINED EXPECT_DIAGNOSTIC)
   set(EXPECT_DIAGNOSTIC "Pipeline edge mismatch")
 endif()
 
+# MSVC phrases "no such member" diagnostics differently from Clang/GCC (e.g.
+# C2039 "'x': is not a member of 'y'" vs. Clang's "no member named 'x' in
+# 'y'") for the exact same underlying, correct compile failure. A test that
+# needs to check for that specific wording can supply an MSVC-specific
+# alternative here instead of hand-rolling compiler detection per call site.
+if(DEFINED EXPECT_DIAGNOSTIC_MSVC AND WIN32 AND TEST_COMPILER MATCHES "cl(\\.exe)?$")
+  set(EXPECT_DIAGNOSTIC "${EXPECT_DIAGNOSTIC_MSVC}")
+endif()
+
 get_filename_component(test_name "${TEST_SOURCE}" NAME_WE)
 set(output_file "${CMAKE_CURRENT_BINARY_DIR}/${test_name}.log")
 

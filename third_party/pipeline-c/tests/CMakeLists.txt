@@ -1166,6 +1166,7 @@ add_test(NAME pb_compile_fail_sync_sender_stage_missing_start
     -DTEST_COMPILER=${CMAKE_CXX_COMPILER}
     -DTEST_INCLUDE_DIR=${PROJECT_SOURCE_DIR}/include
     -DEXPECT_DIAGNOSTIC=no\ member\ named
+    -DEXPECT_DIAGNOSTIC_MSVC=is\ not\ a\ member\ of
     -DEXPECTED_DIAGNOSTICS=start
     -P ${CMAKE_CURRENT_SOURCE_DIR}/run_compile_fail.cmake
 )
@@ -1188,6 +1189,7 @@ add_test(NAME pb_compile_fail_sync_sender_stage_missing_connect
     -DTEST_COMPILER=${CMAKE_CXX_COMPILER}
     -DTEST_INCLUDE_DIR=${PROJECT_SOURCE_DIR}/include
     -DEXPECT_DIAGNOSTIC=no\ member\ named
+    -DEXPECT_DIAGNOSTIC_MSVC=is\ not\ a\ member\ of
     -DEXPECTED_DIAGNOSTICS=connect
     -P ${CMAKE_CURRENT_SOURCE_DIR}/run_compile_fail.cmake
 )
