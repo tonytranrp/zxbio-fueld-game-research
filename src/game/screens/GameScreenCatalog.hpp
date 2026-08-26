@@ -8,6 +8,7 @@
 #include "game/screens/pause_popup/PausePopupScreenModule.hpp"
 #include "game/screens/idle/IdleScreenModule.hpp"
 #include "game/screens/video/VideoScreenModule.hpp"
+#include "game/screens/exploration/ExplorationScreenModule.hpp"
 #ifdef BIOFUEL_WITH_BEVY_BRIDGE
 #include "game/screens/bevy_demo/BevyDemoScreenModule.hpp"
 #endif
@@ -18,7 +19,8 @@ using GameScreenRegistry = ::biofuel::engine::ui::typed::ScreenRegistry<
     MainMenuScreen,
     PausePopupScreen,
     IdleScreen,
-    VideoScreen
+    VideoScreen,
+    ExplorationScreen
 #ifdef BIOFUEL_WITH_BEVY_BRIDGE
     , BevyDemoScreen
 #endif
@@ -35,6 +37,7 @@ namespace detail {
     case screen_id::PausePopup:
     case screen_id::Idle:
     case screen_id::Video:
+    case screen_id::Exploration:
 #ifdef BIOFUEL_WITH_BEVY_BRIDGE
     case screen_id::BevyDemo:
 #endif
@@ -56,6 +59,7 @@ namespace detail {
     case screen_id::MainMenu:
     case screen_id::Idle:
     case screen_id::Video:
+    case screen_id::Exploration:
 #ifdef BIOFUEL_WITH_BEVY_BRIDGE
     case screen_id::BevyDemo:
 #endif
@@ -103,6 +107,7 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::PausePopup: return typed::TransitionPolicy<PausePopupScreen>::VALUE;
     case screen_id::Idle: return typed::TransitionPolicy<IdleScreen>::VALUE;
     case screen_id::Video: return typed::TransitionPolicy<VideoScreen>::VALUE;
+    case screen_id::Exploration: return typed::TransitionPolicy<ExplorationScreen>::VALUE;
 #ifdef BIOFUEL_WITH_BEVY_BRIDGE
     case screen_id::BevyDemo: return typed::TransitionPolicy<BevyDemoScreen>::VALUE;
 #endif
@@ -126,6 +131,7 @@ static_assert(detail::PolicySwitchValidator<GameScreenRegistry>::valid());
     case screen_id::MainMenu:
     case screen_id::Idle:
     case screen_id::Video:
+    case screen_id::Exploration:
 #ifdef BIOFUEL_WITH_BEVY_BRIDGE
     case screen_id::BevyDemo:
 #endif

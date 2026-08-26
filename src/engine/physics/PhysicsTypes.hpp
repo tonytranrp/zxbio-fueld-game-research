@@ -491,6 +491,55 @@ static_assert(std::is_trivially_copyable_v<CapsuleColliderDesc3D>,
               "CapsuleColliderDesc3D must be trivially copyable — it crosses FFI boundary");
 
 // =============================================================================
+// Character controller — config + result for Rapier's KinematicCharacterController.
+// A stateless per-call config, not persistent per-body state: pass the same
+// desc every tick. See engine/character/README.md for why a kinematic capsule
+// (not a dynamic rigidbody) is the only viable player-movement shape here.
+// =============================================================================
+
+struct CharacterControllerDesc3D {
+    Vector3 up{0.0f, 1.0f, 0.0f};
+    f32 offset = 0.01f;              // must be > 0 -- numerical stability, not a gameplay tunable
+    bool slide = true;
+    f32 maxSlopeClimbAngleRadians = 0.785398f;  // ~45 degrees
+    f32 minSlopeSlideAngleRadians = 0.785398f;  // ~45 degrees
+    f32 snapToGround = 0.2f;         // <= 0 disables ground-snapping
+    f32 autostepMaxHeight = 0.0f;    // <= 0 disables autostep (Rapier's own default -- "a very
+                                     // computationally expensive feature" per its doc comment)
+    f32 autostepMinWidth = 0.5f;
+    bool autostepIncludeDynamicBodies = false;
+    f32 normalNudgeFactor = 1.0e-4f;
+
+    [[nodiscard]] constexpr bool operator==(const CharacterControllerDesc3D& o) const noexcept {
+        return up.x == o.up.x && up.y == o.up.y && up.z == o.up.z
+            && offset == o.offset && slide == o.slide
+            && maxSlopeClimbAngleRadians == o.maxSlopeClimbAngleRadians
+            && minSlopeSlideAngleRadians == o.minSlopeSlideAngleRadians
+            && snapToGround == o.snapToGround && autostepMaxHeight == o.autostepMaxHeight
+            && autostepMinWidth == o.autostepMinWidth
+            && autostepIncludeDynamicBodies == o.autostepIncludeDynamicBodies
+            && normalNudgeFactor == o.normalNudgeFactor;
+    }
+};
+static_assert(std::is_trivially_copyable_v<CharacterControllerDesc3D>,
+              "CharacterControllerDesc3D must be trivially copyable — it crosses FFI boundary");
+
+struct CharacterMovement3D {
+    bool valid = false;
+    Vector3 translation{0.0f, 0.0f, 0.0f};
+    bool grounded = false;
+    bool isSlidingDownSlope = false;
+
+    [[nodiscard]] constexpr bool operator==(const CharacterMovement3D& o) const noexcept {
+        return valid == o.valid && translation.x == o.translation.x
+            && translation.y == o.translation.y && translation.z == o.translation.z
+            && grounded == o.grounded && isSlidingDownSlope == o.isSlidingDownSlope;
+    }
+};
+static_assert(std::is_trivially_copyable_v<CharacterMovement3D>,
+              "CharacterMovement3D must be trivially copyable — it crosses FFI boundary");
+
+// =============================================================================
 // Pose structs — returned from Rapier queries, FFI-facing
 // =============================================================================
 

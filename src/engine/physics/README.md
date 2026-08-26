@@ -41,6 +41,22 @@ publish higher-level shape lifecycle or grab events.
 For input-driven props, keep higher-level interaction logic outside the physics
 service and feed Rapier bounded kinematic interactors plus dynamic props.
 
+For a player character, use `PhysicsWorld3D::moveCharacter(...)` (a kinematic
+capsule + Rapier's `KinematicCharacterController`) rather than a dynamic
+rigidbody: `PhysicsBodyDesc3D` does not carry rotation-lock fields all the way
+to Rapier (see the next limitation), so a dynamic capsule would tip over.
+`moveCharacter` takes the caller's authoritative position each call rather
+than reading the collider's own cached pose, since `PhysicsSystem::stepFixed`
+runs before screen update each frame and a same-frame `setBodyPosition` isn't
+reflected in that cache until the next step. See `engine/character/README.md`
+for the higher-level controller built on top of this.
+
+**Known limitation:** `PhysicsBodyDesc3D` only carries `{kind, position,
+linearVelocity, canSleep}` to the Rust bridge — `linearDamping`,
+`angularDamping`, `gravityScale`, `enableCcd`, and the `lockTranslation*`/
+`lockRotation` flags are accepted by the C++ struct but never reach Rapier.
+Don't rely on the lock flags to keep a dynamic body upright.
+
 **Known limitation:** `CollisionGroup` currently filters C++-side contact-event
 *reporting* only — the bridge's collider descriptors have no group field, so
 Rapier itself never sees the group and colliders in "disjoint" groups still

@@ -102,6 +102,18 @@ public:
     void setGravity(Vector3 gravity) const;
     [[nodiscard]] std::optional<PhysicsRayHit3D> raycast(Vector3 origin, Vector3 direction, f32 maxDistance, bool solid = true) const;
 
+    // Resolves one step of kinematic-character collide-and-slide movement
+    // (Rapier's KinematicCharacterController). `shape` is the collider whose
+    // geometry defines the character; `excludeBody` (pass {} for none) keeps
+    // the character's own body out of its collision query. `position` is the
+    // caller-authoritative capsule center this frame -- see
+    // engine/character/README.md and the Rust-side comment on
+    // move_character_3d for why the caller owns position rather than this
+    // reading the collider's own (one-step-stale) cached pose.
+    [[nodiscard]] CharacterMovement3D moveCharacter(
+        PhysicsCollider3D shape, PhysicsBody3D excludeBody, Vector3 position,
+        Vector3 desiredTranslation, f32 dt, const CharacterControllerDesc3D& desc) const;
+
     // Joints (stub — not bridged to Rapier yet)
     [[nodiscard]] Joint3D createJoint(const JointDesc3D& desc) const;
     void removeJoint(Joint3D joint) const;

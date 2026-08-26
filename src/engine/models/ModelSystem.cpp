@@ -14,7 +14,46 @@ namespace biofuel::engine::models {
 
 namespace {
 
-constexpr std::array<ModelAssetSpec, 0> BUILT_IN_MODELS{};
+// Clip order and durations are the exported file's verified contract, not an
+// assumption -- see assets/models/viewmodel_hands/README.md's "Clip-order
+// contract". durationSeconds must be set explicitly here: ModelAnimator falls
+// back to a 24fps assumption when it's left at 0, but these clips are
+// authored at 30fps (idle: 60 frames = 2.0s, walk: 20 frames = ~0.667s).
+constexpr std::array<ModelAnimationStateSpec, 2> VIEWMODEL_HANDS_ANIMATION_STATES{{
+    ModelAnimationStateSpec{
+        .name = "idle",
+        .clipIndex = 0,
+        .loop = true,
+        .returnState = {},
+        .durationSeconds = 2.0f,
+    },
+    ModelAnimationStateSpec{
+        .name = "walk",
+        .clipIndex = 1,
+        .loop = true,
+        .returnState = {},
+        .durationSeconds = 20.0f / 30.0f,
+    },
+}};
+
+constexpr std::array<ModelAssetSpec, 1> BUILT_IN_MODELS{{
+    ModelAssetSpec{
+        .id = ModelAssetId::ViewmodelHands,
+        .debugName = "ViewmodelHands",
+        .assetPath = "assets/models/viewmodel_hands/viewmodel_hands.glb",
+        .shaderName = {},
+        .shaderVertexPath = {},
+        .shaderFragmentPath = {},
+        .preloadOnStartup = true,
+        .singleResidentInstance = true,
+        .releasePrototypeAfterInstance = true,
+        .loadAnimations = true,
+        .keyframeClipFactory = nullptr,
+        .defaultIdleState = "idle",
+        .animationStates = VIEWMODEL_HANDS_ANIMATION_STATES.data(),
+        .animationStateCount = static_cast<i32>(VIEWMODEL_HANDS_ANIMATION_STATES.size()),
+    },
+}};
 
 // Single unload path for a SharedAssetData's prototype: used both by the
 // mid-life release (releasePrototypeAfterInstance) and by the destructor.

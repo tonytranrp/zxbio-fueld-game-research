@@ -3,6 +3,7 @@
 #include "MainMenuScreenModule.hpp"
 #include "MainMenuScreenRenderers.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
+#include "game/screens/exploration/ExplorationScreen.hpp"
 #include "engine/ui/ScreenManager.hpp"
 #include "engine/ui/typed/RenderPipeline.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
@@ -26,6 +27,8 @@ void MainMenuScreen::onEnter() {
     m_menuSlide = {};
     m_dismiss = {};
     m_dimensionShift = 0.0f;
+    m_dismissRoute = DismissRoute::None;
+    m_routeDispatched = false;
     m_cameraComponent.reset();
     m_cameraPhase = CameraPhase::Idle;
 
@@ -56,6 +59,21 @@ void MainMenuScreen::onUpdate(const f32 dt) {
     updateMenuSlide(dt);
     updateDismiss(dt);
     updateDimensionShift(dt);
+
+    // Route into gameplay once the post-dismiss dimension shift finishes.
+    // queuePush/queueReplace are silently ignored while a transition is
+    // already in flight (ScreenManager logs a warning and no-ops) -- guard
+    // on !isTransitioning() too, or a dispatch that lands mid-transition
+    // would set m_routeDispatched without ever actually queuing the screen,
+    // leaving the menu stuck in its warped end state forever.
+    if (m_dismissRoute == DismissRoute::Exploration && !m_routeDispatched
+        && m_dimensionShift >= 1.0f && !isTransitioning()) {
+        m_routeDispatched = true;
+        if (auto* sm = manager()) {
+            sm->queueReplace<ExplorationScreen>();
+        }
+    }
+
     m_cameraComponent.update(dt);
     m_menuFxTime += dt;
     // Prevent precision loss after extended play — wrap at ~16 min
@@ -219,6 +237,7 @@ void MainMenuScreen::activateSelected() {
     switch (m_selected) {
     case 0: // New Game
     case 1: // Continue
+        m_dismissRoute = DismissRoute::Exploration;
         startDismiss();
         break;
     case 2:
@@ -426,6 +445,8 @@ void MainMenuScreen::onResume() {
     // Reset dismiss state so text slides back
     m_dismiss.active = false;
     m_dismiss.elapsed = 0.0f;
+    m_dismissRoute = DismissRoute::None;
+    m_routeDispatched = false;
     m_idleTransitionDim = 0.0f;
     m_idleTransitionActive = false;
 

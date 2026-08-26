@@ -141,12 +141,28 @@ farming-gameplay pipelines that used to be its main consumer (`TurnPipeline`, `H
 `FuelProcessPipeline` in `game/gameplay/`) were removed 2026-08-19. Don't assume Pipeline-c- usage
 elsewhere in the codebase; grep before reusing the pattern.
 
-**There is currently no gameplay screen.** `GamePlayScreen` (a walkable first-person voxel world —
-`VoxelWorld` chunked block storage plus `VoxelVolume` SDF raymarcher) was removed 2026-08-19 along
-with the entire `engine/world/` folder it depended on. `engine/models/ModelSystem` (a typed asset
-registry for imported `.glb` models) still has an empty built-in model list — this is now the actual
-starting point for whatever gameplay gets built around imported models next (see
-`assets/models/README.md` and `src/game/models/README.md`), not a mid-transition artifact.
+**There is a first-person exploration gameplay screen.** `ExplorationScreen` (`src/game/screens/
+exploration/`, added 2026-08-25, `ScreenId::Slot3`) provides WASD movement, mouse-look, jumping, and
+sprinting over a small Rapier-collision test level (`ExplorationLevel` — ground, boundary walls, a
+barn shell, scattered prop boxes, one placeholder landmark box; all stand-in geometry, not final art).
+`MainMenuScreen`'s New Game/Continue route into it once the post-dismiss dimension-shift shader
+completes. Movement is driven by two plain classes in `engine/character/` — `CharacterController3D`
+(kinematic body + Rapier's `KinematicCharacterController`, via the new `PhysicsWorld3D::moveCharacter`
+FFI call) and `FirstPersonCamera` (yaw/pitch + view bob) — owned by the screen, not typed services,
+since their Rapier body handles are screen-lifetime and incompatible with `BIOFUEL_STATIC_SERVICE`'s
+process-lifetime singleton semantics. This replaced the previous `GamePlayScreen` (a walkable
+first-person voxel world — `VoxelWorld` chunked block storage plus `VoxelVolume` SDF raymarcher),
+removed 2026-08-19 along with the entire `engine/world/` folder it depended on — see `Bug/bug.md`'s
+2026-08-19 and 2026-08-25 entries. `engine/models/ModelSystem`'s built-in registry now has one entry:
+`ModelAssetId::ViewmodelHands` (Meshy-generated, Blender-rigged, 9702 triangles, 34 bones, textured,
+`idle`/`walk` clips), rendered every frame by `ExplorationScreen` through `engine::graphics::
+ViewmodelPass` (`src/engine/graphics/ViewmodelPass.hpp`) — an offscreen `RenderSurface` with its own
+depth buffer, composited over the world+HUD, so the hands can never clip into or be clipped by world
+geometry. The rig's rest pose reaches along local +Y; the render applies a fixed +90-degree rotation
+about local X (verified both numerically from the file's own node transforms and visually via a
+Blender reproduction) to point the reach direction along +Z instead. This first pass deliberately uses
+a fixed (non-yaw/pitch-tracking) viewmodel camera — weapon-sway/full look-tracking is a real follow-up,
+not yet implemented. See `assets/models/README.md` and `src/game/models/README.md`.
 
 **Shaders** follow the same typed-registry pattern (`ShaderAsset<Tag>` specializations via
 `BIOFUEL_EMBEDDED_SHADER_ASSET`/`BIOFUEL_SHADER_MODULE`), with GLSL source embedded into a generated

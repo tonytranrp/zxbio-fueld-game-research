@@ -16,15 +16,27 @@ read_required("src/game/screens/main_menu/MainMenuScreen.cpp" MAIN_MENU_SCREEN)
 read_required("src/game/screens/GameScreenCatalog.hpp" GAME_SCREEN_CATALOG)
 read_required("src/engine/ui/typed/ScreenTypes.hpp" SCREEN_TYPES)
 read_required("src/game/screens/GameScreenIds.hpp" GAME_SCREEN_IDS)
+read_required("src/game/screens/exploration/ExplorationScreen.cpp" EXPLORATION_SCREEN)
 
 if(NOT LOADING_SCREEN MATCHES "queueReplace<MainMenuScreen>\\(")
     message(FATAL_ERROR "Screen flow guard failed: normal loading flow must land on MainMenuScreen first")
 endif()
-if(LOADING_SCREEN MATCHES "queueReplace<(JoinScreen|GamePlayScreen|FarmScreen)>\\(")
+if(LOADING_SCREEN MATCHES "queueReplace<(JoinScreen|GamePlayScreen|FarmScreen|ExplorationScreen)>\\(")
     message(FATAL_ERROR "Screen flow guard failed: LoadingScreen must not bypass the main menu")
 endif()
+# 2026-08-25: deliberately updated (not worked around) -- milestone-1 gameplay
+# (a first-person walkable exploration screen) now exists. MainMenuScreen
+# must route New Game/Continue into it once the post-dismiss dimension shift
+# completes; it must still never jump into any of the old, intentionally
+# deleted gameplay screens below.
 if(MAIN_MENU_SCREEN MATCHES "queueReplace<(JoinScreen|GamePlayScreen|FarmScreen)>\\(")
-    message(FATAL_ERROR "Screen flow guard failed: MainMenuScreen must not enter gameplay directly — as of the 2026-08-16 no-voxel/imported-models pivot, no screen currently follows the post-dismiss shader state, it just holds forever")
+    message(FATAL_ERROR "Screen flow guard failed: MainMenuScreen must not resurrect a deleted gameplay screen")
+endif()
+if(NOT MAIN_MENU_SCREEN MATCHES "queueReplace<ExplorationScreen>\\(")
+    message(FATAL_ERROR "Screen flow guard failed: MainMenuScreen must route New Game/Continue into ExplorationScreen once the post-dismiss dimension shift completes")
+endif()
+if(EXPLORATION_SCREEN MATCHES "KEY_ESCAPE")
+    message(FATAL_ERROR "Screen flow guard failed: ExplorationScreen must not consume ESC itself — pause is global, via PauseController (see src/game/screens/README.md)")
 endif()
 if(EXISTS "${SOURCE_DIR}/src/game/screens/join")
     message(FATAL_ERROR "Screen flow guard failed: JoinScreen was intentionally deleted 2026-08-16 — if you're reintroducing it, update this guard deliberately rather than letting it silently pass")

@@ -452,6 +452,41 @@ std::optional<PhysicsRayHit3D> PhysicsWorld3D::raycast(
     };
 }
 
+CharacterMovement3D PhysicsWorld3D::moveCharacter(
+    const PhysicsCollider3D shape,
+    const PhysicsBody3D excludeBody,
+    const Vector3 position,
+    const Vector3 desiredTranslation,
+    const f32 dt,
+    const CharacterControllerDesc3D& desc) const
+{
+    m_system->ensureInitialized();
+    const bridge::BridgeCharacterControllerDesc bridgeDesc{
+        .up = toBridge(desc.up),
+        .offset = desc.offset,
+        .slide = desc.slide,
+        .max_slope_climb_angle = desc.maxSlopeClimbAngleRadians,
+        .min_slope_slide_angle = desc.minSlopeSlideAngleRadians,
+        .snap_to_ground = desc.snapToGround,
+        .autostep_max_height = desc.autostepMaxHeight,
+        .autostep_min_width = desc.autostepMinWidth,
+        .autostep_include_dynamic_bodies = desc.autostepIncludeDynamicBodies,
+        .normal_nudge_factor = desc.normalNudgeFactor,
+    };
+    const bridge::BridgeCharacterMovement result = bridge::move_character_3d(
+        *m_system->m_impl->world3D, shape.value, excludeBody.value,
+        toBridge(position), toBridge(desiredTranslation), dt, bridgeDesc);
+    if (!result.valid) {
+        return CharacterMovement3D{};
+    }
+    return CharacterMovement3D{
+        .valid = true,
+        .translation = fromBridge(result.translation),
+        .grounded = result.grounded,
+        .isSlidingDownSlope = result.is_sliding_down_slope,
+    };
+}
+
 Joint3D PhysicsWorld3D::createJoint(const JointDesc3D& /*desc*/) const {
     // Not yet bridged to Rapier: returns an inert handle {0} and performs no
     // simulation work. Callers must not treat the handle as a live joint.

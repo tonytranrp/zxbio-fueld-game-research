@@ -3,6 +3,9 @@
 .vscode/
 .idea/
 
+# Local secrets -- never commit API keys (Meshy, etc).
+.secrets/
+
 # Build trees and generated output
 build/
 build-*/

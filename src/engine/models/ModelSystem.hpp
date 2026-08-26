@@ -13,10 +13,8 @@
 
 namespace biofuel::engine::models {
 
-// NOTE: no assets are registered yet (the enum and BUILT_IN_MODELS are empty),
-// so init()/preload() currently run over a zero-entry registry. Do not add
-// placeholder entries; populate this when real model assets exist.
 enum class ModelAssetId : u32 {
+    ViewmodelHands,
 };
 
 struct ModelAnimationStateSpec {

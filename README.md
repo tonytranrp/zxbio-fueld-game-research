@@ -28,15 +28,23 @@ The playable codebase is still early-stage, but it already contains:
 - loading screen with deferred startup tasks plus async-safe preflight support
 - screen stack with crossfade transitions
 - animated main menu with an embedded, endlessly-looping ambient background shader
-- typed model system with startup-preloaded model assets (currently empty — no models imported yet)
-- 2D/3D physics via an embedded Rust Rapier bridge (currently unused by any game-side system)
+- typed model system with one imported, rigged, and animated asset (first-person viewmodel hands —
+  Meshy-generated, Blender-rigged, 9702 triangles, 34 bones, textured, idle/walk clips)
+- 2D/3D physics via an embedded Rust Rapier bridge, including a kinematic character controller
+  (`PhysicsWorld3D::moveCharacter`, wrapping Rapier's `KinematicCharacterController`)
 - global pause routing with a blur-backed pause popup
 - event bus, input polling, animation manager, and small render/font/UI utilities
+- a first-person exploration gameplay screen (`ExplorationScreen`, added 2026-08-25): WASD movement,
+  mouse-look, jump/sprint, over a small Rapier-collision test level, with visible, animated first-
+  person hands rendered via a depth-isolated `ViewmodelPass`. The main menu's "New Game"/"Continue"
+  now route into it once the post-dismiss shader transition completes.
 
-There is currently no gameplay screen — the previous voxel-world (`GamePlay`) and biofuel-farm
-simulation (crops, seasons, harvest/fuel-processing pipelines, tech tree) were removed 2026-08-19.
-The main menu's "New Game" button plays its shader transition and then holds indefinitely; nothing
-currently follows it. See `Bug/bug.md` for what was removed and why.
+The previous voxel-world (`GamePlay`) and biofuel-farm simulation (crops, seasons, harvest/fuel-
+processing pipelines, tech tree) were removed 2026-08-19 and have not been replaced — `Exploration
+Screen` is new gameplay built around the imported-3D-model direction, not a revival of either. The
+viewmodel hands don't yet track player look (yaw/pitch) — the viewmodel camera is currently fixed, so
+there's no weapon-sway — and the level's geometry is entirely placeholder boxes, not final art. See
+`Bug/bug.md` for what was removed and why, and its 2026-08-25 entries for what replaced it.
 
 ## Build
 

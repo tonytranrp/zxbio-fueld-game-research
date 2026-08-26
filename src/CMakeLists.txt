@@ -346,6 +346,10 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     target_link_libraries(BiofuelPhysicsSmokeTest PRIVATE biofuel_engine)
     add_test(NAME BiofuelPhysicsSmoke COMMAND BiofuelPhysicsSmokeTest)
 
+    add_executable(BiofuelCharacterControllerSmokeTest "${CMAKE_SOURCE_DIR}/tests/physics/CharacterControllerSmoke.cpp")
+    target_link_libraries(BiofuelCharacterControllerSmokeTest PRIVATE biofuel_engine)
+    add_test(NAME BiofuelCharacterControllerSmoke COMMAND BiofuelCharacterControllerSmokeTest)
+
     add_executable(BiofuelEngineUsabilitySmokeTest "${CMAKE_SOURCE_DIR}/tests/engine/EngineUsabilitySmoke.cpp")
     target_link_libraries(BiofuelEngineUsabilitySmokeTest PRIVATE biofuel_engine)
     add_test(NAME BiofuelEngineUsabilitySmoke COMMAND BiofuelEngineUsabilitySmokeTest)

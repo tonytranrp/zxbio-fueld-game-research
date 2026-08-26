@@ -37,6 +37,7 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     constexpr auto Idle = screen_id::Idle;
     constexpr auto Video = screen_id::Video;
     constexpr auto MainMenu = screen_id::MainMenu;
+    constexpr auto Exploration = screen_id::Exploration;
     switch (current->screenId()) {
     case Loading:
     case PausePopup:
@@ -46,6 +47,8 @@ bool PauseController::canPauseCurrentScreen() noexcept {
     case Count:
         return false;
     case MainMenu:
+        return true;
+    case Exploration:
         return true;
     }
 

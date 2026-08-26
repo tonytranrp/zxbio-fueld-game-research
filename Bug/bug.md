@@ -624,6 +624,60 @@ own startup-task system (`engine/tasks/TaskModule.hpp`), unrelated to the remove
 
 ---
 
+## 2026-08-25 - First-person exploration gameplay and character-controller physics added
+
+Not a bug — the first real gameplay milestone since the 2026-08-19 removal above, logged here because
+it adds a new physics FFI surface and is the first game-side caller of the Rapier bridge.
+
+Added, by request, as step one of the imported-3D-model gameplay pivot (movement first, visible
+first-person hands to follow once the Blender rigging pass lands):
+
+- **Physics FFI**: `move_character_3d` in `rust/rapier_bridge/src/lib.rs`, wrapping Rapier's
+  `control::KinematicCharacterController` / `move_shape`, plus `BridgeCharacterControllerDesc`/
+  `BridgeCharacterMovement` in the `cxx` bridge and `PhysicsWorld3D::moveCharacter` on the C++ side
+  (`src/engine/physics/PhysicsSystem.hpp/.cpp`, types in `PhysicsTypes.hpp`). Same zero-panic,
+  `Option`-based lookup pattern as the rest of the bridge; see `src/engine/physics/README.md`.
+- **Character/camera classes**: `src/engine/character/CharacterController3D` (Source-style
+  accelerate + two-regime friction, gravity, coyote-time jumping) and `FirstPersonCamera` (yaw/pitch,
+  view bob). Deliberately plain classes owned by the screen, not `BIOFUEL_STATIC_SERVICE`s — their
+  Rapier body handles are screen-lifetime, incompatible with a process-lifetime singleton.
+- **Exploration screen**: `src/game/screens/exploration/` (`ExplorationScreen` + `ExplorationLevel`),
+  registered as `ScreenId::Slot3`. WASD + mouse-look + jump/sprint over a small collision test level
+  (ground, boundary walls, a barn shell, scattered prop boxes, one placeholder landmark box — all
+  stand-in geometry, not final art). `MainMenuScreen`'s New Game/Continue now route into it once the
+  post-dismiss dimension-shift shader completes (previously it just held indefinitely).
+- **Kinematic, not dynamic body, and why**: `PhysicsBodyDesc3D` only forwards 4 of the 12
+  conceptual body fields to Rapier — notably no rotation-lock — so a dynamic capsule would tip over.
+  Kinematic + `KinematicCharacterController` was the only viable option, not a style preference. See
+  the field-dropping limitation already on file in `src/engine/physics/README.md`.
+- **Tests**: `tests/physics/CharacterControllerSmoke.cpp` (grounded detection, wall-blocking,
+  invalid-input handling — mirrors `PhysicsSmoke.cpp`'s pattern of interleaving `stepFixed` with the
+  assertions, since static colliders only enter Rapier's broad-phase after a step). `ScreenFlowGuard.
+  cmake` and `PauseFlowGuard.cmake` were edited (not bypassed) to positively assert the new
+  `MainMenuScreen` → `ExplorationScreen` route and pause-eligibility, replacing their previous
+  negative-only "does not jump into gameplay" checks.
+
+**Update, same day**: the viewmodel hands are now visible in-game. `engine/models/ModelSystem`'s
+built-in registry now has one entry (`ModelAssetId::ViewmodelHands`, `preloadOnStartup`,
+`singleResidentInstance`, `releasePrototypeAfterInstance`, explicit `idle`/`walk` `durationSeconds` —
+the animator's default 24fps clip-duration fallback would have been wrong for these 30fps-authored
+clips). A new `engine::graphics::ViewmodelPass` (header-only, `src/engine/graphics/ViewmodelPass.hpp`)
+renders the hands into their own offscreen `RenderSurface` with an independent depth buffer, then
+composites over the world+HUD — this is what actually guarantees the hands can never be clipped by or
+clip into world geometry, not just "drawn last." `ExplorationScreen` switches the `idle`/`walk` state
+by comparing against `ModelAnimator::currentState()` first, since calling `setAnimationState` with the
+name it's already in resets it to frame 0 every call. The rig's rest pose reaches along local +Y (not
+assumed — read directly from the exported file's own node transforms), so the render applies a fixed
++90-degree rotation about local X to point the reach direction along +Z instead; a second Blender
+pass (fresh scene, unmodified shipped file) reproduced that exact rotation and visually confirmed it
+points the hands away from the viewer as intended, not backward/sideways/upside-down. This first pass
+deliberately does not track player look (yaw/pitch) yet — the viewmodel camera is fixed — so there is
+no weapon-sway/pitch-tracking; that is a real follow-up, not an oversight. The level's geometry is
+still entirely placeholder boxes. The `CollisionGroup`/`InteractionGroups` limitation below still
+applies to this new level's colliders same as everywhere else.
+
+---
+
 ## Known limitations found this session, NOT fixed (flagged for a future decision)
 
 These are real, well-evidenced findings from the 2026-08-16 research pass that were deliberately left
