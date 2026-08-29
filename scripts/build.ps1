@@ -110,11 +110,11 @@ try {
         Write-Step "Running tests (ctest --preset dev)..."
         # All presets share one binary layout for tests; the dev test preset works
         # against any of them since it only names the build tree, not the config.
-        ctest --test-dir "$RepoRoot\build-ninja$(if ($Preset -eq 'dev-full') { '-full' } elseif ($Preset -eq 'release') { '-release' })" --output-on-failure
+        ctest --test-dir "$RepoRoot\Build\$Preset" --output-on-failure
         if ($LASTEXITCODE -ne 0) { Write-Failure "Some tests failed -- see above."; exit 1 }
     }
 
-    $exeDir = "$RepoRoot\build-ninja$(if ($Preset -eq 'dev-full') { '-full' } elseif ($Preset -eq 'release') { '-release' })\bin"
+    $exeDir = "$RepoRoot\Build\$Preset\bin"
     Write-Host ""
     Write-Host "Build succeeded." -ForegroundColor Green
     Write-Host "Run the game: $exeDir\BiofuelGame.exe"

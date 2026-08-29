@@ -7,7 +7,7 @@
       "displayName": "Fast dev build (Ninja, Bevy bridge off)",
       "description": "Default fast-iteration config for CPU-only machines: Ninja generator, Debug build, Bevy tech-demo bridge excluded. Must be run from a Visual Studio Developer Command Prompt (or after vcvarsall.bat x64) so cl.exe/link.exe are on PATH -- see the Build section in README.md.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-ninja",
+      "binaryDir": "${sourceDir}/Build/dev",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "BIOFUEL_ENABLE_BEVY_BRIDGE": "OFF"
@@ -18,7 +18,7 @@
       "displayName": "Fast dev build with Bevy bridge (Ninja)",
       "description": "Same as 'dev' but includes the Bevy tech-demo bridge. Use when working on BevyDemoScreen or engine/bevy/*.",
       "inherits": "dev",
-      "binaryDir": "${sourceDir}/build-ninja-full",
+      "binaryDir": "${sourceDir}/Build/dev-full",
       "cacheVariables": {
         "BIOFUEL_ENABLE_BEVY_BRIDGE": "ON"
       }
@@ -27,7 +27,7 @@
       "name": "release",
       "displayName": "Release build (Ninja, Bevy bridge off)",
       "inherits": "dev",
-      "binaryDir": "${sourceDir}/build-ninja-release",
+      "binaryDir": "${sourceDir}/Build/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
@@ -35,9 +35,9 @@
     {
       "name": "release-debug",
       "displayName": "Release with debug info (Ninja, Bevy bridge off)",
-      "description": "CMake RelWithDebInfo: full /O2 optimization with complete debug symbols (PDB) for both the C++ code and the Rust physics bridge. The config to play/profile at full speed in while still being able to debug -- everything except the Release-only LTCG/ICF link flags, which are what make the pure 'release' preset hard to debug. Lands in build-ninja-reldeb/. Needs the same VS dev environment as 'dev'.",
+      "description": "CMake RelWithDebInfo: full /O2 optimization with complete debug symbols (PDB) for both the C++ code and the Rust physics bridge. The config to play/profile at full speed in while still being able to debug -- everything except the Release-only LTCG/ICF link flags, which are what make the pure 'release' preset hard to debug. Lands in Build/release-debug/. Needs the same VS dev environment as 'dev'.",
       "inherits": "dev",
-      "binaryDir": "${sourceDir}/build-ninja-reldeb",
+      "binaryDir": "${sourceDir}/Build/release-debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }

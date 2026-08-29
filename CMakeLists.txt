@@ -58,7 +58,7 @@ endif()
 # with no override -- so it dies with a wiped build tree either way), sccache
 # keys its cache purely on compiler input content and stores it outside any
 # build tree. A hit skips the actual compile/rustc invocation entirely, so
-# even a full `build-ninja/` wipe replays from cache instead of recompiling.
+# even a full `Build/` wipe replays from cache instead of recompiling.
 # Purely additive: falls back to normal uncached compiles when not installed,
 # so it is never a hard requirement to build this project.
 find_program(SCCACHE_PROGRAM sccache)
