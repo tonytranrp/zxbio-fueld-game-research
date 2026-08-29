@@ -14,7 +14,7 @@ namespace biofuel::engine::bevy {
 // init()/shutdown()/update(), privately owning raw raylib Texture2D lifetime,
 // exposing only a read accessor (getFrameTexture()) so callers never touch
 // that lifetime directly. Bevy renders offscreen (no OS window, no shared
-// surface with raylib's own OpenGL context - see rust/bevy_bridge's own
+// surface with raylib's own OpenGL context - see src/engine/Rust/bevy's own
 // README for why); this service pulls the rendered pixels back across the
 // cxx bridge once per fixed-step tick and uploads them via UpdateTexture(),
 // the same "external per-frame pixel producer" shape VideoFfmpegBackend

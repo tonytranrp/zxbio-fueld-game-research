@@ -12,9 +12,11 @@ engine/physics/
 |-- PhysicsSystem.cpp
 |-- PhysicsSystem.hpp
 |-- PhysicsTypes.hpp
-|-- README.md
-`-- rapier_bridge/
+`-- README.md
 ```
+
+The Rust-side Rapier bridge itself lives at `src/engine/Rust/physics/` (see
+that folder's own README) -- nothing under this folder is Rust source.
 
 ## How to use it
 

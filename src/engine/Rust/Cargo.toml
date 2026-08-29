@@ -60,10 +60,10 @@ module_name_repetitions = "allow"
 # recommends (keeping unwinding alive so a host can catch_unwind across an
 # FFI boundary). That advice fits an architecture whose crash-containment
 # depends on unwinding staying available across the boundary. This crate's
-# architecture doesn't: rapier_bridge is designed to never panic in the
+# architecture doesn't: physics/ is designed to never panic in the
 # first place -- zero unsafe, zero .unwrap(), zero .expect(), zero panic! in
-# its own non-test source (verified by grep; see rust/rapier_bridge/
-# README.md). A Rust panic cannot unwind across this project's cxx FFI
+# its own non-test source (verified by grep; see physics/README.md). A Rust
+# panic cannot unwind across this project's cxx FFI
 # boundary into C++ regardless of this setting -- that's a hard cxx/cross-
 # language-unwinding constraint, not a policy choice -- so if one ever did
 # occur, aborting immediately is the only sound option either way. Nothing

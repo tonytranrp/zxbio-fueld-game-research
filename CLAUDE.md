@@ -64,9 +64,10 @@ msvc16/`, CPM-built from source on other platforms), and Pipeline-c- is vendored
 external dependency to re-fetch. See `THIRD-PARTY-NOTICES.md` and each vendored dir's
 `PROVENANCE.md`.
 
-The Rust crates (`rust/rapier_bridge/`, `rust/bevy_bridge/`, one Cargo workspace at `rust/`) build
-automatically as part of the CMake build via Corrosion — no separate `cargo build` step. Running
-`cargo build` directly pollutes `rust/target/`, which is gitignored for exactly this reason.
+The Rust crates (`src/engine/Rust/physics/`, `src/engine/Rust/bevy/`, one Cargo workspace at
+`src/engine/Rust/`) build automatically as part of the CMake build via Corrosion — no separate
+`cargo build` step. Running `cargo build` directly pollutes `src/engine/Rust/target/`, which is
+gitignored for exactly this reason.
 
 ## Test
 
@@ -126,8 +127,9 @@ callers before trusting a claim that some event type is unused.
 by several concrete screens — don't assume something is dead just because its name suggests
 framework-only use.
 
-**Physics** is 2D+3D via an embedded Rust Rapier bridge (`src/engine/physics/rapier_bridge/`, a
-`cxx`-bridge crate built into the C++ target by Corrosion). The bridge is handle-based: bodies/
+**Physics** is 2D+3D via an embedded Rust Rapier bridge (`src/engine/Rust/physics/`, a `cxx`-bridge
+crate built into the C++ target by Corrosion, paired with its C++-side facade at
+`src/engine/physics/`). The bridge is handle-based: bodies/
 colliders cross the FFI boundary as packed `u64` handles (index + generation, `0` reserved as an
 always-invalid sentinel), and every lookup goes through `Option`-returning Rapier APIs, so a stale or
 malformed handle from C++ can't panic the Rust side — the crate has zero `unsafe`/`unwrap`/`expect`/
