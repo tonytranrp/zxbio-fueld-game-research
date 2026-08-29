@@ -4,6 +4,7 @@ members = [
     "Engine/physics",
     "Engine/bevy",
     "Engine/Utils",
+    "Engine/game",
 ]
 
 [workspace.dependencies]

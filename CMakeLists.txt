@@ -261,6 +261,27 @@ corrosion_add_cxxbridge(
     FILES lib.rs
 )
 
+# biofuel_game_ecs: Bevy ECS + native Rapier physics driving real game
+# objects (level geometry, player-adjacent entities) -- unlike
+# biofuel_bevy_bridge below, this is real, always-on gameplay logic, not an
+# optional tech demo, so it is NOT gated behind BIOFUEL_ENABLE_BEVY_BRIDGE
+# and builds unconditionally, same as biofuel_rapier_bridge above. Named
+# "_ecs" (not plain biofuel_game) to avoid colliding with the C++
+# biofuel_game static-library CMake target already defined below.
+corrosion_import_crate(
+    MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/engine/Rust/Engine/game/Cargo.toml"
+    LOCKED
+    CRATES biofuel_game_ecs
+    CRATE_TYPES staticlib
+)
+
+corrosion_add_cxxbridge(
+    biofuel_game_ecs_cxx
+    CRATE biofuel_game_ecs
+    REGEN_TARGET biofuel_game_ecs_cxx_regen
+    FILES lib.rs
+)
+
 # biofuel_bevy_bridge is a cdylib, not a second staticlib: two separate
 # rustc-produced staticlibs can't be linked into one C++ binary (each vendors
 # its own copy of std/cxxbridge symbols). A cdylib is a different, non-

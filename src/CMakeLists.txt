@@ -159,6 +159,8 @@ target_link_libraries(biofuel_engine
         spdlog::spdlog
         biofuel_rapier_bridge
         biofuel_rapier_bridge_cxx
+        biofuel_game_ecs
+        biofuel_game_ecs_cxx
         pb::core
     PRIVATE
         taskflow

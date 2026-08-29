@@ -1,0 +1,36 @@
+[package]
+# Not "biofuel_game": src/CMakeLists.txt already has a C++ static-library
+# CMake target literally named biofuel_game (the game/ source set) -- CMake
+# target names must be globally unique, and Corrosion's imported crate
+# target uses the crate name directly.
+name = "biofuel_game_ecs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+cxx = { workspace = true }
+biofuel_engine_utils = { path = "../Utils" }
+# Exact version pin: same repo-wide immutable-pin discipline as physics/'s
+# own rapier2d/rapier3d pins. This crate calls Rapier natively (no cxx
+# crossing for physics) rather than adopting bevy_rapier -- consistent with
+# physics/'s existing direct-rapier usage, and avoids a second, unverified
+# Bevy<->Rapier integration whose behavioral parity with this project's
+# hand-rolled character controller has never been checked.
+rapier3d = { version = "=0.32.0" }
+# default-features = false: this crate is Bevy's ECS driving game logic,
+# with C++/Raylib doing the actual rendering -- unlike bevy/ (the headless
+# render-tech-demo, which needs bevy_render/wgpu/core_pipeline to render a
+# scene internally), this crate needs none of Bevy's rendering stack at
+# all. Exact feature list determined empirically against Bevy 0.19.1's own
+# feature table while building this crate, not guessed in advance.
+bevy = { version = "=0.19.1", default-features = false }
+
+[build-dependencies]
+cxx-build = { workspace = true }
