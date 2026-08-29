@@ -7,8 +7,18 @@ publish = false
 [lib]
 crate-type = ["staticlib"]
 
+[lints]
+workspace = true
+
 [dependencies]
 cxx = { workspace = true }
+# Exact version pin: same repo-wide immutable-pin discipline as cxx.
+# "profiler" feature enables Rapier's own PhysicsPipeline::counters
+# (step_time_ms, broad_phase_time_ms, ...), surfaced to C++ as
+# BridgeStepStats in lib.rs's #[cxx::bridge] block -- without this feature
+# those counter fields silently read 0.0 forever instead of erroring, so the
+# feature is load-bearing for last_step_stats_2d/3d, not optional
+# instrumentation.
 rapier2d = { version = "=0.32.0", features = ["profiler"] }
 rapier3d = { version = "=0.32.0", features = ["profiler"] }
 
@@ -16,5 +26,5 @@ rapier3d = { version = "=0.32.0", features = ["profiler"] }
 cxx-build = { workspace = true }
 
 # Profile settings (panic="abort", dev opt-level=2 for third-party deps,
-# release LTO) now live in the workspace root's rust/Cargo.toml -- Cargo only
+# release LTO) now live in the workspace root's Cargo.toml -- Cargo only
 # honors [profile.*] tables at the workspace root, not in a member manifest.

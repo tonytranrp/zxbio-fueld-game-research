@@ -17,13 +17,28 @@
 //! cxx's generated glue needs to name it directly (see the curated `use`
 //! list below) -- nothing in this crate has external Rust consumers, it's
 //! only ever reached through the generated C++ bindings.
+//!
+//! Every hand-written module below is `#[forbid(unsafe_code)]` individually
+//! -- crate-wide `#![forbid(unsafe_code)]` was tried and reverted: cxx's own
+//! `#[cxx::bridge]` macro (the `ffi` module below) necessarily expands into
+//! `unsafe impl`/`extern "C"` glue to cross the ABI boundary, so a crate-wide
+//! forbid fails to compile through no fault of this crate's own code. Scoping
+//! it per-module keeps the real guarantee (nothing hand-written here can add
+//! unsafe code) without fighting cxx's own codegen.
+#[forbid(unsafe_code)]
 mod character_controller;
+#[forbid(unsafe_code)]
 mod convert;
+#[forbid(unsafe_code)]
 mod handles;
+#[forbid(unsafe_code)]
 mod raycast3d;
 #[cfg(test)]
+#[forbid(unsafe_code)]
 mod tests;
+#[forbid(unsafe_code)]
 mod world2d;
+#[forbid(unsafe_code)]
 mod world3d;
 
 #[cfg(test)]
@@ -54,6 +69,13 @@ use world3d::{
 // convert.rs/world2d.rs/world3d.rs/character_controller.rs (see the module
 // doc comment above) and are wired in via the curated `use` list above,
 // which is what `super::name` in this macro's generated glue resolves to.
+//
+// #[allow(unused_qualifications)]: cxx's macro expansion of every shared
+// struct declared below trips the workspace's `unused_qualifications` lint
+// (verified: it's the macro's own generated code, not these struct
+// declarations themselves -- the lint still applies normally to every
+// hand-written module).
+#[allow(unused_qualifications)]
 #[cxx::bridge(namespace = "biofuel::engine::physics::rapier_bridge")]
 mod ffi {
     #[derive(Copy, Clone)]

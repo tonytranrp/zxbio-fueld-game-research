@@ -6,11 +6,68 @@ members = [
 ]
 
 [workspace.dependencies]
+# Exact pin (not "1.0", not a range) -- matches this project's established
+# pinning discipline for every other dependency in the repo (every CPM-
+# fetched C++ dependency is pinned to an immutable tag/commit with URL_HASH,
+# see CLAUDE.md's Build section). Both rapier_bridge (a staticlib) and
+# bevy_bridge (a cdylib) end up in the same process, and cxx generates
+# matching runtime-support glue on both sides of the boundary from its own
+# crate version -- pinning both crates to the identical cxx version here,
+# in one shared table, is what keeps that glue from drifting apart between
+# them.
+# NOTE: why 1.0.194 specifically (vs. any other 1.0.x patch) isn't recorded
+# anywhere in this repo -- worth confirming with whoever chose it rather
+# than assuming there was a specific reason (see Open Questions).
 cxx = "=1.0.194"
 cxx-build = "=1.0.194"
 
+[workspace.lints.rust]
+unused = { level = "deny", priority = -1 }
+dead_code = "deny"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+# Both crates set publish = false -- neither is ever meant for crates.io, so
+# clippy::cargo's publishing-metadata lints are pure noise here.
+cargo_common_metadata = "allow"
+# world2d.rs/world3d.rs/handles.rs deliberately mirror their module name in
+# their main type/fn names (RapierWorld2D in world2d.rs; pack_handle/
+# unpack_handle in handles.rs) as an intentional by-domain convention, not a
+# lapse to fix.
+module_name_repetitions = "allow"
+# Deliberately NOT allowed back, unlike a lint table this was modeled on --
+# each is a real tripwire for this crate's actual risk model:
+# - must_use_candidate: most rapier_bridge functions return a freshly-created
+#   u64 handle as the ONLY reference to a new body/collider; silently
+#   discarding it is a real bug (an orphaned, unreachable body).
+# - missing_errors_doc / missing_panics_doc: this crate is specifically
+#   designed to never panic and never return Result -- leaving these active
+#   is a cheap, automatic tripwire for the one direction it must never move
+#   in.
+
 # Profile tables in a Cargo workspace are ONLY honored at the workspace root --
 # Cargo silently ignores [profile.*] in a member's own manifest.
+#
+# panic = "abort" here is a deliberate choice, not an oversight -- and it is
+# the OPPOSITE of what general Rust-FFI crash-containment advice often
+# recommends (keeping unwinding alive so a host can catch_unwind across an
+# FFI boundary). That advice fits an architecture whose crash-containment
+# depends on unwinding staying available across the boundary. This crate's
+# architecture doesn't: rapier_bridge is designed to never panic in the
+# first place -- zero unsafe, zero .unwrap(), zero .expect(), zero panic! in
+# its own non-test source (verified by grep; see rust/rapier_bridge/
+# README.md). A Rust panic cannot unwind across this project's cxx FFI
+# boundary into C++ regardless of this setting -- that's a hard cxx/cross-
+# language-unwinding constraint, not a policy choice -- so if one ever did
+# occur, aborting immediately is the only sound option either way. Nothing
+# here is built to depend on unwinding.
 [profile.dev]
 panic = "abort"
 
@@ -36,6 +93,7 @@ opt-level = 2
 [profile.dev.package.nalgebra]
 opt-level = 2
 
+# Same panic="abort" rationale as [profile.dev] above.
 [profile.release]
 panic = "abort"
 lto = "fat"

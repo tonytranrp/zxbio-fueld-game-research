@@ -7,8 +7,15 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 
+[lints]
+workspace = true
+
 [dependencies]
 cxx = { workspace = true }
+# Exact version pin: same repo-wide immutable-pin discipline as the
+# workspace's cxx/cxx-build pins -- doubly warranted for Bevy specifically,
+# whose public API has historically changed even between adjacent
+# minor/patch releases.
 bevy = { version = "=0.19.1", default-features = false, features = [
     "3d_bevy_render",   # bevy_render + core_pipeline + pbr + gltf + post_process + anti_alias + gizmos
     "default_app",      # async_executor + bevy_asset + bevy_log + bevy_state + reflect_auto_register
@@ -21,5 +28,5 @@ bevy = { version = "=0.19.1", default-features = false, features = [
 cxx-build = { workspace = true }
 
 # panic="abort" and dev opt-level=2 for third-party deps come from the
-# workspace root's rust/Cargo.toml -- Cargo only honors [profile.*] tables
+# workspace root's Cargo.toml -- Cargo only honors [profile.*] tables
 # at the workspace root, not in a member manifest.

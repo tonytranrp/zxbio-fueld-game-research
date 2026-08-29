@@ -1,3 +1,16 @@
+// Crate-wide #![forbid(unsafe_code)] was tried and reverted here: unlike
+// rapier_bridge (whose hand-written logic lives in separate modules that can
+// each be #[forbid]'d individually, leaving only the cxx-generated `ffi`
+// module exempt), this crate's hand-written code lives at the crate root
+// alongside `mod ffi` with no module boundary between them -- there is
+// nothing to scope a forbid to without restructuring the file. cxx's own
+// `#[cxx::bridge]` macro necessarily expands into `unsafe impl`/`extern "C"`
+// glue to cross the ABI (verified: a crate-wide forbid fails to compile here
+// with the exact same "implementation of an unsafe trait" errors seen if you
+// try it in rapier_bridge before that crate's per-module scoping). This
+// crate's own hand-written code (build_headless_app and friends) has zero
+// unsafe today, same as rapier_bridge, just not compiler-enforced.
+
 use std::time::Duration;
 
 use bevy::app::PluginsState;
@@ -13,9 +26,14 @@ use bevy::render::RenderPlugin;
 use bevy::time::TimeUpdateStrategy;
 use bevy::window::{ExitCondition, WindowPlugin};
 
+// #[allow(unused_qualifications)]: cxx's macro expansion of the shared
+// struct below trips the workspace's `unused_qualifications` lint on its own
+// generated code, not this declaration itself (same false positive as
+// rapier_bridge's ffi module).
+#[allow(unused_qualifications)]
 #[cxx::bridge(namespace = "biofuel::engine::bevy_bridge")]
 mod ffi {
-    #[derive(Copy, Clone)]
+    #[derive(Copy, Clone, Debug)]
     struct BridgeInputState {
         move_forward: bool,
         move_back: bool,
@@ -42,6 +60,9 @@ struct LatestFrame(Vec<u8>);
 #[derive(Resource, Clone)]
 struct RenderTargetHandle(Handle<Image>);
 
+// #[allow(missing_debug_implementations)]: bevy::app::SubApps doesn't derive
+// or implement Debug, so a derive here isn't an option.
+#[allow(missing_debug_implementations)]
 pub struct BevyRenderer {
     sub_apps: bevy::app::SubApps,
     width: u32,
