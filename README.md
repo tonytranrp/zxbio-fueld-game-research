@@ -18,7 +18,7 @@ services, physics, shaders, models) is otherwise intact and reusable.
 - `cmake/` - authored CMake helper scripts, including shader embedding
 - `THIRD-PARTY-NOTICES.md` - dependency attribution and licensing status
 
-Generated build output under `build/`, `out/`, and `src/build/` is not part of the maintained source of truth.
+Generated build output under `build/`, `Build/`, and `src/build/` is not part of the maintained source of truth.
 
 ## Current implementation status
 
@@ -64,22 +64,22 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-This lands in `build-ninja/` and builds in well under 5 minutes even on a weak CPU-only
-laptop -- around 100s for a from-scratch `build-ninja/` rebuild with warm caches, ~15s for an
+This lands in `Build/dev/` and builds in well under 5 minutes even on a weak CPU-only
+laptop -- around 100s for a from-scratch `Build/dev/` rebuild with warm caches, ~15s for an
 ordinary incremental rebuild, measured on real hardware. It skips `biofuel_bevy_bridge` (see
 below), uses precompiled headers, vendors raylib as a prebuilt binary on Windows instead of
 compiling it from source (`third_party/raylib-5.5-win64-msvc16/`), and keeps a persistent CPM
-dependency cache (`.cpm-cache/`, safe to delete, survives a `build-ninja/` wipe).
+dependency cache (`.cpm-cache/`, safe to delete, survives a `Build/` wipe).
 
 **Optional: install [sccache](https://github.com/mozilla/sccache)** (`winget install
 Mozilla.sccache`, or see its releases page on other platforms) for a further speedup, especially
-after wiping `build-ninja/`. CMake auto-detects it at configure time and wraps every C/C++ and
+after wiping `Build/dev/`. CMake auto-detects it at configure time and wraps every C/C++ and
 Rust compile in it; a cache hit skips the actual compile entirely. Purely additive -- the build
-works identically without it, just slower on a from-scratch `build-ninja/` rebuild.
+works identically without it, just slower on a from-scratch `Build/dev/` rebuild.
 
-Other presets: `dev-full` (adds the Bevy bridge, lands in `build-ninja-full/`), `release`
-(Ninja, Release config, lands in `build-ninja-release/`), and `release-debug` (Ninja,
-RelWithDebInfo config, lands in `build-ninja-reldeb/`). List them with `cmake --list-presets`.
+Other presets: `dev-full` (adds the Bevy bridge, lands in `Build/dev-full/`), `release`
+(Ninja, Release config, lands in `Build/release/`), and `release-debug` (Ninja,
+RelWithDebInfo config, lands in `Build/release-debug/`). List them with `cmake --list-presets`.
 
 **`release-debug` is the "fast but still debuggable" config** — the one to play or profile
 at full speed in and then step into when something misbehaves. It is optimized like

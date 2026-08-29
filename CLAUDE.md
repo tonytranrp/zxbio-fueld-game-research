@@ -17,9 +17,9 @@ yet implemented. Current implementation status lives in `README.md`.
 
 Fast path (default since 2026-08-25 — Ninja, `BIOFUEL_ENABLE_BEVY_BRIDGE` off, PCH, persistent CPM
 cache, raylib vendored as a prebuilt binary on Windows; well under 5 minutes even CPU-only — ~100s
-for a from-scratch `build-ninja/` rebuild with warm caches, ~15s incremental, measured on real
+for a from-scratch `Build/dev/` rebuild with warm caches, ~15s incremental, measured on real
 hardware). Install [sccache](https://github.com/mozilla/sccache) (`winget install Mozilla.sccache`)
-for a further speedup after wiping `build-ninja/` — CMake auto-detects and wraps every compile in
+for a further speedup after wiping `Build/dev/` — CMake auto-detects and wraps every compile in
 it; purely additive, not required:
 
 ```bash
@@ -35,7 +35,7 @@ cmake -S . -B build
 cmake --build build --config Debug
 ```
 
-An existing Visual-Studio-integrated build directory (e.g. `out/build/x64-Debug`) works the same way
+An existing Visual-Studio-integrated build directory (e.g. `Build/x64-Debug`) works the same way
 — just point `cmake --build` at it instead of `build`. See `README.md`'s Build section for the other
 presets (`dev-full`, `release`, `release-debug` — the last is RelWithDebInfo: full `/O2` with
 complete C++ *and* Rust debug symbols, the "fast but still debuggable" config) and what

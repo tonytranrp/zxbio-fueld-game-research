@@ -1,7 +1,8 @@
 # src
 
 The source tree is split between reusable engine code and game-specific code.
-Generated output stays outside `src/`; use top-level `build/` or `out/build/`.
+Generated output stays outside `src/`; use the top-level `build/` (plain/manual path) or `Build/`
+(preset and Visual Studio output) folders.
 
 ## Folder map
 
