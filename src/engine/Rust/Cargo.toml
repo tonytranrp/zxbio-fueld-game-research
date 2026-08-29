@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "rapier_bridge",
-    "bevy_bridge",
+    "physics",
+    "bevy",
 ]
 
 [workspace.dependencies]
