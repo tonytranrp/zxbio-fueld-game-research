@@ -268,11 +268,17 @@ corrosion_add_cxxbridge(
 # and builds unconditionally, same as biofuel_rapier_bridge above. Named
 # "_ecs" (not plain biofuel_game) to avoid colliding with the C++
 # biofuel_game static-library CMake target already defined below.
+#
+# cdylib, not staticlib, for the same reason biofuel_bevy_bridge below is a
+# cdylib: two separate rustc-produced staticlibs can't both link into one
+# C++ binary (each vendors its own copy of cxx's runtime-support symbols) --
+# confirmed directly by a real LNK2005 duplicate-symbol failure against
+# biofuel_rapier_bridge when this was first tried as a staticlib.
 corrosion_import_crate(
     MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/engine/Rust/Engine/game/Cargo.toml"
     LOCKED
     CRATES biofuel_game_ecs
-    CRATE_TYPES staticlib
+    CRATE_TYPES cdylib
 )
 
 corrosion_add_cxxbridge(

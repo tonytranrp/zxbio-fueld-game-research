@@ -115,7 +115,12 @@ void MainMenuScreen::onUpdate(const f32 dt) {
     }
 
     // ---- Idle detection (only when screen is fully interactive) ----
+    // Gated by BIOFUEL_DEV_DISABLE_IDLE_TIMEOUT (see src/CMakeLists.txt) --
+    // the timer never advances while disabled, so startIdleTransition() and
+    // the IdleScreen push in updateIdleTransition() below never fire.
+#ifndef BIOFUEL_DEV_DISABLE_IDLE_TIMEOUT
     m_idleTrigger.update(dt, !isDismissing() && m_introPhase == IntroPhase::Done && !m_idleTransitionActive);
+#endif
 
     // Idle → IdleScreen transition
     updateIdleTransition(dt);

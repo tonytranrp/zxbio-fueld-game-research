@@ -32,7 +32,7 @@ f32 CharacterController3D::horizontalSpeed() const noexcept {
 void CharacterController3D::step(physics::PhysicsWorld3D& world, const CharacterMoveInput& input, const f32 dt) {
     // 1. Wish direction in world space from local input (x=strafe, y=forward)
     // rotated by camera yaw -- matches FirstPersonCamera::right()/flatForward()'s
-    // convention (right = {cosYaw, 0, -sinYaw}, flatForward = {sinYaw, 0, cosYaw}).
+    // convention (right = {-cosYaw, 0, sinYaw}, flatForward = {sinYaw, 0, cosYaw}).
     Vector2 axis = input.moveAxis;
     const f32 axisLenSq = axis.x * axis.x + axis.y * axis.y;
     if (axisLenSq > 1.0f) {
@@ -44,9 +44,9 @@ void CharacterController3D::step(physics::PhysicsWorld3D& world, const Character
     const f32 cosYaw = std::cos(input.yawRadians);
     const f32 sinYaw = std::sin(input.yawRadians);
     const Vector3 wishDirRaw{
-        cosYaw * axis.x + sinYaw * axis.y,
+        -cosYaw * axis.x + sinYaw * axis.y,
         0.0f,
-        -sinYaw * axis.x + cosYaw * axis.y,
+        sinYaw * axis.x + cosYaw * axis.y,
     };
     const Vector3 wishDir = axisLen > 1.0e-5f
         ? Vector3{wishDirRaw.x / axisLen, 0.0f, wishDirRaw.z / axisLen}

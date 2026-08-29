@@ -77,6 +77,12 @@ private:
     bool m_quitting = false;      // true if dismiss should quit the app
     bool m_wantsPop = false;      // deferred pop flag to avoid re-entrancy
 
+    // Restores the exact prior cursor-capture state on exit instead of
+    // unconditionally re-capturing it -- PausePopupScreen is reachable from
+    // both ExplorationScreen (cursor captured for mouse-look) and
+    // MainMenuScreen (cursor free), see PauseController::canPauseCurrentScreen.
+    bool m_cursorWasHidden = false;
+
     void activateSelected();
     void startSlideIn();
     void startSlideOut();

@@ -15,6 +15,10 @@
 //! reasoning as physics/lib.rs: cxx's own bridge macro (the `ffi` module
 //! below) needs `unsafe` to cross the ABI, so a crate-wide forbid can't
 //! compile through it.
+#[forbid(unsafe_code)]
+mod components;
+#[forbid(unsafe_code)]
+mod level;
 #[cfg(test)]
 #[forbid(unsafe_code)]
 mod tests;
@@ -27,8 +31,14 @@ use world::GameWorld;
 // structs below trips the workspace's `unused_qualifications` lint on its
 // own generated code, not these declarations themselves (same false
 // positive as physics/'s and bevy/'s ffi modules).
+// Namespace is "gameworld", not plain "game": this project already has a
+// separate, unrelated, heavily-used top-level `biofuel::game` C++ namespace
+// (all game-side screens/presentation code) -- reusing that segment name
+// nested under `biofuel::engine::` caused real qualified-name lookup
+// collisions in code that writes `game::presentation::...` from within
+// `biofuel::engine::` scope (confirmed by an actual build failure).
 #[allow(unused_qualifications)]
-#[cxx::bridge(namespace = "biofuel::engine::game")]
+#[cxx::bridge(namespace = "biofuel::engine::gameworld")]
 mod ffi {
     #[derive(Clone, Copy, Debug, Default, PartialEq)]
     struct BridgeVec3 {
@@ -59,7 +69,14 @@ mod ffi {
 
         fn new_game_world() -> Box<GameWorld>;
         fn step_game(world: &mut GameWorld, dt: f32) -> u64;
-        fn read_game_objects(world: &GameWorld, out: &mut [BridgeGameObject]) -> u64;
+        // &mut, not &: querying a fresh bevy::ecs::world::World needs &mut
+        // World even for a read-only query (constructing a QueryState can
+        // register component metadata) -- caching a QueryState across calls
+        // to keep this read-only would be real, unwarranted complexity for
+        // no practical gain, since C++ always calls this right after
+        // step_game (which already needs &mut GameWorld) within the same
+        // frame anyway.
+        fn read_game_objects(world: &mut GameWorld, out: &mut [BridgeGameObject]) -> u64;
     }
 }
 
@@ -71,6 +88,6 @@ fn step_game(world: &mut GameWorld, dt: f32) -> u64 {
     world::step_game(world, dt)
 }
 
-fn read_game_objects(world: &GameWorld, out: &mut [ffi::BridgeGameObject]) -> u64 {
+fn read_game_objects(world: &mut GameWorld, out: &mut [ffi::BridgeGameObject]) -> u64 {
     world::read_game_objects(world, out)
 }

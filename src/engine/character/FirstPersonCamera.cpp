@@ -41,7 +41,11 @@ Vector3 FirstPersonCamera::flatForward() const noexcept {
 }
 
 Vector3 FirstPersonCamera::right() const noexcept {
-    return Vector3{std::cos(m_yaw), 0.0f, -std::sin(m_yaw)};
+    // Verified against actual gameplay (A/D felt swapped with the other
+    // sign): cos/-sin pointed opposite to this project's rendered "right"
+    // relative to flatForward(), even though it matched the abstract
+    // right-handed-compass derivation this was originally written from.
+    return Vector3{-std::cos(m_yaw), 0.0f, std::sin(m_yaw)};
 }
 
 Vector3 FirstPersonCamera::bobOffset() const noexcept {

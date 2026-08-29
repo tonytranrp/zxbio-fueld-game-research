@@ -9,7 +9,14 @@ edition = "2021"
 publish = false
 
 [lib]
-crate-type = ["staticlib"]
+# cdylib, not staticlib: this project's own CMakeLists.txt already
+# documents why (see the biofuel_bevy_bridge comment there) -- two separate
+# rustc-produced staticlibs can't both link into one C++ binary, each
+# vendors its own copy of cxx's runtime-support symbols
+# (cxxbridge1$rust_vec$... etc.), causing LNK2005 duplicate-symbol errors
+# the moment a second staticlib (this crate, alongside physics/) links in.
+# Confirmed by an actual build failure before this was cdylib.
+crate-type = ["cdylib"]
 
 [lints]
 workspace = true

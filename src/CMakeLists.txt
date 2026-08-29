@@ -70,6 +70,7 @@ set(ENGINE_TYPED_MODULE_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/video/VideoEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/events/window/WindowEventModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/fonts/FontServiceModule.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/engine/game/GameWorldServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/RenderServiceModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/BlurCompositeModule.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/graphics/shaders/BlurHModule.hpp"
@@ -297,6 +298,11 @@ if(BIOFUEL_DEV_STARTUP_IDLE_VIDEO)
     target_compile_definitions(biofuel_game PRIVATE BIOFUEL_DEV_STARTUP_IDLE_VIDEO)
 endif()
 
+option(BIOFUEL_DEV_DISABLE_IDLE_TIMEOUT "Dev mode: disable the main-menu idle-screen auto-trigger (music/video overlay after inactivity)" ON)
+if(BIOFUEL_DEV_DISABLE_IDLE_TIMEOUT)
+    target_compile_definitions(biofuel_game PRIVATE BIOFUEL_DEV_DISABLE_IDLE_TIMEOUT)
+endif()
+
 # ------------------------------------------------------------------------------
 # Optional shader validation with glslc (Vulkan SDK / shaderc) or glslangValidator
 # ------------------------------------------------------------------------------
@@ -420,6 +426,17 @@ add_custom_command(
         "$<TARGET_FILE:raylib>"
         "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
     COMMENT "Copying raylib.dll to output directory"
+)
+
+# biofuel_game_ecs is a cdylib (see root CMakeLists.txt) -- same reason and
+# same POST_BUILD treatment as biofuel_bevy_bridge below, but unconditional
+# since this crate always builds.
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:biofuel_game_ecs-shared>"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+    COMMENT "Copying biofuel_game_ecs.dll to output directory"
 )
 
 # biofuel_bevy_bridge is a cdylib (see root CMakeLists.txt) -- Corrosion copies

@@ -190,6 +190,14 @@ void PausePopupScreen::onEnter() {
     m_selected = 0;
     m_cooldown = 0.0f;
 
+    // Free the cursor so the mouse-driven Resume/Quit menu below is usable --
+    // only if it was actually captured (ExplorationScreen), so this is a
+    // no-op when pausing from MainMenuScreen, which never captures it.
+    m_cursorWasHidden = IsCursorHidden();
+    if (m_cursorWasHidden) {
+        EnableCursor();
+    }
+
     // Disable ScreenManager transition — we handle all animation ourselves
     setTransitionDuration(0.0f);
 
@@ -236,6 +244,14 @@ void PausePopupScreen::onExit() {
     mgr.cancelAll("pause_out_slide");
 
     m_blurEffect.shutdown();
+
+    // Restore whatever cursor-capture state was in effect before pause
+    // opened (see onEnter) -- re-captures for ExplorationScreen, stays free
+    // for MainMenuScreen. Harmless if Quit was selected; the app is closing.
+    if (m_cursorWasHidden) {
+        DisableCursor();
+    }
+
     ::biofuel::engine::debug::MemoryTelemetry::snapshot("pause.close.exit");
 }
 

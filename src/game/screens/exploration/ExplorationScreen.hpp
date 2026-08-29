@@ -32,7 +32,6 @@ public:
     [[nodiscard]] ::biofuel::engine::ui::typed::ScreenId screenId() const noexcept override { return screen_id::Exploration; }
     [[nodiscard]] std::string_view getName() const noexcept override { return "ExplorationScreen"; }
 
-    [[nodiscard]] const ExplorationLevel& level() const noexcept { return m_level; }
     [[nodiscard]] const engine::character::CharacterController3D& character() const noexcept { return m_character; }
     [[nodiscard]] const engine::character::FirstPersonCamera& firstPersonCamera() const noexcept { return m_camera; }
     [[nodiscard]] const std::shared_ptr<engine::models::ModelInstance>& handsInstance() const noexcept { return m_handsInstance; }

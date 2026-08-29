@@ -2,6 +2,7 @@
 #include "ExplorationScreenModule.hpp"
 #include "engine/ui/ScreenManager.hpp"
 #include "engine/ui/typed/RenderPipeline.hpp"
+#include "engine/game/GameWorldService.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/graphics/Render.hpp"
 #include "engine/graphics/Scene3D.hpp"
@@ -17,7 +18,16 @@ void WorldLayerTag::render(::biofuel::game::screens::ExplorationScreen& screen, 
     };
     const Camera3D camera = screen.firstPersonCamera().toCamera3D(eye, 74.0f);
     const ::biofuel::engine::graphics::ScopedMode3D mode3D(camera);
-    screen.level().draw();
+
+    // Level geometry and any other Bevy-owned game objects (level.rs +,
+    // from the next phase, a demo entity) -- GameWorldService::update() was
+    // already called this fixed tick in onUpdate(), so objects() here is
+    // this frame's already-stepped batch, not a fresh read.
+    for (const auto& object : ::biofuel::engine::runtime::Runtime::gameWorld().objects()) {
+        const Vector3 size{object.halfExtents.x * 2.0f, object.halfExtents.y * 2.0f, object.halfExtents.z * 2.0f};
+        DrawCube(object.position, size.x, size.y, size.z, object.color);
+        DrawCubeWires(object.position, size.x, size.y, size.z, Color{0, 0, 0, 60});
+    }
 }
 
 void ViewmodelLayerTag::render(::biofuel::game::screens::ExplorationScreen& screen, RenderContext& context) {
@@ -74,6 +84,9 @@ namespace biofuel::game::screens {
 
 void ExplorationScreen::onEnter() {
     auto world = ::biofuel::engine::runtime::Runtime::physics().world3D();
+    // Invisible colliders for the real player's own physics world -- GameWorldService
+    // (updated below, each tick) owns rendering this same layout in a separate Rapier
+    // world, but the real player needs something here to actually stand on.
     m_level.spawnColliders(world);
     m_character.spawn(world, m_level.playerSpawn());
 
@@ -121,6 +134,12 @@ void ExplorationScreen::onUpdate(const f32 dt) {
     auto world = ::biofuel::engine::runtime::Runtime::physics().world3D();
     m_character.step(world, input, dt);
     m_camera.updateBob(m_character.horizontalSpeed(), dt);
+
+    // Bevy-owned level geometry (and, from the next phase, a demo entity) --
+    // a second, native-Rapier physics world stepped alongside the real
+    // player's own PhysicsWorld3D above. Two separate Rapier instances by
+    // design, not a bug -- see GameWorldService's own doc comment.
+    ::biofuel::engine::runtime::Runtime::gameWorld().update(dt);
 
     if (m_handsInstance && m_handsInstance->ready()) {
         // Actual per-frame animation advancement happens centrally via

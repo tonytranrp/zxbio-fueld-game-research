@@ -3,6 +3,7 @@
 #ifdef BIOFUEL_WITH_BEVY_BRIDGE
 #include "engine/bevy/BevyRenderService.hpp"
 #endif
+#include "engine/game/GameWorldService.hpp"
 #include "engine/runtime/Runtime.hpp"
 #include "engine/tasks/TaskModule.hpp"
 #include "engine/ui/ScreenManager.hpp"
@@ -26,6 +27,7 @@ BIOFUEL_TASK_STAGE(TaskManagerInit);
 BIOFUEL_TASK_STAGE(ScreenInit);
 BIOFUEL_TASK_STAGE(AnimationInit);
 BIOFUEL_TASK_STAGE(PhysicsInit);
+BIOFUEL_TASK_STAGE(GameWorldInit);
 BIOFUEL_TASK_STAGE(ModelInit);
 BIOFUEL_TASK_STAGE(AudioInit);
 BIOFUEL_TASK_STAGE(VideoInit);
@@ -61,6 +63,7 @@ BIOFUEL_TASK_MODULE(TaskManagerTaskModule,     TaskManagerInit,  "Initializing t
 BIOFUEL_TASK_MODULE(ScreenTaskModule,          ScreenInit,       "Initializing screen stack...",      0.5f, screen().init());
 BIOFUEL_TASK_MODULE(AnimationTaskModule,       AnimationInit,    "Initializing animation system...",   0.5f, animation().init());
 BIOFUEL_TASK_MODULE(PhysicsTaskModule,         PhysicsInit,      "Initializing physics engine...",     0.5f, physics().init());
+BIOFUEL_TASK_MODULE(GameWorldTaskModule,       GameWorldInit,    "Initializing game world...",         0.4f, gameWorld().init());
 BIOFUEL_TASK_MODULE(ModelTaskModule,           ModelInit,        "Initializing model system...",       0.4f, model().init());
 BIOFUEL_TASK_MODULE(AudioTaskModule,           AudioInit,        "Initializing audio device...",       0.5f, audio().init());
 BIOFUEL_TASK_MODULE(VideoTaskModule,           VideoInit,        "Initializing video system...",       0.4f, video().init());
@@ -82,6 +85,7 @@ using EngineStartupModules = TaskModuleList<
     ScreenTaskModule,
     AnimationTaskModule,
     PhysicsTaskModule,
+    GameWorldTaskModule,
     ModelTaskModule,
     AudioTaskModule,
     VideoTaskModule
