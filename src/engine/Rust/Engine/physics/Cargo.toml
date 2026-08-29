@@ -12,6 +12,9 @@ workspace = true
 
 [dependencies]
 cxx = { workspace = true }
+# Shared handle-packing scheme and math conversions, factored out once game/
+# needed the same logic -- see Engine/Utils/README.md.
+biofuel_engine_utils = { path = "../Utils" }
 # Exact version pin: same repo-wide immutable-pin discipline as cxx.
 # "profiler" feature enables Rapier's own PhysicsPipeline::counters
 # (step_time_ms, broad_phase_time_ms, ...), surfaced to C++ as

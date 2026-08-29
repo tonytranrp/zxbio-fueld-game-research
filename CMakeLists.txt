@@ -248,7 +248,7 @@ CPMAddPackage(
 )
 
 corrosion_import_crate(
-    MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/engine/Rust/physics/Cargo.toml"
+    MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/engine/Rust/Engine/physics/Cargo.toml"
     LOCKED
     CRATES biofuel_rapier_bridge
     CRATE_TYPES staticlib
@@ -272,7 +272,7 @@ corrosion_add_cxxbridge(
 # build-time cost in the repo, for a debug-only tech-demo screen.
 if(BIOFUEL_ENABLE_BEVY_BRIDGE)
     corrosion_import_crate(
-        MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/engine/Rust/bevy/Cargo.toml"
+        MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/engine/Rust/Engine/bevy/Cargo.toml"
         LOCKED
         CRATES biofuel_bevy_bridge
         CRATE_TYPES cdylib

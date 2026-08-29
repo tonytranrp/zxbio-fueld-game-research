@@ -1391,9 +1391,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "biofuel_engine_utils"
+version = "0.1.0"
+dependencies = [
+ "rapier2d",
+ "rapier3d",
+]
+
+[[package]]
 name = "biofuel_rapier_bridge"
 version = "0.1.0"
 dependencies = [
+ "biofuel_engine_utils",
  "cxx",
  "cxx-build",
  "rapier2d",

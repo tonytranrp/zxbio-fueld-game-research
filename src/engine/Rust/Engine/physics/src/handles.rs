@@ -1,7 +1,11 @@
 // Opaque-handle packing: turns a Rapier (index, generation) pair into the
 // single u64 the C++ side stores, and back. pub(crate) throughout -- these
 // are internal plumbing shared by world2d/world3d/character_controller, never
-// part of the crate's cxx-facing surface.
+// part of the crate's cxx-facing surface. The actual pack/unpack scheme lives
+// in biofuel_engine_utils (Engine/Utils/) since game/ needs the identical
+// logic for its own entity handles -- this file just adapts it to Rapier's
+// own handle types.
+use biofuel_engine_utils::handles::{pack_handle, unpack_handle};
 use rapier2d::prelude as r2;
 use rapier3d::prelude as r3;
 
@@ -11,30 +15,6 @@ pub(crate) const KIND_KINEMATIC_POSITION: u8 = 2;
 pub(crate) const KIND_KINEMATIC_VELOCITY: u8 = 3;
 pub(crate) const PHASE_STARTED: u8 = 0;
 pub(crate) const PHASE_ENDED: u8 = 1;
-
-// Offset by +1/-1 so a raw value of 0 can never be produced by a real
-// (index, generation) pair -- 0 is reserved project-wide as the
-// always-invalid handle sentinel (see rapier_bridge/README.md's coding
-// standards). Without the offset, the legitimate first-ever allocated slot
-// (index 0, generation 0) would pack to exactly 0 and be indistinguishable
-// from "no handle".
-fn pack_handle(index: u32, generation: u32) -> u64 {
-    (((generation as u64) << 32) | index as u64) + 1
-}
-
-// raw == 0 is the invalid-handle sentinel (see pack_handle above) -- rather
-// than threading an Option/error through every caller, it unpacks to
-// (u32::MAX, u32::MAX): an (index, generation) pair no real allocation can
-// ever produce, so every downstream `.get(handle)` lookup naturally returns
-// None through its own existing Option-returning path with no separate
-// zero-check needed at each call site.
-fn unpack_handle(raw: u64) -> (u32, u32) {
-    if raw == 0 {
-        return (u32::MAX, u32::MAX);
-    }
-    let adjusted = raw - 1;
-    (adjusted as u32, (adjusted >> 32) as u32)
-}
 
 pub(crate) fn pack_body_2d(handle: r2::RigidBodyHandle) -> u64 {
     let (index, generation) = handle.into_raw_parts();
