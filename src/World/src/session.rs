@@ -70,7 +70,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, level, miscanthus, switchgrass, viewmodel, water};
+use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, hydrogen, level, miscanthus, switchgrass, viewmodel, water};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -429,6 +429,14 @@ impl ApplicationHandler for SessionApp {
         // miscanthus.rs's own doc comment for the cited real-research
         // calibration behind every one of its constants.
         miscanthus::setup(&mut app);
+
+        // ---- A second, distinct energy pathway alongside the crops'
+        // biofuel one: a hydrogen electrolyzer, coupled to the same
+        // CarbonBudget. See hydrogen.rs's own doc comment for the cited
+        // real research this is grounded in -- deliberately surfaces that
+        // an electrolyzer isn't automatically clean, the same lesson
+        // crop.rs's/fuel.rs's own corn-ethanol design already teaches.
+        hydrogen::setup(&mut app);
 
         // Harvest -> fermentation -> combustion: the first real EMITTING
         // counterpart to crop.rs's own sequestration-on-maturity payout --

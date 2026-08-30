@@ -37,6 +37,8 @@ mod fuel;
 #[forbid(unsafe_code)]
 mod hud;
 #[forbid(unsafe_code)]
+mod hydrogen;
+#[forbid(unsafe_code)]
 mod input_state;
 #[forbid(unsafe_code)]
 mod level;

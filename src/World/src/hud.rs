@@ -34,6 +34,7 @@
 
 use crate::carbon::CarbonBudget;
 use crate::fuel::FuelStockpile;
+use crate::hydrogen::HydrogenStockpile;
 use crate::water::WaterBody;
 use bevy::app::{App, Update};
 use bevy::color::Color;
@@ -72,14 +73,21 @@ pub(crate) fn setup(app: &mut App, ui_target_camera: Entity) {
     app.add_systems(Update, update_hud);
 }
 
-fn update_hud(carbon: Res<CarbonBudget>, fuel: Res<FuelStockpile>, water: Res<WaterBody>, mut text_query: Query<&mut Text, With<HudText>>) {
+fn update_hud(
+    carbon: Res<CarbonBudget>,
+    fuel: Res<FuelStockpile>,
+    water: Res<WaterBody>,
+    hydrogen: Res<HydrogenStockpile>,
+    mut text_query: Query<&mut Text, With<HudText>>,
+) {
     let Ok(mut text) = text_query.single_mut() else {
         return;
     };
     text.0 = format!(
-        "Carbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}",
+        "Carbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}\nHydrogen: {:.2} kg",
         carbon.remaining(),
         fuel.liters(),
-        water.ph()
+        water.ph(),
+        hydrogen.kg()
     );
 }
