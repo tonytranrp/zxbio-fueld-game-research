@@ -27,15 +27,32 @@
 //! `WindowEvent::MouseInput` DOES reach it -- verified with a temporary
 //! eprintln probe in session.rs's own window_event handler before this
 //! mechanic was built on top of that assumption, not after.
+//!
+//! A harvest-moment VFX flourish (small outward-bursting, shrinking
+//! "puff" shapes at the harvested plant's own position) connects the
+//! otherwise-abstract emission number to a concrete, visible moment --
+//! matching this project's own early design principle that the "fact"
+//! and the "reward" should be the same object, not decoration bolted on
+//! separately (see biofuel-climate-science-gameplay.md's design-approach
+//! summary). Unlike this module's own emission numbers, the puff's own
+//! color/speed/duration are a plain animation-craft choice, not a cited
+//! research figure, and are not presented as one -- said plainly here
+//! rather than implying a citation that doesn't exist.
 #![forbid(unsafe_code)]
 
 use crate::carbon::CarbonBudget;
 use crate::crop::CropGrowth;
 use crate::input_state::InputState;
 use crate::player::PlayerController;
-use bevy::prelude::{Commands, Entity, Query, ResMut, Transform};
+use bevy::app::{App, Update};
+use bevy::asset::{Assets, Handle};
+use bevy::color::Color;
+use bevy::math::primitives::Sphere;
+use bevy::mesh::{Mesh, Meshable};
+use bevy::pbr::{MeshMaterial3d, StandardMaterial};
+use bevy::prelude::{Commands, Component, Entity, Mesh3d, Query, Res, ResMut, Resource, Transform};
 
-#[derive(bevy::prelude::Resource, Default)]
+#[derive(Resource, Default)]
 pub(crate) struct FuelStockpile {
     liters: f32,
 }
@@ -45,6 +62,27 @@ impl FuelStockpile {
         self.liters
     }
 }
+
+#[derive(Resource)]
+struct HarvestPuffAssets {
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+}
+
+#[derive(Component)]
+struct HarvestPuff {
+    elapsed: f32,
+    velocity: bevy::math::Vec3,
+}
+
+// A small burst per harvested plant -- outward and slightly up (0.6 on Y,
+// see the spawn loop below), suggesting gas escaping rather than debris
+// flying, a loose visual nod to the real fermentation/combustion CO2
+// release this module's own doc comment already grounds numerically.
+const PUFF_COUNT: usize = 5;
+const PUFF_DURATION_SECONDS: f32 = 0.45;
+const PUFF_SPEED: f32 = 1.8;
+const PUFF_RADIUS: f32 = 0.06;
 
 // A deliberately game-scale abstraction, not a literal unit conversion from
 // real liters-per-acre ethanol yield figures (those operate at a much
@@ -68,12 +106,37 @@ const FUEL_PER_HARVEST: f32 = 0.3;
 // exercised and a walk-up-to-one-plant interaction is worth building.
 const HARVEST_RADIUS: f32 = 6.0;
 
+pub(crate) fn setup(app: &mut App) {
+    app.insert_resource(FuelStockpile::default());
+
+    let mesh: Handle<Mesh> = {
+        let mut meshes = app.world_mut().resource_mut::<Assets<Mesh>>();
+        meshes.add(Sphere::new(1.0).mesh())
+    };
+    let material: Handle<StandardMaterial> = {
+        let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+        materials.add(StandardMaterial {
+            // A warm ember tone, unlit like this game's other placeholder
+            // props (the pond, the pre-glTF electrolyzer box) -- a puff
+            // that only exists for PUFF_DURATION_SECONDS isn't worth a
+            // real light-reactive material.
+            base_color: Color::srgb(0.85, 0.5, 0.2),
+            unlit: true,
+            ..Default::default()
+        })
+    };
+    app.insert_resource(HarvestPuffAssets { mesh, material });
+
+    app.add_systems(Update, (update_harvest, update_harvest_puffs));
+}
+
 pub(crate) fn update_harvest(
     mut input: ResMut<InputState>,
     player: bevy::prelude::Res<PlayerController>,
     mut commands: Commands,
     mut stockpile: ResMut<FuelStockpile>,
     mut carbon: ResMut<CarbonBudget>,
+    puff_assets: Res<HarvestPuffAssets>,
     crops: Query<(Entity, &CropGrowth, &Transform)>,
 ) {
     if !input.take_left_click() {
@@ -94,12 +157,46 @@ pub(crate) fn update_harvest(
 
         stockpile.liters += FUEL_PER_HARVEST;
         carbon.add_emission(crop.emission_on_harvest());
+        spawn_harvest_puffs(&mut commands, &puff_assets, transform.translation);
         // A plain despawn(), not despawn_recursive() -- Bevy's own
         // despawn() has cascaded to children by default since 0.14, which
         // is what actually removes the WorldAssetRoot-instantiated mesh
         // hierarchy crop.rs spawned this entity with, not just the
         // CropGrowth component on the root.
         commands.entity(entity).despawn();
+    }
+}
+
+fn spawn_harvest_puffs(commands: &mut Commands, assets: &HarvestPuffAssets, origin: bevy::math::Vec3) {
+    for i in 0..PUFF_COUNT {
+        let angle = i as f32 / PUFF_COUNT as f32 * std::f32::consts::TAU;
+        let velocity = bevy::math::Vec3::new(angle.cos(), 0.6, angle.sin()) * PUFF_SPEED;
+        commands.spawn((
+            Mesh3d(assets.mesh.clone()),
+            MeshMaterial3d(assets.material.clone()),
+            Transform::from_translation(origin).with_scale(bevy::math::Vec3::splat(PUFF_RADIUS)),
+            HarvestPuff { elapsed: 0.0, velocity },
+        ));
+    }
+}
+
+// Scale at a given point in a puff's lifetime -- pulled out as a pure
+// function so the shrink-to-nothing curve is directly unit-testable, the
+// same testing shape crop.rs's own sway_angle() already established.
+fn puff_scale(elapsed: f32, duration: f32) -> f32 {
+    let remaining = (1.0 - elapsed / duration).max(0.0);
+    PUFF_RADIUS * remaining
+}
+
+fn update_harvest_puffs(dt: Res<crate::session::DeltaSeconds>, mut commands: Commands, mut puffs: Query<(Entity, &mut Transform, &mut HarvestPuff)>) {
+    for (entity, mut transform, mut puff) in &mut puffs {
+        puff.elapsed += dt.0;
+        if puff.elapsed >= PUFF_DURATION_SECONDS {
+            commands.entity(entity).despawn();
+            continue;
+        }
+        transform.translation += puff.velocity * dt.0;
+        transform.scale = bevy::math::Vec3::splat(puff_scale(puff.elapsed, PUFF_DURATION_SECONDS));
     }
 }
 
@@ -119,5 +216,16 @@ mod tests {
         let crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0, 4.0, 0.1);
         carbon.add_emission(crop.emission_on_harvest());
         assert!((before - carbon.remaining() - 4.0).abs() < 1.0e-6, "the budget should shrink by exactly the harvested crop's own emission_on_harvest value");
+    }
+
+    #[test]
+    fn a_harvest_puff_starts_full_size_and_shrinks_to_nothing_by_its_own_duration() {
+        let full_size = puff_scale(0.0, PUFF_DURATION_SECONDS);
+        let mid_size = puff_scale(PUFF_DURATION_SECONDS / 2.0, PUFF_DURATION_SECONDS);
+        let expired_size = puff_scale(PUFF_DURATION_SECONDS, PUFF_DURATION_SECONDS);
+
+        assert!((full_size - PUFF_RADIUS).abs() < 1.0e-6, "a fresh puff should render at its own full configured radius");
+        assert!(mid_size > 0.0 && mid_size < full_size, "a puff mid-lifetime should have shrunk but not yet vanished");
+        assert!(expired_size <= 1.0e-6, "a puff at (or past) its own duration should have shrunk to nothing");
     }
 }

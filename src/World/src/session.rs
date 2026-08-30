@@ -446,10 +446,10 @@ impl ApplicationHandler for SessionApp {
 
         // Harvest -> fermentation -> combustion: the first real EMITTING
         // counterpart to crop.rs's own sequestration-on-maturity payout --
-        // see fuel.rs's own doc comment for the real chemistry and design
-        // rationale this is grounded in.
-        app.insert_resource(fuel::FuelStockpile::default());
-        app.add_systems(Update, fuel::update_harvest);
+        // see fuel.rs's own doc comment for the real chemistry, the
+        // harvest-moment VFX flourish, and the design rationale both are
+        // grounded in.
+        fuel::setup(&mut app);
 
         // The corn model was refined with real PBR materials (enable_pbr:
         // true), unlike level.rs's deliberately-unlit boxes -- without an
