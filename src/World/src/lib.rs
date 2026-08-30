@@ -51,6 +51,8 @@ mod miscanthus;
 #[forbid(unsafe_code)]
 mod session;
 #[forbid(unsafe_code)]
+mod solar;
+#[forbid(unsafe_code)]
 mod switchgrass;
 #[forbid(unsafe_code)]
 mod viewmodel;

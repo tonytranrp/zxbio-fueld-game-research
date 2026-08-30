@@ -128,10 +128,15 @@ fn spawn_electrolyzer_once_loaded(
     *spawned = true;
 }
 
-fn update_electrolyzer(dt: Res<DeltaSeconds>, mut hydrogen: ResMut<HydrogenStockpile>, mut carbon: ResMut<CarbonBudget>) {
+fn update_electrolyzer(
+    dt: Res<DeltaSeconds>,
+    mut hydrogen: ResMut<HydrogenStockpile>,
+    mut carbon: ResMut<CarbonBudget>,
+    solar: Res<crate::solar::SolarArray>,
+) {
     let produced = PRODUCTION_RATE_KG_PER_SECOND * dt.0;
     hydrogen.kg += produced;
-    carbon.add_emission(produced * EMISSION_PER_KG);
+    carbon.add_emission(produced * solar.apply(EMISSION_PER_KG));
 }
 
 #[cfg(test)]

@@ -70,7 +70,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, hydrogen, level, miscanthus, switchgrass, viewmodel, water};
+use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, hydrogen, level, miscanthus, solar, switchgrass, viewmodel, water};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -429,6 +429,12 @@ impl ApplicationHandler for SessionApp {
         // miscanthus.rs's own doc comment for the cited real-research
         // calibration behind every one of its constants.
         miscanthus::setup(&mut app);
+
+        // solar::setup must run before hydrogen::setup: it inserts the
+        // SolarArray resource update_electrolyzer reads every frame. See
+        // solar.rs's own doc comment for why solar alone only partially
+        // (not fully) offsets the electrolyzer's own emissions.
+        solar::setup(&mut app);
 
         // ---- A second, distinct energy pathway alongside the crops'
         // biofuel one: a hydrogen electrolyzer, coupled to the same
