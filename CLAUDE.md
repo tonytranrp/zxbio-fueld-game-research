@@ -9,9 +9,16 @@ a `cxx` FFI bridge). The game concept has changed direction repeatedly: original
 3D "pop-out" models (see `Agents.md` — now historical, do not treat it as current), then a fully 3D
 first-person voxel world with a biofuel-farm-simulation gameplay loop (crops, seasons, harvest/fuel-
 processing pipelines, tech tree). **Both the voxel world and the farm simulation were removed
-entirely on 2026-08-19** — see `Bug/bug.md` for exactly what and why. The direction going forward is
-gameplay built around imported hand-authored/AI-generated 3D models (Meshy AI + Blender cleanup), not
-yet implemented. Current implementation status lives in `README.md`.
+entirely on 2026-08-19** — see `Bug/bug.md` for exactly what and why. The direction that replaced them
+(gameplay built around imported hand-authored/AI-generated 3D models, Meshy AI-generated) went through
+one more architectural pivot beyond what the rest of this file's history describes: raylib is now
+**menu-only** (`MainMenuScreen`, the loading screen, the pause popup), and actual gameplay runs inside
+a separate embedded Bevy 0.19 / Vulkan ECS session (`src/World/`, a Rust `cxx`-bridge crate, reentrant
+— the same process closes raylib's window, runs the World session, and reopens raylib's window on
+return). See "The World session" below for its own architecture and current content — a real,
+citation-grounded biofuel-farm simulation (crops, water chemistry, hydrogen/solar energy, a day/night
+cycle) that the OLD `ExplorationScreen` this file used to describe as "the direction going forward" has
+been fully superseded by. Current implementation status lives in `README.md`.
 
 ## Build
 
@@ -40,6 +47,14 @@ An existing Visual-Studio-integrated build directory (e.g. `Build/x64-Debug`) wo
 presets (`dev-full`, `release`, `release-debug` — the last is RelWithDebInfo: full `/O2` with
 complete C++ *and* Rust debug symbols, the "fast but still debuggable" config) and what
 `BIOFUEL_ENABLE_BEVY_BRIDGE` gates.
+
+**Two separate Bevy integrations exist in this repo — don't conflate them.** `BIOFUEL_ENABLE_BEVY_BRIDGE`
+(default `OFF`) gates `biofuel_bevy_bridge`, an OLD, optional, headless-Bevy tech-demo screen (F6 debug
+overlay) — a large, mostly-unused dependency graph kept out of the default build for compile-time
+reasons. `src/World/` (crate `biofuel_world`, "The World session" above) is a COMPLETELY SEPARATE Bevy
+0.19 integration — the actual current gameplay, always built, never gated behind that flag (see
+`CMakeLists.txt`'s own comments around `biofuel_world`'s `add_crate` call for why). Toggling
+`BIOFUEL_ENABLE_BEVY_BRIDGE` has no effect on `src/World/` either way.
 
 **Windows gotcha:** both `cmake --preset dev`/`cmake --build --preset dev` (Ninja) and, for the
 plain path, `cmake --build` (Visual Studio generator) must run inside a Visual Studio Developer
@@ -145,28 +160,44 @@ farming-gameplay pipelines that used to be its main consumer (`TurnPipeline`, `H
 `FuelProcessPipeline` in `game/gameplay/`) were removed 2026-08-19. Don't assume Pipeline-c- usage
 elsewhere in the codebase; grep before reusing the pattern.
 
-**There is a first-person exploration gameplay screen.** `ExplorationScreen` (`src/game/screens/
-exploration/`, added 2026-08-25, `ScreenId::Slot3`) provides WASD movement, mouse-look, jumping, and
-sprinting over a small Rapier-collision test level (`ExplorationLevel` — ground, boundary walls, a
-barn shell, scattered prop boxes, one placeholder landmark box; all stand-in geometry, not final art).
-`MainMenuScreen`'s New Game/Continue route into it once the post-dismiss dimension-shift shader
-completes. Movement is driven by two plain classes in `engine/character/` — `CharacterController3D`
-(kinematic body + Rapier's `KinematicCharacterController`, via the new `PhysicsWorld3D::moveCharacter`
-FFI call) and `FirstPersonCamera` (yaw/pitch + view bob) — owned by the screen, not typed services,
-since their Rapier body handles are screen-lifetime and incompatible with `BIOFUEL_STATIC_SERVICE`'s
-process-lifetime singleton semantics. This replaced the previous `GamePlayScreen` (a walkable
-first-person voxel world — `VoxelWorld` chunked block storage plus `VoxelVolume` SDF raymarcher),
-removed 2026-08-19 along with the entire `engine/world/` folder it depended on — see `Bug/bug.md`'s
-2026-08-19 and 2026-08-25 entries. `engine/models/ModelSystem`'s built-in registry now has one entry:
-`ModelAssetId::ViewmodelHands` (Meshy-generated, Blender-rigged, 9702 triangles, 34 bones, textured,
-`idle`/`walk` clips), rendered every frame by `ExplorationScreen` through `engine::graphics::
-ViewmodelPass` (`src/engine/graphics/ViewmodelPass.hpp`) — an offscreen `RenderSurface` with its own
-depth buffer, composited over the world+HUD, so the hands can never clip into or be clipped by world
-geometry. The rig's rest pose reaches along local +Y; the render applies a fixed +90-degree rotation
-about local X (verified both numerically from the file's own node transforms and visually via a
-Blender reproduction) to point the reach direction along +Z instead. This first pass deliberately uses
-a fixed (non-yaw/pitch-tracking) viewmodel camera — weapon-sway/full look-tracking is a real follow-up,
-not yet implemented. See `assets/models/README.md` and `src/game/models/README.md`.
+**`ExplorationScreen` is superseded, not deleted.** `ExplorationScreen` (`src/game/screens/
+exploration/`, added 2026-08-25, `ScreenId::Slot3`) was the FIRST post-2026-08-19 gameplay screen —
+WASD movement, mouse-look, jumping, and sprinting (via `engine/character/`'s `CharacterController3D` +
+`FirstPersonCamera`, wrapping Rapier's `KinematicCharacterController`) over a small Rapier-collision
+test level (`ExplorationLevel`). It is still compiled and registered (`GameScreenCatalog.hpp`), but
+`MainMenuScreen`'s New Game/Continue no longer route into it — see "The World session" below for what
+replaced it. Its own `engine::graphics::ViewmodelPass` compositing approach (an offscreen
+`RenderSurface` with its own depth buffer, so hands can never clip into world geometry) and its
+`ModelAssetId::ViewmodelHands` asset (Meshy-generated, Blender-rigged, 9702 triangles, 34 bones,
+textured, `idle`/`walk` clips, rest pose reaching along local +Y with a +90-degree local-X rotation
+applied at render time) were both carried forward into `src/World/`'s own `viewmodel.rs`, which reuses
+the identical asset and the identical fixed-camera-first-pass scope (no yaw/pitch weapon-sway yet)
+rather than reinventing either. See `assets/models/README.md` and `src/game/models/README.md` for the
+asset itself.
+
+**The World session is the actual current gameplay.** A Bevy 0.19 / Vulkan `bevy_app::App`
+(`src/World/`, one Cargo crate, `#[cxx::bridge(namespace = "biofuel::world")]` in `lib.rs`) reached via
+`MainMenuScreen::requestWorldSession()` → `Runtime::screen()` → `Application::run()`'s own
+`runWorldSessionAndReturn()` → the `run_world_session` FFI call — closes raylib's own window, runs the
+Bevy session's entire lifecycle (its own winit event loop, reentrant via a persisted `EventLoop` +
+`run_app_on_demand`), then reopens raylib's window on return. `SessionExit::reason` (0 = returned to
+menu normally, 1 = no Vulkan-capable adapter, 2 = other clean internal failure) round-trips back to
+`WorldBridge.hpp` on the C++ side. Real, citation-grounded farm-simulation gameplay lives entirely in
+this crate's own modules, each with its own doc comment carrying the real research behind its
+constants — `crop.rs`/`switchgrass.rs`/`miscanthus.rs` (Liebig's-law growth, a real three-tier biofuel
+comparison), `water.rs` (ocean-acidification pond-pH chemistry coupled to irrigation quality),
+`hydrogen.rs`/`solar.rs` (a second energy pathway — DOE/IEA/Ember/NREL-sourced electrolysis and solar
+PV figures, including a real embodied-carbon payback period), `daynight.rs` (a real day/night cycle
+driving both the sky/sun and crop growth), `fuel.rs` (click-to-harvest with a VFX flourish), `hud.rs`
+(a live carbon-budget history graph plus per-species counts), all sharing one `CarbonBudget` meter
+(`carbon.rs`, mirroring Anno 2070's CO2 Reservoir design). Windows-MCP can deliver discrete mouse
+clicks to this crate's own winit window but NOT synthetic keyboard input or raw mouse motion — real
+player movement/look is consequently still unverified/likely-blocked in this environment; every
+gameplay system above was deliberately designed to be exercisable via clicks alone from the fixed
+`PLAYER_SPAWN` point for exactly this reason. See the auto-memory file `biofuel-climate-science-
+gameplay.md` (if available in a given session) for the full iteration-by-iteration build history and
+citation trail; each module's own doc comment is the authoritative, always-current source for its own
+design rationale.
 
 **Shaders** follow the same typed-registry pattern (`ShaderAsset<Tag>` specializations via
 `BIOFUEL_EMBEDDED_SHADER_ASSET`/`BIOFUEL_SHADER_MODULE`), with GLSL source embedded into a generated

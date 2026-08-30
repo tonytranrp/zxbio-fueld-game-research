@@ -1,10 +1,15 @@
 # Biofuel Game - Fuel Farm
 
-Research and implementation repo for a C++20 Raylib game. The concept has changed direction several
-times during development — most recently (2026-08-19), the voxel-world and biofuel-farm-simulation
-gameplay were removed entirely in favor of building gameplay around imported 3D models (Meshy AI
-generation + Blender cleanup). What replaces them is not yet built; the engine (screens, events,
-services, physics, shaders, models) is otherwise intact and reusable.
+Research and implementation repo for a C++20 Raylib engine paired with an embedded Bevy/Vulkan
+gameplay session. The concept has changed direction several times during development — most recently
+(2026-08-19), the voxel-world and biofuel-farm-simulation gameplay were removed entirely, replaced by
+gameplay built around imported 3D models (Meshy AI generation). Raylib is now menu-only
+(`MainMenuScreen`, loading screen, pause popup); actual gameplay runs inside a separate, reentrant
+Bevy 0.19 / Vulkan ECS session (`src/World/`), reached from the main menu's New Game/Continue. It is a
+real, citation-grounded biofuel-farm simulation — three crop species (Liebig's-law growth), pond-water
+chemistry, a hydrogen/solar energy pathway, and a day/night cycle, all sharing one carbon-budget meter
+and a live HUD. See CLAUDE.md's "The World session" section for the architecture, and each module
+under `src/World/src/` for its own doc comment (every constant is grounded in cited real research).
 
 ## What is in this repo
 
@@ -22,29 +27,46 @@ Generated build output under `build/`, `Build/`, and `src/build/` is not part of
 
 ## Current implementation status
 
-The playable codebase is still early-stage, but it already contains:
+**The engine shell** (raylib-side, menu-only as of the Bevy/Vulkan World pivot):
 
 - application bootstrap and fixed-timestep loop
 - loading screen with deferred startup tasks plus async-safe preflight support
 - screen stack with crossfade transitions
 - animated main menu with an embedded, endlessly-looping ambient background shader
-- typed model system with one imported, rigged, and animated asset (first-person viewmodel hands —
-  Meshy-generated, Blender-rigged, 9702 triangles, 34 bones, textured, idle/walk clips)
 - 2D/3D physics via an embedded Rust Rapier bridge, including a kinematic character controller
-  (`PhysicsWorld3D::moveCharacter`, wrapping Rapier's `KinematicCharacterController`)
+  (`PhysicsWorld3D::moveCharacter`, wrapping Rapier's `KinematicCharacterController`) — still used by
+  `ExplorationScreen` (see below) and available to `src/World/`'s own Rust code
 - global pause routing with a blur-backed pause popup
 - event bus, input polling, animation manager, and small render/font/UI utilities
-- a first-person exploration gameplay screen (`ExplorationScreen`, added 2026-08-25): WASD movement,
-  mouse-look, jump/sprint, over a small Rapier-collision test level, with visible, animated first-
-  person hands rendered via a depth-isolated `ViewmodelPass`. The main menu's "New Game"/"Continue"
-  now route into it once the post-dismiss shader transition completes.
+- `ExplorationScreen` (`src/game/screens/exploration/`, added 2026-08-25): still compiled and
+  registered, but no longer reached from the main menu — superseded by the World session below. Its
+  own viewmodel-hands asset and depth-isolated `ViewmodelPass` compositing approach were carried
+  forward into `src/World/`'s own `viewmodel.rs` rather than rebuilt from scratch.
 
-The previous voxel-world (`GamePlay`) and biofuel-farm simulation (crops, seasons, harvest/fuel-
-processing pipelines, tech tree) were removed 2026-08-19 and have not been replaced — `Exploration
-Screen` is new gameplay built around the imported-3D-model direction, not a revival of either. The
-viewmodel hands don't yet track player look (yaw/pitch) — the viewmodel camera is currently fixed, so
-there's no weapon-sway — and the level's geometry is entirely placeholder boxes, not final art. See
-`Bug/bug.md` for what was removed and why, and its 2026-08-25 entries for what replaced it.
+**The World session** (`src/World/`, a Bevy 0.19 / Vulkan ECS crate reached from the main menu's New
+Game/Continue) is where actual gameplay lives — a real, citation-grounded biofuel-farm simulation, not
+placeholder content:
+
+- three real crop species (corn, switchgrass, miscanthus) with Liebig's-law limiting-factor growth,
+  a genuine first-gen-vs-advanced-gen biofuel carbon-lifecycle comparison, wind-sway animation, and a
+  click-to-harvest interaction with a VFX flourish
+- a farm pond modeling real ocean-acidification pH chemistry, coupled back into irrigation quality
+  (and crop growth), with an in-HUD warning once the pond overshoots its optimal pH
+- a second energy pathway — a hydrogen electrolyzer and a solar array, both grounded in real DOE/IEA/
+  Ember/NREL figures, including the solar array's own real embodied-manufacturing-carbon payback
+  period and its capacity factor genuinely tied to the day/night cycle below (not a flat average)
+- a real day/night cycle (a sweeping sun, animated sky color) that measurably slows crop growth at
+  night, the same way real photosynthesis does
+- a shared `CarbonBudget` meter every system above feeds (mirroring Anno 2070's CO2 Reservoir design),
+  surfaced through a live HUD: current readings, per-species crop counts, and a scrolling history graph
+
+Real player movement/look (WASD, mouse-look) inside the World session is currently unverified in this
+project's own automation environment — Windows-MCP can deliver discrete mouse clicks but not synthetic
+keyboard input or raw mouse motion to this crate's own winit window, so every system above was
+deliberately designed to be exercisable via clicks alone from the fixed player-spawn point. See
+CLAUDE.md's "The World session" section for the architecture, and each module's own doc comment under
+`src/World/src/` for citations and design rationale. See `Bug/bug.md` for the 2026-08-19 removal this
+all eventually replaced.
 
 ## Build
 
