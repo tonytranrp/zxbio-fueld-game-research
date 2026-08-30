@@ -116,7 +116,7 @@ mod tests {
         // invariant tests, which don't touch fuel.rs's own code at all.
         let mut carbon = CarbonBudget::default();
         let before = carbon.remaining();
-        let crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0, 4.0);
+        let crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0, 4.0, 0.1);
         carbon.add_emission(crop.emission_on_harvest());
         assert!((before - carbon.remaining() - 4.0).abs() < 1.0e-6, "the budget should shrink by exactly the harvested crop's own emission_on_harvest value");
     }

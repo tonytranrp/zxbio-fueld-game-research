@@ -14,6 +14,7 @@ use bevy::asset::{AssetServer, Assets, Handle};
 use bevy::ecs::system::Local;
 use bevy::gltf::Gltf;
 use bevy::prelude::{Commands, Component, Query, Res, ResMut, Resource, Transform};
+use bevy::time::Time;
 use bevy::world_serialization::WorldAssetRoot;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -46,6 +47,17 @@ pub(crate) struct CropGrowth {
     // emissions (see switchgrass.rs's own doc comment for the cited
     // research behind its own much-lower value relative to corn's).
     emission_on_harvest: f32,
+    // Max wind-sway rotation in radians, reached only once the plant is
+    // fully grown (scaled by `growth` below, same reasoning as the visual
+    // scale lerp -- a barely-visible seedling swaying by a full-grown
+    // plant's own angle would read as a glitch, not wind). A visual/
+    // structural design choice, not a cited game-balance number like the
+    // carbon fields above: real fine grass blades (switchgrass) flex far
+    // more visibly in wind than a corn stalk's thicker, stiffer structure,
+    // which is itself a real agronomic concern (lodging -- wind/rain
+    // flattening a crop is a real yield-loss risk farmers manage) even if
+    // this game doesn't model lodging as a mechanic yet.
+    sway_amplitude: f32,
 }
 
 impl CropGrowth {
@@ -56,6 +68,7 @@ impl CropGrowth {
         growth_rate: f32,
         sequestration_on_maturity: f32,
         emission_on_harvest: f32,
+        sway_amplitude: f32,
     ) -> Self {
         Self {
             growth: 0.0,
@@ -66,6 +79,7 @@ impl CropGrowth {
             growth_rate,
             sequestration_on_maturity,
             emission_on_harvest,
+            sway_amplitude,
         }
     }
 
@@ -120,6 +134,35 @@ pub(crate) fn update_crop_growth(
     }
 }
 
+// Wind sway -- a separate system from update_crop_growth (not folded into
+// its own per-crop loop) specifically because that function `continue`s
+// early for Mature crops once growth is done, but a harvestable mature
+// plant sitting in the field waiting for a click (fuel.rs) should keep
+// swaying, not freeze. Rotates around the world Z axis (tips the plant's
+// top side to side in X, base stays planted, matching real wind-sway
+// appearance for an upright plant whose local up is Y). A per-plant phase
+// offset derived from each plant's own X position keeps a whole field from
+// swaying in perfect unison, which reads as fake -- real wind gusts also
+// reach neighboring plants at slightly different times.
+const SWAY_SPEED: f32 = 1.6;
+const SWAY_PHASE_PER_METER: f32 = 1.3;
+
+// Pure math, split out from update_crop_sway below so it's directly
+// unit-testable without spinning up a Bevy World/App -- same reasoning
+// this file's own tests already apply to limiting_factor()/growth math.
+fn sway_angle(sway_amplitude: f32, growth: f32, elapsed_secs: f32, phase: f32) -> f32 {
+    sway_amplitude * growth * (elapsed_secs * SWAY_SPEED + phase).sin()
+}
+
+fn update_crop_sway(time: Res<Time>, mut crops: Query<(&CropGrowth, &mut Transform)>) {
+    let elapsed = time.elapsed_secs();
+    for (crop, mut transform) in &mut crops {
+        let phase = transform.translation.x * SWAY_PHASE_PER_METER;
+        let angle = sway_angle(crop.sway_amplitude, crop.growth, elapsed, phase);
+        transform.rotation = bevy::math::Quat::from_rotation_z(angle);
+    }
+}
+
 #[derive(Resource)]
 struct CornFieldAssets {
     gltf: Handle<Gltf>,
@@ -147,6 +190,11 @@ const FIELD_SEQUESTRATION: f32 = 2.0;
 // net-emitting, matching real first-generation corn ethanol's documented
 // lifecycle-emissions controversy).
 const FIELD_EMISSION_ON_HARVEST: f32 = 3.0;
+// Small -- a corn stalk's thicker, stiffer structure sways far less
+// visibly in wind than fine grass blades (see CropGrowth's own doc comment
+// on sway_amplitude for the real agronomic concern, lodging, this is
+// loosely gesturing at without modeling as a mechanic).
+const FIELD_SWAY_AMPLITUDE: f32 = 0.03;
 
 // Directly ahead of PLAYER_SPAWN (0,1,-8), facing +Z the same direction the
 // player spawns looking -- a 3x2 grid of corn centered on X=0, a couple of
@@ -163,7 +211,7 @@ const FIELD_EMISSION_ON_HARVEST: f32 = 3.0;
 pub(crate) fn setup(app: &mut App) {
     let gltf = app.world().resource::<AssetServer>().load("models/corn_plant/corn_plant.glb");
     app.insert_resource(CornFieldAssets { gltf });
-    app.add_systems(Update, (spawn_corn_field_once_loaded, update_crop_growth));
+    app.add_systems(Update, (spawn_corn_field_once_loaded, update_crop_growth, update_crop_sway));
 }
 
 fn spawn_corn_field_once_loaded(
@@ -190,7 +238,7 @@ fn spawn_corn_field_once_loaded(
         commands.spawn((
             WorldAssetRoot(scene.clone()),
             Transform::from_xyz(x, 0.0, z),
-            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST),
+            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST, FIELD_SWAY_AMPLITUDE),
         ));
     }
 
@@ -207,7 +255,7 @@ mod tests {
         // supplied) must not compensate for water=0.1 (starved) -- the
         // limiting factor should equal the SCARCEST input, not
         // (1.0+1.0+0.1)/3 =~ 0.7.
-        let crop = CropGrowth::new(1.0, 1.0, 0.1, 1.0, 10.0, 5.0);
+        let crop = CropGrowth::new(1.0, 1.0, 0.1, 1.0, 10.0, 5.0, 0.1);
         assert!((crop.limiting_factor() - 0.1).abs() < 1.0e-6, "limiting factor should equal the scarcest input, not an average");
     }
 
@@ -218,7 +266,7 @@ mod tests {
         // payout without needing a full ECS World/App for this unit test
         // -- same reasoning physics.rs's own tests call RapierPhysics
         // methods directly rather than spinning up a Bevy schedule.
-        let mut crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0, 5.0);
+        let mut crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0, 5.0, 0.1);
         let before = budget.remaining();
 
         // growth_rate=1.0 at limiting_factor=1.0 means 1.0 growth/sec;
@@ -243,5 +291,25 @@ mod tests {
             FIELD_EMISSION_ON_HARVEST > FIELD_SEQUESTRATION,
             "a full grow-then-harvest cycle should be net-emitting overall, matching real first-generation corn ethanol's own lifecycle-emissions tradeoff"
         );
+    }
+
+    #[test]
+    fn seedling_barely_sways_but_a_mature_plant_reaches_full_amplitude() {
+        // Sway is scaled by growth (see CropGrowth's own doc comment on
+        // sway_amplitude): a fraction-0.0 seedling should produce ~zero
+        // angle regardless of elapsed time/phase, while a fully-grown
+        // plant, at the sine wave's own peak, should reach the full
+        // configured amplitude -- not some fixed angle applied uniformly
+        // regardless of growth.
+        let amplitude = 0.15;
+        let seedling_angle = sway_angle(amplitude, 0.0, 3.7, 1.2);
+        assert!(seedling_angle.abs() < 1.0e-6, "an ungrown seedling should not visibly sway");
+
+        // sin() peaks at 1.0 when its argument is PI/2 -- choose elapsed
+        // such that elapsed_secs*SWAY_SPEED + phase == PI/2 exactly, with
+        // phase=0 for a simple case.
+        let elapsed_at_peak = (core::f32::consts::FRAC_PI_2) / SWAY_SPEED;
+        let mature_angle = sway_angle(amplitude, 1.0, elapsed_at_peak, 0.0);
+        assert!((mature_angle - amplitude).abs() < 1.0e-5, "a fully-grown plant at the sine wave's peak should reach its full configured sway_amplitude");
     }
 }

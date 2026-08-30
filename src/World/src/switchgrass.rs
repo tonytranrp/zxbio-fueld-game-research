@@ -98,6 +98,12 @@ pub(crate) const FIELD_SEQUESTRATION: f32 = 2.2;
 // dramatically better but still net-EMITTING, matching this file's own doc
 // comment on deliberately not modeling switchgrass as carbon-negative.
 pub(crate) const FIELD_EMISSION_ON_HARVEST: f32 = 2.5;
+// Largest of the three crops (see crop.rs's own corn FIELD_SWAY_AMPLITUDE,
+// 0.03, for the baseline and CropGrowth's own doc comment for the general
+// reasoning) -- switchgrass's real narrow, fine blade-like leaves (this
+// file's own generation prompt) flex more visibly in wind than corn's
+// thicker stalks or miscanthus's own stiffer, bamboo-like canes.
+pub(crate) const FIELD_SWAY_AMPLITUDE: f32 = 0.15;
 
 // A second row directly between the player and crop.rs's own corn field
 // (which occupies X=-1.0..1.0, Z=-6.0..-4.8) -- NOT beside it in X as
@@ -147,7 +153,7 @@ fn spawn_switchgrass_field_once_loaded(
         commands.spawn((
             WorldAssetRoot(scene.clone()),
             Transform::from_xyz(x, 0.0, z),
-            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST),
+            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST, FIELD_SWAY_AMPLITUDE),
         ));
     }
 

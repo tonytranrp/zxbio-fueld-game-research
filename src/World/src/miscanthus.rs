@@ -82,6 +82,12 @@ pub(crate) const FIELD_SEQUESTRATION: f32 = 4.0;
 // consistently found net carbon-negative in soil-carbon-inclusive lifecycle
 // models, unlike switchgrass).
 pub(crate) const FIELD_EMISSION_ON_HARVEST: f32 = 2.0;
+// Between corn's 0.03 and switchgrass's 0.15 (see crop.rs's own
+// FIELD_SWAY_AMPLITUDE and switchgrass.rs's own equivalent for the general
+// reasoning) -- miscanthus's real bamboo-like canes (this file's own
+// generation prompt) are stiffer than switchgrass's fine blade-like
+// leaves, but still more flexible than corn's own thicker stalk.
+pub(crate) const FIELD_SWAY_AMPLITUDE: f32 = 0.10;
 
 // Same Z depth as switchgrass.rs's own field (Z=-4.2/-3.6, farther from the
 // player than corn's own Z=-6.0/-4.8 row, hence a wider camera frustum at
@@ -125,7 +131,7 @@ fn spawn_miscanthus_field_once_loaded(
         commands.spawn((
             WorldAssetRoot(scene.clone()),
             Transform::from_xyz(x, 0.0, z),
-            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST),
+            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST, FIELD_SWAY_AMPLITUDE),
         ));
     }
 
