@@ -452,25 +452,43 @@ impl ApplicationHandler for SessionApp {
         // KhronosPbrNeutral is designed to preserve color fidelity, a
         // better fit for verifying imported-model color later than a
         // stylized filmic LUT anyway.
-        let world_camera_entity = app
-            .world_mut()
-            .spawn((
-                Camera3d::default(),
-                Camera {
-                    clear_color: ClearColorConfig::Custom(CLEAR_COLOR),
-                    ..Default::default()
-                },
-                Tonemapping::KhronosPbrNeutral,
-                Transform::from_xyz(level::PLAYER_SPAWN.x, level::PLAYER_SPAWN.y + 0.85, level::PLAYER_SPAWN.z),
-                WorldCamera,
-            ))
-            .id();
-
-        hud::setup(&mut app, world_camera_entity);
+        app.world_mut().spawn((
+            Camera3d::default(),
+            Camera {
+                clear_color: ClearColorConfig::Custom(CLEAR_COLOR),
+                ..Default::default()
+            },
+            Tonemapping::KhronosPbrNeutral,
+            Transform::from_xyz(level::PLAYER_SPAWN.x, level::PLAYER_SPAWN.y + 0.85, level::PLAYER_SPAWN.z),
+            WorldCamera,
+        ));
 
         // ---- Phase 4: viewmodel hands (own fixed camera, order=1, drawn
         // on top of the world camera above without clearing it) ----
-        viewmodel::setup(&mut app);
+        let viewmodel_camera_entity = viewmodel::setup(&mut app);
+
+        // hud.rs's UI is targeted at the VIEWMODEL camera (order=1, the
+        // later of the two Camera3d entities), not the world camera --
+        // real, screenshot-verified finding: with the world camera as the
+        // UI target, the HUD's data pipeline was fully correct (confirmed
+        // via multiple render-world probes: UiCameraView attached, non-empty
+        // ExtractedUiNodes, a queued TransparentUi phase item, a compiled
+        // pipeline, an intact UiViewTarget->ViewTarget chain, zero render
+        // errors) yet nothing ever appeared on screen -- and disabling the
+        // viewmodel camera entirely (a one-off differential test, not kept)
+        // made the SAME HUD code render correctly with the world camera
+        // still as the target. That isolates the cause to the two-camera
+        // interaction specifically: ViewTarget's `main_texture` ping-pong
+        // index is documented as "shared across view targets with the same
+        // render target" (bevy_render-0.19.1's own view/mod.rs), so the
+        // leading theory is the viewmodel camera's own later Core3d pass
+        // (postprocess/tonemapping included) flips that shared index after
+        // the world camera's own ui_pass already wrote to it, stranding the
+        // UI draw on a ping-pong slot nothing ever presents. Targeting
+        // whichever camera renders LAST sidesteps this rather than fixing
+        // the root cause upstream -- see biofuel-climate-science-gameplay.md
+        // for the full trail if a real fix (vs. this workaround) is wanted.
+        hud::setup(&mut app, viewmodel_camera_entity);
 
         self.app = Some(app);
         self.winit_window = Some(wrapped);

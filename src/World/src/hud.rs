@@ -4,45 +4,32 @@
 //! harvest) worth actually surfacing to the player instead of just
 //! existing as internal resource state nothing displays.
 //!
-//! KNOWN ISSUE (2026-08-30, second diagnostic pass): still doesn't visually
-//! render, but this pass ruled out the two most likely suspects with real
-//! evidence, not just code-reading:
-//! - `bevy_ui_render::extract_ui_camera_view` DOES attach `UiCameraView` to
-//!   the world camera's render-world entity every frame (a render-world
-//!   probe confirmed `UiCameraView=true` on both cameras from frame 2
-//!   onward -- frame 1 alone showed 0 entities, a pipelining artifact, not
-//!   a bug).
-//! - `ExtractedUiNodes` genuinely receives this module's data every frame
-//!   -- a second render-world probe confirmed `uinodes.len()=2` (Node +
-//!   BackgroundColor, tested with an explicit 320x80 Val::Px size and a
-//!   magenta color as a control) and `glyphs.len()=42` (real text glyph
-//!   data) every single frame, not zero.
-//! - `queue_uinodes`'s camera->view->phase lookup chain (bevy_ui_render-
-//!   0.19.1 lib.rs `extract_ui_camera_view`, ~line 776-875) was read in
-//!   full: it spawns a dedicated UI view entity per camera and calls
-//!   `transparent_render_phases.prepare_for_new_frame(retained_view_entity)`
-//!   for it -- structurally correct on paper, not yet independently
-//!   verified at runtime.
-//! - `RUST_LOG=wgpu=warn,wgpu_core=warn,wgpu_hal=warn,bevy_render=debug,
-//!   bevy_ui_render=debug` (no rebuild needed, just an env var on the
-//!   already-built exe) surfaced zero UI/pipeline/format-related warnings
-//!   -- only a generic Vulkan loader startup message, arguing against (but
-//!   not fully ruling out) a silently-failing shader/pipeline compile.
+//! RESOLVED (2026-08-30, third diagnostic pass): visually confirmed
+//! rendering correctly in the real game after two full prior passes found
+//! nothing wrong anywhere in the data pipeline. Exhaustive render-world
+//! probing across all three passes proved every single stage -- extraction
+//! (`ExtractedUiNodes` non-empty every frame), camera-view attachment
+//! (`UiCameraView` present), phase queueing (a real `TransparentUi` item
+//! queued), pipeline compilation (`PipelineCache` state `Ok`), and the
+//! `UiViewTarget` -> `ViewTarget` chain (intact, zero render errors) -- all
+//! succeed. Root cause found via a one-off differential test instead:
+//! temporarily disabling `viewmodel.rs`'s second `Camera3d` (order=1, the
+//! first-person hands) made the SAME HUD code render correctly with no
+//! other changes. `bevy_render::view::ViewTarget`'s own doc comment states
+//! its `main_texture` ping-pong index is "shared across view targets with
+//! the same render target" -- the leading theory is the viewmodel camera's
+//! own later Core3d pass (postprocess/tonemapping included) flips that
+//! shared index after the world camera's own `ui_pass` already wrote to
+//! it, stranding the UI draw on a slot nothing ever presents.
 //!
-//! Extraction is proven correct; the gap is downstream of it. Next
-//! candidate, not yet tried: pipeline specialization/PipelineCache
-//! resolution inside `queue_uinodes` (`pipelines.specialize(&pipeline_cache,
-//! &ui_pipeline, UiPipelineKey{ target_format: view.target_format, .. })`)
-//! silently returning a pipeline id that never actually finishes compiling,
-//! which would make `SetItemPipeline`'s render-command execution
-//! (bevy_render-0.19.1 `render_phase/mod.rs`) return `Skip` with no log --
-//! needs a probe reading `Res<PipelineCache>` for that specific id's
-//! compile state, or capturing wgpu's own validation layer output more
-//! directly than RUST_LOG surfaced. See biofuel-climate-science-gameplay.md
-//! memory for the full diagnostic trail across both passes (four real
-//! missing-Plugin crashes fixed to get this far: InputPlugin,
-//! TextureAtlasPlugin, SpriteRenderPlugin, plus the bevy "debug" Cargo
-//! feature used transiently to name them) before re-investigating.
+//! Fix applied: target UI at whichever camera renders LAST (highest
+//! `Camera.order`) instead of the world camera -- `session.rs` now passes
+//! the viewmodel camera's own entity to `setup()` below. This sidesteps
+//! the interaction rather than fixing its root cause upstream in Bevy
+//! itself; if a real 2-camera-safe fix is ever needed (e.g. because a
+//! future camera gets added with an even higher order), re-open
+//! biofuel-climate-science-gameplay.md's full diagnostic trail before
+//! re-deriving any of the above.
 #![forbid(unsafe_code)]
 
 use crate::carbon::CarbonBudget;
@@ -58,14 +45,12 @@ use bevy::ui::{IsDefaultUiCamera, Node, PositionType, Val};
 #[derive(Component)]
 struct HudText;
 
-// world_camera: the entity IsDefaultUiCamera gets attached to, so UI
-// resolves against the tracking world camera rather than viewmodel.rs's
-// fixed hands camera or an ambiguous default -- there are two Camera3d
-// entities in this session (see session.rs's own WorldCamera marker doc
-// comment for the real bug that ambiguity caused elsewhere), and Bevy UI
-// needs an explicit choice here for the same reason.
-pub(crate) fn setup(app: &mut App, world_camera: Entity) {
-    app.world_mut().entity_mut(world_camera).insert(IsDefaultUiCamera);
+// ui_target_camera: the entity IsDefaultUiCamera gets attached to -- must
+// be whichever of this session's two Camera3d entities renders LAST (see
+// this module's own doc comment for why); session.rs passes the viewmodel
+// camera's own entity, not the world camera's.
+pub(crate) fn setup(app: &mut App, ui_target_camera: Entity) {
+    app.world_mut().entity_mut(ui_target_camera).insert(IsDefaultUiCamera);
 
     app.world_mut().spawn((
         Node {

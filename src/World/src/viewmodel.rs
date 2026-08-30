@@ -48,7 +48,12 @@ struct ViewmodelPendingAnimation {
     graph_handle: Handle<AnimationGraph>,
 }
 
-pub(crate) fn setup(app: &mut App) {
+// Returns the spawned viewmodel camera's Entity -- session.rs hands this to
+// hud::setup() instead of the world camera's own entity (see that call
+// site's own doc comment for why: a real, screenshot-verified finding that
+// UI only renders when targeted at whichever camera has the HIGHEST
+// `order` / renders LAST, not the first one).
+pub(crate) fn setup(app: &mut App) -> bevy::prelude::Entity {
     let gltf = app
         .world()
         .resource::<AssetServer>()
@@ -65,36 +70,41 @@ pub(crate) fn setup(app: &mut App) {
     // Near/far mirror ViewmodelPass::kNearPlane/kFarPlane (0.01/10.0),
     // compressed relative to the world camera's own range for reasonable
     // depth precision at this small, close-up scale.
-    app.world_mut().spawn((
-        Camera3d::default(),
-        Camera {
-            order: 1,
-            clear_color: ClearColorConfig::None,
-            ..Default::default()
-        },
-        Projection::Perspective(PerspectiveProjection {
-            fov: 60f32.to_radians(),
-            near: 0.01,
-            far: 10.0,
-            ..Default::default()
-        }),
-        Transform::IDENTITY.looking_at(Vec3::Z, Vec3::Y),
-        RenderLayers::layer(VIEWMODEL_LAYER),
-        // Tonemapping::default() is TonyMcMapface, which needs a LUT
-        // texture the tonemapping_luts feature isn't enabled to provide --
-        // confirmed by a real ERROR-level log line without this ("TonyMcMapFace
-        // tonemapping requires the `tonemapping_luts` feature") that lines
-        // up with this camera specifically (the world camera in session.rs
-        // already overrides this the same way). Same KhronosPbrNeutral
-        // choice as that camera, for the same reason: preserves color
-        // fidelity without the extra Cargo weight of shipping real LUTs.
-        bevy::core_pipeline::tonemapping::Tonemapping::KhronosPbrNeutral,
-    ));
+    let camera_entity = app
+        .world_mut()
+        .spawn((
+            Camera3d::default(),
+            Camera {
+                order: 1,
+                clear_color: ClearColorConfig::None,
+                ..Default::default()
+            },
+            Projection::Perspective(PerspectiveProjection {
+                fov: 60f32.to_radians(),
+                near: 0.01,
+                far: 10.0,
+                ..Default::default()
+            }),
+            Transform::IDENTITY.looking_at(Vec3::Z, Vec3::Y),
+            RenderLayers::layer(VIEWMODEL_LAYER),
+            // Tonemapping::default() is TonyMcMapface, which needs a LUT
+            // texture the tonemapping_luts feature isn't enabled to provide --
+            // confirmed by a real ERROR-level log line without this ("TonyMcMapFace
+            // tonemapping requires the `tonemapping_luts` feature") that lines
+            // up with this camera specifically (the world camera in session.rs
+            // already overrides this the same way). Same KhronosPbrNeutral
+            // choice as that camera, for the same reason: preserves color
+            // fidelity without the extra Cargo weight of shipping real LUTs.
+            bevy::core_pipeline::tonemapping::Tonemapping::KhronosPbrNeutral,
+        ))
+        .id();
 
     app.add_systems(
         Update,
         (spawn_viewmodel_once_loaded, wire_up_viewmodel_animation_and_layers),
     );
+
+    camera_entity
 }
 
 fn spawn_viewmodel_once_loaded(
