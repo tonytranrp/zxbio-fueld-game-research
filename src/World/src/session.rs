@@ -560,6 +560,17 @@ impl ApplicationHandler for SessionApp {
                     }
                 }
             }
+            // TEMP PROBE: testing whether right-click and scroll reach this
+            // window the same way left-click does, before building a new
+            // interaction on either assumption. Remove before committing.
+            WindowEvent::MouseInput { state, button: MouseButton::Right, .. } => {
+                if state == ElementState::Pressed {
+                    eprintln!("PROBE: right click received");
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                eprintln!("PROBE: mouse wheel received: {:?}", delta);
+            }
             WindowEvent::RedrawRequested => {
                 if let Some(app) = &mut self.app {
                     let now = Instant::now();

@@ -78,3 +78,5 @@ __pycache__/
 .sisyphus/
 .omx/
 /.token-optimizer
+/.token-optimizer
+/.claude
