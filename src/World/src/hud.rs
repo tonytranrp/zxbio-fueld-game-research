@@ -4,23 +4,45 @@
 //! harvest) worth actually surfacing to the player instead of just
 //! existing as internal resource state nothing displays.
 //!
-//! KNOWN ISSUE (2026-08-30): the underlying data pipeline is fully verified
-//! correct in the real running game -- update_hud runs every frame, its
-//! Query<&mut Text> succeeds, and the HudText Node's ComputedNode reports a
-//! correct non-degenerate computed size (320x80 physical px, scale factor
-//! 1.0) -- but the text (and even a magenta BackgroundColor swapped in as a
-//! control test) never visually appears on screen. This session has two
-//! Camera3d entities (session.rs's world camera, order 0, and viewmodel.rs's
-//! hands camera, order 1, ClearColorConfig::None) and IsDefaultUiCamera is
-//! attached to the world camera, which per bevy_ui's own DefaultUiCamera
-//! resolution should be sufficient -- root cause not yet found; likely a
-//! bevy_ui_render extraction/camera-mapping edge case specific to targeting
-//! a non-default (non-single, Camera3d-only, no Camera2d) camera setup, not
-//! a bug in this file. See biofuel-climate-science-gameplay.md memory for
-//! the full diagnostic trail (four real missing-Plugin crashes fixed to get
-//! this far: InputPlugin, TextureAtlasPlugin, SpriteRenderPlugin, plus the
-//! bevy "debug" Cargo feature used transiently to name them) before
-//! re-investigating.
+//! KNOWN ISSUE (2026-08-30, second diagnostic pass): still doesn't visually
+//! render, but this pass ruled out the two most likely suspects with real
+//! evidence, not just code-reading:
+//! - `bevy_ui_render::extract_ui_camera_view` DOES attach `UiCameraView` to
+//!   the world camera's render-world entity every frame (a render-world
+//!   probe confirmed `UiCameraView=true` on both cameras from frame 2
+//!   onward -- frame 1 alone showed 0 entities, a pipelining artifact, not
+//!   a bug).
+//! - `ExtractedUiNodes` genuinely receives this module's data every frame
+//!   -- a second render-world probe confirmed `uinodes.len()=2` (Node +
+//!   BackgroundColor, tested with an explicit 320x80 Val::Px size and a
+//!   magenta color as a control) and `glyphs.len()=42` (real text glyph
+//!   data) every single frame, not zero.
+//! - `queue_uinodes`'s camera->view->phase lookup chain (bevy_ui_render-
+//!   0.19.1 lib.rs `extract_ui_camera_view`, ~line 776-875) was read in
+//!   full: it spawns a dedicated UI view entity per camera and calls
+//!   `transparent_render_phases.prepare_for_new_frame(retained_view_entity)`
+//!   for it -- structurally correct on paper, not yet independently
+//!   verified at runtime.
+//! - `RUST_LOG=wgpu=warn,wgpu_core=warn,wgpu_hal=warn,bevy_render=debug,
+//!   bevy_ui_render=debug` (no rebuild needed, just an env var on the
+//!   already-built exe) surfaced zero UI/pipeline/format-related warnings
+//!   -- only a generic Vulkan loader startup message, arguing against (but
+//!   not fully ruling out) a silently-failing shader/pipeline compile.
+//!
+//! Extraction is proven correct; the gap is downstream of it. Next
+//! candidate, not yet tried: pipeline specialization/PipelineCache
+//! resolution inside `queue_uinodes` (`pipelines.specialize(&pipeline_cache,
+//! &ui_pipeline, UiPipelineKey{ target_format: view.target_format, .. })`)
+//! silently returning a pipeline id that never actually finishes compiling,
+//! which would make `SetItemPipeline`'s render-command execution
+//! (bevy_render-0.19.1 `render_phase/mod.rs`) return `Skip` with no log --
+//! needs a probe reading `Res<PipelineCache>` for that specific id's
+//! compile state, or capturing wgpu's own validation layer output more
+//! directly than RUST_LOG surfaced. See biofuel-climate-science-gameplay.md
+//! memory for the full diagnostic trail across both passes (four real
+//! missing-Plugin crashes fixed to get this far: InputPlugin,
+//! TextureAtlasPlugin, SpriteRenderPlugin, plus the bevy "debug" Cargo
+//! feature used transiently to name them) before re-investigating.
 #![forbid(unsafe_code)]
 
 use crate::carbon::CarbonBudget;

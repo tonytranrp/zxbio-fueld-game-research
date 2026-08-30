@@ -2,9 +2,10 @@
 
 First grow-able crop model for the biofuel farm (`src/World/src/crop.rs`'s
 Liebig's-law growth system). Corn/maize was chosen as the first crop because
-it's a real first-generation biofuel (ethanol) feedstock -- a later pass may
-add a next-generation cellulosic crop (e.g. switchgrass) as a narrative/tech
-progression from first- to advanced-generation biofuels.
+it's a real first-generation biofuel (ethanol) feedstock -- see
+`../switchgrass/README.md` for the advanced-generation/cellulosic crop
+planted beside it as the first- to advanced-generation biofuel narrative
+progression this was always meant to set up.
 
 ## Source
 

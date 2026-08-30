@@ -47,6 +47,8 @@ mod player;
 #[forbid(unsafe_code)]
 mod session;
 #[forbid(unsafe_code)]
+mod switchgrass;
+#[forbid(unsafe_code)]
 mod viewmodel;
 
 // mod ffi has to stay literally in this file: cxx's bridge macro processes

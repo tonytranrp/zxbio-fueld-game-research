@@ -70,7 +70,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, level, viewmodel};
+use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, level, switchgrass, viewmodel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -405,6 +405,14 @@ impl ApplicationHandler for SessionApp {
         // and per-frame growth systems, same pattern as viewmodel::setup.
         app.insert_resource(CarbonBudget::default());
         crop::setup(&mut app);
+
+        // ---- Content: a second crop, switchgrass -- real cellulosic/
+        // advanced-generation biofuel feedstock, planted immediately beside
+        // corn's own field so the first-gen vs. advanced-gen contrast is a
+        // first-sight visual comparison. See switchgrass.rs's own doc
+        // comment for the cited real-research calibration behind every one
+        // of its constants (growth pace, sequestration, harvest emission).
+        switchgrass::setup(&mut app);
 
         // Harvest -> fermentation -> combustion: the first real EMITTING
         // counterpart to crop.rs's own sequestration-on-maturity payout --

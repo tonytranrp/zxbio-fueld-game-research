@@ -10,6 +10,12 @@
 //! emission points in an actual biofuel lifecycle, collapsed into one
 //! game-visible emission per harvest for this first pass rather than
 //! modeled as two separate steps.
+//!
+//! The emission amount itself is read from each harvested crop's own
+//! `CropGrowth::emission_on_harvest()` (a per-species field, not a global
+//! constant here) -- switchgrass.rs's own doc comment covers why different
+//! feedstocks have genuinely different real lifecycle emissions and how
+//! its own much-lower value was calibrated against corn's.
 #![forbid(unsafe_code)]
 
 use crate::carbon::CarbonBudget;
@@ -29,20 +35,14 @@ impl FuelStockpile {
     }
 }
 
-// Deliberately game-scale abstractions, not literal unit conversions from
-// real bushel-per-acre ethanol yield figures (those operate at a much
-// larger scale than "one plant"). The ratio between them is what matters:
-// EMISSION_PER_HARVEST is set larger than crop.rs's own
-// SEQUESTRATION-on-maturity payout for the same plant, so a full
-// grow-then-process cycle is net-emitting overall -- matching real
-// first-generation corn ethanol's own well-documented lifecycle-emissions
-// controversy (it is NOT carbon-neutral end to end, despite the naive
-// intuition that "it's a plant, growing it undoes burning it"). Surfacing
-// that real, non-obvious tension instead of smoothing it over is exactly
-// the kind of fact-as-mechanic this project's whole design approach is
-// built around.
+// A deliberately game-scale abstraction, not a literal unit conversion from
+// real liters-per-acre ethanol yield figures (those operate at a much
+// larger scale than "one plant"). Shared across crop species for this
+// first pass -- real feedstocks do yield different liters of ethanol per
+// unit biomass, but that's a separate, not-yet-researched number from the
+// emissions figures this iteration calibrated; unlike emission_on_harvest,
+// this isn't yet worth a per-species field.
 const FUEL_PER_HARVEST: f32 = 0.3;
-const EMISSION_PER_HARVEST: f32 = 3.0;
 // A mature crop sits harvestable for a bit before auto-harvesting -- gives
 // the grow -> mature -> harvested sequence a readable pace instead of
 // vanishing the instant growth finishes. A real player-driven harvest
@@ -64,7 +64,7 @@ pub(crate) fn update_harvest(
     mut stockpile: ResMut<FuelStockpile>,
     mut carbon: ResMut<CarbonBudget>,
     newly_mature: Query<(Entity, &CropGrowth), Without<HarvestTimer>>,
-    mut timers: Query<(Entity, &mut HarvestTimer)>,
+    mut timers: Query<(Entity, &CropGrowth, &mut HarvestTimer)>,
 ) {
     let dt = dt.0;
 
@@ -74,11 +74,11 @@ pub(crate) fn update_harvest(
         }
     }
 
-    for (entity, mut timer) in &mut timers {
+    for (entity, crop, mut timer) in &mut timers {
         timer.0 += dt;
         if timer.0 >= HARVEST_DELAY_SECONDS {
             stockpile.liters += FUEL_PER_HARVEST;
-            carbon.add_emission(EMISSION_PER_HARVEST);
+            carbon.add_emission(crop.emission_on_harvest());
             // A plain despawn(), not despawn_recursive() -- Bevy's own
             // despawn() has cascaded to children by default since 0.14,
             // which is what actually removes the WorldAssetRoot-
@@ -95,18 +95,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn harvest_emission_exceeds_a_single_plants_own_sequestration() {
-        // The real, non-obvious tension this mechanic exists to surface:
-        // growing then processing one plant should be net-emitting, not
-        // net-neutral or net-negative -- see this module's own doc comment
-        // on why. crop.rs's FIELD_SEQUESTRATION constant is private to
-        // that module (by design -- it's field-layout data, not a public
-        // API), so this compares against the same literal value the corn
-        // field is actually spawned with in session.rs, documented there.
-        const CORN_FIELD_SEQUESTRATION: f32 = 2.0;
-        assert!(
-            EMISSION_PER_HARVEST > CORN_FIELD_SEQUESTRATION,
-            "a full grow-then-harvest cycle should be net-emitting overall, matching real first-generation biofuel's own lifecycle-emissions tradeoff"
-        );
+    fn a_harvested_crop_emits_exactly_its_own_emission_on_harvest_value() {
+        // update_harvest reads crop.emission_on_harvest() rather than a
+        // single global constant (see this module's own doc comment on
+        // why) -- exercise that plumbing directly rather than only via
+        // crop.rs's/switchgrass.rs's own per-species emission>sequestration
+        // invariant tests, which don't touch fuel.rs's own code at all.
+        let mut carbon = CarbonBudget::default();
+        let before = carbon.remaining();
+        let crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0, 4.0);
+        carbon.add_emission(crop.emission_on_harvest());
+        assert!((before - carbon.remaining() - 4.0).abs() < 1.0e-6, "the budget should shrink by exactly the harvested crop's own emission_on_harvest value");
     }
 }

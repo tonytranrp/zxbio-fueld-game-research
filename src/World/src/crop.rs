@@ -40,10 +40,23 @@ pub(crate) struct CropGrowth {
     // harvested before maturity never banks a payout it didn't finish
     // earning.
     sequestration_on_maturity: f32,
+    // Emitted into CarbonBudget once, on harvest (fuel.rs) -- a per-species
+    // field rather than fuel.rs's own single global constant, since
+    // different feedstocks have genuinely different real lifecycle
+    // emissions (see switchgrass.rs's own doc comment for the cited
+    // research behind its own much-lower value relative to corn's).
+    emission_on_harvest: f32,
 }
 
 impl CropGrowth {
-    pub(crate) fn new(light: f32, co2: f32, water: f32, growth_rate: f32, sequestration_on_maturity: f32) -> Self {
+    pub(crate) fn new(
+        light: f32,
+        co2: f32,
+        water: f32,
+        growth_rate: f32,
+        sequestration_on_maturity: f32,
+        emission_on_harvest: f32,
+    ) -> Self {
         Self {
             growth: 0.0,
             stage: GrowthStage::Seedling,
@@ -52,11 +65,16 @@ impl CropGrowth {
             water,
             growth_rate,
             sequestration_on_maturity,
+            emission_on_harvest,
         }
     }
 
     pub(crate) fn is_mature(&self) -> bool {
         self.stage == GrowthStage::Mature
+    }
+
+    pub(crate) fn emission_on_harvest(&self) -> f32 {
+        self.emission_on_harvest
     }
 
     // The core Liebig's-law rule: whichever input is scarcest sets the
@@ -123,6 +141,12 @@ const FIELD_ROW_SPACING: f32 = 1.2;
 const FIELD_COL_SPACING: f32 = 1.0;
 const FIELD_GROWTH_RATE: f32 = 0.05; // full growth in ~20s at limiting factor 1.0
 const FIELD_SEQUESTRATION: f32 = 2.0;
+// Real fermentation+combustion lifecycle emission for corn ethanol -- see
+// fuel.rs's own doc comment for the chemistry and the reasoning behind this
+// exceeding FIELD_SEQUESTRATION (a full grow-then-harvest cycle should be
+// net-emitting, matching real first-generation corn ethanol's documented
+// lifecycle-emissions controversy).
+const FIELD_EMISSION_ON_HARVEST: f32 = 3.0;
 
 // Directly ahead of PLAYER_SPAWN (0,1,-8), facing +Z the same direction the
 // player spawns looking -- a 3x2 grid of corn centered on X=0, a couple of
@@ -166,7 +190,7 @@ fn spawn_corn_field_once_loaded(
         commands.spawn((
             WorldAssetRoot(scene.clone()),
             Transform::from_xyz(x, 0.0, z),
-            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION),
+            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST),
         ));
     }
 
@@ -183,7 +207,7 @@ mod tests {
         // supplied) must not compensate for water=0.1 (starved) -- the
         // limiting factor should equal the SCARCEST input, not
         // (1.0+1.0+0.1)/3 =~ 0.7.
-        let crop = CropGrowth::new(1.0, 1.0, 0.1, 1.0, 10.0);
+        let crop = CropGrowth::new(1.0, 1.0, 0.1, 1.0, 10.0, 5.0);
         assert!((crop.limiting_factor() - 0.1).abs() < 1.0e-6, "limiting factor should equal the scarcest input, not an average");
     }
 
@@ -194,7 +218,7 @@ mod tests {
         // payout without needing a full ECS World/App for this unit test
         // -- same reasoning physics.rs's own tests call RapierPhysics
         // methods directly rather than spinning up a Bevy schedule.
-        let mut crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0);
+        let mut crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0, 5.0);
         let before = budget.remaining();
 
         // growth_rate=1.0 at limiting_factor=1.0 means 1.0 growth/sec;
@@ -205,5 +229,19 @@ mod tests {
         budget.add_emission(-crop.sequestration_on_maturity);
 
         assert!(budget.remaining() > before, "reaching maturity should sequester carbon (grow the remaining budget)");
+    }
+
+    #[test]
+    fn corn_field_harvest_cycle_is_net_emitting() {
+        // The real, non-obvious tension this crop exists to surface:
+        // growing then processing corn should be net-emitting overall, not
+        // net-neutral or net-negative -- see fuel.rs's own doc comment on
+        // the real fermentation+combustion chemistry this is grounded in,
+        // and switchgrass.rs's own equivalent test for the cellulosic
+        // feedstock's contrasting (still net-emitting, but far less) cycle.
+        assert!(
+            FIELD_EMISSION_ON_HARVEST > FIELD_SEQUESTRATION,
+            "a full grow-then-harvest cycle should be net-emitting overall, matching real first-generation corn ethanol's own lifecycle-emissions tradeoff"
+        );
     }
 }
