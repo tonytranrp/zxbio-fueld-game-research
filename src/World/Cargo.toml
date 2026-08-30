@@ -101,6 +101,45 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     # Phase 3: Mesh3d/MeshMaterial3d<StandardMaterial>/Camera3d/PbrPlugin.
     "bevy_pbr",
     "bevy_mesh",
+    # Phase 4: loading assets/models/viewmodel_hands/viewmodel_hands.glb
+    # (the same file ModelSystem.cpp loads via raylib's LoadModel) and
+    # playing its idle/walk animation clips. "bevy_gltf" alone does NOT
+    # compile in Gltf::animations -- that field is gated by bevy_gltf's own
+    # (separate) optional "bevy_animation" Cargo feature, which
+    # bevy_internal's plain "bevy_gltf" feature entry does not forward
+    # (confirmed: no "bevy_gltf?/bevy_animation" in that entry, reading
+    # bevy_internal-0.19.1/Cargo.toml.orig). A consuming crate can't reach a
+    # transitive dependency's feature directly ("bevy_gltf/bevy_animation"
+    # here is a hard Cargo manifest error, not just wrong at compile time)
+    # -- bevy_internal's own "gltf_animation" feature is the bridge it
+    # actually provides for exactly this combination.
+    "bevy_gltf",
+    "gltf_animation",
+    "bevy_animation",
+    # viewmodel_hands.glb embeds its textures as JPEG -- confirmed by a
+    # real load failure without this ("ImageError(InvalidImageMimeType(
+    # \"image/jpeg\"))" from bevy_gltf::loader::GltfLoader). Bevy's image
+    # crate doesn't bundle any raster codec by default (binary-size
+    # tradeoff), so this has to be requested explicitly even though
+    # "bevy_image" itself is already on.
+    "jpeg",
+    # bevy_world_serialization's WorldAssetRoot spawner instantiates a glTF
+    # scene's components through the reflection type registry (it has to:
+    # the loaded WorldAsset stores components in a reflected/dynamic form,
+    # not concrete Rust types baked in at compile time) -- confirmed by a
+    # real panic without this ("world contains the unregistered type
+    # `bevy_transform::components::transform::Transform`") even though
+    # TransformPlugin is already added; that plugin does NOT itself call
+    # app.register_type::<Transform>(), and neither does any other plugin
+    # in this crate's deliberately minimal set. Registering every type by
+    # hand one panic at a time (there would be several more after
+    # Transform -- GlobalTransform, Visibility, Mesh3d, MeshMaterial3d<
+    # StandardMaterial>, Name, ...) is what a full DefaultPlugins app gets
+    # for free; this feature (inventory-based, not the *_static variant --
+    # this crate targets native Windows only, not wasm, so inventory's
+    # wider compatibility isn't a concern here) does the same automatically
+    # for every #[derive(Reflect)] type in the dependency graph.
+    "reflect_auto_register",
     "std", "multi_threaded",
     "bevy_log",
 ] }

@@ -69,7 +69,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, event_loop_cell, level};
+use crate::{adapter_probe, event_loop_cell, level, viewmodel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -191,6 +191,14 @@ impl ApplicationHandler for SessionApp {
         // IoTaskPool, which only exists once TaskPoolPlugin (part of this
         // group) has run.
         app.add_plugins(MinimalPlugins);
+        // Nothing else in this crate's deliberately minimal plugin set
+        // installs a tracing subscriber -- without this, every warn!/
+        // error! Bevy's own internals emit (real example this phase: an
+        // unbound-tonemapping-LUT error that was the actual cause of the
+        // viewmodel hands rendering solid magenta) goes out silently. Kept
+        // permanently, not just for that one diagnosis -- worth having for
+        // whatever the next Bevy-internals surprise turns out to be.
+        app.add_plugins(bevy::log::LogPlugin::default());
         // MinimalPlugins is deliberately minimal enough that it does NOT
         // include this -- confirmed by reading bevy_internal-0.19.1/src/
         // default_plugins.rs's own MinimalPlugins group definition (just
@@ -246,6 +254,24 @@ impl ApplicationHandler for SessionApp {
             ..Default::default()
         });
         app.add_plugins(CorePipelinePlugin);
+        // Phase 4: must precede PbrPlugin below -- PbrPlugin::build() itself
+        // calls bevy_pbr::gltf::add_gltf() when its own "bevy_gltf" Cargo
+        // feature is on (cascaded automatically by this crate's own
+        // "bevy_gltf" feature, see Cargo.toml), which does
+        // world.resource_mut::<GltfExtensionHandlers>() -- a resource only
+        // GltfPlugin::build() inserts. Confirmed by a real panic with the
+        // plugins in the other order ("Requested resource ... does not
+        // exist", inside bevy_pbr::gltf::add_gltf). AnimationPlugin
+        // (AnimationPlayer/AnimationGraph playback) and
+        // WorldSerializationPlugin (turns a WorldAssetRoot component into
+        // an actually-instantiated child entity hierarchy) are each their
+        // own plugin too, same "cascaded Cargo dependency, but the Plugin
+        // that registers it isn't auto-added" pattern hit repeatedly this
+        // phase and last -- order between these three doesn't matter, only
+        // being before PbrPlugin does.
+        app.add_plugins(bevy::gltf::GltfPlugin::default());
+        app.add_plugins(bevy::animation::AnimationPlugin);
+        app.add_plugins(bevy::world_serialization::WorldSerializationPlugin);
         // Phase 3: real scene content needs Mesh3d/MeshMaterial3d<
         // StandardMaterial> and a real Camera3d, which PbrPlugin registers.
         // LightPlugin is a separate, NOT-auto-bundled plugin from the
@@ -320,6 +346,10 @@ impl ApplicationHandler for SessionApp {
             Tonemapping::KhronosPbrNeutral,
             Transform::from_xyz(level::PLAYER_SPAWN.x, level::PLAYER_SPAWN.y + 0.85, level::PLAYER_SPAWN.z),
         ));
+
+        // ---- Phase 4: viewmodel hands (own fixed camera, order=1, drawn
+        // on top of the world camera above without clearing it) ----
+        viewmodel::setup(&mut app);
 
         self.app = Some(app);
         self.winit_window = Some(wrapped);

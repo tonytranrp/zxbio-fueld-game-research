@@ -38,6 +38,8 @@ mod physics;
 mod player;
 #[forbid(unsafe_code)]
 mod session;
+#[forbid(unsafe_code)]
+mod viewmodel;
 
 // mod ffi has to stay literally in this file: cxx's bridge macro processes
 // the mod's items directly and doesn't expand an `include!` placed inside
