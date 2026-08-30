@@ -99,6 +99,21 @@ impl WaterBody {
         let distance = (self.ph - OPTIMAL_IRRIGATION_PH).abs();
         (1.0 - distance / PH_FALLOFF_RANGE).clamp(IRRIGATION_MULTIPLIER_FLOOR, 1.0)
     }
+
+    // True once the pond has acidified PAST the real nutrient-uptake
+    // optimum (Penn State Extension, ~6.0-6.5 -- see this module's own
+    // doc comment), not merely once it's moved at all -- the peaked
+    // curve means early acidification from INITIAL_PH (8.2) down toward
+    // OPTIMAL_IRRIGATION_PH is actually an IMPROVEMENT (see
+    // irrigation_multiplier_peaks_near_the_optimum_not_at_the_starting_ph's
+    // own test), so a naive "pH has changed" flag would misleadingly warn
+    // the player during the healthy half of the curve. This only goes
+    // true on the declining, harmful side -- once the player has
+    // genuinely overshot, not merely started moving away from the
+    // (real, but not itself optimal) starting pH.
+    pub(crate) fn has_overshot_optimal(&self) -> bool {
+        self.ph < OPTIMAL_IRRIGATION_PH
+    }
 }
 
 fn compute_ph(emitted: f32, total_budget: f32) -> f32 {
@@ -221,5 +236,30 @@ mod tests {
             water_at_optimum.irrigation_multiplier() > water_overshot.irrigation_multiplier(),
             "overshooting past the optimum into heavy acidification should be worse than the optimum itself"
         );
+    }
+
+    #[test]
+    fn overshoot_warning_stays_off_during_the_healthy_half_of_the_curve() {
+        // The exact naive-flag mistake this method's own doc comment
+        // warns against: pH moving DOWN from INITIAL_PH toward the
+        // optimum is real improvement, not something worth alarming the
+        // player about, even though "pH changed from its start value"
+        // would be true for both directions.
+        let water_still_alkaline = WaterBody {
+            ph: (INITIAL_PH + OPTIMAL_IRRIGATION_PH) / 2.0,
+            material: Handle::default(),
+        };
+        let water_at_optimum = WaterBody {
+            ph: OPTIMAL_IRRIGATION_PH,
+            material: Handle::default(),
+        };
+        let water_overshot = WaterBody {
+            ph: MIN_PH,
+            material: Handle::default(),
+        };
+
+        assert!(!water_still_alkaline.has_overshot_optimal(), "still on the healthy (improving) half of the curve -- no warning yet");
+        assert!(!water_at_optimum.has_overshot_optimal(), "sitting exactly at the optimum is not itself an overshoot");
+        assert!(water_overshot.has_overshot_optimal(), "genuinely past the optimum into harmful acidic territory should warn");
     }
 }

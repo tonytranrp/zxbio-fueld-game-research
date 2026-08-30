@@ -83,11 +83,22 @@ fn update_hud(
     let Ok(mut text) = text_query.single_mut() else {
         return;
     };
+    // The warning line only appears once WaterBody::has_overshot_optimal()
+    // itself goes true (past the real nutrient-uptake optimum, not merely
+    // "pH has moved") -- see that method's own doc comment for why a
+    // naive "changed at all" check would misleadingly fire during the
+    // healthy half of the pond's own peaked pH curve.
+    let overshoot_warning = if water.has_overshot_optimal() {
+        "\n! Pond has overshot its optimal pH -- irrigation quality is now declining"
+    } else {
+        ""
+    };
     text.0 = format!(
-        "Carbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}\nHydrogen: {:.2} kg",
+        "Carbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}\nHydrogen: {:.2} kg{}",
         carbon.remaining(),
         fuel.liters(),
         water.ph(),
-        hydrogen.kg()
+        hydrogen.kg(),
+        overshoot_warning
     );
 }
