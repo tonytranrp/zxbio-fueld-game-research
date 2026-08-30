@@ -24,11 +24,6 @@ pub(crate) struct FuelStockpile {
 }
 
 impl FuelStockpile {
-    // Not read yet -- same "no HUD element exists to show it to the player
-    // yet" situation as CarbonBudget's own fields; see that struct's doc
-    // comment. A HUD showing both together (fuel produced vs. carbon
-    // spent) is more useful to build once than either alone right now.
-    #[allow(dead_code)]
     pub(crate) fn liters(&self) -> f32 {
         self.liters
     }

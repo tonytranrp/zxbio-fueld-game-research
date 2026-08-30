@@ -45,7 +45,7 @@ use bevy::color::Color;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::ecs::system::{Query, Res, ResMut};
-use bevy::image::ImagePlugin;
+use bevy::image::{ImagePlugin, TextureAtlasPlugin};
 use bevy::math::Vec3;
 use bevy::mesh::MeshPlugin;
 use bevy::pbr::PbrPlugin;
@@ -70,7 +70,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, crop, event_loop_cell, fuel, level, viewmodel};
+use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, level, viewmodel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -262,6 +262,15 @@ impl ApplicationHandler for SessionApp {
         // Registers the Mesh asset type -- Core3d's render pipeline reads
         // an AssetEvent<Mesh> message reader unconditionally.
         app.add_plugins(MeshPlugin);
+        // hud.rs's Text/Node don't use image content sizing, but bevy_ui's
+        // own update_image_content_size_system runs unconditionally once
+        // UiPlugin is added and reads Res<Assets<TextureAtlasLayout>> --
+        // confirmed by a real crash without this. That asset type is
+        // registered by bevy_image::TextureAtlasPlugin::build() (a single
+        // app.init_asset::<TextureAtlasLayout>() call), same "cascaded
+        // Cargo dependency, not an auto-added Plugin" pattern as this
+        // session's other fixes.
+        app.add_plugins(TextureAtlasPlugin);
         app.add_plugins(RenderPlugin {
             render_creation: WgpuSettings {
                 backends: Some(Backends::VULKAN),
@@ -310,6 +319,47 @@ impl ApplicationHandler for SessionApp {
             ..Default::default()
         });
         app.add_plugins(bevy::light::LightPlugin);
+        // hud.rs's on-screen text. TextPlugin registers font/glyph-layout
+        // systems, UiPlugin the layout (Node/flexbox) systems, UiRenderPlugin
+        // the actual render-graph node that draws it -- three separate
+        // plugins across three separate crates, same "cascaded Cargo
+        // dependency, not an auto-added Plugin" pattern hit repeatedly this
+        // migration (Light/Gltf/Animation/WorldSerialization above).
+        app.add_plugins(bevy::text::TextPlugin);
+        app.add_plugins(bevy::ui::UiPlugin);
+        app.add_plugins(bevy::ui_render::UiRenderPlugin);
+        // bevy_ui_render's own prepare_uinodes (render-world, runs even for
+        // hud.rs's plain Text/Node, no Sprite entities anywhere in this
+        // crate) reads the render sub-app's Res<SpriteAssetEvents> --
+        // confirmed by a real crash without this. That resource is
+        // registered by bevy_sprite_render::SpriteRenderPlugin::build() (on
+        // RenderApp, not the main app -- source note: bevy_sprite_render-
+        // 0.19.1/src/lib.rs's SpriteRenderPlugin impl), which the
+        // "bevy_ui_render" Cargo feature pulls in as a compiled dependency
+        // (confirmed: SpriteRenderPlugin's own build() early-returns via
+        // is_plugin_added::<TextureAtlasPlugin> reuse, so no conflict with
+        // this file's own explicit TextureAtlasPlugin above) but never
+        // instantiates as a Plugin -- same pattern as every other fix in
+        // this block.
+        app.add_plugins(bevy::sprite_render::SpriteRenderPlugin);
+        // UiPlugin's own ui_focus_system (hover/click bookkeeping for
+        // Interaction, unused by hud.rs's plain read-only Text/Node but
+        // still scheduled unconditionally by UiPlugin) reads
+        // Res<ButtonInput<MouseButton>> -- confirmed by a real crash without
+        // this ("Resource does not exist", name only visible with Cargo's
+        // "debug" feature temporarily enabled: bevy_ui::focus::ui_focus_
+        // system / Res<ButtonInput<MouseButton>>). bevy_input is a hard
+        // (non-optional) dependency of bevy_internal already, so this needs
+        // no new Cargo feature -- just the Plugin, which this crate's
+        // deliberately-minimal set (no DefaultPlugins, no bevy_winit) never
+        // added. Its build() only registers messages/resources and systems
+        // that consume them; since nothing here emits winit-sourced
+        // MouseButtonInput events, ButtonInput<MouseButton> simply stays at
+        // its default "nothing pressed" state forever, which is fine since
+        // this crate does not use bevy_ui's Interaction/Button widgets for
+        // real input -- input_state.rs's own hand-rolled path is what
+        // actually drives gameplay.
+        app.add_plugins(bevy::input::InputPlugin);
 
         let bevy_window = BevyWindow {
             resolution: WindowResolution::new(size.width, size.height),
@@ -386,16 +436,21 @@ impl ApplicationHandler for SessionApp {
         // KhronosPbrNeutral is designed to preserve color fidelity, a
         // better fit for verifying imported-model color later than a
         // stylized filmic LUT anyway.
-        app.world_mut().spawn((
-            Camera3d::default(),
-            Camera {
-                clear_color: ClearColorConfig::Custom(CLEAR_COLOR),
-                ..Default::default()
-            },
-            Tonemapping::KhronosPbrNeutral,
-            Transform::from_xyz(level::PLAYER_SPAWN.x, level::PLAYER_SPAWN.y + 0.85, level::PLAYER_SPAWN.z),
-            WorldCamera,
-        ));
+        let world_camera_entity = app
+            .world_mut()
+            .spawn((
+                Camera3d::default(),
+                Camera {
+                    clear_color: ClearColorConfig::Custom(CLEAR_COLOR),
+                    ..Default::default()
+                },
+                Tonemapping::KhronosPbrNeutral,
+                Transform::from_xyz(level::PLAYER_SPAWN.x, level::PLAYER_SPAWN.y + 0.85, level::PLAYER_SPAWN.z),
+                WorldCamera,
+            ))
+            .id();
+
+        hud::setup(&mut app, world_camera_entity);
 
         // ---- Phase 4: viewmodel hands (own fixed camera, order=1, drawn
         // on top of the world camera above without clearing it) ----

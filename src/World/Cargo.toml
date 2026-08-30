@@ -140,6 +140,18 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     # wider compatibility isn't a concern here) does the same automatically
     # for every #[derive(Reflect)] type in the dependency graph.
     "reflect_auto_register",
+    # A HUD showing the shared CarbonBudget/FuelStockpile (hud.rs). Enabling
+    # just "bevy_ui" alone gets the layout/Node types but not an actual
+    # render backend for them -- "bevy_ui_render" is bevy_internal's own
+    # combinator feature bundling bevy_ui + bevy_ui_render + bevy_sprite_
+    # render together, the same "top-level feature is the bridge, a plain
+    # per-crate feature name isn't reachable from a consuming crate"
+    # pattern gltf_animation already established. default_font avoids
+    # needing to bundle/load a font asset for a first pass -- Bevy ships a
+    # small embedded fallback font under this feature specifically for that
+    # case.
+    "bevy_ui_render",
+    "default_font",
     "std", "multi_threaded",
     "bevy_log",
 ] }

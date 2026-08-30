@@ -11,13 +11,6 @@
 
 use bevy::prelude::Resource;
 
-// Not read yet -- total_budget/remaining() are written every time a crop
-// matures (crop.rs) but have no reader until a HUD element displays the
-// remaining budget to the player, which is the natural next piece of UI
-// work once there's more than one emitting/sequestering system for it to
-// be worth building around. Kept now so that HUD work doesn't also need to
-// design this resource's shape.
-#[allow(dead_code)]
 #[derive(Resource)]
 pub(crate) struct CarbonBudget {
     // Both in arbitrary game-tonnes, not real tonnes -- the ratio between
@@ -41,8 +34,6 @@ impl Default for CarbonBudget {
 }
 
 impl CarbonBudget {
-    // Not read outside tests yet -- see the struct's own doc comment.
-    #[allow(dead_code)]
     pub(crate) fn remaining(&self) -> f32 {
         self.total_budget - self.emitted
     }
