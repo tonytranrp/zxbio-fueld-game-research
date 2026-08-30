@@ -133,10 +133,11 @@ fn update_electrolyzer(
     mut hydrogen: ResMut<HydrogenStockpile>,
     mut carbon: ResMut<CarbonBudget>,
     solar: Res<crate::solar::SolarArray>,
+    daynight: Res<crate::daynight::DayNightCycle>,
 ) {
     let produced = PRODUCTION_RATE_KG_PER_SECOND * dt.0;
     hydrogen.kg += produced;
-    carbon.add_emission(produced * solar.apply(EMISSION_PER_KG));
+    carbon.add_emission(produced * solar.apply(EMISSION_PER_KG, daynight.light_level()));
 }
 
 #[cfg(test)]

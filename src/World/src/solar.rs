@@ -19,6 +19,19 @@
 //!   module uses NREL's own lower residential/commercial category
 //!   (12.7%-19.8%) instead of the flashier utility-scale number -- the
 //!   honest, if less generous, real category for what this actually is.
+//!   `CAPACITY_FACTOR` is itself a REAL 24-hour (day+night) average --
+//!   NREL's own headline figure already bakes in that roughly half of
+//!   every real day is dark. Now that `daynight.rs`'s own real day/night
+//!   cycle exists, `apply()` decomposes that average back into its own
+//!   two real halves instead of applying it as a flat multiplier
+//!   regardless of time of day: zero production at night (the array
+//!   genuinely cannot produce without sunlight, full stop), scaled up to
+//!   an EFFECTIVE daytime-only factor (`CAPACITY_FACTOR /
+//!   DAY_FRACTION_OF_CYCLE`) during daylight, further scaled continuously
+//!   by the sun's own real-time brightness (`daynight.rs`'s own
+//!   `light_level()` -- dim near sunrise/sunset, full at solar noon) --
+//!   more physically honest than the flat version, and by construction
+//!   still averages out to the same real NREL figure over a full cycle.
 //! - The real, deliberately-not-smoothed-over consequence of the above
 //!   two points together: because the array only produces real power a
 //!   fraction of the time, and grid draw fills the rest, installing solar
@@ -75,12 +88,19 @@ impl SolarArray {
     // caller's own authoritative grid-only number rather than
     // recalculating it from this module's own constants, so the two
     // modules can't silently drift out of sync with each other.
-    pub(crate) fn apply(&self, grid_only_emission_per_kg: f32) -> f32 {
+    //
+    // day_night_light: daynight.rs's own DayNightCycle::light_level()
+    // (0.0..=1.0, effectively floored at NIGHT_AMBIENT_LIGHT rather than
+    // literal zero -- see that module's own doc comment). See this
+    // module's own doc comment for why CAPACITY_FACTOR gets decomposed
+    // into an effective daytime-only factor here rather than applied flat.
+    pub(crate) fn apply(&self, grid_only_emission_per_kg: f32, day_night_light: f32) -> f32 {
         if self.active_seconds < EMBODIED_CARBON_PAYBACK_SECONDS {
             return grid_only_emission_per_kg;
         }
         let solar_emission_per_kg = ELECTROLYZER_KWH_PER_KG * SOLAR_EMISSION_PER_KWH;
-        CAPACITY_FACTOR * solar_emission_per_kg + (1.0 - CAPACITY_FACTOR) * grid_only_emission_per_kg
+        let effective_capacity_factor = (CAPACITY_FACTOR / DAY_FRACTION_OF_CYCLE) * day_night_light;
+        effective_capacity_factor * solar_emission_per_kg + (1.0 - effective_capacity_factor) * grid_only_emission_per_kg
     }
 }
 
@@ -104,8 +124,19 @@ const ELECTROLYZER_KWH_PER_KG: f32 = 55.0;
 
 // See this module's own doc comment: farm-scale, not utility-scale, so
 // NREL's own lower residential/commercial capacity-factor category
-// (12.7%-19.8%) applies, not the flashier utility-scale ~24% median.
+// (12.7%-19.8%) applies, not the flashier utility-scale ~24% median. A
+// real full-cycle (day+night) average -- see apply()'s own doc comment
+// for how this gets decomposed against daynight.rs's own real cycle.
 const CAPACITY_FACTOR: f32 = 0.18;
+
+// daynight.rs's own day/night split (30s day, 30s night -- an equal
+// half-and-half cycle). Duplicated as a plain literal rather than
+// imported, since daynight.rs doesn't expose its own day/night ratio as
+// a named constant (only DAY_LENGTH_SECONDS, and importing just to
+// compute 0.5 from it would be more indirection than the two-module
+// coupling is worth) -- if daynight.rs's own cycle shape ever becomes
+// asymmetric, this needs updating by hand alongside it.
+const DAY_FRACTION_OF_CYCLE: f32 = 0.5;
 
 // See this module's own doc comment: a game-pacing stand-in for NREL's
 // real ~2.1-year carbon payback time, not a literal scaled conversion --
@@ -178,35 +209,61 @@ mod tests {
     }
 
     #[test]
-    fn solar_meaningfully_reduces_emissions_but_not_to_zero() {
+    fn solar_meaningfully_reduces_emissions_but_not_to_zero_at_solar_noon() {
         // Real capacity-factor intermittency means the array is a
         // genuine, non-trivial improvement -- not decoration that rounds
-        // to nothing.
+        // to nothing. Tested at day_night_light=1.0 (solar noon), the
+        // array's own best possible moment.
         let array = paid_off_array();
         let grid_only = 24.0;
-        let blended = array.apply(grid_only);
+        let blended = array.apply(grid_only, 1.0);
 
         assert!(blended < grid_only, "a real, if partial, capacity-factor-limited offset should reduce emissions below the grid-only baseline");
         assert!(blended > 0.0, "solar PV's own real lifecycle emissions are not zero -- see this module's own IPCC AR5 citation");
     }
 
     #[test]
-    fn solar_alone_still_does_not_beat_real_grey_hydrogen() {
+    fn solar_alone_still_does_not_beat_real_grey_hydrogen_even_at_solar_noon() {
         // The real, deliberately-not-smoothed-over finding this module
-        // exists to surface: because grid draw still fills in the
-        // ~80%-plus of the time an unstored solar array isn't producing,
-        // installing solar alone is not enough to make grid-adjacent
-        // electrolysis actually clean -- the same honest standard
-        // hydrogen.rs's own grid-only test already holds itself to.
+        // exists to surface: even at the array's own best possible
+        // moment (solar noon, day_night_light=1.0), installing solar
+        // alone is not enough to make grid-adjacent electrolysis actually
+        // clean -- the same honest standard hydrogen.rs's own grid-only
+        // test already holds itself to.
         const GREY_HYDROGEN_UPPER_BOUND_KG_CO2_PER_KG: f32 = 12.0;
         let array = paid_off_array();
-        let blended = array.apply(24.0);
+        let blended = array.apply(24.0, 1.0);
 
         assert!(
             blended > GREY_HYDROGEN_UPPER_BOUND_KG_CO2_PER_KG,
-            "a single unstored farm-scale solar array should meaningfully help but still not fully close the gap to real grey (natural-gas SMR) hydrogen's own documented range -- intermittency is a real, not cosmetic, limitation"
+            "a single unstored farm-scale solar array should meaningfully help but still not fully close the gap to real grey (natural-gas SMR) hydrogen's own documented range, even at solar noon -- intermittency is a real, not cosmetic, limitation"
         );
     }
+
+    #[test]
+    fn a_paid_off_array_gives_essentially_zero_credit_at_night() {
+        // The real, deliberately-not-smoothed-over finding THIS test
+        // exists to surface, now that a real day/night cycle exists: an
+        // array with its own manufacturing debt fully paid off STILL
+        // gives almost no benefit once the sun goes down -- solar
+        // literally cannot produce without sunlight, full stop, no matter
+        // how "paid off" the array's own embodied-carbon debt is.
+        let array = paid_off_array();
+        let grid_only = 24.0;
+        let blended_at_night = array.apply(grid_only, NIGHT_AMBIENT_LIGHT_FOR_TESTS);
+
+        assert!(
+            (blended_at_night - grid_only).abs() < 1.0,
+            "at night, the blended rate should sit within a hair of the grid-only rate -- solar's own real-time contribution should be negligible, not a meaningful discount"
+        );
+    }
+
+    // Mirrors daynight.rs's own NIGHT_AMBIENT_LIGHT (a small game-
+    // legibility floor, not literal zero -- see that module's own doc
+    // comment) without importing it, since solar.rs has no real
+    // dependency on daynight.rs's own internal constants, only on the
+    // light_level() VALUE it produces at runtime.
+    const NIGHT_AMBIENT_LIGHT_FOR_TESTS: f32 = 0.05;
 
     #[test]
     fn array_still_paying_off_its_own_manufacturing_debt_gives_no_credit_yet() {
@@ -215,14 +272,17 @@ mod tests {
         // emissions credit yet -- its own manufacturing carbon debt (real
         // NREL CPBT figure, see this module's own doc comment) hasn't been
         // paid off, so apply() must return the grid-only rate completely
-        // UNCHANGED, not a partial/ramping discount.
+        // UNCHANGED, not a partial/ramping discount. Tested at solar noon
+        // (day_night_light=1.0) specifically to isolate the payback-period
+        // gate from the separate day/night gate this same test would
+        // otherwise conflate.
         let brand_new_array = SolarArray { active_seconds: 0.0 };
         let grid_only = 24.0;
-        assert_eq!(brand_new_array.apply(grid_only), grid_only, "a freshly-placed array should give zero credit until its own embodied-carbon debt is paid off");
+        assert_eq!(brand_new_array.apply(grid_only, 1.0), grid_only, "a freshly-placed array should give zero credit until its own embodied-carbon debt is paid off");
 
         let almost_paid_off = SolarArray {
             active_seconds: EMBODIED_CARBON_PAYBACK_SECONDS - 0.01,
         };
-        assert_eq!(almost_paid_off.apply(grid_only), grid_only, "even one instant before the payback period ends, no credit should apply yet -- a real crossover point, not a smooth ramp");
+        assert_eq!(almost_paid_off.apply(grid_only, 1.0), grid_only, "even one instant before the payback period ends, no credit should apply yet -- a real crossover point, not a smooth ramp");
     }
 }
