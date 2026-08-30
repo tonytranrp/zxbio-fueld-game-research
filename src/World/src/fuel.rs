@@ -16,15 +16,26 @@
 //! constant here) -- switchgrass.rs's own doc comment covers why different
 //! feedstocks have genuinely different real lifecycle emissions and how
 //! its own much-lower value was calibrated against corn's.
+//!
+//! Harvest is player-triggered (left click), not the fixed-delay auto-
+//! harvest this module originally shipped with -- that auto-harvest was
+//! explicitly a stand-in "until interactive input can actually be
+//! exercised in this environment," per this module's own prior doc
+//! comment. Confirmed this session: while Windows-MCP synthetic keyboard
+//! input still never reaches this crate's window (see
+//! biofuel-climate-science-gameplay.md's own documented gotcha),
+//! `WindowEvent::MouseInput` DOES reach it -- verified with a temporary
+//! eprintln probe in session.rs's own window_event handler before this
+//! mechanic was built on top of that assumption, not after.
 #![forbid(unsafe_code)]
 
 use crate::carbon::CarbonBudget;
 use crate::crop::CropGrowth;
-use crate::session::DeltaSeconds;
-use bevy::ecs::query::Without;
-use bevy::prelude::{Commands, Component, Entity, Query, Res, ResMut, Resource};
+use crate::input_state::InputState;
+use crate::player::PlayerController;
+use bevy::prelude::{Commands, Entity, Query, ResMut, Transform};
 
-#[derive(Resource, Default)]
+#[derive(bevy::prelude::Resource, Default)]
 pub(crate) struct FuelStockpile {
     liters: f32,
 }
@@ -43,50 +54,52 @@ impl FuelStockpile {
 // emissions figures this iteration calibrated; unlike emission_on_harvest,
 // this isn't yet worth a per-species field.
 const FUEL_PER_HARVEST: f32 = 0.3;
-// A mature crop sits harvestable for a bit before auto-harvesting -- gives
-// the grow -> mature -> harvested sequence a readable pace instead of
-// vanishing the instant growth finishes. A real player-driven harvest
-// (walk up, press a key) is a follow-up once interactive input can
-// actually be exercised in this environment -- Windows-MCP cannot
-// currently deliver either keyboard or raw mouse-motion input to this
-// crate's winit window (confirmed empirically, see
-// biofuel-climate-science-gameplay.md), so a mechanic that REQUIRES
-// interactive input can't be verified end-to-end by this session itself
-// yet. Auto-harvest keeps this phase's mechanic fully self-verifying.
-const HARVEST_DELAY_SECONDS: f32 = 5.0;
-
-#[derive(Component)]
-pub(crate) struct HarvestTimer(f32);
+// A single click harvests every mature crop within this radius of the
+// player, not just the single nearest one -- there's no raycast/reticle
+// picking system yet to target one specific plant, so "click to harvest
+// what's ready nearby" is the honest first-pass interaction rather than
+// pretending to aim at a specific plant. Generous enough to cover every
+// crop field from PLAYER_SPAWN itself (the farthest, miscanthus/
+// switchgrass's own row, sits ~4.4 units out) since Windows-MCP still
+// cannot deliver the keyboard input real player movement needs (see this
+// module's own doc comment) -- this session can only ever click from the
+// fixed spawn point, so the radius has to reach every field from there to
+// be end-to-end testable at all. Tighten once real movement can be
+// exercised and a walk-up-to-one-plant interaction is worth building.
+const HARVEST_RADIUS: f32 = 6.0;
 
 pub(crate) fn update_harvest(
-    dt: Res<DeltaSeconds>,
+    mut input: ResMut<InputState>,
+    player: bevy::prelude::Res<PlayerController>,
     mut commands: Commands,
     mut stockpile: ResMut<FuelStockpile>,
     mut carbon: ResMut<CarbonBudget>,
-    newly_mature: Query<(Entity, &CropGrowth), Without<HarvestTimer>>,
-    mut timers: Query<(Entity, &CropGrowth, &mut HarvestTimer)>,
+    crops: Query<(Entity, &CropGrowth, &Transform)>,
 ) {
-    let dt = dt.0;
-
-    for (entity, crop) in &newly_mature {
-        if crop.is_mature() {
-            commands.entity(entity).insert(HarvestTimer(0.0));
-        }
+    if !input.take_left_click() {
+        return;
     }
 
-    for (entity, crop, mut timer) in &mut timers {
-        timer.0 += dt;
-        if timer.0 >= HARVEST_DELAY_SECONDS {
-            stockpile.liters += FUEL_PER_HARVEST;
-            carbon.add_emission(crop.emission_on_harvest());
-            // A plain despawn(), not despawn_recursive() -- Bevy's own
-            // despawn() has cascaded to children by default since 0.14,
-            // which is what actually removes the WorldAssetRoot-
-            // instantiated mesh hierarchy crop.rs spawned this entity
-            // with, not just the CropGrowth/HarvestTimer components on the
-            // root.
-            commands.entity(entity).despawn();
+    let player_pos = player.position();
+    let player_xz = bevy::math::Vec2::new(player_pos.x, player_pos.z);
+
+    for (entity, crop, transform) in &crops {
+        if !crop.is_mature() {
+            continue;
         }
+        let crop_xz = bevy::math::Vec2::new(transform.translation.x, transform.translation.z);
+        if player_xz.distance(crop_xz) > HARVEST_RADIUS {
+            continue;
+        }
+
+        stockpile.liters += FUEL_PER_HARVEST;
+        carbon.add_emission(crop.emission_on_harvest());
+        // A plain despawn(), not despawn_recursive() -- Bevy's own
+        // despawn() has cascaded to children by default since 0.14, which
+        // is what actually removes the WorldAssetRoot-instantiated mesh
+        // hierarchy crop.rs spawned this entity with, not just the
+        // CropGrowth component on the root.
+        commands.entity(entity).despawn();
     }
 }
 

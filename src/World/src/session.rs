@@ -59,7 +59,7 @@ use bevy::window::{
 };
 
 use winit::application::ApplicationHandler;
-use winit::event::{DeviceEvent, DeviceId, ElementState, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
@@ -486,6 +486,20 @@ impl ApplicationHandler for SessionApp {
                         app.world_mut()
                             .resource_mut::<InputState>()
                             .set_key(code, event.state == ElementState::Pressed);
+                    }
+                }
+            }
+            // Drives fuel.rs's own click-to-harvest -- confirmed via a
+            // temporary probe (see biofuel-climate-science-gameplay.md)
+            // that unlike Windows-MCP's synthetic keyboard input (which
+            // never reaches WindowEvent::KeyboardInput above), real mouse
+            // clicks DO reach this Rust/winit World session's own
+            // WindowEvent::MouseInput, not just the separate C++/raylib
+            // menu screen's own input path.
+            WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+                if state == ElementState::Pressed {
+                    if let Some(app) = &mut self.app {
+                        app.world_mut().resource_mut::<InputState>().set_left_click();
                     }
                 }
             }
