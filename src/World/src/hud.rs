@@ -33,6 +33,7 @@
 #![forbid(unsafe_code)]
 
 use crate::carbon::CarbonBudget;
+use crate::crop::{CropGrowth, CropSpecies};
 use crate::fuel::FuelStockpile;
 use crate::hydrogen::HydrogenStockpile;
 use crate::water::WaterBody;
@@ -78,6 +79,7 @@ fn update_hud(
     fuel: Res<FuelStockpile>,
     water: Res<WaterBody>,
     hydrogen: Res<HydrogenStockpile>,
+    crops: Query<&CropGrowth>,
     mut text_query: Query<&mut Text, With<HudText>>,
 ) {
     let Ok(mut text) = text_query.single_mut() else {
@@ -93,12 +95,29 @@ fn update_hud(
     } else {
         ""
     };
+
+    // Counts every crop currently alive (seedling through mature), not
+    // just harvestable ones -- shows the farm's actual composition, which
+    // fuel.rs's own Fuel/kg reading alone can't convey (a field of
+    // seedlings looks identical to an empty field on that number alone).
+    let (mut corn, mut switchgrass, mut miscanthus) = (0u32, 0u32, 0u32);
+    for crop in &crops {
+        match crop.species() {
+            CropSpecies::Corn => corn += 1,
+            CropSpecies::Switchgrass => switchgrass += 1,
+            CropSpecies::Miscanthus => miscanthus += 1,
+        }
+    }
+
     text.0 = format!(
-        "Carbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}\nHydrogen: {:.2} kg{}",
+        "Carbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}\nHydrogen: {:.2} kg\nCorn: {} | Switchgrass: {} | Miscanthus: {}{}",
         carbon.remaining(),
         fuel.liters(),
         water.ph(),
         hydrogen.kg(),
+        corn,
+        switchgrass,
+        miscanthus,
         overshoot_warning
     );
 }

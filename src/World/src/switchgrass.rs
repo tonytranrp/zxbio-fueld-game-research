@@ -153,7 +153,7 @@ fn spawn_switchgrass_field_once_loaded(
         commands.spawn((
             WorldAssetRoot(scene.clone()),
             Transform::from_xyz(x, 0.0, z),
-            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST, FIELD_SWAY_AMPLITUDE),
+            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST, FIELD_SWAY_AMPLITUDE, crate::crop::CropSpecies::Switchgrass),
         ));
     }
 

@@ -24,10 +24,24 @@ pub(crate) enum GrowthStage {
     Mature,
 }
 
+// Which of the three real feedstocks this plant is -- previously only
+// implicit in which module's own spawn function created it (corn.rs's
+// own field vs switchgrass.rs's vs miscanthus.rs's), with no way for a
+// generic Query<&CropGrowth> (hud.rs's own per-species count) to tell
+// them apart. Doesn't change any growth/carbon math -- purely an
+// identity tag alongside the existing per-species numeric fields.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum CropSpecies {
+    Corn,
+    Switchgrass,
+    Miscanthus,
+}
+
 #[derive(Component)]
 pub(crate) struct CropGrowth {
     growth: f32, // 0.0 (just planted) .. 1.0 (mature)
     stage: GrowthStage,
+    species: CropSpecies,
     // Fixed per-plant environmental supply for this first pass -- a real
     // per-tile simulation (soil moisture depletion, shade from neighboring
     // plants, cloud cover) is a follow-up once there's more than one crop
@@ -69,10 +83,12 @@ impl CropGrowth {
         sequestration_on_maturity: f32,
         emission_on_harvest: f32,
         sway_amplitude: f32,
+        species: CropSpecies,
     ) -> Self {
         Self {
             growth: 0.0,
             stage: GrowthStage::Seedling,
+            species,
             light,
             co2,
             water,
@@ -85,6 +101,10 @@ impl CropGrowth {
 
     pub(crate) fn is_mature(&self) -> bool {
         self.stage == GrowthStage::Mature
+    }
+
+    pub(crate) fn species(&self) -> CropSpecies {
+        self.species
     }
 
     pub(crate) fn emission_on_harvest(&self) -> f32 {
@@ -244,7 +264,7 @@ fn spawn_corn_field_once_loaded(
         commands.spawn((
             WorldAssetRoot(scene.clone()),
             Transform::from_xyz(x, 0.0, z),
-            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST, FIELD_SWAY_AMPLITUDE),
+            CropGrowth::new(light, co2, water, FIELD_GROWTH_RATE, FIELD_SEQUESTRATION, FIELD_EMISSION_ON_HARVEST, FIELD_SWAY_AMPLITUDE, CropSpecies::Corn),
         ));
     }
 
@@ -261,7 +281,7 @@ mod tests {
         // supplied) must not compensate for water=0.1 (starved) -- the
         // limiting factor should equal the SCARCEST input, not
         // (1.0+1.0+0.1)/3 =~ 0.7.
-        let crop = CropGrowth::new(1.0, 1.0, 0.1, 1.0, 10.0, 5.0, 0.1);
+        let crop = CropGrowth::new(1.0, 1.0, 0.1, 1.0, 10.0, 5.0, 0.1, CropSpecies::Corn);
         assert!((crop.limiting_factor(1.0) - 0.1).abs() < 1.0e-6, "limiting factor should equal the scarcest input, not an average");
     }
 
@@ -272,7 +292,7 @@ mod tests {
         // bottleneck alongside light/co2/water -- with light and co2 both
         // abundant and nominal water already the scarcest input, halving
         // irrigation quality should halve the resulting limiting factor.
-        let crop = CropGrowth::new(1.0, 1.0, 0.4, 1.0, 10.0, 5.0, 0.1);
+        let crop = CropGrowth::new(1.0, 1.0, 0.4, 1.0, 10.0, 5.0, 0.1, CropSpecies::Corn);
         let full_quality = crop.limiting_factor(1.0);
         let half_quality = crop.limiting_factor(0.5);
         assert!((full_quality - 0.4).abs() < 1.0e-6, "at full irrigation quality, the limiting factor should equal the nominal water supply");
@@ -286,7 +306,7 @@ mod tests {
         // payout without needing a full ECS World/App for this unit test
         // -- same reasoning physics.rs's own tests call RapierPhysics
         // methods directly rather than spinning up a Bevy schedule.
-        let mut crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0, 5.0, 0.1);
+        let mut crop = CropGrowth::new(1.0, 1.0, 1.0, 1.0, 10.0, 5.0, 0.1, CropSpecies::Corn);
         let before = budget.remaining();
 
         // growth_rate=1.0 at limiting_factor=1.0 means 1.0 growth/sec;
