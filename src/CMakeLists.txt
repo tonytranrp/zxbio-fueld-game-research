@@ -394,6 +394,13 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     if(BIOFUEL_ENABLE_WORLD_BRIDGE)
         add_executable(WorldBridgeManualCheck "${CMAKE_SOURCE_DIR}/tests/engine/WorldBridgeManualCheck.cpp")
         target_link_libraries(WorldBridgeManualCheck PRIVATE biofuel_engine)
+
+        # Isolates Phase 2's one genuinely new risk (does raylib's window
+        # survive being closed and reopened around a World session?) from
+        # the real engine's typed-registry services -- see the file's own
+        # comment. Also not add_test()'d, same reason as the check above.
+        add_executable(WorldRaylibHandoffCheck "${CMAKE_SOURCE_DIR}/tests/engine/WorldRaylibHandoffCheck.cpp")
+        target_link_libraries(WorldRaylibHandoffCheck PRIVATE biofuel_engine)
     endif()
 
     add_test(NAME BiofuelEngineBoundaryGuard
