@@ -30,23 +30,92 @@
 //! future camera gets added with an even higher order), re-open
 //! biofuel-climate-science-gameplay.md's full diagnostic trail before
 //! re-deriving any of the above.
+//!
+//! Also renders a small history graph of `CarbonBudget::remaining()` --
+//! the single number every other system in this game ultimately feeds
+//! (crops sequester into it, fuel/hydrogen emit into it), so a trend of
+//! IT alone tells the most complete "story" in the least screen space,
+//! rather than graphing every individual system separately. A fixed row
+//! of `HISTORY_CAPACITY` bars, each independently absolutely-positioned
+//! (no flexbox/child-parent layout -- matches this file's own existing
+//! `HudText` node, and avoids depending on an unconfirmed
+//! `with_children`-on-`EntityWorldMut` API this codebase has never used
+//! elsewhere), recomputing height+top together each frame so a bar's
+//! BOTTOM edge stays visually anchored while its top edge rises/falls --
+//! Bevy UI's `Val::Px` position is relative to the top edge, so anchoring
+//! the bottom takes recomputing both, not just height alone.
 #![forbid(unsafe_code)]
 
 use crate::carbon::CarbonBudget;
 use crate::crop::{CropGrowth, CropSpecies};
 use crate::fuel::FuelStockpile;
 use crate::hydrogen::HydrogenStockpile;
+use crate::session::DeltaSeconds;
 use crate::water::WaterBody;
 use bevy::app::{App, Update};
 use bevy::color::Color;
 use bevy::ecs::entity::Entity;
-use bevy::prelude::{Component, Query, Res, With};
+use bevy::math::Vec3;
+use bevy::prelude::{Component, Query, Res, ResMut, Resource, With};
 use bevy::text::{FontSize, TextColor, TextFont};
 use bevy::ui::widget::Text;
-use bevy::ui::{IsDefaultUiCamera, Node, PositionType, Val};
+use bevy::ui::{BackgroundColor, IsDefaultUiCamera, Node, PositionType, Val};
+use std::collections::VecDeque;
 
 #[derive(Component)]
 struct HudText;
+
+#[derive(Component)]
+struct HistoryBar(usize);
+
+#[derive(Resource, Default)]
+struct CarbonHistory {
+    samples: VecDeque<f32>,
+    elapsed_since_sample: f32,
+}
+
+const HISTORY_CAPACITY: usize = 24;
+const HISTORY_SAMPLE_INTERVAL_SECONDS: f32 = 2.5;
+const HISTORY_BAR_WIDTH_PX: f32 = 6.0;
+const HISTORY_BAR_GAP_PX: f32 = 2.0;
+const HISTORY_GRAPH_LEFT_PX: f32 = 12.0;
+const HISTORY_GRAPH_TOP_PX: f32 = 150.0;
+const HISTORY_GRAPH_HEIGHT_PX: f32 = 40.0;
+const HISTORY_MIN_BAR_HEIGHT_PX: f32 = 2.0;
+// A visibly distinct neutral grey (darker than the healthy-green end of
+// bar_color()'s own real-data range) for bar slots with no sample yet --
+// e.g. the first ~60 real seconds of a session, before HISTORY_CAPACITY
+// samples have accumulated -- so an empty slot reads as "no data" rather
+// than misleadingly appearing as a real zero/critical reading.
+const HISTORY_NO_DATA_COLOR: Color = Color::srgb(0.22, 0.22, 0.22);
+
+// Bar height for a given remaining/total_budget reading -- pulled out as
+// a pure function so the normalization curve is directly unit-testable,
+// the same shape this file's own established convention (crop.rs's
+// sway_angle(), fuel.rs's puff_scale()) already uses for per-frame visual
+// math.
+fn bar_height_px(remaining: f32, total_budget: f32) -> f32 {
+    if total_budget <= 0.0 {
+        return HISTORY_MIN_BAR_HEIGHT_PX;
+    }
+    let fraction = (remaining / total_budget).clamp(0.0, 1.0);
+    HISTORY_MIN_BAR_HEIGHT_PX + fraction * (HISTORY_GRAPH_HEIGHT_PX - HISTORY_MIN_BAR_HEIGHT_PX)
+}
+
+// A healthy-green (budget mostly intact) to critical-red (budget mostly
+// or fully consumed) ramp -- the same "color communicates state at a
+// glance" idea water.rs's own ph_to_color() already establishes for the
+// pond.
+fn bar_color(remaining: f32, total_budget: f32) -> Color {
+    if total_budget <= 0.0 {
+        return Color::srgb(0.85, 0.25, 0.2);
+    }
+    let fraction = (remaining / total_budget).clamp(0.0, 1.0);
+    let critical = Vec3::new(0.85, 0.25, 0.2);
+    let healthy = Vec3::new(0.25, 0.75, 0.35);
+    let mixed = critical.lerp(healthy, fraction);
+    Color::srgb(mixed.x, mixed.y, mixed.z)
+}
 
 // ui_target_camera: the entity IsDefaultUiCamera gets attached to -- must
 // be whichever of this session's two Camera3d entities renders LAST (see
@@ -71,7 +140,88 @@ pub(crate) fn setup(app: &mut App, ui_target_camera: Entity) {
         HudText,
     ));
 
-    app.add_systems(Update, update_hud);
+    for i in 0..HISTORY_CAPACITY {
+        let left = HISTORY_GRAPH_LEFT_PX + i as f32 * (HISTORY_BAR_WIDTH_PX + HISTORY_BAR_GAP_PX);
+        app.world_mut().spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(left),
+                top: Val::Px(HISTORY_GRAPH_TOP_PX + HISTORY_GRAPH_HEIGHT_PX - HISTORY_MIN_BAR_HEIGHT_PX),
+                width: Val::Px(HISTORY_BAR_WIDTH_PX),
+                height: Val::Px(HISTORY_MIN_BAR_HEIGHT_PX),
+                ..Default::default()
+            },
+            BackgroundColor(HISTORY_NO_DATA_COLOR),
+            HistoryBar(i),
+        ));
+    }
+
+    app.insert_resource(CarbonHistory::default());
+    app.add_systems(Update, (update_hud, sample_carbon_history, update_history_bars));
+}
+
+fn sample_carbon_history(dt: Res<DeltaSeconds>, carbon: Res<CarbonBudget>, mut history: ResMut<CarbonHistory>) {
+    history.elapsed_since_sample += dt.0;
+    if history.elapsed_since_sample < HISTORY_SAMPLE_INTERVAL_SECONDS {
+        return;
+    }
+    history.elapsed_since_sample = 0.0;
+    history.samples.push_back(carbon.remaining());
+    if history.samples.len() > HISTORY_CAPACITY {
+        history.samples.pop_front();
+    }
+}
+
+fn update_history_bars(carbon: Res<CarbonBudget>, history: Res<CarbonHistory>, mut bars: Query<(&HistoryBar, &mut Node, &mut BackgroundColor)>) {
+    let total_budget = carbon.total_budget();
+    for (bar, mut node, mut color) in &mut bars {
+        let Some(&remaining) = history.samples.get(bar.0) else {
+            node.height = Val::Px(HISTORY_MIN_BAR_HEIGHT_PX);
+            node.top = Val::Px(HISTORY_GRAPH_TOP_PX + HISTORY_GRAPH_HEIGHT_PX - HISTORY_MIN_BAR_HEIGHT_PX);
+            color.0 = HISTORY_NO_DATA_COLOR;
+            continue;
+        };
+        let height = bar_height_px(remaining, total_budget);
+        node.height = Val::Px(height);
+        node.top = Val::Px(HISTORY_GRAPH_TOP_PX + HISTORY_GRAPH_HEIGHT_PX - height);
+        color.0 = bar_color(remaining, total_budget);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_full_budget_reaches_max_bar_height_and_an_exhausted_one_reaches_the_floor() {
+        let total_budget = 1000.0;
+        assert!(
+            (bar_height_px(total_budget, total_budget) - HISTORY_GRAPH_HEIGHT_PX).abs() < 1.0e-6,
+            "a fully-intact budget should render at the graph's own configured max height"
+        );
+        assert!(
+            (bar_height_px(0.0, total_budget) - HISTORY_MIN_BAR_HEIGHT_PX).abs() < 1.0e-6,
+            "a fully-exhausted budget should render at the floor height, not vanish to zero"
+        );
+        assert!(
+            (bar_height_px(-500.0, total_budget) - HISTORY_MIN_BAR_HEIGHT_PX).abs() < 1.0e-6,
+            "an overshot (negative remaining) budget should clamp to the same floor height as exactly-exhausted, not go negative"
+        );
+    }
+
+    #[test]
+    fn bar_color_ramps_from_critical_red_toward_healthy_green_as_budget_recovers() {
+        let total_budget = 1000.0;
+        let Color::Srgba(critical) = bar_color(0.0, total_budget) else {
+            panic!("expected an Srgba color");
+        };
+        let Color::Srgba(healthy) = bar_color(total_budget, total_budget) else {
+            panic!("expected an Srgba color");
+        };
+
+        assert!(critical.red > critical.green, "a fully-consumed budget should read as red-dominant (critical)");
+        assert!(healthy.green > healthy.red, "a fully-intact budget should read as green-dominant (healthy)");
+    }
 }
 
 fn update_hud(
