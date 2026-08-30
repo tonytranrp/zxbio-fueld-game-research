@@ -1,0 +1,81 @@
+//! Global carbon budget -- one number every emitting/sequestering system
+//! pushes, mirroring the real IPCC framing this game is grounded in (the
+//! research doc this project was handed: a finite remaining CO2 budget,
+//! currently ~170 GtCO2 in the real world, that gets consumed by emissions
+//! and only partially offset by sinks). Deliberately a single global meter
+//! with real opportunity cost, not a per-system side-counter -- see
+//! Anno 2070's CO2 Reservoir design (every building pushes the same meter,
+//! fixing it costs a scarce slot) for why a single shared number reads as
+//! consequential where N separate counters would read as decoration.
+#![forbid(unsafe_code)]
+
+use bevy::prelude::Resource;
+
+// Not read yet -- total_budget/remaining() are written every time a crop
+// matures (crop.rs) but have no reader until a HUD element displays the
+// remaining budget to the player, which is the natural next piece of UI
+// work once there's more than one emitting/sequestering system for it to
+// be worth building around. Kept now so that HUD work doesn't also need to
+// design this resource's shape.
+#[allow(dead_code)]
+#[derive(Resource)]
+pub(crate) struct CarbonBudget {
+    // Both in arbitrary game-tonnes, not real tonnes -- the ratio between
+    // them (how much of the budget a given action consumes) is what needs
+    // to feel consequential, not a literal unit match to the real ~170
+    // GtCO2 figure.
+    total_budget: f32,
+    emitted: f32,
+}
+
+impl Default for CarbonBudget {
+    fn default() -> Self {
+        // Deliberately generous at game start (this is a farm-building
+        // phase, not yet the crisis phase) -- tune down as more emitting
+        // systems (fuel combustion) come online in later iterations.
+        Self {
+            total_budget: 1000.0,
+            emitted: 0.0,
+        }
+    }
+}
+
+impl CarbonBudget {
+    // Not read outside tests yet -- see the struct's own doc comment.
+    #[allow(dead_code)]
+    pub(crate) fn remaining(&self) -> f32 {
+        self.total_budget - self.emitted
+    }
+
+    // Positive amount = net emission (combustion, decay); negative =
+    // sequestration (a crop reaching maturity, biochar). No clamping here
+    // deliberately -- remaining() can go negative, same as the real budget
+    // can be "exhausted" and then overshot; that's the point, not a bug to
+    // guard against.
+    pub(crate) fn add_emission(&mut self, amount: f32) {
+        self.emitted += amount;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sequestration_reduces_net_emitted_and_grows_remaining_budget() {
+        let mut budget = CarbonBudget::default();
+        let before = budget.remaining();
+        budget.add_emission(-10.0);
+        assert!(budget.remaining() > before, "sequestration should grow the remaining budget");
+    }
+
+    #[test]
+    fn emission_shrinks_remaining_budget_and_can_go_negative() {
+        let mut budget = CarbonBudget {
+            total_budget: 10.0,
+            emitted: 0.0,
+        };
+        budget.add_emission(15.0);
+        assert!(budget.remaining() < 0.0, "overshooting the budget must be representable, not clamped away");
+    }
+}

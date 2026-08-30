@@ -25,6 +25,10 @@
 #[forbid(unsafe_code)]
 mod adapter_probe;
 #[forbid(unsafe_code)]
+mod carbon;
+#[forbid(unsafe_code)]
+mod crop;
+#[forbid(unsafe_code)]
 mod event_loop_cell;
 #[forbid(unsafe_code)]
 mod fp_camera;

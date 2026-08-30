@@ -65,11 +65,12 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
 use winit::window::{CursorGrabMode, Window as WinitWindow, WindowId};
 
+use crate::carbon::CarbonBudget;
 use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, event_loop_cell, level, viewmodel};
+use crate::{adapter_probe, crop, event_loop_cell, level, viewmodel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -85,8 +86,24 @@ const CLEAR_COLOR: Color = Color::srgb(0.35, 0.42, 0.55);
 
 // Frame delta time, computed by hand in window_event's RedrawRequested arm
 // -- see this module's doc comment for why Res<Time> isn't used instead.
+// pub(crate): every gameplay system added since (crop.rs, and whatever
+// follows) needs frame dt the same way update_player_and_camera does below,
+// not just this module's own system.
 #[derive(Resource, Default)]
-struct DeltaSeconds(f32);
+pub(crate) struct DeltaSeconds(pub(crate) f32);
+
+// Marker distinguishing the world camera (this module's own spawn, tracks
+// the player every frame) from viewmodel.rs's fixed, non-tracking hands
+// camera -- both are Camera3d, so a query filtered on just With<Camera3d>
+// matches both and Query::single_mut() silently returns Err every frame
+// once there are two (never panics, just never updates anything). Real bug
+// this fixed: once viewmodel.rs's camera existed, the world camera's
+// Transform was frozen at its spawn-time value forever, confirmed by a
+// debug probe logging camera3d_count=2 and an unchanging pos/rot across 60
+// frames -- the player/look code was computing the right transform the
+// whole time, it just had nowhere valid to write it.
+#[derive(bevy::prelude::Component)]
+struct WorldCamera;
 
 #[derive(Default)]
 struct SessionApp {
@@ -113,7 +130,7 @@ fn update_player_and_camera(
     mut physics: ResMut<RapierPhysics>,
     mut player: ResMut<PlayerController>,
     mut camera_state: ResMut<FirstPersonCamera>,
-    mut camera_query: Query<&mut Transform, With<Camera3d>>,
+    mut camera_query: Query<&mut Transform, With<WorldCamera>>,
 ) {
     let dt = dt.0;
     let (dx, dy) = input.take_mouse_delta();
@@ -330,6 +347,31 @@ impl ApplicationHandler for SessionApp {
         app.insert_resource(DeltaSeconds::default());
         app.add_systems(Update, update_player_and_camera);
 
+        // ---- Content: a first grow-able crop, Liebig's-law limited (see
+        // crop.rs's own doc comment) and feeding the shared carbon budget
+        // (carbon.rs) once each plant reaches maturity. Real Meshy-
+        // generated corn model (assets/models/corn_plant/) -- crop::setup
+        // starts its async load and registers both the spawn-once-loaded
+        // and per-frame growth systems, same pattern as viewmodel::setup.
+        app.insert_resource(CarbonBudget::default());
+        crop::setup(&mut app);
+
+        // The corn model was refined with real PBR materials (enable_pbr:
+        // true), unlike level.rs's deliberately-unlit boxes -- without an
+        // actual light source it would render near-black, since a PBR
+        // material with zero incident light produces ~zero output the way
+        // an unlit material's flat base_color doesn't. A single directional
+        // "sun" light is also thematically the right first light for a
+        // farm, and a natural future feed for CropGrowth's own `light`
+        // input (time-of-day/sun-angle instead of a fixed 1.0/0.35).
+        app.world_mut().spawn((
+            bevy::light::DirectionalLight {
+                illuminance: 6000.0,
+                ..Default::default()
+            },
+            Transform::from_xyz(0.0, 10.0, 0.0).looking_at(Vec3::new(0.3, 0.0, 0.5), Vec3::Y),
+        ));
+
         // Tonemapping::default() is TonyMcMapface, which silently binds a
         // placeholder LUT (wrong-looking output, not a crash) unless the
         // tonemapping_luts feature is enabled -- explicit override instead
@@ -345,6 +387,7 @@ impl ApplicationHandler for SessionApp {
             },
             Tonemapping::KhronosPbrNeutral,
             Transform::from_xyz(level::PLAYER_SPAWN.x, level::PLAYER_SPAWN.y + 0.85, level::PLAYER_SPAWN.z),
+            WorldCamera,
         ));
 
         // ---- Phase 4: viewmodel hands (own fixed camera, order=1, drawn
