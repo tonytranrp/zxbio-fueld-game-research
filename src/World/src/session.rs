@@ -70,7 +70,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, crop, event_loop_cell, level, viewmodel};
+use crate::{adapter_probe, crop, event_loop_cell, fuel, level, viewmodel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -355,6 +355,13 @@ impl ApplicationHandler for SessionApp {
         // and per-frame growth systems, same pattern as viewmodel::setup.
         app.insert_resource(CarbonBudget::default());
         crop::setup(&mut app);
+
+        // Harvest -> fermentation -> combustion: the first real EMITTING
+        // counterpart to crop.rs's own sequestration-on-maturity payout --
+        // see fuel.rs's own doc comment for the real chemistry and design
+        // rationale this is grounded in.
+        app.insert_resource(fuel::FuelStockpile::default());
+        app.add_systems(Update, fuel::update_harvest);
 
         // The corn model was refined with real PBR materials (enable_pbr:
         // true), unlike level.rs's deliberately-unlit boxes -- without an

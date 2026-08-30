@@ -55,6 +55,10 @@ impl CropGrowth {
         }
     }
 
+    pub(crate) fn is_mature(&self) -> bool {
+        self.stage == GrowthStage::Mature
+    }
+
     // The core Liebig's-law rule: whichever input is scarcest sets the
     // pace, full stop -- not min-then-average, not a weighted blend. Inputs
     // are expressed 0.0..=1.0 as "fraction of what this plant wants," so

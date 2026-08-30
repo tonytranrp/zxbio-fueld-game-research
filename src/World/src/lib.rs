@@ -33,6 +33,8 @@ mod event_loop_cell;
 #[forbid(unsafe_code)]
 mod fp_camera;
 #[forbid(unsafe_code)]
+mod fuel;
+#[forbid(unsafe_code)]
 mod input_state;
 #[forbid(unsafe_code)]
 mod level;
