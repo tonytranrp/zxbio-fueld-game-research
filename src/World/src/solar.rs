@@ -30,39 +30,55 @@
 //!   Solar panels are not a free pass; they are a real, partial, honestly-
 //!   limited improvement, same as everywhere else in this game's own
 //!   design.
-//! - Explicitly NOT modeled in this first pass (a real, citable, but
-//!   separate cost this module doesn't attempt to fold in numerically):
-//!   the panel's own embodied/manufacturing carbon debt. NREL's 2024
-//!   updated utility-scale PV lifecycle-assessment work puts carbon
-//!   payback time (CPBT) at a benchmark ~2.1 years (real literature range
-//!   ~0.8-20 years) against a ~30-year operating lifetime -- driven
-//!   mostly by the carbon intensity of the GRID THAT MANUFACTURED THE
-//!   PANEL, the same "the electricity source is what matters" lesson this
-//!   module's own capacity-factor finding and `hydrogen.rs`'s own grid
-//!   finding both already teach, just one step further upstream. A future
-//!   pass modeling a manufacturing-debt period before the array's offset
-//!   "kicks in" would be the honest way to fold this in; this pass keeps
-//!   the array's benefit active from the moment it's placed, and says so
-//!   plainly here rather than implying completeness.
+//! - The panel's own embodied/manufacturing carbon debt IS modeled, as of
+//!   this module's second pass. NREL's 2024 updated utility-scale PV
+//!   lifecycle-assessment work puts carbon payback time (CPBT) at a
+//!   benchmark ~2.1 years (real literature range ~0.8-20 years) against a
+//!   ~30-year operating lifetime -- driven mostly by the carbon intensity
+//!   of the GRID THAT MANUFACTURED THE PANEL, the same "the electricity
+//!   source is what matters" lesson this module's own capacity-factor
+//!   finding and `hydrogen.rs`'s own grid finding both already teach, just
+//!   one step further upstream. Modeled here as a fixed real-time delay
+//!   (`EMBODIED_CARBON_PAYBACK_SECONDS`) after the array is placed, during
+//!   which `apply()` returns the grid-only rate UNCHANGED -- no partial
+//!   credit, no smooth ramp, since the real CPBT concept is itself a
+//!   single crossover point (cumulative avoided emissions catches up to
+//!   embodied emissions), not a gradual one. The exact SECONDS value is a
+//!   game-pacing choice (this game has no calendar/day-length to scale the
+//!   real 2.1-year figure against, the same abstraction gap `corn.rs`'s
+//!   own ~20s grow cycle already lives with), motivated by the real
+//!   finding's mere existence rather than a literal time-unit conversion
+//!   -- said plainly here rather than implying a precision that doesn't
+//!   exist.
 #![forbid(unsafe_code)]
 
+use crate::session::DeltaSeconds;
 use bevy::app::{App, Update};
 use bevy::asset::{AssetServer, Assets, Handle};
 use bevy::ecs::system::Local;
 use bevy::gltf::Gltf;
-use bevy::prelude::{Commands, Res, Resource, Transform};
+use bevy::prelude::{Commands, Res, ResMut, Resource, Transform};
 use bevy::world_serialization::WorldAssetRoot;
 
 #[derive(Resource, Default)]
-pub(crate) struct SolarArray;
+pub(crate) struct SolarArray {
+    active_seconds: f32,
+}
 
 impl SolarArray {
     // Multiplies a grid-only emission-per-kg figure (e.g. hydrogen.rs's
-    // own EMISSION_PER_KG) down to a blended grid+solar figure. Takes the
+    // own EMISSION_PER_KG) down to a blended grid+solar figure -- UNLESS
+    // the array is still within its own embodied-carbon payback period
+    // (see this module's own doc comment), in which case it returns the
+    // grid-only figure unchanged: a newly-manufactured panel hasn't yet
+    // earned any credit against its own upstream carbon debt. Takes the
     // caller's own authoritative grid-only number rather than
     // recalculating it from this module's own constants, so the two
     // modules can't silently drift out of sync with each other.
     pub(crate) fn apply(&self, grid_only_emission_per_kg: f32) -> f32 {
+        if self.active_seconds < EMBODIED_CARBON_PAYBACK_SECONDS {
+            return grid_only_emission_per_kg;
+        }
         let solar_emission_per_kg = ELECTROLYZER_KWH_PER_KG * SOLAR_EMISSION_PER_KWH;
         CAPACITY_FACTOR * solar_emission_per_kg + (1.0 - CAPACITY_FACTOR) * grid_only_emission_per_kg
     }
@@ -91,6 +107,12 @@ const ELECTROLYZER_KWH_PER_KG: f32 = 55.0;
 // (12.7%-19.8%) applies, not the flashier utility-scale ~24% median.
 const CAPACITY_FACTOR: f32 = 0.18;
 
+// See this module's own doc comment: a game-pacing stand-in for NREL's
+// real ~2.1-year carbon payback time, not a literal scaled conversion --
+// long enough to be a real, noticeable delay (comparable to a full corn
+// grow cycle) rather than rounding away to nothing.
+const EMBODIED_CARBON_PAYBACK_SECONDS: f32 = 45.0;
+
 // Placed directly behind hydrogen.rs's own electrolyzer (X=2.4, same as
 // the electrolyzer's own X; Z=-4.4, 0.5 farther from PLAYER_SPAWN than
 // the electrolyzer's own -3.9) -- the smallest reasonable displacement
@@ -110,8 +132,12 @@ const ARRAY_CENTER_Z: f32 = -4.4;
 pub(crate) fn setup(app: &mut App) {
     let gltf = app.world().resource::<AssetServer>().load("models/solar_array/solar_array.glb");
     app.insert_resource(SolarArrayAssets { gltf });
-    app.insert_resource(SolarArray);
-    app.add_systems(Update, spawn_solar_array_once_loaded);
+    app.insert_resource(SolarArray::default());
+    app.add_systems(Update, (spawn_solar_array_once_loaded, tick_solar_array));
+}
+
+fn tick_solar_array(dt: Res<DeltaSeconds>, mut solar: ResMut<SolarArray>) {
+    solar.active_seconds += dt.0;
 }
 
 fn spawn_solar_array_once_loaded(
@@ -139,12 +165,24 @@ fn spawn_solar_array_once_loaded(
 mod tests {
     use super::*;
 
+    // Both pre-existing tests below construct a SolarArray already PAST
+    // its own embodied-carbon payback period -- they're exercising the
+    // capacity-factor/blending behavior specifically, which only applies
+    // once that debt is paid off; see
+    // array_still_paying_off_its_own_manufacturing_debt_gives_no_credit_yet
+    // for the payback period itself.
+    fn paid_off_array() -> SolarArray {
+        SolarArray {
+            active_seconds: EMBODIED_CARBON_PAYBACK_SECONDS,
+        }
+    }
+
     #[test]
     fn solar_meaningfully_reduces_emissions_but_not_to_zero() {
         // Real capacity-factor intermittency means the array is a
         // genuine, non-trivial improvement -- not decoration that rounds
         // to nothing.
-        let array = SolarArray;
+        let array = paid_off_array();
         let grid_only = 24.0;
         let blended = array.apply(grid_only);
 
@@ -161,12 +199,30 @@ mod tests {
         // electrolysis actually clean -- the same honest standard
         // hydrogen.rs's own grid-only test already holds itself to.
         const GREY_HYDROGEN_UPPER_BOUND_KG_CO2_PER_KG: f32 = 12.0;
-        let array = SolarArray;
+        let array = paid_off_array();
         let blended = array.apply(24.0);
 
         assert!(
             blended > GREY_HYDROGEN_UPPER_BOUND_KG_CO2_PER_KG,
             "a single unstored farm-scale solar array should meaningfully help but still not fully close the gap to real grey (natural-gas SMR) hydrogen's own documented range -- intermittency is a real, not cosmetic, limitation"
         );
+    }
+
+    #[test]
+    fn array_still_paying_off_its_own_manufacturing_debt_gives_no_credit_yet() {
+        // The real, deliberately-not-smoothed-over finding THIS test
+        // exists to surface: a newly-placed array hasn't earned any
+        // emissions credit yet -- its own manufacturing carbon debt (real
+        // NREL CPBT figure, see this module's own doc comment) hasn't been
+        // paid off, so apply() must return the grid-only rate completely
+        // UNCHANGED, not a partial/ramping discount.
+        let brand_new_array = SolarArray { active_seconds: 0.0 };
+        let grid_only = 24.0;
+        assert_eq!(brand_new_array.apply(grid_only), grid_only, "a freshly-placed array should give zero credit until its own embodied-carbon debt is paid off");
+
+        let almost_paid_off = SolarArray {
+            active_seconds: EMBODIED_CARBON_PAYBACK_SECONDS - 0.01,
+        };
+        assert_eq!(almost_paid_off.apply(grid_only), grid_only, "even one instant before the payback period ends, no credit should apply yet -- a real crossover point, not a smooth ramp");
     }
 }
