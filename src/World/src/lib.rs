@@ -52,6 +52,8 @@ mod session;
 mod switchgrass;
 #[forbid(unsafe_code)]
 mod viewmodel;
+#[forbid(unsafe_code)]
+mod water;
 
 // mod ffi has to stay literally in this file: cxx's bridge macro processes
 // the mod's items directly and doesn't expand an `include!` placed inside

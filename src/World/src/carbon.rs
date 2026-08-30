@@ -38,6 +38,24 @@ impl CarbonBudget {
         self.total_budget - self.emitted
     }
 
+    // The raw cumulative total, not net against total_budget -- water.rs's
+    // own pond-pH coupling responds to how much CO2 has actually been
+    // emitted so far (the real driver of dissolved-CO2/acidification
+    // chemistry), which remaining() alone can't isolate since it's also a
+    // function of total_budget (a game-balance number, not a chemistry
+    // input).
+    pub(crate) fn emitted(&self) -> f32 {
+        self.emitted
+    }
+
+    // Also read by water.rs -- pH is modeled relative to what FRACTION of
+    // the budget has been consumed (emitted/total_budget), not the raw
+    // emitted tonnage alone, so a game later tuned to a smaller or larger
+    // total_budget still produces the same acidification curve shape.
+    pub(crate) fn total_budget(&self) -> f32 {
+        self.total_budget
+    }
+
     // Positive amount = net emission (combustion, decay); negative =
     // sequestration (a crop reaching maturity, biochar). No clamping here
     // deliberately -- remaining() can go negative, same as the real budget

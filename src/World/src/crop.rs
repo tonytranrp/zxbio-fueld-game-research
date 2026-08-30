@@ -94,23 +94,29 @@ impl CropGrowth {
     // The core Liebig's-law rule: whichever input is scarcest sets the
     // pace, full stop -- not min-then-average, not a weighted blend. Inputs
     // are expressed 0.0..=1.0 as "fraction of what this plant wants," so
-    // 1.0 means fully supplied and never a bottleneck.
-    fn limiting_factor(&self) -> f32 {
-        self.light.min(self.co2).min(self.water)
+    // 1.0 means fully supplied and never a bottleneck. irrigation_quality
+    // (water.rs's own WaterBody::irrigation_multiplier(), 0.0..=1.0) scales
+    // the water term specifically -- real off-optimum irrigation water pH
+    // reduces effective nutrient uptake from a given water SUPPLY, it
+    // doesn't add a fourth independent bottleneck alongside light/co2/water.
+    fn limiting_factor(&self, irrigation_quality: f32) -> f32 {
+        self.light.min(self.co2).min(self.water * irrigation_quality)
     }
 }
 
 pub(crate) fn update_crop_growth(
     dt: Res<DeltaSeconds>,
     mut carbon: ResMut<CarbonBudget>,
+    water: Res<crate::water::WaterBody>,
     mut crops: Query<(&mut CropGrowth, &mut Transform)>,
 ) {
     let dt = dt.0;
+    let irrigation_quality = water.irrigation_multiplier();
     for (mut crop, mut transform) in &mut crops {
         if crop.stage == GrowthStage::Mature {
             continue;
         }
-        let limiting = crop.limiting_factor();
+        let limiting = crop.limiting_factor(irrigation_quality);
         crop.growth = (crop.growth + crop.growth_rate * limiting * dt).min(1.0);
 
         crop.stage = if crop.growth >= 1.0 {
@@ -256,7 +262,21 @@ mod tests {
         // limiting factor should equal the SCARCEST input, not
         // (1.0+1.0+0.1)/3 =~ 0.7.
         let crop = CropGrowth::new(1.0, 1.0, 0.1, 1.0, 10.0, 5.0, 0.1);
-        assert!((crop.limiting_factor() - 0.1).abs() < 1.0e-6, "limiting factor should equal the scarcest input, not an average");
+        assert!((crop.limiting_factor(1.0) - 0.1).abs() < 1.0e-6, "limiting factor should equal the scarcest input, not an average");
+    }
+
+    #[test]
+    fn poor_irrigation_quality_scales_down_the_water_term_specifically() {
+        // water.rs's own WaterBody::irrigation_multiplier() should reduce
+        // effective water supply, not act as a fourth independent
+        // bottleneck alongside light/co2/water -- with light and co2 both
+        // abundant and nominal water already the scarcest input, halving
+        // irrigation quality should halve the resulting limiting factor.
+        let crop = CropGrowth::new(1.0, 1.0, 0.4, 1.0, 10.0, 5.0, 0.1);
+        let full_quality = crop.limiting_factor(1.0);
+        let half_quality = crop.limiting_factor(0.5);
+        assert!((full_quality - 0.4).abs() < 1.0e-6, "at full irrigation quality, the limiting factor should equal the nominal water supply");
+        assert!((half_quality - 0.2).abs() < 1.0e-6, "halving irrigation quality should halve the effective water term");
     }
 
     #[test]
@@ -271,7 +291,7 @@ mod tests {
 
         // growth_rate=1.0 at limiting_factor=1.0 means 1.0 growth/sec;
         // 2 seconds is comfortably past the >=1.0 threshold.
-        crop.growth = (crop.growth + crop.growth_rate * crop.limiting_factor() * 2.0).min(1.0);
+        crop.growth = (crop.growth + crop.growth_rate * crop.limiting_factor(1.0) * 2.0).min(1.0);
         assert_eq!(crop.growth, 1.0);
         crop.stage = GrowthStage::Mature;
         budget.add_emission(-crop.sequestration_on_maturity);

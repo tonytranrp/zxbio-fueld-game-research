@@ -70,7 +70,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, level, miscanthus, switchgrass, viewmodel};
+use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, level, miscanthus, switchgrass, viewmodel, water};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -404,6 +404,14 @@ impl ApplicationHandler for SessionApp {
         // starts its async load and registers both the spawn-once-loaded
         // and per-frame growth systems, same pattern as viewmodel::setup.
         app.insert_resource(CarbonBudget::default());
+
+        // ---- A farm pond coupled to the same CarbonBudget -- must be set
+        // up before crop::setup below, since update_crop_growth reads
+        // Res<water::WaterBody> every frame. See water.rs's own doc comment
+        // for the real ocean-acidification chemistry and irrigation-quality
+        // research this closes a genuine feedback loop with.
+        water::setup(&mut app);
+
         crop::setup(&mut app);
 
         // ---- Content: a second crop, switchgrass -- real cellulosic/
