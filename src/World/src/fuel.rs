@@ -137,8 +137,21 @@ pub(crate) fn update_harvest(
     mut stockpile: ResMut<FuelStockpile>,
     mut carbon: ResMut<CarbonBudget>,
     puff_assets: Res<HarvestPuffAssets>,
+    outcome: Res<crate::outcome::GameOutcome>,
     crops: Query<(Entity, &CropGrowth, &Transform)>,
 ) {
+    // Once the game has a decided outcome (see outcome.rs's own doc
+    // comment), harvesting -- the core player action everything else in
+    // this game revolves around -- stops doing anything. Deliberately
+    // the smallest meaningful "the round is over" signal rather than a
+    // full pause substate freezing every other passive system (day/
+    // night, hydrogen production, crop growth) -- outcome.rs's own doc
+    // comment is explicit that a real pause/scene-change is still out of
+    // scope; this closes the most player-visible half of that gap
+    // without the larger undertaking.
+    if *outcome != crate::outcome::GameOutcome::InProgress {
+        return;
+    }
     if !input.take_left_click() {
         return;
     }

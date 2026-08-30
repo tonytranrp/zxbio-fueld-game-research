@@ -471,9 +471,15 @@ impl ApplicationHandler for SessionApp {
         // grounded in.
         fuel::setup(&mut app);
 
-        // A defined win/lose condition -- must run after fuel::setup
-        // above (reads Res<FuelStockpile>) and CarbonBudget::default()
-        // near the top of this function (reads Res<CarbonBudget>). See
+        // A defined win/lose condition -- reads Res<FuelStockpile>
+        // (fuel::setup above) and Res<CarbonBudget> (CarbonBudget::
+        // default() near the top of this function); fuel.rs's own
+        // update_harvest now also reads Res<GameOutcome> right back, to
+        // stop harvesting once the round is over. Resource EXISTENCE
+        // doesn't depend on setup() call order (every insert_resource
+        // call below completes before the Update schedule ever runs),
+        // so this mutual read is fine -- ordered here to read top-to-
+        // bottom as "the thing everything else feeds, set up last." See
         // outcome.rs's own doc comment for why this is the first time
         // this game has had any completion state at all.
         outcome::setup(&mut app);
