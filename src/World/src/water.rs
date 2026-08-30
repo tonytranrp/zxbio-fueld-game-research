@@ -55,8 +55,10 @@ pub(crate) struct WaterBody {
     material: Handle<StandardMaterial>,
 }
 
-const INITIAL_PH: f32 = 8.2;
-const MIN_PH: f32 = 4.0;
+// pub(crate): hud.rs's own pH history graph normalizes bar height against
+// this same real range rather than duplicating the two literals.
+pub(crate) const INITIAL_PH: f32 = 8.2;
+pub(crate) const MIN_PH: f32 = 4.0;
 // See this module's own doc comment: pH drop scales with the SQUARE of how
 // much of CarbonBudget's total_budget has been consumed, capturing real
 // buffering-capacity erosion as an accelerating (not linear) curve. At
@@ -132,8 +134,11 @@ fn compute_ph(emitted: f32, total_budget: f32) -> f32 {
 // shifting toward a murky yellow-green as it drops, the common visual
 // shorthand for algae-bloom/eutrophic water quality (a real, if separate,
 // consequence of nutrient/chemistry imbalance from what this module models
-// numerically).
-fn ph_to_color(ph: f32) -> Color {
+// numerically). pub(crate): hud.rs's own pH history graph reuses this
+// exact ramp directly rather than approximating a similar one, so a
+// historical bar's color always matches what the pond itself looked like
+// at that reading.
+pub(crate) fn ph_to_color(ph: f32) -> Color {
     let t = ((INITIAL_PH - ph) / (INITIAL_PH - MIN_PH)).clamp(0.0, 1.0);
     let healthy = bevy::math::Vec3::new(0.10, 0.35, 0.55);
     let acidified = bevy::math::Vec3::new(0.45, 0.42, 0.15);

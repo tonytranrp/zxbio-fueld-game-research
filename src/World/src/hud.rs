@@ -44,6 +44,14 @@
 //! BOTTOM edge stays visually anchored while its top edge rises/falls --
 //! Bevy UI's `Val::Px` position is relative to the top edge, so anchoring
 //! the bottom takes recomputing both, not just height alone.
+//!
+//! A second row graphs `WaterBody::ph()` the same way -- the only other
+//! "slow variable" (accumulates/decays gradually rather than jumping
+//! per-action, the same property that made the carbon budget worth
+//! graphing over every other system) this game tracks. Reuses
+//! `water.rs`'s own `ph_to_color()` directly for the bar color (not an
+//! approximated ramp) so a historical bar always matches what the pond
+//! itself actually looked like at that reading.
 #![forbid(unsafe_code)]
 
 use crate::carbon::CarbonBudget;
@@ -52,7 +60,7 @@ use crate::daynight::DayNightCycle;
 use crate::fuel::FuelStockpile;
 use crate::hydrogen::HydrogenStockpile;
 use crate::session::DeltaSeconds;
-use crate::water::WaterBody;
+use crate::water::{self, WaterBody};
 use bevy::app::{App, Update};
 use bevy::color::Color;
 use bevy::ecs::entity::Entity;
@@ -69,8 +77,17 @@ struct HudText;
 #[derive(Component)]
 struct HistoryBar(usize);
 
+#[derive(Component)]
+struct PhHistoryBar(usize);
+
 #[derive(Resource, Default)]
 struct CarbonHistory {
+    samples: VecDeque<f32>,
+    elapsed_since_sample: f32,
+}
+
+#[derive(Resource, Default)]
+struct PhHistory {
     samples: VecDeque<f32>,
     elapsed_since_sample: f32,
 }
@@ -86,6 +103,9 @@ const HISTORY_GRAPH_LEFT_PX: f32 = 12.0;
 const HISTORY_GRAPH_TOP_PX: f32 = 175.0;
 const HISTORY_GRAPH_HEIGHT_PX: f32 = 40.0;
 const HISTORY_MIN_BAR_HEIGHT_PX: f32 = 2.0;
+// Directly below the carbon graph's own max height, plus a visible gap
+// so the two rows never touch.
+const PH_GRAPH_TOP_PX: f32 = HISTORY_GRAPH_TOP_PX + HISTORY_GRAPH_HEIGHT_PX + 10.0;
 // A visibly distinct neutral grey (darker than the healthy-green end of
 // bar_color()'s own real-data range) for bar slots with no sample yet --
 // e.g. the first ~60 real seconds of a session, before HISTORY_CAPACITY
@@ -119,6 +139,21 @@ fn bar_color(remaining: f32, total_budget: f32) -> Color {
     let healthy = Vec3::new(0.25, 0.75, 0.35);
     let mixed = critical.lerp(healthy, fraction);
     Color::srgb(mixed.x, mixed.y, mixed.z)
+}
+
+// Bar height for a given pH reading -- normalized against water.rs's own
+// real range (INITIAL_PH the ceiling, MIN_PH the floor), the same
+// "fraction of a real range, floor-clamped" shape bar_height_px() itself
+// uses. Higher pH (less acidified) reads as a taller bar, matching the
+// same "taller = healthier" convention the carbon graph already
+// establishes -- even though water.rs's own irrigation_multiplier() is a
+// PEAKED curve around an optimum rather than monotonic, this graph is
+// showing the raw pH trend itself, not irrigation quality, so a simple
+// ceiling-to-floor normalization is the honest match for what it's
+// actually displaying.
+fn ph_bar_height_px(ph: f32) -> f32 {
+    let fraction = ((ph - water::MIN_PH) / (water::INITIAL_PH - water::MIN_PH)).clamp(0.0, 1.0);
+    HISTORY_MIN_BAR_HEIGHT_PX + fraction * (HISTORY_GRAPH_HEIGHT_PX - HISTORY_MIN_BAR_HEIGHT_PX)
 }
 
 // ui_target_camera: the entity IsDefaultUiCamera gets attached to -- must
@@ -160,8 +195,28 @@ pub(crate) fn setup(app: &mut App, ui_target_camera: Entity) {
         ));
     }
 
+    for i in 0..HISTORY_CAPACITY {
+        let left = HISTORY_GRAPH_LEFT_PX + i as f32 * (HISTORY_BAR_WIDTH_PX + HISTORY_BAR_GAP_PX);
+        app.world_mut().spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(left),
+                top: Val::Px(PH_GRAPH_TOP_PX + HISTORY_GRAPH_HEIGHT_PX - HISTORY_MIN_BAR_HEIGHT_PX),
+                width: Val::Px(HISTORY_BAR_WIDTH_PX),
+                height: Val::Px(HISTORY_MIN_BAR_HEIGHT_PX),
+                ..Default::default()
+            },
+            BackgroundColor(HISTORY_NO_DATA_COLOR),
+            PhHistoryBar(i),
+        ));
+    }
+
     app.insert_resource(CarbonHistory::default());
-    app.add_systems(Update, (update_hud, sample_carbon_history, update_history_bars));
+    app.insert_resource(PhHistory::default());
+    app.add_systems(
+        Update,
+        (update_hud, sample_carbon_history, update_history_bars, sample_ph_history, update_ph_history_bars),
+    );
 }
 
 fn sample_carbon_history(dt: Res<DeltaSeconds>, carbon: Res<CarbonBudget>, mut history: ResMut<CarbonHistory>) {
@@ -189,6 +244,33 @@ fn update_history_bars(carbon: Res<CarbonBudget>, history: Res<CarbonHistory>, m
         node.height = Val::Px(height);
         node.top = Val::Px(HISTORY_GRAPH_TOP_PX + HISTORY_GRAPH_HEIGHT_PX - height);
         color.0 = bar_color(remaining, total_budget);
+    }
+}
+
+fn sample_ph_history(dt: Res<DeltaSeconds>, water: Res<WaterBody>, mut history: ResMut<PhHistory>) {
+    history.elapsed_since_sample += dt.0;
+    if history.elapsed_since_sample < HISTORY_SAMPLE_INTERVAL_SECONDS {
+        return;
+    }
+    history.elapsed_since_sample = 0.0;
+    history.samples.push_back(water.ph());
+    if history.samples.len() > HISTORY_CAPACITY {
+        history.samples.pop_front();
+    }
+}
+
+fn update_ph_history_bars(history: Res<PhHistory>, mut bars: Query<(&PhHistoryBar, &mut Node, &mut BackgroundColor)>) {
+    for (bar, mut node, mut color) in &mut bars {
+        let Some(&ph) = history.samples.get(bar.0) else {
+            node.height = Val::Px(HISTORY_MIN_BAR_HEIGHT_PX);
+            node.top = Val::Px(PH_GRAPH_TOP_PX + HISTORY_GRAPH_HEIGHT_PX - HISTORY_MIN_BAR_HEIGHT_PX);
+            color.0 = HISTORY_NO_DATA_COLOR;
+            continue;
+        };
+        let height = ph_bar_height_px(ph);
+        node.height = Val::Px(height);
+        node.top = Val::Px(PH_GRAPH_TOP_PX + HISTORY_GRAPH_HEIGHT_PX - height);
+        color.0 = water::ph_to_color(ph);
     }
 }
 
@@ -225,6 +307,22 @@ mod tests {
 
         assert!(critical.red > critical.green, "a fully-consumed budget should read as red-dominant (critical)");
         assert!(healthy.green > healthy.red, "a fully-intact budget should read as green-dominant (healthy)");
+    }
+
+    #[test]
+    fn ph_bar_height_spans_the_real_min_to_initial_ph_range() {
+        assert!(
+            (ph_bar_height_px(water::INITIAL_PH) - HISTORY_GRAPH_HEIGHT_PX).abs() < 1.0e-5,
+            "the real starting (least-acidified) pH should render at the graph's own configured max height"
+        );
+        assert!(
+            (ph_bar_height_px(water::MIN_PH) - HISTORY_MIN_BAR_HEIGHT_PX).abs() < 1.0e-5,
+            "the real floor pH should render at the graph's own floor height, not vanish to zero"
+        );
+        assert!(
+            (ph_bar_height_px(water::MIN_PH - 2.0) - HISTORY_MIN_BAR_HEIGHT_PX).abs() < 1.0e-5,
+            "a pH below the real floor should clamp to the same floor height, not go negative"
+        );
     }
 }
 
