@@ -1,14 +1,16 @@
 //! World engine entry point.
 //!
-//! Phase 1(a) scope (see the migration plan artifact): prove the persisted-
-//! EventLoop + `run_app_on_demand` reentrancy pattern -- validated
-//! standalone in the Phase-0 throwaway spike -- survives being the REAL
-//! cxx-bridged crate, built through Corrosion into BiofuelGame.exe and
-//! callable more than once per process. Renders a plain Vulkan-cleared
-//! window via raw wgpu, not yet real bevy_render: isolating this step's own
-//! risk (does reentrancy survive the real FFI/build integration?) from the
-//! separate, more ordinary work of wiring up Bevy's own renderer on top,
-//! which is the immediate next step once this one is verified.
+//! Phase 1 (see the migration plan artifact): a real `bevy_app::App`
+//! running `bevy_render`'s own renderer, pinned to the Vulkan backend,
+//! reachable from C++ through this cxx-bridged crate, built through
+//! Corrosion into BiofuelGame.exe -- callable more than once per process.
+//! Phase 1(a) first proved the persisted-EventLoop + `run_app_on_demand`
+//! reentrancy pattern (validated standalone in the Phase-0 throwaway spike)
+//! survives the real FFI/build integration using plain wgpu, in isolation
+//! from Bevy; Phase 1(b), now folded into `session.rs`, replaces that with
+//! the real `bevy_render` integration on top of the same proven runner.
+//! Still clear-color-only (a `Camera2d`, no scene content) -- real
+//! materials/lighting/glTF loading are later phases.
 //!
 //! No crate-wide `forbid(unsafe_code)` here: cxx's bridge macro (`mod ffi`
 //! below) needs unsafe internally to cross the ABI, so a crate-wide forbid

@@ -58,19 +58,44 @@ dead_code = "deny"
 # on both sides of each boundary.
 cxx = "=1.0.194"
 
-# Phase 1(a) scope: prove the persisted-EventLoop + run_app_on_demand
-# reentrancy pattern (validated standalone in the Phase-0 spike, see the
-# migration plan artifact) works when it's the REAL cxx-bridged crate,
-# reachable from C++, built through Corrosion into BiofuelGame.exe. This is
-# the genuinely novel, unproven-elsewhere part of the architecture -- worth
-# isolating and verifying on its own before adding bevy_render on top.
-# Exact pins match bevy_winit-0.19.1/bevy_render-0.19.1's own dependency
-# versions (see Engine/game's bevy pin) so this stays a faithful predictor
-# of the real integration once bevy_render is added in the next step, not a
-# different, easier problem.
+# winit/wgpu here directly (not just via bevy_render's own copies) for two
+# reasons: adapter_probe.rs's pre-flight Vulkan check happens BEFORE any
+# Bevy App exists (see its own doc comment), and session.rs's hand-rolled
+# ApplicationHandler/ EventLoop-reuse runner bypasses bevy_winit entirely
+# (see session.rs's module doc). Exact pins match bevy_winit-0.19.1/
+# bevy_render-0.19.1's own dependency versions (confirmed via
+# bevy_render-0.19.1/Cargo.toml's own wgpu = "29.0.3" pin and winit-0.30.13
+# being what bevy_winit-0.19.1 resolves to) so these stay faithfully the
+# same wgpu/winit Cargo unifies with bevy_render below, not a second,
+# potentially-divergent copy.
 winit = "=0.30.13"
 wgpu = { version = "=29.0.4", default-features = false, features = ["wgsl", "vulkan", "naga-ir"] }
 pollster = "0.4"
+
+# Phase 1(b): bevy_render's own renderer, pinned to the Vulkan backend in
+# session.rs's RenderPlugin config -- NOT bevy_winit (see session.rs's
+# module doc for why: WinitPlugin always builds a fresh EventLoop, which
+# panics on the second call in one process). bevy_pbr/bevy_gltf are
+# deliberately not yet included -- this milestone is clear-color-only
+# rendering (a Camera2d + ClearColorConfig, no scene content), matching the
+# migration plan's own Phase 1 vs. Phase 2 split; real materials/lighting/
+# glTF loading are follow-up phases, not needed to prove this integration
+# point works. bevy_asset IS needed even for this milestone, confirmed by a
+# real panic without it: RenderPlugin::build() itself calls
+# app.init_asset::<Shader>(), which needs AssetPlugin's resources already
+# registered -- not automatic just from the bevy_render feature/crate being
+# present, since bevy_render's own feature definition doesn't cascade
+# "bevy_asset" (confirmed by reading bevy_internal-0.19.1/Cargo.toml.orig).
+bevy = { version = "=0.19.1", default-features = false, features = [
+    "bevy_asset",
+    # TonemappingPlugin (part of CorePipelinePlugin's bundle) unconditionally
+    # touches an Assets<Image> resource even with LUTs disabled -- confirmed
+    # by a real panic without ImagePlugin registered.
+    "bevy_image",
+    "bevy_render", "bevy_core_pipeline",
+    "std", "multi_threaded",
+    "bevy_log",
+] }
 
 [build-dependencies]
 cxx-build = "=1.0.194"
