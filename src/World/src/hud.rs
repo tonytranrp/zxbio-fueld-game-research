@@ -48,6 +48,7 @@
 
 use crate::carbon::CarbonBudget;
 use crate::crop::{CropGrowth, CropSpecies};
+use crate::daynight::DayNightCycle;
 use crate::fuel::FuelStockpile;
 use crate::hydrogen::HydrogenStockpile;
 use crate::session::DeltaSeconds;
@@ -79,7 +80,10 @@ const HISTORY_SAMPLE_INTERVAL_SECONDS: f32 = 2.5;
 const HISTORY_BAR_WIDTH_PX: f32 = 6.0;
 const HISTORY_BAR_GAP_PX: f32 = 2.0;
 const HISTORY_GRAPH_LEFT_PX: f32 = 12.0;
-const HISTORY_GRAPH_TOP_PX: f32 = 150.0;
+// Bumped from the graph's own original 150.0 once update_hud() gained a
+// 6th (Day/Night) text line -- enough clearance below the taller text
+// block that the graph's own top row doesn't visually overlap it.
+const HISTORY_GRAPH_TOP_PX: f32 = 175.0;
 const HISTORY_GRAPH_HEIGHT_PX: f32 = 40.0;
 const HISTORY_MIN_BAR_HEIGHT_PX: f32 = 2.0;
 // A visibly distinct neutral grey (darker than the healthy-green end of
@@ -229,12 +233,17 @@ fn update_hud(
     fuel: Res<FuelStockpile>,
     water: Res<WaterBody>,
     hydrogen: Res<HydrogenStockpile>,
+    daynight: Res<DayNightCycle>,
     crops: Query<&CropGrowth>,
     mut text_query: Query<&mut Text, With<HudText>>,
 ) {
     let Ok(mut text) = text_query.single_mut() else {
         return;
     };
+    // is_daytime(), not a light_level() threshold -- see that method's
+    // own doc comment for why light_level() alone can't distinguish a
+    // dim dawn/dusk moment from genuine night.
+    let day_or_night = if daynight.is_daytime() { "Day" } else { "Night" };
     // The warning line only appears once WaterBody::has_overshot_optimal()
     // itself goes true (past the real nutrient-uptake optimum, not merely
     // "pH has moved") -- see that method's own doc comment for why a
@@ -260,7 +269,8 @@ fn update_hud(
     }
 
     text.0 = format!(
-        "Carbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}\nHydrogen: {:.2} kg\nCorn: {} | Switchgrass: {} | Miscanthus: {}{}",
+        "{}\nCarbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}\nHydrogen: {:.2} kg\nCorn: {} | Switchgrass: {} | Miscanthus: {}{}",
+        day_or_night,
         carbon.remaining(),
         fuel.liters(),
         water.ph(),

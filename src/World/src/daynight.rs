@@ -46,6 +46,22 @@ impl DayNightCycle {
     pub(crate) fn light_level(&self) -> f32 {
         light_level(self.elapsed_seconds, DAY_LENGTH_SECONDS)
     }
+
+    // A direct, unambiguous day/night check on the RAW phase -- not
+    // derived from light_level() itself, since light_level() clamps its
+    // own near-edge daytime values (just after sunrise, just before
+    // sunset) up to the same NIGHT_AMBIENT_LIGHT floor genuine nighttime
+    // also reads at, making the two indistinguishable from that value
+    // alone. hud.rs's own Day/Night label needs the real answer, not an
+    // approximation of it.
+    pub(crate) fn is_daytime(&self) -> bool {
+        is_daytime(self.elapsed_seconds, DAY_LENGTH_SECONDS)
+    }
+}
+
+fn is_daytime(elapsed_seconds: f32, day_length_seconds: f32) -> bool {
+    let cycle_length = day_length_seconds * 2.0;
+    elapsed_seconds.rem_euclid(cycle_length) < day_length_seconds
 }
 
 // See this module's own doc comment: a game-pacing choice, not a literal
@@ -160,5 +176,19 @@ mod tests {
 
         assert!((early - one_cycle_later).abs() < 1.0e-4, "the exact same point in a later cycle should reproduce the same light level");
         assert!((early - two_cycles_later).abs() < 1.0e-4, "the cycle should keep repeating indefinitely, not drift");
+    }
+
+    #[test]
+    fn is_daytime_distinguishes_dim_dawn_from_genuine_night_even_though_light_level_cannot() {
+        let day_length = 30.0;
+        // A moment just after sunrise: light_level() itself clamps this
+        // near-zero sin() value up to the same NIGHT_AMBIENT_LIGHT floor
+        // genuine night reads at (see this module's own doc comment on
+        // is_daytime()) -- the whole reason this separate check exists.
+        let just_after_sunrise = 0.01;
+        let deep_night = day_length * 1.5;
+
+        assert!(is_daytime(just_after_sunrise, day_length), "a moment just after sunrise is still daytime, even if its own light_level() reads at the same floor value night does");
+        assert!(!is_daytime(deep_night, day_length), "the middle of the night should read as night");
     }
 }
