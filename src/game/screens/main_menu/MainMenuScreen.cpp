@@ -3,7 +3,6 @@
 #include "MainMenuScreenModule.hpp"
 #include "MainMenuScreenRenderers.hpp"
 #include "game/screens/idle/IdleScreen.hpp"
-#include "game/screens/exploration/ExplorationScreen.hpp"
 #include "engine/ui/ScreenManager.hpp"
 #include "engine/ui/typed/RenderPipeline.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
@@ -61,17 +60,19 @@ void MainMenuScreen::onUpdate(const f32 dt) {
     updateDimensionShift(dt);
 
     // Route into gameplay once the post-dismiss dimension shift finishes.
-    // queuePush/queueReplace are silently ignored while a transition is
-    // already in flight (ScreenManager logs a warning and no-ops) -- guard
-    // on !isTransitioning() too, or a dispatch that lands mid-transition
-    // would set m_routeDispatched without ever actually queuing the screen,
-    // leaving the menu stuck in its warped end state forever.
-    if (m_dismissRoute == DismissRoute::Exploration && !m_routeDispatched
-        && m_dimensionShift >= 1.0f && !isTransitioning()) {
+    // requestWorldSession() just sets a flag Application::run()'s own loop
+    // checks (see App.cpp's runWorldSessionAndReturn()) -- unlike the old
+    // queueReplace<ExplorationScreen>() this replaced, there's no
+    // isTransitioning() guard needed here: the actual window/engine
+    // teardown only happens once this screen's own frame finishes
+    // rendering, not synchronously inside this call.
+    if (m_dismissRoute == DismissRoute::WorldSession && !m_routeDispatched
+        && m_dimensionShift >= 1.0f) {
         m_routeDispatched = true;
-        if (auto* sm = manager()) {
-            sm->queueReplace<ExplorationScreen>();
-        }
+        // No real save-slot system exists yet -- New Game and Continue are
+        // currently indistinguishable (see activateSelected()), so this is
+        // always -1 ("new game") until one exists.
+        ::biofuel::engine::runtime::Runtime::screen().requestWorldSession(-1);
     }
 
     m_cameraComponent.update(dt);
@@ -242,7 +243,7 @@ void MainMenuScreen::activateSelected() {
     switch (m_selected) {
     case 0: // New Game
     case 1: // Continue
-        m_dismissRoute = DismissRoute::Exploration;
+        m_dismissRoute = DismissRoute::WorldSession;
         startDismiss();
         break;
     case 2:

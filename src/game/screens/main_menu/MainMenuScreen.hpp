@@ -132,10 +132,12 @@ private:
     // ---- Dimension shift (driven after dismiss completes) ----
     f32 m_dimensionShift = 0.0f;
 
-    // ---- Post-dismiss routing: which screen the dimension-shift lands on
-    // once it completes. Idle dismiss (startIdleDismiss) leaves this None,
-    // so only an explicit New Game/Continue actually routes anywhere. ----
-    enum class DismissRoute : u8 { None, Exploration };
+    // ---- Post-dismiss routing: what the dimension-shift lands on once it
+    // completes. Idle dismiss (startIdleDismiss) leaves this None, so only
+    // an explicit New Game/Continue actually routes anywhere. WorldSession
+    // hands off to the real World engine (see App.cpp's
+    // runWorldSessionAndReturn()) rather than pushing a C++ screen. ----
+    enum class DismissRoute : u8 { None, WorldSession };
     DismissRoute m_dismissRoute = DismissRoute::None;
     bool m_routeDispatched = false;
 

@@ -3,6 +3,9 @@
 #ifdef BIOFUEL_WITH_BEVY_BRIDGE
 #include "engine/bevy/BevyRenderService.hpp"
 #endif
+#ifdef BIOFUEL_WITH_WORLD_BRIDGE
+#include "engine/world/WorldBridge.hpp"
+#endif
 #include "engine/graphics/Render.hpp"
 #include "engine/debug/DebugOverlayService.hpp"
 #include "engine/debug/MemoryTelemetry.hpp"
@@ -73,6 +76,39 @@ void Application::shutdown() {
     m_running = false;
 }
 
+void Application::runWorldSessionAndReturn() {
+    auto& screens = ::biofuel::engine::runtime::Runtime::screen();
+    const i32 saveSlot = screens.worldSessionSaveSlot();
+    screens.clearWorldSessionRequest();
+
+    // Exactly the same teardown a real quit does (services, Win32 drag
+    // timer, CloseWindow()) -- reusing shutdown() rather than duplicating
+    // it, since the two really are the same sequence. Confirmed safe to
+    // reopen a fresh raylib window afterward by a dedicated isolated check
+    // (tests/engine/WorldRaylibHandoffCheck.cpp) before this was wired in
+    // here: raylib's second InitWindow() resets its internal resource IDs
+    // exactly like a true fresh start, not reused stale state.
+    shutdown();
+
+#ifdef BIOFUEL_WITH_WORLD_BRIDGE
+    // Return value intentionally not yet branched on -- every outcome
+    // (ReturnedToMenu, VulkanUnavailable, InternalError) currently just
+    // goes back to a freshly-booted menu below. Routing the failure cases
+    // to a real in-menu error message is a later phase's scope (see the
+    // migration plan).
+    (void)::biofuel::engine::world::runWorldSession(
+        ::biofuel::engine::world::WorldSessionInput{.saveSlot = saveSlot});
+#endif
+
+    // Fresh window + LoadingScreen -> MainMenu, identical to a cold start --
+    // deliberately not trying to preserve any of the prior run's engine
+    // state, since the new raylib window is a genuinely new GL context and
+    // every typed-registry service that caches raylib resource IDs
+    // (ShaderManager, ModelSystem, ...) needs real re-initialization, not
+    // naive reuse.
+    init();
+}
+
 // ------------------------------------------------------------------------------
 // Main Loop
 // ------------------------------------------------------------------------------
@@ -97,20 +133,36 @@ BIOFUEL_FORCE_INLINE void clampAccumulator(f64& accumulator) noexcept {
 i32 Application::run() {
     init();
 
-    f64 accumulator = 0.0;
+    // Outer loop: normally runs its body's while-loop exactly once, all the
+    // way to a real quit. A World-session request instead falls out of the
+    // inner loop early, runs runWorldSessionAndReturn() (which blocks for
+    // the whole gameplay session and then re-inits a fresh window +
+    // LoadingScreen, see that method's own doc), and the outer loop starts
+    // the inner one again -- repeatable for as many New Game/Continue ->
+    // menu round trips as the player makes in one process lifetime.
+    for (;;) {
+        f64 accumulator = 0.0;
+        auto& screens = ::biofuel::engine::runtime::Runtime::screen();
 
-    while (m_running && !WindowShouldClose() && !::biofuel::engine::runtime::Runtime::screen().quitRequested()) {
-        accumulator += static_cast<f64>(GetFrameTime());
-        clampAccumulator(accumulator);
+        while (m_running && !WindowShouldClose() && !screens.quitRequested() && !screens.worldSessionRequested()) {
+            accumulator += static_cast<f64>(GetFrameTime());
+            clampAccumulator(accumulator);
 
-        processInput();
+            processInput();
 
-        while (accumulator >= Application::kFixedDt) {
-            update(static_cast<f32>(Application::kFixedDt));
-            accumulator -= Application::kFixedDt;
+            while (accumulator >= Application::kFixedDt) {
+                update(static_cast<f32>(Application::kFixedDt));
+                accumulator -= Application::kFixedDt;
+            }
+
+            render();
         }
 
-        render();
+        if (!screens.worldSessionRequested()) {
+            break; // real quit, or the OS/user closed the window directly
+        }
+
+        runWorldSessionAndReturn();
     }
 
     shutdown();

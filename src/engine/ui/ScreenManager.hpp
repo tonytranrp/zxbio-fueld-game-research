@@ -94,6 +94,19 @@ public:
     void requestQuit() noexcept { m_quitRequested = true; }
     [[nodiscard]] bool quitRequested() const noexcept { return m_quitRequested; }
 
+    // World-session handoff signal — screens call requestWorldSession()
+    // instead of calling WorldBridge directly. The actual CloseWindow() /
+    // runWorldSession() / InitWindow() sequence is Application::run()'s own
+    // concern (see App.cpp), same reasoning as the quit signal above: a
+    // screen shouldn't reach past the engine's main-loop boundary itself.
+    void requestWorldSession(const i32 saveSlot) noexcept {
+        m_worldSessionRequested = true;
+        m_worldSessionSaveSlot = saveSlot;
+    }
+    [[nodiscard]] bool worldSessionRequested() const noexcept { return m_worldSessionRequested; }
+    [[nodiscard]] i32 worldSessionSaveSlot() const noexcept { return m_worldSessionSaveSlot; }
+    void clearWorldSessionRequest() noexcept { m_worldSessionRequested = false; }
+
     // Crossfade transition preloading for startup tasks
     void preloadCrossfadeShader();
     void setPolicyResolvers(TransitionPolicyResolver transitionResolver, StackPolicyResolver stackResolver) noexcept;
@@ -112,6 +125,8 @@ private:
     TransitionPolicyResolver m_transitionPolicyResolver = typed::transitionPolicyForId;
     StackPolicyResolver m_stackPolicyResolver = typed::stackPolicyForId;
     bool m_quitRequested = false;
+    bool m_worldSessionRequested = false;
+    i32 m_worldSessionSaveSlot = -1;
     bool m_overrideSinksConnected = false;
 
     // Async screen transition support

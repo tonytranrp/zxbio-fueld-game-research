@@ -48,6 +48,13 @@ private:
     void processInput();
     void update(f32 deltaTime);
     void render();
+    // Handles a ScreenManager::requestWorldSession() signal: shuts down
+    // this run's window/services, blocks in the World engine for the whole
+    // gameplay session (see engine/world/WorldBridge.hpp), then re-runs
+    // init() from scratch (fresh window, fresh LoadingScreen -> MainMenu)
+    // exactly as if the process had just started. Only called from run()'s
+    // own loop, between two while-loop passes -- never mid-frame.
+    void runWorldSessionAndReturn();
 
     const Config m_config;
     bool m_initialized = false;
