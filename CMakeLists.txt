@@ -105,6 +105,14 @@ endif()
 # the default dev build. Pass -DBIOFUEL_ENABLE_BEVY_BRIDGE=ON to build it.
 option(BIOFUEL_ENABLE_BEVY_BRIDGE "Build the embedded Bevy render bridge and its F6 tech-demo screen" OFF)
 
+# biofuel_world (src/World/) is the new raylib-menu -> Bevy/Vulkan gameplay
+# handoff engine (see the World Engine Migration plan). Default ON, unlike
+# BIOFUEL_ENABLE_BEVY_BRIDGE, since this is meant to become real, always-on
+# gameplay infrastructure rather than an opt-in demo -- but kept a real
+# option (not unconditional) so it stays easy to disable if its own
+# build-time cost becomes a problem before it's feature-complete.
+option(BIOFUEL_ENABLE_WORLD_BRIDGE "Build the raylib-menu -> Bevy/Vulkan World gameplay engine" ON)
+
 # ------------------------------------------------------------------------------
 # CPM.cmake - CMake Package Manager
 # ------------------------------------------------------------------------------
@@ -287,6 +295,30 @@ corrosion_add_cxxbridge(
     REGEN_TARGET biofuel_game_ecs_cxx_regen
     FILES lib.rs
 )
+
+# biofuel_world (src/World/): cdylib for the same reason as biofuel_game_ecs
+# above -- a second staticlib alongside biofuel_rapier_bridge would
+# reproduce the LNK2005 duplicate-symbol failure this project already hit
+# once. Its own STANDALONE Cargo workspace, not a member of
+# src/engine/Rust/'s -- Cargo hard-rejects a member outside the workspace
+# root's own directory subtree, and this crate deliberately lives as a
+# sibling of src/engine/, not beneath it (see src/World/Cargo.toml's own
+# comment). Corrosion doesn't care about workspace boundaries either way.
+if(BIOFUEL_ENABLE_WORLD_BRIDGE)
+    corrosion_import_crate(
+        MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/World/Cargo.toml"
+        LOCKED
+        CRATES biofuel_world
+        CRATE_TYPES cdylib
+    )
+
+    corrosion_add_cxxbridge(
+        biofuel_world_cxx
+        CRATE biofuel_world
+        REGEN_TARGET biofuel_world_cxx_regen
+        FILES lib.rs
+    )
+endif()
 
 # biofuel_bevy_bridge is a cdylib, not a second staticlib: two separate
 # rustc-produced staticlibs can't be linked into one C++ binary (each vendors

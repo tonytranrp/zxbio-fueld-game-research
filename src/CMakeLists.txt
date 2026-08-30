@@ -22,6 +22,13 @@ if(NOT BIOFUEL_ENABLE_BEVY_BRIDGE)
     list(FILTER GAME_SOURCES EXCLUDE REGEX "/game/screens/bevy_demo/")
 endif()
 
+# Same reasoning as BIOFUEL_ENABLE_BEVY_BRIDGE above: src/engine/world/'s
+# files unconditionally include the biofuel_world_cxx-generated header, so
+# they must not be compiled when that crate isn't imported.
+if(NOT BIOFUEL_ENABLE_WORLD_BRIDGE)
+    list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/engine/world/")
+endif()
+
 # ------------------------------------------------------------------------------
 # Shader source embedding - BUILD TIME, not configure time.
 # ------------------------------------------------------------------------------
@@ -170,6 +177,11 @@ target_link_libraries(biofuel_engine
 if(BIOFUEL_ENABLE_BEVY_BRIDGE)
     target_link_libraries(biofuel_engine PUBLIC biofuel_bevy_bridge biofuel_bevy_bridge_cxx)
     target_compile_definitions(biofuel_engine PUBLIC BIOFUEL_WITH_BEVY_BRIDGE)
+endif()
+
+if(BIOFUEL_ENABLE_WORLD_BRIDGE)
+    target_link_libraries(biofuel_engine PUBLIC biofuel_world biofuel_world_cxx)
+    target_compile_definitions(biofuel_engine PUBLIC BIOFUEL_WITH_WORLD_BRIDGE)
 endif()
 
 add_library(biofuel_game STATIC ${GAME_SOURCES})
@@ -374,6 +386,16 @@ if(BIOFUEL_BUILD_TESTS AND BUILD_TESTING)
     target_link_libraries(BiofuelVideoFailureSmokeTest PRIVATE biofuel_engine)
     add_test(NAME BiofuelVideoFailureSmoke COMMAND BiofuelVideoFailureSmokeTest)
 
+    # NOT add_test()'d: opens two real windows needing a human to close each
+    # one, so it can't run unattended in ctest/CI. Run it manually -- see
+    # its own file comment. This is Phase 1(a)'s real verification gate for
+    # the World engine migration (persisted-EventLoop reentrancy through the
+    # actual C++ -> cxx -> biofuel_world path, on the real main thread).
+    if(BIOFUEL_ENABLE_WORLD_BRIDGE)
+        add_executable(WorldBridgeManualCheck "${CMAKE_SOURCE_DIR}/tests/engine/WorldBridgeManualCheck.cpp")
+        target_link_libraries(WorldBridgeManualCheck PRIVATE biofuel_engine)
+    endif()
+
     add_test(NAME BiofuelEngineBoundaryGuard
         COMMAND ${CMAKE_COMMAND}
             -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
@@ -450,6 +472,18 @@ if(BIOFUEL_ENABLE_BEVY_BRIDGE)
             "$<TARGET_FILE:biofuel_bevy_bridge-shared>"
             "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
         COMMENT "Copying biofuel_bevy_bridge.dll to output directory"
+    )
+endif()
+
+# biofuel_world is a cdylib (see root CMakeLists.txt) -- same POST_BUILD
+# treatment as biofuel_game_ecs/biofuel_bevy_bridge above.
+if(BIOFUEL_ENABLE_WORLD_BRIDGE)
+    add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:biofuel_world-shared>"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+        COMMENT "Copying biofuel_world.dll to output directory"
     )
 endif()
 

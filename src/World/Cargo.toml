@@ -1,0 +1,76 @@
+# Its own standalone Cargo workspace, deliberately NOT a member of
+# src/engine/Rust/'s workspace: Cargo hard-rejects any workspace member that
+# isn't hierarchically below the workspace root's own directory ("is not
+# hierarchically below the workspace root", confirmed by a real `cargo
+# check` failure), and this crate lives as a sibling of src/engine/ per the
+# project owner's explicit placement, not beneath it. Corrosion imports
+# crates by manifest path and doesn't care about workspace boundaries, so
+# this is a fully supported pattern -- the real cost is its own separate
+# Cargo.lock/target dir (no shared incremental build cache with
+# src/engine/Rust/'s Bevy dependency tree, e.g. Engine/bevy/'s wgpu/naga).
+[workspace]
+resolver = "2"
+members = ["."]
+
+# Same panic="abort" rationale as src/engine/Rust/Cargo.toml's own profile
+# tables (which this crate can't inherit -- see the workspace note above):
+# a Rust panic cannot unwind across this project's cxx FFI boundary into
+# C++ regardless of this setting, so aborting immediately on the rare path
+# that does panic (this crate depends on bevy_winit/bevy_render internals
+# with real panic paths it doesn't own -- see the migration plan's
+# panic-safety section) is the only sound option either way.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = "fat"
+codegen-units = 1
+debug = true
+
+[package]
+name = "biofuel_world"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# cdylib, not staticlib: same reason as Engine/game/Cargo.toml -- two
+# separate rustc-produced staticlibs both linking cxx's runtime-support
+# symbols into one C++ binary produces LNK2005 duplicate-symbol errors, a
+# failure this project already hit once and fixed by standardizing every
+# cxx-bridge crate after physics/ (the one grandfathered staticlib
+# exception) on cdylib.
+crate-type = ["cdylib"]
+
+# Kept in sync by hand with src/engine/Rust/Cargo.toml's own
+# [workspace.lints.rust] -- see the workspace note above for why this can't
+# just inherit.
+[lints.rust]
+unused = { level = "deny", priority = -1 }
+dead_code = "deny"
+
+[dependencies]
+# Exact pin, matching src/engine/Rust/Cargo.toml's own cxx/cxx-build pin --
+# see that file's comment on why an exact version (not a range) matters
+# here: physics/game/bevy/world all end up loaded into the same C++ process,
+# and cxx generates matching runtime-support glue from its own crate version
+# on both sides of each boundary.
+cxx = "=1.0.194"
+
+# Phase 1(a) scope: prove the persisted-EventLoop + run_app_on_demand
+# reentrancy pattern (validated standalone in the Phase-0 spike, see the
+# migration plan artifact) works when it's the REAL cxx-bridged crate,
+# reachable from C++, built through Corrosion into BiofuelGame.exe. This is
+# the genuinely novel, unproven-elsewhere part of the architecture -- worth
+# isolating and verifying on its own before adding bevy_render on top.
+# Exact pins match bevy_winit-0.19.1/bevy_render-0.19.1's own dependency
+# versions (see Engine/game's bevy pin) so this stays a faithful predictor
+# of the real integration once bevy_render is added in the next step, not a
+# different, easier problem.
+winit = "=0.30.13"
+wgpu = { version = "=29.0.4", default-features = false, features = ["wgsl", "vulkan", "naga-ir"] }
+pollster = "0.4"
+
+[build-dependencies]
+cxx-build = "=1.0.194"

@@ -6,6 +6,16 @@ members = [
     "Engine/Utils",
     "Engine/game",
 ]
+# src/World/ is NOT a member here -- Cargo hard-rejects any workspace member
+# that isn't hierarchically below the workspace root's own directory
+# ("is not hierarchically below the workspace root", confirmed by a real
+# `cargo check` failure), and src/World/ deliberately lives as a sibling of
+# src/engine/ per the project owner's explicit placement, not beneath it.
+# It is its own separate, standalone Cargo workspace instead (see
+# src/World/Cargo.toml) -- Corrosion imports crates by manifest path and
+# doesn't care about workspace boundaries, so this is a fully supported
+# pattern, just with its own Cargo.lock/target dir (no shared incremental
+# build cache with this workspace's Bevy dependency tree).
 
 [workspace.dependencies]
 # Exact pin (not "1.0", not a range) -- matches this project's established
