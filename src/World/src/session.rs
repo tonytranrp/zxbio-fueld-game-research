@@ -70,7 +70,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, hydrogen, level, miscanthus, solar, switchgrass, viewmodel, water};
+use crate::{adapter_probe, crop, daynight, event_loop_cell, fuel, hud, hydrogen, level, miscanthus, solar, switchgrass, viewmodel, water};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -81,8 +81,13 @@ pub(crate) enum SessionExitReason {
 
 // Sky/background clear color -- an arbitrary dusk blue-grey, swapped for a
 // real sky (or removed entirely once the level is fully enclosed) in a
-// later phase.
-const CLEAR_COLOR: Color = Color::srgb(0.35, 0.42, 0.55);
+// later phase. pub(crate): daynight.rs's own update_day_night system
+// lerps the world camera's live clear_color between this (solar noon) and
+// its own night-sky color -- imported rather than duplicated, since
+// (unlike solar.rs's own real-chemistry constants) this is a pure art/UI
+// color with no independent citation reason to keep two copies in sync
+// by hand.
+pub(crate) const CLEAR_COLOR: Color = Color::srgb(0.35, 0.42, 0.55);
 
 // Frame delta time, computed by hand in window_event's RedrawRequested arm
 // -- see this module's doc comment for why Res<Time> isn't used instead.
@@ -102,8 +107,11 @@ pub(crate) struct DeltaSeconds(pub(crate) f32);
 // debug probe logging camera3d_count=2 and an unchanging pos/rot across 60
 // frames -- the player/look code was computing the right transform the
 // whole time, it just had nowhere valid to write it.
+// pub(crate): daynight.rs's own update_day_night system queries this to
+// animate the world camera's sky color -- see that module's own doc
+// comment.
 #[derive(bevy::prelude::Component)]
-struct WorldCamera;
+pub(crate) struct WorldCamera;
 
 #[derive(Default)]
 struct SessionApp {
@@ -405,6 +413,18 @@ impl ApplicationHandler for SessionApp {
         // and per-frame growth systems, same pattern as viewmodel::setup.
         app.insert_resource(CarbonBudget::default());
 
+        // ---- A sweeping sun + sky, coupled into crop.rs's own growth math
+        // -- must be set up before crop::setup below, since
+        // update_crop_growth reads Res<daynight::DayNightCycle> every
+        // frame. The corn model was refined with real PBR materials
+        // (enable_pbr: true), unlike level.rs's deliberately-unlit boxes --
+        // without an actual light source it would render near-black, since
+        // a PBR material with zero incident light produces ~zero output
+        // the way an unlit material's flat base_color doesn't. See
+        // daynight.rs's own doc comment for the real day/night dynamics
+        // this is grounded in.
+        daynight::setup(&mut app);
+
         // ---- A farm pond coupled to the same CarbonBudget -- must be set
         // up before crop::setup below, since update_crop_growth reads
         // Res<water::WaterBody> every frame. See water.rs's own doc comment
@@ -450,22 +470,6 @@ impl ApplicationHandler for SessionApp {
         // harvest-moment VFX flourish, and the design rationale both are
         // grounded in.
         fuel::setup(&mut app);
-
-        // The corn model was refined with real PBR materials (enable_pbr:
-        // true), unlike level.rs's deliberately-unlit boxes -- without an
-        // actual light source it would render near-black, since a PBR
-        // material with zero incident light produces ~zero output the way
-        // an unlit material's flat base_color doesn't. A single directional
-        // "sun" light is also thematically the right first light for a
-        // farm, and a natural future feed for CropGrowth's own `light`
-        // input (time-of-day/sun-angle instead of a fixed 1.0/0.35).
-        app.world_mut().spawn((
-            bevy::light::DirectionalLight {
-                illuminance: 6000.0,
-                ..Default::default()
-            },
-            Transform::from_xyz(0.0, 10.0, 0.0).looking_at(Vec3::new(0.3, 0.0, 0.5), Vec3::Y),
-        ));
 
         // Tonemapping::default() is TonyMcMapface, which silently binds a
         // placeholder LUT (wrong-looking output, not a crash) unless the

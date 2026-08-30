@@ -29,6 +29,8 @@ mod carbon;
 #[forbid(unsafe_code)]
 mod crop;
 #[forbid(unsafe_code)]
+mod daynight;
+#[forbid(unsafe_code)]
 mod event_loop_cell;
 #[forbid(unsafe_code)]
 mod fp_camera;

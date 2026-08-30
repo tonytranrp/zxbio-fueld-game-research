@@ -119,8 +119,15 @@ impl CropGrowth {
     // the water term specifically -- real off-optimum irrigation water pH
     // reduces effective nutrient uptake from a given water SUPPLY, it
     // doesn't add a fourth independent bottleneck alongside light/co2/water.
-    fn limiting_factor(&self, irrigation_quality: f32) -> f32 {
-        self.light.min(self.co2).min(self.water * irrigation_quality)
+    // day_night_light (daynight.rs's own DayNightCycle::light_level(),
+    // 0.0..=1.0) scales the light term specifically for the same reason --
+    // real crops don't photosynthesize in the dark, so the SUN's own
+    // current brightness caps how much of this plant's own nominal light
+    // supply is actually usable right now, the same "a real environmental
+    // factor scales the specific input it affects" pattern irrigation
+    // quality already established.
+    fn limiting_factor(&self, irrigation_quality: f32, day_night_light: f32) -> f32 {
+        (self.light * day_night_light).min(self.co2).min(self.water * irrigation_quality)
     }
 }
 
@@ -128,15 +135,17 @@ pub(crate) fn update_crop_growth(
     dt: Res<DeltaSeconds>,
     mut carbon: ResMut<CarbonBudget>,
     water: Res<crate::water::WaterBody>,
+    daynight: Res<crate::daynight::DayNightCycle>,
     mut crops: Query<(&mut CropGrowth, &mut Transform)>,
 ) {
     let dt = dt.0;
     let irrigation_quality = water.irrigation_multiplier();
+    let day_night_light = daynight.light_level();
     for (mut crop, mut transform) in &mut crops {
         if crop.stage == GrowthStage::Mature {
             continue;
         }
-        let limiting = crop.limiting_factor(irrigation_quality);
+        let limiting = crop.limiting_factor(irrigation_quality, day_night_light);
         crop.growth = (crop.growth + crop.growth_rate * limiting * dt).min(1.0);
 
         crop.stage = if crop.growth >= 1.0 {
@@ -282,7 +291,7 @@ mod tests {
         // limiting factor should equal the SCARCEST input, not
         // (1.0+1.0+0.1)/3 =~ 0.7.
         let crop = CropGrowth::new(1.0, 1.0, 0.1, 1.0, 10.0, 5.0, 0.1, CropSpecies::Corn);
-        assert!((crop.limiting_factor(1.0) - 0.1).abs() < 1.0e-6, "limiting factor should equal the scarcest input, not an average");
+        assert!((crop.limiting_factor(1.0, 1.0) - 0.1).abs() < 1.0e-6, "limiting factor should equal the scarcest input, not an average");
     }
 
     #[test]
@@ -293,10 +302,25 @@ mod tests {
         // abundant and nominal water already the scarcest input, halving
         // irrigation quality should halve the resulting limiting factor.
         let crop = CropGrowth::new(1.0, 1.0, 0.4, 1.0, 10.0, 5.0, 0.1, CropSpecies::Corn);
-        let full_quality = crop.limiting_factor(1.0);
-        let half_quality = crop.limiting_factor(0.5);
+        let full_quality = crop.limiting_factor(1.0, 1.0);
+        let half_quality = crop.limiting_factor(0.5, 1.0);
         assert!((full_quality - 0.4).abs() < 1.0e-6, "at full irrigation quality, the limiting factor should equal the nominal water supply");
         assert!((half_quality - 0.2).abs() < 1.0e-6, "halving irrigation quality should halve the effective water term");
+    }
+
+    #[test]
+    fn night_scales_down_the_light_term_specifically_not_water_or_co2() {
+        // The same pattern poor_irrigation_quality_scales_down_the_water_
+        // term_specifically already establishes, one input over: with
+        // water and co2 both abundant and nominal light already the
+        // scarcest input, halving daynight.rs's own light level should
+        // halve the resulting limiting factor -- water/co2 stay
+        // untouched, this isn't a fourth independent bottleneck.
+        let crop = CropGrowth::new(0.4, 1.0, 1.0, 1.0, 10.0, 5.0, 0.1, CropSpecies::Corn);
+        let full_sun = crop.limiting_factor(1.0, 1.0);
+        let half_sun = crop.limiting_factor(1.0, 0.5);
+        assert!((full_sun - 0.4).abs() < 1.0e-6, "at full sun, the limiting factor should equal the nominal light supply");
+        assert!((half_sun - 0.2).abs() < 1.0e-6, "halving the sun's own current brightness should halve the effective light term");
     }
 
     #[test]
@@ -311,7 +335,7 @@ mod tests {
 
         // growth_rate=1.0 at limiting_factor=1.0 means 1.0 growth/sec;
         // 2 seconds is comfortably past the >=1.0 threshold.
-        crop.growth = (crop.growth + crop.growth_rate * crop.limiting_factor(1.0) * 2.0).min(1.0);
+        crop.growth = (crop.growth + crop.growth_rate * crop.limiting_factor(1.0, 1.0) * 2.0).min(1.0);
         assert_eq!(crop.growth, 1.0);
         crop.stage = GrowthStage::Mature;
         budget.add_emission(-crop.sequestration_on_maturity);
