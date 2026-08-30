@@ -45,6 +45,8 @@ mod physics;
 #[forbid(unsafe_code)]
 mod player;
 #[forbid(unsafe_code)]
+mod miscanthus;
+#[forbid(unsafe_code)]
 mod session;
 #[forbid(unsafe_code)]
 mod switchgrass;

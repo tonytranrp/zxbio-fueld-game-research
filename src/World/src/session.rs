@@ -70,7 +70,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, level, switchgrass, viewmodel};
+use crate::{adapter_probe, crop, event_loop_cell, fuel, hud, level, miscanthus, switchgrass, viewmodel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -413,6 +413,14 @@ impl ApplicationHandler for SessionApp {
         // comment for the cited real-research calibration behind every one
         // of its constants (growth pace, sequestration, harvest emission).
         switchgrass::setup(&mut app);
+
+        // ---- Content: a third crop, miscanthus -- a second cellulosic
+        // feedstock alongside switchgrass, completing a real three-tier
+        // biofuel comparison (corn net-emitting, switchgrass net-emitting
+        // but far less, miscanthus genuinely net-negative). See
+        // miscanthus.rs's own doc comment for the cited real-research
+        // calibration behind every one of its constants.
+        miscanthus::setup(&mut app);
 
         // Harvest -> fermentation -> combustion: the first real EMITTING
         // counterpart to crop.rs's own sequestration-on-maturity payout --
