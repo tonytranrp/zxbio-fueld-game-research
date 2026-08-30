@@ -70,7 +70,7 @@ use crate::fp_camera::FirstPersonCamera;
 use crate::input_state::InputState;
 use crate::physics::RapierPhysics;
 use crate::player::{self, PlayerController};
-use crate::{adapter_probe, crop, daynight, event_loop_cell, fuel, hud, hydrogen, level, miscanthus, solar, switchgrass, viewmodel, water};
+use crate::{adapter_probe, crop, daynight, event_loop_cell, fuel, hud, hydrogen, level, miscanthus, outcome, solar, switchgrass, viewmodel, water};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionExitReason {
@@ -470,6 +470,13 @@ impl ApplicationHandler for SessionApp {
         // harvest-moment VFX flourish, and the design rationale both are
         // grounded in.
         fuel::setup(&mut app);
+
+        // A defined win/lose condition -- must run after fuel::setup
+        // above (reads Res<FuelStockpile>) and CarbonBudget::default()
+        // near the top of this function (reads Res<CarbonBudget>). See
+        // outcome.rs's own doc comment for why this is the first time
+        // this game has had any completion state at all.
+        outcome::setup(&mut app);
 
         // Tonemapping::default() is TonyMcMapface, which silently binds a
         // placeholder LUT (wrong-looking output, not a crash) unless the

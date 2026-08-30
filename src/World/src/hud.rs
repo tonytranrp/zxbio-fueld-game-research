@@ -234,6 +234,7 @@ fn update_hud(
     water: Res<WaterBody>,
     hydrogen: Res<HydrogenStockpile>,
     daynight: Res<DayNightCycle>,
+    outcome: Res<crate::outcome::GameOutcome>,
     crops: Query<&CropGrowth>,
     mut text_query: Query<&mut Text, With<HudText>>,
 ) {
@@ -269,7 +270,7 @@ fn update_hud(
     }
 
     text.0 = format!(
-        "{}\nCarbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}\nHydrogen: {:.2} kg\nCorn: {} | Switchgrass: {} | Miscanthus: {}{}",
+        "{}\nCarbon budget remaining: {:.1}\nFuel: {:.1} L\nPond pH: {:.2}\nHydrogen: {:.2} kg\nCorn: {} | Switchgrass: {} | Miscanthus: {}{}{}",
         day_or_night,
         carbon.remaining(),
         fuel.liters(),
@@ -278,6 +279,7 @@ fn update_hud(
         corn,
         switchgrass,
         miscanthus,
-        overshoot_warning
+        overshoot_warning,
+        outcome.banner()
     );
 }
