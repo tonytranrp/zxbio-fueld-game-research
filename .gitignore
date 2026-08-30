@@ -26,6 +26,10 @@ src/build/
 # disk either; kept as a zero-cost backstop in case the root
 # .cargo/config.toml's target-dir redirect is ever removed).
 src/engine/Rust/target/
+# src/World/ is its own standalone Cargo workspace (see its Cargo.toml's own
+# doc comment for why it can't join src/engine/Rust/'s), so it gets its own
+# target dir entry here for the same reason as the one above.
+src/World/target/
 # Persistent CPM dependency source cache (see root CMakeLists.txt) -- kept
 # outside build/ on purpose so it survives a clean reconfigure.
 .cpm-cache/

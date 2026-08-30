@@ -72,20 +72,25 @@ winit = "=0.30.13"
 wgpu = { version = "=29.0.4", default-features = false, features = ["wgsl", "vulkan", "naga-ir"] }
 pollster = "0.4"
 
-# Phase 1(b): bevy_render's own renderer, pinned to the Vulkan backend in
-# session.rs's RenderPlugin config -- NOT bevy_winit (see session.rs's
-# module doc for why: WinitPlugin always builds a fresh EventLoop, which
-# panics on the second call in one process). bevy_pbr/bevy_gltf are
-# deliberately not yet included -- this milestone is clear-color-only
-# rendering (a Camera2d + ClearColorConfig, no scene content), matching the
-# migration plan's own Phase 1 vs. Phase 2 split; real materials/lighting/
-# glTF loading are follow-up phases, not needed to prove this integration
-# point works. bevy_asset IS needed even for this milestone, confirmed by a
-# real panic without it: RenderPlugin::build() itself calls
-# app.init_asset::<Shader>(), which needs AssetPlugin's resources already
-# registered -- not automatic just from the bevy_render feature/crate being
-# present, since bevy_render's own feature definition doesn't cascade
-# "bevy_asset" (confirmed by reading bevy_internal-0.19.1/Cargo.toml.orig).
+# Phase 3: native Rapier physics, same exact pin as
+# src/engine/Rust/Engine/{physics,game}/Cargo.toml (kept in sync by hand --
+# see this crate's own workspace-isolation note above for why it can't
+# inherit). Pure-Rust here, no cxx/FFI boundary needed: World/ is already
+# Rust end to end, unlike physics/'s C++-facing bridge.
+rapier3d = { version = "=0.32.0" }
+
+# Phase 1(b) got clear-color-only rendering working; Phase 3 adds real scene
+# content (level geometry + a first-person player), which needs bevy_pbr for
+# Mesh3d/MeshMaterial3d<StandardMaterial> and a real Camera3d -- still NOT
+# bevy_winit/bevy_gltf (see session.rs's module doc for why WinitPlugin is
+# permanently excluded; glTF-imported models are a later phase, this one is
+# solid-color boxes same as the level currently is in raylib). bevy_asset IS
+# needed even for this milestone, confirmed by a real panic without it:
+# RenderPlugin::build() itself calls app.init_asset::<Shader>(), which needs
+# AssetPlugin's resources already registered -- not automatic just from the
+# bevy_render feature/crate being present, since bevy_render's own feature
+# definition doesn't cascade "bevy_asset" (confirmed by reading
+# bevy_internal-0.19.1/Cargo.toml.orig).
 bevy = { version = "=0.19.1", default-features = false, features = [
     "bevy_asset",
     # TonemappingPlugin (part of CorePipelinePlugin's bundle) unconditionally
@@ -93,6 +98,9 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     # by a real panic without ImagePlugin registered.
     "bevy_image",
     "bevy_render", "bevy_core_pipeline",
+    # Phase 3: Mesh3d/MeshMaterial3d<StandardMaterial>/Camera3d/PbrPlugin.
+    "bevy_pbr",
+    "bevy_mesh",
     "std", "multi_threaded",
     "bevy_log",
 ] }

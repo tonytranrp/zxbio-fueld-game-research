@@ -9,8 +9,12 @@
 //! survives the real FFI/build integration using plain wgpu, in isolation
 //! from Bevy; Phase 1(b), now folded into `session.rs`, replaces that with
 //! the real `bevy_render` integration on top of the same proven runner.
-//! Still clear-color-only (a `Camera2d`, no scene content) -- real
-//! materials/lighting/glTF loading are later phases.
+//! Phase 3 adds real scene content on top of that: the ported
+//! `ExplorationLevel` box geometry (`level.rs`) and a first-person player
+//! controller (`player.rs` + `fp_camera.rs`, driven by `input_state.rs`'s
+//! accumulated winit events) -- a real `Camera3d` now, not the placeholder
+//! `Camera2d` clear-color-only milestone. glTF-imported models (the
+//! viewmodel hands, real level art) are still a later phase.
 //!
 //! No crate-wide `forbid(unsafe_code)` here: cxx's bridge macro (`mod ffi`
 //! below) needs unsafe internally to cross the ABI, so a crate-wide forbid
@@ -22,6 +26,16 @@
 mod adapter_probe;
 #[forbid(unsafe_code)]
 mod event_loop_cell;
+#[forbid(unsafe_code)]
+mod fp_camera;
+#[forbid(unsafe_code)]
+mod input_state;
+#[forbid(unsafe_code)]
+mod level;
+#[forbid(unsafe_code)]
+mod physics;
+#[forbid(unsafe_code)]
+mod player;
 #[forbid(unsafe_code)]
 mod session;
 
