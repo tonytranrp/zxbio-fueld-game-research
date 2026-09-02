@@ -189,6 +189,56 @@ impl VoxelMaterial {
     pub fn set_lod_distance(&mut self, distance: f32) {
         self.params.lod_distance = distance;
     }
+
+    /// Re-uploads this material's GPU-side data from `chunk`'s CURRENT state — for after `chunk`
+    /// has been edited post-spawn (e.g. via [`VoxelChunk::set`]). Mutates the SAME underlying
+    /// image/buffer assets in place (via [`Assets::get_mut`], which Bevy's asset system
+    /// automatically detects and re-uploads to the GPU — confirmed directly against Bevy 0.19.1's
+    /// own source: `AssetMut`'s `DerefMut` impl marks the asset changed, which is what
+    /// `AssetEvent::Modified` and downstream render-asset extraction key off) rather than creating
+    /// new ones, so the spawned entity's own bind group — and every other reference to this
+    /// material — stays valid; nothing needs to be despawned or re-spawned to see an edit.
+    ///
+    /// `chunk` must be the SAME chunk (or one with identical dimensions) this material was
+    /// originally built from. [`VoxelChunk::dims`]/`brick_dims`/`mip_level_count` are fixed for a
+    /// chunk's whole lifetime — only voxel CONTENTS change via `set`, never the chunk's own shape —
+    /// so this method doesn't re-write [`VoxelParams`]'s scalar copies of them, only the
+    /// per-voxel/per-brick GPU data that can actually change.
+    ///
+    /// A silent no-op for any handle that's already been removed from `images`/`buffers` (each
+    /// `get_mut` call independently returns `None` rather than panicking) — shouldn't happen in
+    /// normal use, since these handles are only ever created by [`VoxelMaterial::new`] and never
+    /// exposed for a consumer to remove directly, but there's no reason to assert on it either;
+    /// matches `Assets::get_mut`'s own fallible shape rather than fighting it.
+    pub fn update_from_chunk(
+        &mut self,
+        chunk: &VoxelChunk,
+        palette: &VoxelPalette,
+        images: &mut Assets<Image>,
+        buffers: &mut Assets<ShaderBuffer>,
+    ) {
+        assert!(
+            chunk.mip_level_count() <= MAX_MIP_STACK_LEVELS,
+            "chunk has {} mip levels, more than the GPU marcher's fixed-size stack supports \
+             ({}) — see MAX_STACK in voxel_raymarch.wgsl and MAX_MIP_STACK_LEVELS here, which \
+             must stay in sync",
+            chunk.mip_level_count(),
+            MAX_MIP_STACK_LEVELS,
+        );
+
+        if let Some(mut image) = images.get_mut(&self.voxel_data) {
+            *image = build_voxel_image(chunk);
+        }
+        if let Some(mut image) = images.get_mut(&self.brick_occupancy) {
+            *image = build_occupancy_image(chunk);
+        }
+        if let Some(mut buffer) = buffers.get_mut(&self.mip_occupancy) {
+            buffer.set_data(build_mip_occupancy_buffer(chunk));
+        }
+        if let Some(mut buffer) = buffers.get_mut(&self.brick_lod_colors) {
+            buffer.set_data(compute_brick_average_colors(chunk, palette));
+        }
+    }
 }
 
 impl Material for VoxelMaterial {
@@ -439,5 +489,64 @@ mod tests {
         assert_eq!(colors.len(), 2);
         assert_vec4_approx_eq(colors[0], vec4_of(red), "brick (0,0,0) should be pure red, not blended with its neighbor");
         assert_vec4_approx_eq(colors[1], vec4_of(blue), "brick (1,0,0) should be pure blue, not blended with its neighbor");
+    }
+
+    /// `update_from_chunk` exists specifically for "edit a chunk after it's already spawned" --
+    /// this is the one test that actually exercises that scenario end-to-end (build a material
+    /// from a chunk's ORIGINAL state, edit the chunk, call update_from_chunk, confirm the
+    /// material's own GPU-bound data now reflects the EDITED state) rather than just confirming
+    /// it compiles against `Assets::get_mut`'s API. Compares raw asset bytes (`Image`/
+    /// `ShaderBuffer`'s own public `data: Option<Vec<u8>>` fields) against a freshly-built
+    /// reference for the same edited chunk, the same equivalence-testing pattern already
+    /// established elsewhere in this file and this crate.
+    #[test]
+    fn update_from_chunk_reuploads_the_edited_voxel_and_lod_data_in_place() {
+        let mut images = Assets::<Image>::default();
+        let mut buffers = Assets::<ShaderBuffer>::default();
+
+        let mut chunk = VoxelChunk::new(UVec3::splat(8)); // single brick, minimal
+        let red = LinearRgba::new(1.0, 0.0, 0.0, 1.0);
+        let palette = palette_with(&[(VoxelId::new(1), red)]);
+
+        let voxel_data_handle = images.add(build_voxel_image(&chunk));
+        let brick_occupancy_handle = images.add(build_occupancy_image(&chunk));
+        let mut material = VoxelMaterial::new(
+            &chunk,
+            &palette,
+            Vec3::ZERO,
+            1.0,
+            voxel_data_handle,
+            brick_occupancy_handle,
+            &mut buffers,
+        );
+
+        // Edit AFTER the material above was already built from the chunk's original (all-air)
+        // state -- exactly the "chunk edited post-spawn" scenario this method exists for.
+        chunk.set(UVec3::new(2, 2, 2), VoxelId::new(1));
+
+        material.update_from_chunk(&chunk, &palette, &mut images, &mut buffers);
+
+        let expected_voxel_data = build_voxel_image(&chunk).data;
+        let actual_voxel_data = images
+            .get(&material.voxel_data)
+            .expect("voxel_data handle should still resolve after update")
+            .data
+            .clone();
+        assert_eq!(
+            actual_voxel_data, expected_voxel_data,
+            "voxel_data texture must reflect the edited chunk after update_from_chunk, not the original all-air state"
+        );
+
+        let mut expected_lod_buffer = ShaderBuffer::default();
+        expected_lod_buffer.set_data(compute_brick_average_colors(&chunk, &palette));
+        let actual_lod_data = buffers
+            .get(&material.brick_lod_colors)
+            .expect("brick_lod_colors handle should still resolve after update")
+            .data
+            .clone();
+        assert_eq!(
+            actual_lod_data, expected_lod_buffer.data,
+            "brick_lod_colors must reflect the edited chunk's new average color after update_from_chunk"
+        );
     }
 }

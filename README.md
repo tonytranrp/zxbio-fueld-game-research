@@ -106,9 +106,19 @@ for you: it doesn't create or own your camera entity (see "Design notes" below).
   set it. There's no single right default — it's a genuine quality/performance tradeoff only you
   can judge with your own content on screen, which is exactly why this method exists instead of the
   library picking a value for you.
-- **CPU reference marcher** (`cast_ray`) — the same N-level algorithm as the GPU shader, validated
-  independently on the CPU first (and kept in sync with it by design) — useful today for testing,
-  and the natural place to add picking/editing later.
+- **Editing after spawn** (`VoxelMaterial::update_from_chunk`) — call `VoxelChunk::set` on your own
+  chunk data, then `update_from_chunk` to re-upload the change to the SAME already-spawned entity
+  (mutates the existing GPU assets in place via `Assets::get_mut`, so nothing needs to be despawned
+  or re-spawned). A real, tested end-to-end path (build → spawn → edit → re-upload), not just an
+  API that compiles — see `render::material::tests::update_from_chunk_reuploads_the_edited_voxel_
+  and_lod_data_in_place` for the exact scenario it verifies.
+- **CPU reference marcher** (`cast_ray`) — the same core N-level hierarchical traversal as the GPU
+  shader, validated independently on the CPU first. Useful for picking (find which voxel a ray
+  hits) to drive an edit via `update_from_chunk` above. Not a complete behavioral mirror of the GPU
+  shader: it always resolves the exact voxel a ray hits and has no notion of the GPU's distance-
+  based LOD, so picking at a distance where LOD is visually active will report a more precise
+  answer than what's actually rendered on screen at that point — see `cast_ray`'s own doc comment
+  for the full reasoning.
 - **Debug flycam** (`VoxelFlycamPlugin`) — WASD + mouse-look, for examples and quick iteration; not
   required if you bring your own camera controller.
 
