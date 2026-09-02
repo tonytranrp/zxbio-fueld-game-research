@@ -17,6 +17,7 @@ use bevy::render::render_resource::{
 use bevy::render::storage::ShaderBuffer;
 use bevy::shader::{Shader, ShaderRef};
 
+use crate::storage::coords::{flatten, BRICK_SIZE};
 use crate::storage::{VoxelChunk, VoxelPalette};
 
 /// A stable handle identifying the embedded ray-march shader — see
@@ -218,6 +219,65 @@ fn build_mip_occupancy_buffer(chunk: &VoxelChunk) -> Vec<u32> {
     data
 }
 
+/// Computes each brick's average color across its own non-air voxels, looked up through
+/// `palette` — data-layer groundwork for a future distance-based LOD fallback (render a distant
+/// chunk's already-cheap brick-occupancy level directly, using this as the material, instead of
+/// always descending all the way to individual voxels regardless of how few screen pixels a
+/// distant chunk actually covers).
+///
+/// **Not yet wired into the shader or `VoxelMaterial`'s own bind group** — deliberately staged
+/// this way, following this engine's own established pattern of validating new per-brick data on
+/// the CPU (with real unit tests) before committing to a GPU integration in a later, separate
+/// step; see the mip-hierarchy port's own history for why that order mattered there. A future
+/// change would upload this as a `#[storage(5, read_only)]` buffer (same shape as
+/// [`build_mip_occupancy_buffer`]'s own `ShaderBuffer` pattern) and have the shader stop
+/// descending past the brick level for chunks/rays beyond some distance threshold, using this
+/// color as the hit material instead of a true voxel lookup.
+///
+/// An empty brick (no occupied voxels) reports transparent black (`Vec4::ZERO`) — the shader would
+/// never actually sample it once wired in (an unoccupied brick is already skipped via
+/// `brick_occupancy` before this could ever be read), but a defined, harmless value beats
+/// uninitialized-looking garbage. A brick mixing multiple materials gets their PLAIN AVERAGE
+/// (weighted equally per voxel, not per material) — the simplest well-defined choice for a first
+/// version; a high-contrast material boundary averaging to a muddy blend (grass green + rock gray
+/// -> olive) is a known, real limitation of mean-based color LOD, not an oversight — a mode
+/// (most-common-material) alternative would avoid it at the cost of tracking per-material counts
+/// instead of a single running sum, deferred until this is actually wired in and the tradeoff is
+/// visible rather than theoretical (which this environment currently has no way to check anyway).
+///
+/// `#[allow(dead_code)]`: real production code (with real tests below), not a scratch/WIP
+/// function — its only consumer (the future LOD shader integration described above) doesn't exist
+/// yet by design, per this file's own established stage-CPU-logic-then-integrate-later pattern.
+#[allow(dead_code)]
+fn compute_brick_average_colors(chunk: &VoxelChunk, palette: &VoxelPalette) -> Vec<Vec4> {
+    let dims = chunk.dims();
+    let brick_dims = chunk.brick_dims();
+    let brick_count = (brick_dims.x * brick_dims.y * brick_dims.z) as usize;
+    let mut sums = vec![Vec4::ZERO; brick_count];
+    let mut counts = vec![0u32; brick_count];
+
+    for z in 0..dims.z {
+        for y in 0..dims.y {
+            for x in 0..dims.x {
+                let voxel = chunk.voxels()[flatten(UVec3::new(x, y, z), dims)];
+                if voxel.is_air() {
+                    continue;
+                }
+                let brick_coord = UVec3::new(x / BRICK_SIZE, y / BRICK_SIZE, z / BRICK_SIZE);
+                let brick_idx = flatten(brick_coord, brick_dims);
+                let color = palette.get(voxel).color;
+                sums[brick_idx] += Vec4::new(color.red, color.green, color.blue, color.alpha);
+                counts[brick_idx] += 1;
+            }
+        }
+    }
+
+    sums.into_iter()
+        .zip(counts)
+        .map(|(sum, count)| if count == 0 { Vec4::ZERO } else { sum / count as f32 })
+        .collect()
+}
+
 /// Packs `chunk`'s per-brick occupancy into a 3D `R8Uint` image (`1` = occupied, `0` = empty) —
 /// the exact layout `voxel_raymarch.wgsl`'s `brick_occupancy` binding expects.
 pub(crate) fn build_occupancy_image(chunk: &VoxelChunk) -> Image {
@@ -238,4 +298,115 @@ pub(crate) fn build_occupancy_image(chunk: &VoxelChunk) -> Image {
         TextureFormat::R8Uint,
         RenderAssetUsages::RENDER_WORLD,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::color::LinearRgba;
+
+    use super::*;
+    use crate::storage::{VoxelId, VoxelMaterialInfo};
+
+    fn palette_with(entries: &[(VoxelId, LinearRgba)]) -> VoxelPalette {
+        let mut palette = VoxelPalette::new();
+        for &(id, color) in entries {
+            palette.set(id, VoxelMaterialInfo { color });
+        }
+        palette
+    }
+
+    fn vec4_of(color: LinearRgba) -> Vec4 {
+        Vec4::new(color.red, color.green, color.blue, color.alpha)
+    }
+
+    /// Summing hundreds of `f32` colors then dividing accumulates real, expected rounding error
+    /// (most decimal fractions like `0.1`/`0.8` have no exact binary representation to begin
+    /// with) -- `assert_eq!` on the result is the wrong tool even though the underlying
+    /// computation is correct. Confirmed the hard way: a first version of this test module used
+    /// `assert_eq!` directly and failed on a 512-voxel brick averaging `0.8` to `0.79999673`, a
+    /// ~3e-6 error, mathematically expected for naive (non-Kahan) summation at this count, not a
+    /// bug in `compute_brick_average_colors`.
+    fn assert_vec4_approx_eq(actual: Vec4, expected: Vec4, msg: &str) {
+        const EPSILON: f32 = 1e-4;
+        assert!(
+            (actual - expected).abs().max_element() < EPSILON,
+            "{msg}: expected {expected:?}, got {actual:?} (diff {:?} exceeds epsilon {EPSILON})",
+            (actual - expected).abs(),
+        );
+    }
+
+    #[test]
+    fn a_brick_filled_with_one_material_averages_to_that_materials_color() {
+        let mut chunk = VoxelChunk::new(UVec3::splat(16)); // 2x2x2 bricks
+        let red = LinearRgba::new(0.8, 0.1, 0.1, 1.0);
+        let palette = palette_with(&[(VoxelId::new(1), red)]);
+
+        for z in 0..8u32 {
+            for y in 0..8u32 {
+                for x in 0..8u32 {
+                    chunk.set(UVec3::new(x, y, z), VoxelId::new(1));
+                }
+            }
+        }
+
+        let colors = compute_brick_average_colors(&chunk, &palette);
+        assert_vec4_approx_eq(colors[0], vec4_of(red), "the fully-red brick should average to red");
+    }
+
+    #[test]
+    fn an_empty_brick_reports_transparent_black_not_garbage() {
+        let chunk = VoxelChunk::new(UVec3::splat(8)); // single brick, left entirely air
+        let palette = VoxelPalette::new();
+
+        let colors = compute_brick_average_colors(&chunk, &palette);
+        assert_eq!(colors.len(), 1);
+        assert_eq!(colors[0], Vec4::ZERO, "an all-air brick must not divide by zero or return garbage");
+    }
+
+    #[test]
+    fn two_materials_in_equal_counts_average_to_their_exact_midpoint() {
+        let mut chunk = VoxelChunk::new(UVec3::splat(8)); // single brick
+        let black = LinearRgba::new(0.0, 0.0, 0.0, 1.0);
+        let white = LinearRgba::new(1.0, 1.0, 1.0, 1.0);
+        let palette = palette_with(&[(VoxelId::new(1), black), (VoxelId::new(2), white)]);
+
+        // Exactly half the brick's 512 voxels each material -- x < 4 gets material 1, x >= 4 gets
+        // material 2, so counts are provably equal (4*8*8 each) without needing to count by hand.
+        for z in 0..8u32 {
+            for y in 0..8u32 {
+                for x in 0..8u32 {
+                    let material = if x < 4 { VoxelId::new(1) } else { VoxelId::new(2) };
+                    chunk.set(UVec3::new(x, y, z), material);
+                }
+            }
+        }
+
+        let colors = compute_brick_average_colors(&chunk, &palette);
+        assert_vec4_approx_eq(colors[0], Vec4::new(0.5, 0.5, 0.5, 1.0), "black+white in equal counts should average to gray");
+    }
+
+    #[test]
+    fn separate_bricks_are_computed_independently_not_cross_contaminated() {
+        // 2x1x1 bricks (16x8x8 chunk) -- the brick_idx indexing math is exactly what this test
+        // is checking; a bug there would show up as one brick's color leaking into the other's,
+        // which none of the single-brick tests above could ever catch.
+        let mut chunk = VoxelChunk::new(UVec3::new(16, 8, 8));
+        let red = LinearRgba::new(1.0, 0.0, 0.0, 1.0);
+        let blue = LinearRgba::new(0.0, 0.0, 1.0, 1.0);
+        let palette = palette_with(&[(VoxelId::new(1), red), (VoxelId::new(2), blue)]);
+
+        for z in 0..8u32 {
+            for y in 0..8u32 {
+                for x in 0..8u32 {
+                    chunk.set(UVec3::new(x, y, z), VoxelId::new(1)); // brick (0,0,0): all red
+                    chunk.set(UVec3::new(x + 8, y, z), VoxelId::new(2)); // brick (1,0,0): all blue
+                }
+            }
+        }
+
+        let colors = compute_brick_average_colors(&chunk, &palette);
+        assert_eq!(colors.len(), 2);
+        assert_vec4_approx_eq(colors[0], vec4_of(red), "brick (0,0,0) should be pure red, not blended with its neighbor");
+        assert_vec4_approx_eq(colors[1], vec4_of(blue), "brick (1,0,0) should be pure blue, not blended with its neighbor");
+    }
 }
