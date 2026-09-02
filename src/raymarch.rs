@@ -1,7 +1,22 @@
 //! CPU reference implementation of the N-level (mip hierarchy -> bricks -> voxels) DDA ray
 //! marcher used to render a [`VoxelChunk`]. `assets/shaders/voxel_raymarch.wgsl` implements the
-//! same algorithm on the GPU; this version exists to validate that algorithm independent of any
-//! GPU context, and to serve future CPU-side queries (picking, editing).
+//! same CORE hierarchical traversal on the GPU; this version exists to validate that algorithm
+//! independent of any GPU context, and to serve CPU-side queries (picking, editing).
+//!
+//! **Not a complete behavioral mirror of the GPU shader** — worth stating precisely, since an
+//! earlier version of this comment claimed full parity and that stopped being true once
+//! [`crate::VoxelMaterial::set_lod_distance`] shipped. This CPU marcher always resolves to the
+//! true, exact voxel a ray hits; it has no notion of the GPU shader's distance-based LOD (stopping
+//! at the brick level and shading with an averaged color beyond a configured distance) at all. For
+//! a consumer NOT using LOD (the default — `set_lod_distance` is opt-in, off by default), this CPU
+//! marcher and the GPU shader agree exactly, as originally intended. For a consumer who HAS
+//! enabled LOD, calling [`cast_ray`] for picking at a distance where LOD is visually active will
+//! report the true underlying voxel — a more precise answer than what's actually rendered on
+//! screen at that point, not a wrong one, but a real, worth-knowing divergence from "what the user
+//! sees." Deliberately not extended to replicate LOD: doing so would need a breaking signature
+//! change (this function has no [`crate::VoxelPalette`] to average colors from, unlike the GPU
+//! side) for a capability nothing in this crate currently consumes — see the engine's own project
+//! notes for the fuller reasoning if this is ever revisited.
 //!
 //! All coordinates here are in the chunk's own local voxel-index space, where one voxel spans
 //! exactly one unit and the chunk occupies `[0, dims.x] x [0, dims.y] x [0, dims.z]`. Converting
