@@ -1,7 +1,7 @@
-//! CPU reference implementation of the two-level (brick + voxel) DDA ray marcher used to render
-//! a [`VoxelChunk`]. `assets/shaders/voxel_raymarch.wgsl` implements the same algorithm on the
-//! GPU; this version exists to validate that algorithm independent of any GPU context, and to
-//! serve future CPU-side queries (picking, editing).
+//! CPU reference implementation of the N-level (mip hierarchy -> bricks -> voxels) DDA ray
+//! marcher used to render a [`VoxelChunk`]. `assets/shaders/voxel_raymarch.wgsl` implements the
+//! same algorithm on the GPU; this version exists to validate that algorithm independent of any
+//! GPU context, and to serve future CPU-side queries (picking, editing).
 //!
 //! All coordinates here are in the chunk's own local voxel-index space, where one voxel spans
 //! exactly one unit and the chunk occupies `[0, dims.x] x [0, dims.y] x [0, dims.z]`. Converting
@@ -26,71 +26,139 @@ pub struct RayHit {
     pub normal: IVec3,
 }
 
+/// Which level of the occupancy hierarchy a `march` call is currently working through, coarsest
+/// first. Every level marches over the SAME absolute chunk-voxel-index space — only `cell_size`
+/// and which occupancy check applies change between levels — so no coordinate offsetting is
+/// needed between recursive calls, just a tighter `bounds`/`max_dist` confining each recursive
+/// call to the parent cell that led to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Level {
+    Mip(usize),
+    Brick,
+    Voxel,
+}
+
+impl Level {
+    fn cell_size(self) -> f32 {
+        match self {
+            Level::Mip(k) => BRICK_SIZE as f32 * 2f32.powi(k as i32 + 1),
+            Level::Brick => BRICK_SIZE as f32,
+            Level::Voxel => 1.0,
+        }
+    }
+
+    fn dims(self, chunk: &VoxelChunk) -> UVec3 {
+        match self {
+            Level::Mip(k) => chunk.mip_dims(k),
+            Level::Brick => chunk.brick_dims(),
+            Level::Voxel => chunk.dims(),
+        }
+    }
+
+    /// The next-finer level to recurse into once a cell at `self` is found occupied.
+    fn finer(self) -> Option<Level> {
+        match self {
+            Level::Mip(0) => Some(Level::Brick),
+            Level::Mip(k) => Some(Level::Mip(k - 1)),
+            Level::Brick => Some(Level::Voxel),
+            Level::Voxel => None,
+        }
+    }
+
+    /// Whether `coord` is occupied at this level. Never called for [`Level::Voxel`] — `march`
+    /// handles that level specially (a direct [`VoxelChunk::get`] check, not an occupancy
+    /// pre-check) since there's nothing finer to recurse into past it.
+    fn occupied(self, chunk: &VoxelChunk, coord: UVec3) -> bool {
+        match self {
+            Level::Mip(k) => chunk.mip_occupied(k, coord),
+            Level::Brick => chunk.brick_occupied(coord),
+            Level::Voxel => unreachable!("Level::Voxel has no occupancy pre-check; march() handles it directly"),
+        }
+    }
+}
+
 /// Marches a ray through `chunk`, stopping at the first non-air voxel within `max_dist`. Returns
 /// `None` if the ray never enters the chunk, exits it, or reaches `max_dist` without hitting
 /// anything.
 ///
-/// Uses brick-level occupancy ([`VoxelChunk::brick_occupied`]) to skip whole empty bricks rather
-/// than visiting every empty voxel inside them individually.
+/// Starts at the coarsest available level (the top of the chunk's mip hierarchy, or the brick
+/// level for a chunk too small to have one) and recurses into finer levels only where a cell is
+/// actually occupied — skipping empty regions at whatever granularity they're empty at, rather
+/// than visiting every brick or voxel inside them individually.
 pub fn cast_ray(chunk: &VoxelChunk, origin: Vec3, dir: Vec3, max_dist: f32) -> Option<RayHit> {
     if dir == Vec3::ZERO || max_dist <= 0.0 {
         return None;
     }
 
-    let mut coarse = Dda::enter(origin, dir, BRICK_SIZE as f32, chunk.brick_dims(), max_dist)?;
+    let top_level = if chunk.mip_level_count() > 0 {
+        Level::Mip(chunk.mip_level_count() - 1)
+    } else {
+        Level::Brick
+    };
+
+    let dims = top_level.dims(chunk);
+    let cell_size = top_level.cell_size();
+    let bounds_max = Vec3::new(dims.x as f32, dims.y as f32, dims.z as f32) * cell_size;
+
+    march(chunk, top_level, origin, dir, Vec3::ZERO, bounds_max, max_dist)
+}
+
+/// Marches through one level of the occupancy hierarchy, confined to `[bounds_min, bounds_max]`
+/// (the parent cell that led to this call, or the whole chunk for the initial top-level call),
+/// recursing into [`Level::finer`] for each occupied cell found until reaching [`Level::Voxel`],
+/// where a direct [`VoxelChunk::get`] check either returns a hit or continues the march.
+fn march(
+    chunk: &VoxelChunk,
+    level: Level,
+    origin: Vec3,
+    dir: Vec3,
+    bounds_min: Vec3,
+    bounds_max: Vec3,
+    max_dist: f32,
+) -> Option<RayHit> {
+    let dims = level.dims(chunk);
+    let cell_size = level.cell_size();
+    let mut dda = Dda::enter(origin, dir, cell_size, dims, bounds_min, bounds_max, max_dist)?;
 
     loop {
-        if coarse.t_enter > max_dist {
+        if dda.t_enter > max_dist {
             return None;
         }
 
-        let brick = UVec3::new(coarse.cell.x as u32, coarse.cell.y as u32, coarse.cell.z as u32);
-        if chunk.brick_occupied(brick) {
-            let brick_world_origin = Vec3::new(
-                coarse.cell.x as f32 * BRICK_SIZE as f32,
-                coarse.cell.y as f32 * BRICK_SIZE as f32,
-                coarse.cell.z as f32 * BRICK_SIZE as f32,
-            );
-            let fine_origin = origin - brick_world_origin;
+        let cell = UVec3::new(dda.cell.x as u32, dda.cell.y as u32, dda.cell.z as u32);
 
-            if let Some(mut fine) = Dda::enter(fine_origin, dir, 1.0, UVec3::splat(BRICK_SIZE), max_dist) {
-                loop {
-                    if fine.t_enter > max_dist {
-                        break;
-                    }
-
-                    let local = UVec3::new(fine.cell.x as u32, fine.cell.y as u32, fine.cell.z as u32);
-                    let voxel = UVec3::new(
-                        brick.x * BRICK_SIZE + local.x,
-                        brick.y * BRICK_SIZE + local.y,
-                        brick.z * BRICK_SIZE + local.z,
-                    );
-                    let material = chunk.get(voxel);
-                    if !material.is_air() {
-                        return Some(RayHit {
-                            voxel,
-                            material,
-                            distance: fine.t_enter,
-                            normal: fine.last_normal,
-                        });
-                    }
-
-                    if !fine.advance() {
-                        break;
-                    }
-                }
+        if level == Level::Voxel {
+            let material = chunk.get(cell);
+            if !material.is_air() {
+                return Some(RayHit {
+                    voxel: cell,
+                    material,
+                    distance: dda.t_enter,
+                    normal: dda.last_normal,
+                });
+            }
+        } else if level.occupied(chunk, cell) {
+            // t_max (before advancing) is exactly the t at which the ray leaves this cell —
+            // clamping the recursive call's max_dist to it is what makes that call naturally
+            // stop at this cell's own boundary and hand control back here, without needing to
+            // explicitly re-derive "which finer cells belong to this coarse cell."
+            let cell_exit = dda.t_max.x.min(dda.t_max.y).min(dda.t_max.z).min(max_dist);
+            let cell_min = Vec3::new(cell.x as f32, cell.y as f32, cell.z as f32) * cell_size;
+            let cell_max = cell_min + Vec3::splat(cell_size);
+            let finer = level.finer().expect("non-Voxel level always has a finer level");
+            if let Some(hit) = march(chunk, finer, origin, dir, cell_min, cell_max, cell_exit) {
+                return Some(hit);
             }
         }
 
-        if !coarse.advance() {
+        if !dda.advance() {
             return None;
         }
     }
 }
 
 /// Amanatides-Woo DDA state for marching through an integer grid of `dims` cells, each
-/// `cell_size` units across, positioned at the origin of the coordinate space `origin`/`dir` (in
-/// [`enter`](Dda::enter)) are expressed in.
+/// `cell_size` units across, in absolute chunk-voxel-index space.
 struct Dda {
     cell: IVec3,
     dims: UVec3,
@@ -105,15 +173,22 @@ struct Dda {
 }
 
 impl Dda {
-    /// Slab-tests `origin + t*dir` against the grid AABB `[0, dims*cell_size]` and, if it
-    /// intersects within `[0, max_t]`, returns a `Dda` positioned at the entry cell.
-    fn enter(origin: Vec3, dir: Vec3, cell_size: f32, dims: UVec3, max_t: f32) -> Option<Self> {
-        let extent = Vec3::new(
-            dims.x as f32 * cell_size,
-            dims.y as f32 * cell_size,
-            dims.z as f32 * cell_size,
-        );
-        let (raw_t_enter, t_exit, entry_normal) = ray_aabb_intersect(origin, dir, Vec3::ZERO, extent)?;
+    /// Slab-tests `origin + t*dir` against `[bounds_min, bounds_max]` and, if it intersects
+    /// within `[0, max_t]`, returns a `Dda` positioned at the entry cell. `dims`/`cell_size`
+    /// define the grid's own absolute cell indexing (used for stepping and for clamping the
+    /// entry cell to a valid index) — `bounds_min`/`bounds_max` need not span the whole grid; a
+    /// caller confining the search to one parent cell of a coarser level passes that cell's own
+    /// bounds here, while still getting back a correctly-indexed absolute cell in this grid.
+    fn enter(
+        origin: Vec3,
+        dir: Vec3,
+        cell_size: f32,
+        dims: UVec3,
+        bounds_min: Vec3,
+        bounds_max: Vec3,
+        max_t: f32,
+    ) -> Option<Self> {
+        let (raw_t_enter, t_exit, entry_normal) = ray_aabb_intersect(origin, dir, bounds_min, bounds_max)?;
         let t_enter = raw_t_enter.max(0.0);
         if t_enter > t_exit || t_enter > max_t {
             return None;
@@ -290,11 +365,13 @@ fn ray_aabb_intersect(origin: Vec3, dir: Vec3, min: Vec3, max: Vec3) -> Option<(
 mod tests {
     use super::*;
 
-    /// A single-level (voxel-granularity only, no brick skipping) reference marcher, used to
-    /// prove `cast_ray`'s brick-skip optimization doesn't change the result — only how it gets
-    /// there.
+    /// A single-level (voxel-granularity only, no brick/mip skipping) reference marcher, used to
+    /// prove `cast_ray`'s hierarchy-skip optimization doesn't change the result — only how it
+    /// gets there.
     fn naive_cast_ray(chunk: &VoxelChunk, origin: Vec3, dir: Vec3, max_dist: f32) -> Option<RayHit> {
-        let mut dda = Dda::enter(origin, dir, 1.0, chunk.dims(), max_dist)?;
+        let dims = chunk.dims();
+        let bounds_max = Vec3::new(dims.x as f32, dims.y as f32, dims.z as f32);
+        let mut dda = Dda::enter(origin, dir, 1.0, dims, Vec3::ZERO, bounds_max, max_dist)?;
         loop {
             if dda.t_enter > max_dist {
                 return None;
@@ -318,7 +395,8 @@ mod tests {
     fn sparse_scene() -> VoxelChunk {
         let mut chunk = VoxelChunk::new(UVec3::splat(32));
         // Scattered solid voxels across several different bricks (brick size 8), deliberately
-        // sparse so most rays cross multiple empty bricks before (maybe) hitting something.
+        // sparse so most rays cross multiple empty bricks/mip cells before (maybe) hitting
+        // something.
         chunk.set(UVec3::new(20, 4, 4), VoxelId::new(1));
         chunk.set(UVec3::new(4, 20, 4), VoxelId::new(2));
         chunk.set(UVec3::new(4, 4, 20), VoxelId::new(3));
@@ -330,6 +408,10 @@ mod tests {
     #[test]
     fn optimized_and_naive_marchers_agree_across_a_battery_of_rays() {
         let chunk = sparse_scene();
+        assert!(
+            chunk.mip_level_count() > 0,
+            "this test's whole point is exercising the mip hierarchy, not just bricks"
+        );
         let max_dist = 100.0;
 
         let mut rays = Vec::new();
@@ -342,12 +424,12 @@ mod tests {
         }
         // A handful of diagonal rays too. Deliberately asymmetric direction components (not
         // exactly 1,1,1) — a perfectly symmetric diagonal can land exactly on a multi-axis grid
-        // tie (all three t_max candidates equal in exact math), where the coarse/fine two-level
-        // path and this test's single-level path accumulate floating-point error differently and
-        // can disagree on which of the tied faces was crossed last, despite agreeing on the hit
-        // voxel and distance to within float32 precision. That's an inherent property of any
-        // split-path DDA at an exact tie, not a correctness bug — real rays essentially never
-        // land on an exact 45-degree corner hit, so the test exercises realistic diagonals only.
+        // tie (all three t_max candidates equal in exact math), where the hierarchical and
+        // single-level paths accumulate floating-point error differently and can disagree on
+        // which of the tied faces was crossed last, despite agreeing on the hit voxel and
+        // distance to within float32 precision. That's an inherent property of any split-path
+        // DDA at an exact tie, not a correctness bug — real rays essentially never land on an
+        // exact 45-degree corner hit, so the test exercises realistic diagonals only.
         rays.push((Vec3::new(-5.0, -5.0, -5.0), Vec3::new(1.0, 1.07, 0.93).normalize()));
         rays.push((Vec3::new(37.0, 37.0, 37.0), Vec3::new(-1.0, -1.07, -0.93).normalize()));
         rays.push((Vec3::new(0.1, 0.1, 0.1), Vec3::new(1.0, 0.3, 0.7).normalize()));
@@ -419,5 +501,39 @@ mod tests {
         chunk.set(UVec3::new(15, 8, 8), VoxelId::new(1));
         assert_eq!(cast_ray(&chunk, Vec3::new(0.5, 8.5, 8.5), Vec3::X, 5.0), None);
         assert!(cast_ray(&chunk, Vec3::new(0.5, 8.5, 8.5), Vec3::X, 100.0).is_some());
+    }
+
+    #[test]
+    fn works_correctly_on_a_chunk_too_small_to_have_any_mip_levels() {
+        // A single-brick (8-voxel) chunk has zero mip levels -- cast_ray must fall back to
+        // starting the march at the brick level directly, not panic on an empty mip hierarchy.
+        let mut chunk = VoxelChunk::new(UVec3::splat(8));
+        assert_eq!(chunk.mip_level_count(), 0);
+        chunk.set(UVec3::new(4, 4, 4), VoxelId::new(9));
+
+        let hit = cast_ray(&chunk, Vec3::new(4.5, 4.5, -5.0), Vec3::Z, 100.0).expect("expected a hit");
+        assert_eq!(hit.voxel, UVec3::new(4, 4, 4));
+        assert_eq!(hit.material, VoxelId::new(9));
+    }
+
+    #[test]
+    fn a_ray_that_only_grazes_a_far_corner_still_hits_correctly_through_every_level() {
+        // 128-voxel chunk -> 4 mip levels above the brick grid; place a single solid voxel in
+        // the far corner brick so a hit here genuinely exercises every level of the hierarchy
+        // (mip levels 3,2,1,0, then the brick level, then the voxel level) rather than just the
+        // first level or two.
+        let mut chunk = VoxelChunk::new(UVec3::splat(128));
+        assert_eq!(chunk.mip_level_count(), 4);
+        chunk.set(UVec3::new(127, 127, 127), VoxelId::new(3));
+
+        let hit = cast_ray(
+            &chunk,
+            Vec3::new(-5.0, -5.0, -5.0),
+            Vec3::new(1.0, 1.0, 1.0).normalize(),
+            1000.0,
+        )
+        .expect("expected a hit");
+        assert_eq!(hit.voxel, UVec3::new(127, 127, 127));
+        assert_eq!(hit.material, VoxelId::new(3));
     }
 }

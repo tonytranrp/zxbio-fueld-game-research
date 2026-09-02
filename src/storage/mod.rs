@@ -3,6 +3,7 @@
 
 mod chunk;
 pub(crate) mod coords;
+mod mip;
 mod voxel;
 
 pub use chunk::VoxelChunk;
