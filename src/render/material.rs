@@ -71,6 +71,12 @@ const MAX_MIP_STACK_LEVELS: usize = 10;
 /// Renders one [`VoxelChunk`] via GPU ray marching. Constructed by [`crate::spawn_voxel_chunk`] —
 /// not meant to be built directly, since its bind-group data (two 3D textures) must stay in sync
 /// with the `VoxelChunk` it was built from.
+///
+/// Its fragment shader never writes an explicit depth — depth-based rendering (opaque sorting,
+/// `DepthPrepass`, `OcclusionCulling`) relies entirely on the bounding cuboid mesh's own
+/// rasterized geometry depth. Correct only for non-overlapping chunk placement; see
+/// [`crate::spawn_voxel_chunk`]'s own doc comment for the full reasoning and why that's an exact
+/// guarantee for non-overlapping chunks, not just a usually-fine approximation.
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 pub struct VoxelMaterial {
     #[uniform(0)]
