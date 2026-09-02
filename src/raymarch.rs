@@ -103,65 +103,75 @@ pub fn cast_ray(chunk: &VoxelChunk, origin: Vec3, dir: Vec3, max_dist: f32) -> O
     march(chunk, top_level, origin, dir, Vec3::ZERO, bounds_max, max_dist)
 }
 
-/// Marches through one level of the occupancy hierarchy, confined to `[bounds_min, bounds_max]`
-/// (the whole chunk, for the initial top-level call — [`march_loop`] handles recursive descents
-/// into finer levels itself, without re-entering here). Slab-tests once to find the entry cell,
-/// then hands off to [`march_loop`] for the actual traversal.
-fn march(
-    chunk: &VoxelChunk,
-    level: Level,
-    origin: Vec3,
-    dir: Vec3,
-    bounds_min: Vec3,
-    bounds_max: Vec3,
-    max_dist: f32,
-) -> Option<RayHit> {
+/// Marches through the occupancy hierarchy starting at `level`, confined to `[bounds_min,
+/// bounds_max]` (the whole chunk, for the only caller, [`cast_ray`]). Slab-tests once to find the
+/// entry cell, then drives an explicit stack of [`Dda`] states down through [`Level::finer`] for
+/// each occupied cell found, until reaching [`Level::Voxel`], where a direct [`VoxelChunk::get`]
+/// check either returns a hit or continues the march.
+///
+/// **Iterative, not recursive, on purpose** — this is a deliberate rewrite (see the engine's own
+/// mip-hierarchy memory/commit history for the earlier recursive version and why it changed):
+/// converting the natural per-level recursion into an explicit `Vec`-backed stack removes real,
+/// measured Rust function-call overhead (confirmed via the mip-hierarchy ablation benchmark), and
+/// — just as importantly — is the exact shape `assets/shaders/voxel_raymarch.wgsl`'s own GPU port
+/// needs anyway, since WGSL has no recursion at all. Validating this shape here, on the CPU, with
+/// the existing correctness test suite as a safety net, before committing to it in a shader is
+/// this project's established discipline (see `src/raymarch.rs`'s own module doc comment).
+///
+/// A stack frame is `(level, dda, level_max_dist)` — `level_max_dist` is that frame's own
+/// confinement bound (the parent cell's exit `t`, computed when it was pushed), separate from
+/// `dda`'s own per-cell `t_max` fields. Pushing (descending into an occupied cell) happens
+/// without advancing the parent — the parent only advances once its child frame concludes
+/// (whether by a full miss or by hitting its own confinement bound), mirroring exactly when a
+/// recursive call would have returned control to its caller.
+fn march(chunk: &VoxelChunk, level: Level, origin: Vec3, dir: Vec3, bounds_min: Vec3, bounds_max: Vec3, max_dist: f32) -> Option<RayHit> {
     let dims = level.dims(chunk);
     let cell_size = level.cell_size();
     let dda = Dda::enter(origin, dir, cell_size, dims, bounds_min, bounds_max, max_dist)?;
-    march_loop(chunk, level, origin, dir, dda, max_dist)
-}
 
-/// The actual traversal loop for one level, recursing into [`Level::finer`] for each occupied
-/// cell found until reaching [`Level::Voxel`], where a direct [`VoxelChunk::get`] check either
-/// returns a hit or continues the march.
-///
-/// Recursive descents build their own finer [`Dda`] via [`Dda::enter_at`], not [`Dda::enter`] —
-/// the entry point for a descent is always exactly the parent level's own current `t_enter` (the
-/// ray is never coordinate-shifted between levels, only `cell_size` changes), so it's already
-/// known to be valid and doesn't need re-deriving through a fresh ray/AABB slab test. This is a
-/// real, measured cost in the hot path: `enter`'s slab test runs once per cell (`ray_aabb_
-/// intersect`'s three-axis branchy min/max), which for a chunk with N mip levels means N-1 fully
-/// redundant slab tests per hierarchy descent before this change. Only the true top-level call
-/// (via [`march`]) has an unknown starting point and genuinely needs the full test.
-fn march_loop(chunk: &VoxelChunk, level: Level, origin: Vec3, dir: Vec3, mut dda: Dda, max_dist: f32) -> Option<RayHit> {
+    let mut stack: Vec<(Level, Dda, f32)> = Vec::with_capacity(8);
+    stack.push((level, dda, max_dist));
+
     loop {
-        if dda.t_enter > max_dist {
-            return None;
+        let top = stack.len() - 1;
+        let (level, level_max_dist) = (stack[top].0, stack[top].2);
+        let t_enter = stack[top].1.t_enter;
+
+        if t_enter > level_max_dist {
+            if !pop_and_advance(&mut stack) {
+                return None;
+            }
+            continue;
         }
 
-        let cell = UVec3::new(dda.cell.x as u32, dda.cell.y as u32, dda.cell.z as u32);
+        let dda_cell = stack[top].1.cell;
+        let cell = UVec3::new(dda_cell.x as u32, dda_cell.y as u32, dda_cell.z as u32);
 
         if level == Level::Voxel {
             let material = chunk.get(cell);
             if !material.is_air() {
+                let normal = stack[top].1.last_normal;
                 return Some(RayHit {
                     voxel: cell,
                     material,
-                    distance: dda.t_enter,
-                    normal: dda.last_normal,
+                    distance: t_enter,
+                    normal,
                 });
+            }
+            if !stack[top].1.advance() && !pop_and_advance(&mut stack) {
+                return None;
             }
         } else if level.occupied(chunk, cell) {
             // t_max (before advancing) is exactly the t at which the ray leaves this cell —
-            // clamping the recursive call's max_dist to it is what makes that call naturally
-            // stop at this cell's own boundary and hand control back here, without needing to
-            // explicitly re-derive "which finer cells belong to this coarse cell."
-            let cell_exit = dda.t_max.x.min(dda.t_max.y).min(dda.t_max.z).min(max_dist);
-            let finer = level.finer().expect("non-Voxel level always has a finer level");
-
+            // using it as the pushed child frame's own confinement bound is what makes that
+            // frame naturally stop at this cell's own boundary and hand control back here,
+            // without needing to explicitly re-derive "which finer cells belong to this cell."
+            let dda = &stack[top].1;
+            let cell_exit = dda.t_max.x.min(dda.t_max.y).min(dda.t_max.z).min(level_max_dist);
             let entry_t = dda.t_enter.max(0.0);
             let entry_point = origin + dir * entry_t;
+            let last_normal = dda.last_normal;
+            let finer = level.finer().expect("non-Voxel level always has a finer level");
             let finer_dda = Dda::enter_at(
                 origin,
                 entry_point,
@@ -169,15 +179,34 @@ fn march_loop(chunk: &VoxelChunk, level: Level, origin: Vec3, dir: Vec3, mut dda
                 dir,
                 finer.cell_size(),
                 finer.dims(chunk),
-                dda.last_normal,
+                last_normal,
             );
-            if let Some(hit) = march_loop(chunk, finer, origin, dir, finer_dda, cell_exit) {
-                return Some(hit);
-            }
-        }
-
-        if !dda.advance() {
+            stack.push((finer, finer_dda, cell_exit));
+            // Deliberately not advancing the parent here — it only advances once this new child
+            // frame concludes (see `pop_and_advance`), matching exactly when a recursive call
+            // would have returned control back to its caller.
+        } else if !stack[top].1.advance() && !pop_and_advance(&mut stack) {
             return None;
+        }
+    }
+}
+
+/// Pops the exhausted top frame and advances whichever frame is now on top — repeating (popping
+/// further) if that one turns out to already be exhausted too, exactly like unwinding a
+/// recursive call stack one level at a time until some ancestor still has more cells to visit.
+/// Returns `false` once the stack empties entirely, meaning the whole march concluded with no
+/// hit anywhere.
+fn pop_and_advance(stack: &mut Vec<(Level, Dda, f32)>) -> bool {
+    stack.pop();
+    loop {
+        match stack.last_mut() {
+            None => return false,
+            Some((_, dda, _)) => {
+                if dda.advance() {
+                    return true;
+                }
+                stack.pop();
+            }
         }
     }
 }
@@ -262,10 +291,10 @@ impl Dda {
 
     /// Enters a finer grid at an ALREADY-KNOWN valid point on the ray — `entry_point`/`entry_t`
     /// must be a genuine point the ray passes through (typically a coarser `Dda`'s own current
-    /// `t_enter`/entry point, when recursively descending into a finer level; see
-    /// [`march_loop`]'s own doc comment for why that's always safe here). Skips the full
-    /// ray/AABB slab test [`Self::enter`] needs for a truly unknown starting point — real,
-    /// measured overhead in a hot recursive path.
+    /// `t_enter`/entry point, when pushing a new stack frame to descend into a finer level; see
+    /// [`march`]'s own doc comment for why that's always safe here). Skips the full ray/AABB slab
+    /// test [`Self::enter`] needs for a truly unknown starting point — real, measured overhead in
+    /// this hot path.
     fn enter_at(
         origin: Vec3,
         entry_point: Vec3,
