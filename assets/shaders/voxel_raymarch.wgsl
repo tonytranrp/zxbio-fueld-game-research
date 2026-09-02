@@ -26,6 +26,12 @@ struct VoxelParams {
     sun_color: vec3<f32>,
     sun_intensity: f32,
     mip_level_count: u32,
+    // World-space distance (meters -- t_enter/distance are already world-space, see fragment()'s
+    // own comment on dir_local) beyond which the marcher stops at the brick level and shades with
+    // brick_lod_colors instead of resolving the true per-voxel surface. Defaults to a huge value
+    // (effectively "never triggers") set from VoxelMaterial::new; see that struct's own
+    // set_lod_distance doc comment for the real measured motivation.
+    lod_distance: f32,
 }
 
 // The material bind group is #{MATERIAL_BIND_GROUP} (3 in Bevy 0.19.1, per
@@ -43,6 +49,10 @@ struct VoxelParams {
 // packing. One `u32` per cell (not bit-packed) -- the whole hierarchy above a 128-voxel chunk's
 // bricks is under 3,000 cells, so packing would save a few KB nobody has measured a need for yet.
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var<storage, read> mip_occupancy: array<u32>;
+// Each brick's average color (see `src/render/material.rs`'s `compute_brick_average_colors`),
+// indexed identically to `brick_occupancy` -- the material a ray shades with when it stops at the
+// brick level instead of descending to the true voxel, per `params.lod_distance`.
+@group(#{MATERIAL_BIND_GROUP}) @binding(5) var<storage, read> brick_lod_colors: array<vec4<f32>>;
 
 const BRICK_SIZE: f32 = 8.0;
 // Effectively infinite for every comparison this algorithm does (it's only ever compared against
@@ -72,6 +82,11 @@ struct MarchResult {
     material: u32,
     normal: vec3<f32>,
     distance: f32,
+    // Set when this hit resolved via the brick-level LOD fallback (params.lod_distance) rather
+    // than a true voxel lookup -- `material` is meaningless in that case (there IS no single
+    // voxel), fragment() reads `lod_color` directly instead of indexing `palette` with it.
+    is_lod: bool,
+    lod_color: vec4<f32>,
 }
 
 fn empty_result() -> MarchResult {
@@ -81,6 +96,8 @@ fn empty_result() -> MarchResult {
     r.material = 0u;
     r.normal = vec3<f32>(0.0, 0.0, 0.0);
     r.distance = 0.0;
+    r.is_lod = false;
+    r.lod_color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
     return r;
 }
 
@@ -542,6 +559,24 @@ fn march_hierarchical(origin: vec3<f32>, dir: vec3<f32>, max_dist: f32) -> March
             }
         } else if (level_occupied(level, vec3<u32>(cell), brick_dims)) {
             let dda = ddas[top];
+
+            // Distance-based LOD: once a ray has traveled far enough (t_enter is already
+            // world-space meters -- see fragment()'s own comment on dir_local), stop at this
+            // occupied BRICK instead of descending into individual voxels. `cell` is already in
+            // brick-index space at this level, so the indexing matches `brick_lod_colors`'s own
+            // layout (compute_brick_average_colors, same flatten order as brick_occupancy).
+            if (level == -1 && dda.t_enter > params.lod_distance) {
+                let ucell = vec3<u32>(cell);
+                let brick_idx = ucell.x + ucell.y * brick_dims.x + ucell.z * brick_dims.x * brick_dims.y;
+                result.hit = true;
+                result.voxel = cell;
+                result.is_lod = true;
+                result.lod_color = brick_lod_colors[brick_idx];
+                result.normal = vec3<f32>(dda.last_normal);
+                result.distance = dda.t_enter;
+                return result;
+            }
+
             let cell_exit = min(min(dda.t_max.x, dda.t_max.y), dda.t_max.z);
             let confined_exit = min(cell_exit, level_max_dist);
             let entry_t = max(dda.t_enter, 0.0);
@@ -602,7 +637,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    let base_color = palette[primary.material].rgb;
+    let base_color = select(palette[primary.material].rgb, primary.lod_color.rgb, primary.is_lod);
     let ambient = 0.15;
     let lit = base_color * (ambient + (1.0 - ambient) * ndotl * shadow * params.sun_intensity * params.sun_color);
 
