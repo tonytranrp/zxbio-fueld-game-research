@@ -536,4 +536,90 @@ mod tests {
         assert_eq!(hit.voxel, UVec3::new(127, 127, 127));
         assert_eq!(hit.material, VoxelId::new(3));
     }
+
+    /// Total wall-clock time for `march()` (the crate's own private entry point, reused directly
+    /// here rather than duplicated) to run every ray in `rays`, starting at `level`.
+    fn time_march_all(chunk: &VoxelChunk, level: Level, rays: &[(Vec3, Vec3)], max_dist: f32) -> std::time::Duration {
+        let dims = level.dims(chunk);
+        let bounds_max = Vec3::new(dims.x as f32, dims.y as f32, dims.z as f32) * level.cell_size();
+
+        // Warm up before timing (branch predictor, cache).
+        for &(origin, dir) in rays {
+            std::hint::black_box(march(chunk, level, origin, dir, Vec3::ZERO, bounds_max, max_dist));
+        }
+
+        let start = std::time::Instant::now();
+        for &(origin, dir) in rays {
+            std::hint::black_box(march(chunk, level, origin, dir, Vec3::ZERO, bounds_max, max_dist));
+        }
+        start.elapsed()
+    }
+
+    /// A controlled isolation of the mip hierarchy's own contribution, answering a question the
+    /// engine's own scale-research notes flagged as still open: an earlier realistic sparse-vs-
+    /// dense benchmark (see `examples/benchmark_raymarch.rs`) found hit/miss RATE dominates that
+    /// particular comparison, not occupancy-skip effectiveness — so it couldn't isolate whether
+    /// the mip levels above brick occupancy are pulling their weight on their own. This test
+    /// controls for that directly: a chunk with ZERO occupied voxels at all, so EVERY ray is a
+    /// guaranteed miss for both configurations (hit rate pinned at 0% either way) — isolating
+    /// pure traversal cost. Starting `march()` at `Level::Brick` (mip levels skipped entirely,
+    /// matching this file's pre-mip-hierarchy behavior) vs. at the chunk's real top mip level
+    /// reuses the exact same, already-validated `march`/`Dda` code for both configurations
+    /// (zero duplicated/drifting logic — only the starting `Level` differs), which is exactly
+    /// why this lives here as a test rather than as a separate example: examples compile against
+    /// the crate's public API only and can't reach `march`/`Level`, which are private by design
+    /// (see this file's own module doc comment on keeping the marching internals off the public
+    /// surface).
+    ///
+    /// `#[ignore]`d because it's a timing measurement, not a correctness check, and its result
+    /// depends on the machine/build profile it runs on — `cargo test --release -- --ignored
+    /// --nocapture mip_hierarchy_collapses_a_fully_empty_chunks_traversal_to_effectively_one_step`
+    /// to actually run it (release mode matters enormously here; debug-build timings are not
+    /// representative of anything).
+    #[test]
+    #[ignore = "timing measurement, not a correctness check -- run explicitly, see this test's own doc comment"]
+    fn mip_hierarchy_collapses_a_fully_empty_chunks_traversal_to_effectively_one_step() {
+        let chunk = VoxelChunk::new(UVec3::splat(256));
+        assert!(
+            chunk.mip_level_count() >= 5,
+            "this test wants a genuinely deep hierarchy to be a meaningful comparison, got {}",
+            chunk.mip_level_count()
+        );
+        let top_level = Level::Mip(chunk.mip_level_count() - 1);
+        let max_dist = 1000.0;
+
+        // A deterministic spread of long rays crossing the whole volume from many angles and
+        // starting points -- not random (reproducible run to run), not axis-aligned-only (a
+        // single straight line would be an easy case for both configurations).
+        let mut rays = Vec::new();
+        for i in 0..40u32 {
+            for j in 0..40u32 {
+                let a = i as f32 / 40.0;
+                let b = j as f32 / 40.0;
+                // Origins spread across Y with margin on both sides of the chunk's 0..256
+                // extent; directions vary in Y/Z slope so rays cross the volume at many angles,
+                // not just one straight line.
+                let origin = Vec3::new(-20.0, a * 296.0 - 20.0, -20.0);
+                let dir = Vec3::new(1.0, (b - 0.5) * 0.6, (a - 0.3) * 0.7).normalize();
+                rays.push((origin, dir));
+            }
+        }
+
+        let brick_only = time_march_all(&chunk, Level::Brick, &rays, max_dist);
+        let with_mips = time_march_all(&chunk, top_level, &rays, max_dist);
+
+        let brick_ns_per_ray = brick_only.as_nanos() as f64 / rays.len() as f64;
+        let mip_ns_per_ray = with_mips.as_nanos() as f64 / rays.len() as f64;
+        println!("brick-only (mips skipped): {brick_only:?} total, {brick_ns_per_ray:.1} ns/ray");
+        println!("full mip hierarchy:        {with_mips:?} total, {mip_ns_per_ray:.1} ns/ray");
+        println!("speedup from the mip hierarchy: {:.2}x", brick_ns_per_ray / mip_ns_per_ray);
+
+        assert!(
+            with_mips < brick_only,
+            "the mip hierarchy should be faster than brick-only marching on a fully-empty chunk \
+             where every ray is a guaranteed miss (brick-only: {brick_only:?}, with mips: {with_mips:?}) \
+             -- if this fails, something is wrong with the hierarchy itself, not just its\
+             magnitude of benefit on realistic content"
+        );
+    }
 }
