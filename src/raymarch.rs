@@ -38,6 +38,8 @@ pub struct RayHit {
     /// normalized `dir` if you want this in world units).
     pub distance: f32,
     /// The axis-aligned face normal at the hit point (exactly one component is +-1, the rest 0).
+    /// Always a real crossed boundary, never zero -- see [`cast_ray`]'s own doc comment for the
+    /// case (ray origin already embedded in solid geometry) this guarantee depends on excluding.
     pub normal: IVec3,
 }
 
@@ -93,8 +95,19 @@ impl Level {
 }
 
 /// Marches a ray through `chunk`, stopping at the first non-air voxel within `max_dist`. Returns
-/// `None` if the ray never enters the chunk, exits it, or reaches `max_dist` without hitting
-/// anything.
+/// `None` if the ray never enters the chunk, exits it, reaches `max_dist` without hitting
+/// anything, or **starts already embedded inside solid geometry**.
+///
+/// That last case is deliberate, not an oversight: a face normal is only well-defined for a
+/// boundary the ray actually crossed, and a ray whose own starting point already sits inside a
+/// non-air voxel crossed no boundary to get there. A real bug lived here until this check was
+/// added — the DDA's own entry logic already set an internal "no boundary crossed" zero normal
+/// for this exact situation (correctly, for *empty* starting cells the ray simply continues
+/// through), but nothing stopped that zero from reaching a genuine hit if the starting cell itself
+/// turned out to be solid, silently violating [`RayHit::normal`]'s own documented "always
+/// non-zero" contract. Reachable in practice: any consumer whose camera/ray origin can end up
+/// inside solid terrain (a flycam with no collision, say) and then calls this for picking. See
+/// `starting_inside_solid_geometry_returns_none_rather_than_a_degenerate_zero_normal` below.
 ///
 /// Starts at the coarsest available level (the top of the chunk's mip hierarchy, or the brick
 /// level for a chunk too small to have one) and recurses into finer levels only where a cell is
@@ -102,6 +115,25 @@ impl Level {
 /// than visiting every brick or voxel inside them individually.
 pub fn cast_ray(chunk: &VoxelChunk, origin: Vec3, dir: Vec3, max_dist: f32) -> Option<RayHit> {
     if dir == Vec3::ZERO || max_dist <= 0.0 {
+        return None;
+    }
+
+    // `chunk.get` already treats an out-of-range coordinate as air, so this is a no-op for the
+    // overwhelmingly common case (origin outside the chunk); it only fires for the real target
+    // case, origin inside a solid voxel. `.floor() as i32 as u32` mirrors `Dda::enter`'s own
+    // entry-cell computation exactly (at Level::Voxel, cell_size is 1.0, so that reduces to a
+    // plain floor) -- and matches this crate's own established safe-wraparound pattern for a
+    // possibly-negative coordinate (see `examples/voxel_editing.rs`'s `place_target`): a negative
+    // `i32` cast `as u32` wraps to a huge value that safely fails the chunk's own bounds check
+    // rather than panicking. `f32 as i32` is itself a saturating, panic-free cast in Rust
+    // regardless of how extreme `origin` is (including NaN/infinity), so no separate guard for
+    // that is needed either.
+    let origin_cell = UVec3::new(
+        origin.x.floor() as i32 as u32,
+        origin.y.floor() as i32 as u32,
+        origin.z.floor() as i32 as u32,
+    );
+    if !chunk.get(origin_cell).is_air() {
         return None;
     }
 
@@ -595,6 +627,23 @@ mod tests {
         assert_eq!(hit.voxel, UVec3::new(12, 8, 8));
         assert_eq!(hit.material, VoxelId::new(7));
         assert_eq!(hit.normal, IVec3::new(-1, 0, 0));
+    }
+
+    #[test]
+    fn starting_inside_solid_geometry_returns_none_rather_than_a_degenerate_zero_normal() {
+        // A real bug lived here (found by an independent review, not this crate's own tests):
+        // the ray origin can start inside an already-solid voxel -- e.g. a consumer's camera
+        // clipped into terrain, since nothing about a ray's own origin guarantees it's in open
+        // air -- and the DDA's own "no boundary crossed" zero normal would otherwise reach a
+        // genuine hit, silently violating RayHit::normal's own "always non-zero" contract. See
+        // cast_ray's own doc comment for the full reasoning behind returning None instead.
+        let mut chunk = VoxelChunk::new(UVec3::splat(16));
+        chunk.set(UVec3::new(8, 8, 8), VoxelId::new(1));
+
+        assert_eq!(cast_ray(&chunk, Vec3::new(8.5, 8.5, 8.5), Vec3::Z, 100.0), None);
+        // Not just "any ray through this voxel always misses" -- the exact same voxel is a real,
+        // normal hit from outside it; only starting EMBEDDED in it changes anything.
+        assert!(cast_ray(&chunk, Vec3::new(8.5, 8.5, -5.0), Vec3::Z, 100.0).is_some());
     }
 
     #[test]

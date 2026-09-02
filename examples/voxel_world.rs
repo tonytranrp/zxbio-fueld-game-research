@@ -124,9 +124,23 @@ fn camera_mode() -> CameraMode {
 /// camera itself, not angled down) toward the mirrored point half a chunk width in from the far
 /// `(grid_size, grid_size)` corner -- the longest sightline the grid offers, maximizing how many
 /// chunks fall inside the frustum at once.
+///
+/// `margin` is capped at a quarter of `grid_extent` -- found by an independent review, not this
+/// example's own tests: at `grid_size=1`, an UNCAPPED half-chunk-width margin on both ends of a
+/// one-chunk-wide grid makes the camera position and look target bit-identical
+/// (`grid_extent - margin == margin` exactly in IEEE-754, since both sides reduce to the same
+/// `grid_extent / 2`), producing a zero-length look direction. Bevy's `Transform::looking_at`
+/// doesn't panic on that -- it silently falls back to facing world `-Z` (confirmed by reading
+/// `bevy_transform`'s own `look_to`) -- so this failed silently, not loudly: the camera would face
+/// an arbitrary hardcoded direction instead of "toward the far corner" as documented. Capping at
+/// `grid_extent * 0.25` guarantees `margin < grid_extent - margin` strictly for any `grid_size >=
+/// 1` (margin can be at most a quarter of the extent, leaving the far side at least three quarters
+/// of it) while leaving every grid size this crate has actually measured (>=2, where the
+/// half-chunk-width margin is already well under a quarter of the total extent) numerically
+/// unchanged -- see `ground_camera_does_not_degenerate_at_the_smallest_real_grid_size` below.
 fn ground_camera_transform(grid_size: i32) -> Transform {
     let grid_extent = grid_size as f32 * common::CHUNK_VOXELS as f32 * VOXEL_SIZE;
-    let margin = common::CHUNK_VOXELS as f32 * VOXEL_SIZE * 0.5;
+    let margin = (common::CHUNK_VOXELS as f32 * VOXEL_SIZE * 0.5).min(grid_extent * 0.25);
     let eye_height = 8.0;
     Transform::from_xyz(margin, eye_height, margin)
         .looking_at(Vec3::new(grid_extent - margin, eye_height, grid_extent - margin), Vec3::Y)
@@ -171,6 +185,20 @@ fn setup(
 ) {
     let palette = build_palette();
     let grid_size = grid_size();
+
+    // `grid_size <= 0` (an empty or malformed `VOXEL_WORLD_GRID_SIZE`) has no sensible world to
+    // build -- found by an independent review, not this example's own tests: the code below used
+    // to reach `elapsed / total_chunks` with `total_chunks = 0`, and `Duration`'s own `Div<u32>`
+    // panics on a zero divisor (real, reachable via `VOXEL_WORLD_GRID_SIZE=0`, unrelated to the
+    // ground-camera fix above -- confirmed via `git show` that this line predates both). A
+    // negative `grid_size` doesn't hit that exact panic (`grid_size * grid_size` overflows back
+    // to positive, and `0..grid_size` is simply an empty range), but would silently report a
+    // wrong, positive `total_chunks` for a world that spawned nothing. Bailing out early with a
+    // clear message covers both: no chunks, no camera, no misleading log line, no panic.
+    if grid_size <= 0 {
+        eprintln!("VOXEL_WORLD_GRID_SIZE={grid_size} -- nothing to spawn, exiting without a world");
+        return;
+    }
 
     let start = Instant::now();
     for grid_z in 0..grid_size {
@@ -276,6 +304,22 @@ mod tests {
         assert_eq!(next_x.translation.z, origin.translation.z);
         assert!((next_z.translation.z - origin.translation.z - expected_gap).abs() < 1e-4);
         assert_eq!(next_z.translation.x, origin.translation.x);
+    }
+
+    /// Found by an independent review: an uncapped margin made the camera position and its own
+    /// look target bit-identical at `grid_size=1` (both reduce to exactly `grid_extent / 2`),
+    /// producing a zero-length look direction that `Transform::looking_at` silently resolves to a
+    /// hardcoded `-Z` fallback rather than the documented "toward the far corner." This is the
+    /// smallest real grid size this example can actually spawn (`grid_size<=0` now bails out of
+    /// `setup` before ever calling this function) -- worth locking in directly, not just trusting
+    /// the `margin` cap's own algebra.
+    #[test]
+    fn ground_camera_does_not_degenerate_at_the_smallest_real_grid_size() {
+        let transform = ground_camera_transform(1);
+        let forward = *transform.forward();
+
+        assert!(forward.length() > 0.99, "forward should stay unit-length, not collapse toward zero: {forward:?}");
+        assert!(forward.x > 0.0 && forward.z > 0.0, "should still look toward the far corner, not the -Z fallback: {forward:?}");
     }
 
     #[test]
