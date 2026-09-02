@@ -3,8 +3,6 @@
 //! first real content generator, replacing hand-authored/hand-stamped test scenes with something
 //! that can actually approach the scale the engine is meant for.
 
-use bevy::math::UVec3;
-
 use super::noise::PerlinNoise;
 use crate::storage::{VoxelChunk, VoxelId};
 
@@ -61,6 +59,8 @@ pub fn fill_heightmap_terrain(chunk: &mut VoxelChunk, noise: &PerlinNoise, param
 
 #[cfg(test)]
 mod tests {
+    use bevy::math::UVec3;
+
     use super::*;
 
     #[test]
