@@ -51,10 +51,12 @@ fn setup(
 }
 ```
 
-See `examples/voxel_scene.rs` (hand-placed shapes + procedural terrain, three scenes side by side)
-and `examples/voxel_world.rs` (a real multi-chunk world, including the billion-voxel stress test
-below) for complete, actually-compiled reference code — the snippet above is deliberately minimal
-and kept small specifically to stay easy to keep accurate; those example files are what actually
+See `examples/voxel_scene.rs` (hand-placed shapes + procedural terrain, three scenes side by side),
+`examples/voxel_world.rs` (a real multi-chunk world, including the billion-voxel stress test
+below), and `examples/voxel_editing.rs` (left-click to dig, right-click to place — the full
+picking-to-edit pipeline below, wired up as an actual interactive demo) for complete,
+actually-compiled reference code — the snippet above is deliberately minimal and kept small
+specifically to stay easy to keep accurate; those example files are what actually
 gets built and tested every time this crate changes.
 
 ## Turn on real GPU performance: `DepthPrepass` + `OcclusionCulling`
@@ -111,7 +113,11 @@ for you: it doesn't create or own your camera entity (see "Design notes" below).
   (mutates the existing GPU assets in place via `Assets::get_mut`, so nothing needs to be despawned
   or re-spawned). A real, tested end-to-end path (build → spawn → edit → re-upload), not just an
   API that compiles — see `render::material::tests::update_from_chunk_reuploads_the_edited_voxel_
-  and_lod_data_in_place` for the exact scenario it verifies.
+  and_lod_data_in_place` for the exact scenario it verifies. `examples/voxel_editing.rs` wires this
+  into an actual interactive demo: a world-space mouse ray → `cast_ray` → `update_from_chunk`,
+  left-click to dig, right-click to place — see that file's own tests for the exact hand-verified
+  math (hit voxel, face normal, and distance all checked against hand-computed values, not just
+  "doesn't panic").
 - **CPU reference marcher** (`cast_ray`) — the same core N-level hierarchical traversal as the GPU
   shader, validated independently on the CPU first. Useful for picking (find which voxel a ray
   hits) to drive an edit via `update_from_chunk` above. Not a complete behavioral mirror of the GPU

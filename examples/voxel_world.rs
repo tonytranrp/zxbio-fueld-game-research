@@ -13,9 +13,10 @@
 //! this example exists to gather that data first. See the engine's own memory/notes for what this
 //! measurement found and what it implies for the next real step.
 
-// common/mod.rs is a shared grab-bag of scene-builders/diagnostics across three examples now
-// (benchmark_raymarch, voxel_scene, voxel_world), each using a different subset -- e.g. this file
-// never calls build_sparse_chunk/build_dense_chunk. `#[allow(dead_code)]` at the inclusion site
+// common/mod.rs is a shared grab-bag of scene-builders/diagnostics across four examples now
+// (benchmark_raymarch, voxel_scene, voxel_world, voxel_editing), each using a different subset --
+// e.g. this file never calls build_sparse_chunk/build_dense_chunk. `#[allow(dead_code)]` at the
+// inclusion site
 // says that's expected for a shared support module, without hiding genuine dead code inside
 // common/mod.rs itself if a helper ever stops being used by ANY example.
 #[path = "common/mod.rs"]
