@@ -44,6 +44,16 @@ fn main() {
 /// first version using `println!` produced zero output despite running for several seconds. Bevy's
 /// own tracing output already goes to stderr and reliably shows up in the same capture, which is
 /// what surfaced the discrepancy in the first place.
+///
+/// **First real measurement** (release build, `opt-level=3` but LTO disabled for this one build to
+/// work around an LLVM out-of-memory crash under this project's normal `lto="fat"` release
+/// profile — see the engine's own tooling notes on why that's still a representative number for
+/// THIS specific measurement: the actual per-frame cost here is GPU-side fragment-shader ray
+/// marching, not CPU-side Rust code LTO would meaningfully speed up): **~163-168 fps**, stable
+/// across 14 samples over ~16 seconds, all three demo scenes rendered simultaneously, right after
+/// the GPU marcher's mip-hierarchy port. No prior number exists to compare against — this logging
+/// didn't exist before that port — so this is a baseline for future work to measure against, not a
+/// before/after result.
 fn log_fps_once_per_second(diagnostics: Res<DiagnosticsStore>, time: Res<Time>, mut since_last_log: Local<f32>) {
     *since_last_log += time.delta_secs();
     if *since_last_log < 1.0 {
