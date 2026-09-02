@@ -37,13 +37,35 @@ use voxel_engine::{
 };
 
 const VOXEL_SIZE: f32 = 0.1;
-/// 4x4 = 16 chunks, ~33.6M voxels total -- a real step up from the ~2.1M any single-chunk demo
-/// has ever tested, while still small enough to generate+spawn in a few seconds even in an
-/// unattended debug-mode smoke run. Not chosen to hit "billions" in one shot -- this iteration is
-/// about proving the mechanism and measuring it, which a much larger grid wouldn't do any better,
-/// only slower to iterate on.
-const GRID_SIZE: i32 = 4;
 const TERRAIN_SEED: u64 = 7;
+
+/// Grid size (per axis) for the demo world -- 4 by default (16 chunks: fast to iterate on, small
+/// enough for an unattended debug-mode smoke run), overridable via the `VOXEL_WORLD_GRID_SIZE`
+/// environment variable for stress-testing at real scale without duplicating this whole file.
+///
+/// **Real numbers, all measured release-mode on this engine's own birds-eye test camera with LOD
+/// + `DepthPrepass`/`OcclusionCulling` active** (see the engine's own memory/notes for the full
+/// writeup):
+/// - `4` (16 chunks, 33.5M voxels): ~74fps
+/// - `16` (256 chunks, 537M voxels): ~50fps avg (42.0-59.3), generation 5.16ms/chunk
+/// - `32` (1024 chunks, **2,147,483,648 voxels — genuinely over 2 BILLION**, an actual real test
+///   of this engine's stated "billions of voxels" goal, not just a bigger demo number): ~38fps
+///   avg (33.0-45.5), generation 5.70ms/chunk, no crash, no OOM. Run via
+///   `VOXEL_WORLD_GRID_SIZE=32 cargo run --release --example voxel_world --features dev_tools`
+///   (add `--config profile.release.lto=false --config profile.release.codegen-units=16` too --
+///   see the engine's own tooling notes on why this project's normal `lto="fat"` release profile
+///   OOMs LLVM linking an example this size).
+///
+/// Per-chunk generation cost creeps up gently with grid size (3.75ms -> 5.16ms -> 5.70ms from
+/// 16 to 256 to 1024 chunks) -- real, worth knowing, but nowhere near a cliff; not investigated
+/// further this session (candidate causes: CPU cache effects at larger total data size, `Vec`
+/// allocation overhead scaling with grid size -- unconfirmed either way).
+fn grid_size() -> i32 {
+    std::env::var("VOXEL_WORLD_GRID_SIZE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4)
+}
 
 fn main() {
     App::new()
@@ -83,10 +105,11 @@ fn setup(
     mut buffers: ResMut<Assets<ShaderBuffer>>,
 ) {
     let palette = build_palette();
+    let grid_size = grid_size();
 
     let start = Instant::now();
-    for grid_z in 0..GRID_SIZE {
-        for grid_x in 0..GRID_SIZE {
+    for grid_z in 0..grid_size {
+        for grid_x in 0..grid_size {
             let chunk = common::build_terrain_chunk(TERRAIN_SEED, chunk_world_origin(grid_x, grid_z));
             spawn_voxel_chunk(
                 &mut commands,
@@ -107,14 +130,14 @@ fn setup(
     // notes on the LTO/OOM cost of one), so the absolute number isn't representative of shipped
     // performance, but the PER-CHUNK average is still a meaningful sanity check: it should land
     // close to a single chunk's own already-measured generation cost, not blow up superlinearly.
-    let total_chunks = (GRID_SIZE * GRID_SIZE) as u32;
+    let total_chunks = (grid_size * grid_size) as u32;
     let total_voxels = total_chunks as u64 * (common::CHUNK_VOXELS as u64).pow(3);
     eprintln!(
-        "generated+spawned {total_chunks} chunks ({GRID_SIZE}x{GRID_SIZE}, {total_voxels} total voxels) in {elapsed:?} ({:?}/chunk avg)",
+        "generated+spawned {total_chunks} chunks ({grid_size}x{grid_size}, {total_voxels} total voxels) in {elapsed:?} ({:?}/chunk avg)",
         elapsed / total_chunks,
     );
 
-    let grid_extent = GRID_SIZE as f32 * common::CHUNK_VOXELS as f32 * VOXEL_SIZE;
+    let grid_extent = grid_size as f32 * common::CHUNK_VOXELS as f32 * VOXEL_SIZE;
     let center = grid_extent / 2.0;
     // DepthPrepass + OcclusionCulling: real, measured win (~22fps -> ~79fps with DepthPrepass
     // alone on this exact grid from a ground-level camera, per the engine's own memory/notes) --
