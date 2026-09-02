@@ -1,6 +1,7 @@
-//! Milestone 1 demo: two static voxel scenes -- one sparse, one dense -- rendered via the
-//! engine's GPU ray marcher, with a flyable debug camera and a live FPS overlay. For a headless,
-//! GPU-free version of the same comparison (raw `cast_ray` throughput rather than on-screen FPS),
+//! Demo: three static voxel scenes -- sparse (hand-stamped spheres), dense (solid minus carved
+//! pockets), and procedurally generated terrain -- rendered side by side via the engine's GPU
+//! ray marcher, with a flyable debug camera and a live FPS overlay. For a headless, GPU-free
+//! version of the sparse/dense comparison (raw `cast_ray` throughput rather than on-screen FPS),
 //! see `examples/benchmark_raymarch.rs` -- and read that file's own doc comment before assuming
 //! "sparse renders faster": the measured result is the opposite, dominated by hit/miss cost
 //! rather than by the occupancy-skip optimization alone.
@@ -63,9 +64,21 @@ fn setup(
         Transform::from_xyz(20.0, 0.0, 0.0).with_scale(Vec3::splat(VOXEL_SIZE)),
     );
 
+    let terrain = common::build_terrain_chunk(1);
+    spawn_voxel_chunk(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &mut images,
+        &mut buffers,
+        &terrain,
+        &palette,
+        Transform::from_xyz(40.0, 0.0, 0.0).with_scale(Vec3::splat(VOXEL_SIZE)),
+    );
+
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(16.0, 20.0, 70.0).looking_at(Vec3::new(16.0, 6.0, 16.0), Vec3::Y),
+        Transform::from_xyz(26.0, 24.0, 90.0).looking_at(Vec3::new(26.0, 6.0, 16.0), Vec3::Y),
         VoxelFlycam::default(),
     ));
 }

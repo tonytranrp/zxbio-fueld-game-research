@@ -1,24 +1,44 @@
-//! Headless, GPU-free benchmark comparing `cast_ray` throughput on the sparse vs. dense test
-//! scenes (the same ones `voxel_scene.rs` renders). Run with
+//! Headless, GPU-free benchmark comparing `cast_ray` throughput on the sparse, dense, and
+//! procedurally-generated terrain test scenes (the same ones `voxel_scene.rs` renders). Run with
 //! `cargo run --release --example benchmark_raymarch` (release mode matters a great deal here --
 //! this is exactly the kind of tight numeric loop debug builds make look far slower than it
 //! actually is).
 //!
-//! **Real measured result, worth understanding rather than assuming**: the dense scene is
-//! roughly 2x *faster* than the sparse one (0.51x on one measured run: 536 ns/ray sparse vs.
-//! 271 ns/ray dense), the opposite of what "the occupancy skip should help the sparse scene most"
-//! naively predicts. Why: these particular scenes differ enormously in hit RATE, and hit/miss
-//! resolution cost dominates this measurement far more than occupancy-skip effectiveness does.
-//! The sparse scene's rays mostly MISS entirely (few small spheres in a big empty volume) --
-//! a miss means marching the full chunk depth through every hierarchy level before concluding
-//! "nothing here," the single most expensive outcome for any DDA marcher. The dense scene's rays
-//! almost all HIT within the first few voxels (it's mostly solid, entered from outside) -- an
-//! early hit is cheap almost regardless of how the interior is structured. This benchmark is a
-//! realistic end-to-end comparison, not a controlled isolation of the occupancy-skip optimization
-//! specifically -- that would need either a same-hit-rate pair of scenes, or a direct
-//! `cast_ray` vs. brute-force-per-voxel comparison on the SAME scene (not implemented here --
-//! see the engine's own mip-hierarchy memory/notes for why that's a real duplication-risk
-//! tradeoff against reusing the DDA internals, not just an oversight).
+//! **Real measured results, worth understanding rather than assuming.** Sparse is by far the
+//! slowest of the three scenes (dense and terrain both run at roughly 0.57-0.58x sparse's time --
+//! i.e. dense/terrain are ~1.7x faster), the opposite of what "the occupancy skip should help the
+//! sparse scene most" naively predicts.
+//!
+//! A first pass at explaining this (see git history on this file) chalked it up entirely to hit
+//! RATE: sparse's rays mostly miss (a handful of small spheres in a big empty volume), and a
+//! miss means marching the full chunk depth through every hierarchy level before concluding
+//! "nothing here" -- the most expensive outcome for any DDA marcher -- while dense's rays almost
+//! all hit within the first few voxels. That's real, but adding the terrain scene as a third data
+//! point shows it's incomplete: terrain hits only ~35% of the time (much closer to sparse's ~15%
+//! than to dense's 100%), yet runs at essentially the SAME speed as the 100%-hit dense scene
+//! (208.7 vs. 210.4 ns/ray on one measured run) -- a pure hit-rate model would predict terrain
+//! landing much closer to sparse.
+//!
+//! The more complete (though not independently, controlled-experiment verified -- this is an
+//! inference from the pattern across three scenes, not an isolated test of this one variable)
+//! explanation: what actually seems to matter is less "what fraction of rays hit" and more
+//! "how CONTIGUOUS the empty space is." Terrain's empty region (the open sky above the ground) is
+//! one large, uniform block spanning the whole X/Z footprint -- the mip hierarchy can skip through
+//! it almost as efficiently as it does the fully-empty chunk in the mip-hierarchy ablation
+//! benchmark (`src/raymarch.rs`'s own `#[ignore]`d test), so even terrain's MISSING rays resolve
+//! cheaply. Sparse's empty space is fragmented into many separate pockets by the scattered small
+//! spheres, which breaks up exactly that large-scale skip the hierarchy is built for, even though
+//! sparse is "more empty" by raw volume than terrain is. Worth remembering when reasoning about
+//! this engine's real-world performance: raw occupancy percentage is a weaker predictor than the
+//! SHAPE of the empty space.
+//!
+//! This benchmark remains a realistic end-to-end comparison, not a controlled isolation of the
+//! occupancy-skip optimization specifically -- that would need either a same-hit-rate,
+//! same-contiguity pair of scenes, or a direct `cast_ray` vs. brute-force-per-voxel comparison on
+//! the SAME scene (not implemented here as a separate example -- see the engine's own
+//! mip-hierarchy memory/notes for why that's a real duplication-risk tradeoff against reusing the
+//! DDA internals, and for the controlled fully-empty-chunk ablation that IS implemented, as a
+//! test rather than an example).
 
 #[path = "common/mod.rs"]
 mod common;
@@ -34,15 +54,25 @@ const RAY_MAX_DIST: f32 = 300.0;
 fn main() {
     let sparse = common::build_sparse_chunk();
     let dense = common::build_dense_chunk();
+    let terrain = common::build_terrain_chunk(1);
 
     let sparse_result = benchmark("sparse", &sparse);
     let dense_result = benchmark("dense", &dense);
+    let terrain_result = benchmark("terrain", &terrain);
 
     println!();
     println!(
-        "dense/sparse: {:.2}x slower on the dense scene (same {} rays, same chunk size)",
+        "dense/sparse:   {:.2}x (same {} rays, same chunk size)",
         dense_result.avg_nanos_per_ray / sparse_result.avg_nanos_per_ray,
         RAYS_PER_AXIS * RAYS_PER_AXIS,
+    );
+    println!(
+        "terrain/sparse: {:.2}x",
+        terrain_result.avg_nanos_per_ray / sparse_result.avg_nanos_per_ray,
+    );
+    println!(
+        "terrain/dense:  {:.2}x",
+        terrain_result.avg_nanos_per_ray / dense_result.avg_nanos_per_ray,
     );
 }
 

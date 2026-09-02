@@ -4,7 +4,7 @@
 //! target) so the visual demo and the raw-throughput benchmark measure the identical scenes.
 
 use bevy::math::{IVec3, UVec3};
-use voxel_engine::{VoxelChunk, VoxelId};
+use voxel_engine::{fill_heightmap_terrain, HeightmapParams, PerlinNoise, VoxelChunk, VoxelId};
 
 pub const CHUNK_VOXELS: u32 = 128;
 
@@ -29,6 +29,24 @@ pub fn build_dense_chunk() -> VoxelChunk {
     stamp_sphere(&mut chunk, IVec3::new(64, 64, 64), 40, VoxelId::AIR);
     stamp_sphere(&mut chunk, IVec3::new(20, 20, 20), 15, VoxelId::AIR);
     stamp_sphere(&mut chunk, IVec3::new(108, 108, 108), 15, VoxelId::AIR);
+    chunk
+}
+
+/// Procedurally generated rolling terrain -- a real, non-toy occupancy profile distinct from
+/// both hand-stamped scenes: a mostly-solid lower half (like the dense scene, for rays entering
+/// from above) but with genuine empty sky above it (like the sparse scene), and none of it
+/// hand-placed. This is the shape "billions of voxels" actually needs to come from -- no one
+/// hand-authors that much content.
+pub fn build_terrain_chunk(seed: u64) -> VoxelChunk {
+    let mut chunk = VoxelChunk::new(UVec3::splat(CHUNK_VOXELS));
+    let noise = PerlinNoise::new(seed);
+    let params = HeightmapParams {
+        frequency: 0.025,
+        amplitude: 20.0,
+        base_height: 40.0,
+        octaves: 4,
+    };
+    fill_heightmap_terrain(&mut chunk, &noise, params, VoxelId::new(2));
     chunk
 }
 
