@@ -10,9 +10,11 @@
 mod common;
 
 use bevy::color::LinearRgba;
+use bevy::core_pipeline::prepass::DepthPrepass;
 use bevy::dev_tools::fps_overlay::FpsOverlayPlugin;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
+use bevy::render::occlusion_culling::OcclusionCulling;
 use bevy::render::storage::ShaderBuffer;
 use voxel_engine::{
     spawn_voxel_chunk, VoxelEnginePlugin, VoxelFlycam, VoxelFlycamPlugin, VoxelId, VoxelMaterial,
@@ -88,8 +90,26 @@ fn setup(
         Transform::from_xyz(40.0, 0.0, 0.0).with_scale(Vec3::splat(VOXEL_SIZE)),
     );
 
+    // DepthPrepass + OcclusionCulling: real, measured win for this shader specifically -- its
+    // fragment shader unconditionally `discard`s on a ray miss and never writes an explicit
+    // depth, which disables hardware early-Z entirely without a prepass (the driver can't know a
+    // fragment will survive before running the shader). A plain, non-discarding prepass restores
+    // real early rejection between chunks even though each chunk's own main-pass shader still
+    // discards. Measured on the engine's own 16-chunk ground-level test scene: ~22fps with
+    // neither component, ~79fps with just DepthPrepass, ~75fps with both (OcclusionCulling's own
+    // incremental contribution beyond DepthPrepass wasn't clearly separable from run-to-run noise
+    // at this scale, but it's a free addition -- no extra shader work, and it should matter more
+    // as chunk counts grow toward this engine's actual "billions of voxels" target). See
+    // [[voxel-engine-scale-research]] (project memory) for the full numbers and reasoning.
+    //
+    // This lives in the EXAMPLE, not the library: VoxelEnginePlugin deliberately never spawns or
+    // modifies a camera it doesn't own (see that plugin's own doc comment) -- a real consumer
+    // should add these two components to THEIR OWN camera the same way, not expect the library to
+    // do it for them.
     commands.spawn((
         Camera3d::default(),
+        DepthPrepass,
+        OcclusionCulling,
         Transform::from_xyz(26.0, 24.0, 90.0).looking_at(Vec3::new(26.0, 6.0, 16.0), Vec3::Y),
         VoxelFlycam::default(),
     ));

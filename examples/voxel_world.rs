@@ -25,9 +25,11 @@ mod common;
 use std::time::Instant;
 
 use bevy::color::LinearRgba;
+use bevy::core_pipeline::prepass::DepthPrepass;
 use bevy::dev_tools::fps_overlay::FpsOverlayPlugin;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
+use bevy::render::occlusion_culling::OcclusionCulling;
 use bevy::render::storage::ShaderBuffer;
 use voxel_engine::{
     spawn_voxel_chunk, VoxelEnginePlugin, VoxelFlycam, VoxelFlycamPlugin, VoxelId, VoxelMaterial,
@@ -114,8 +116,15 @@ fn setup(
 
     let grid_extent = GRID_SIZE as f32 * common::CHUNK_VOXELS as f32 * VOXEL_SIZE;
     let center = grid_extent / 2.0;
+    // DepthPrepass + OcclusionCulling: real, measured win (~22fps -> ~79fps with DepthPrepass
+    // alone on this exact grid from a ground-level camera, per the engine's own memory/notes) --
+    // this shader's fragment() unconditionally `discard`s on a miss and never writes an explicit
+    // depth, which disables hardware early-Z without a prepass. See voxel_scene.rs's camera setup
+    // for the full reasoning; kept brief here since it's identical for this scene.
     commands.spawn((
         Camera3d::default(),
+        DepthPrepass,
+        OcclusionCulling,
         Transform::from_xyz(center, grid_extent * 0.9, center + grid_extent * 1.1)
             .looking_at(Vec3::new(center, 0.0, center), Vec3::Y),
         VoxelFlycam::default(),
