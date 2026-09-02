@@ -40,7 +40,13 @@
 //! DDA internals, and for the controlled fully-empty-chunk ablation that IS implemented, as a
 //! test rather than an example).
 
+// common/mod.rs is shared across three examples now (this one, voxel_scene, voxel_world), each
+// using a different subset -- this headless benchmark has no App/render loop, so it never calls
+// common::log_fps_once_per_second. `#[allow(dead_code)]` at the inclusion site says that's
+// expected for a shared support module, without hiding genuine dead code inside common/mod.rs
+// itself if a helper ever stops being used by ANY example.
 #[path = "common/mod.rs"]
+#[allow(dead_code)]
 mod common;
 
 use std::time::Instant;

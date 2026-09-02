@@ -3,7 +3,10 @@
 //! (Cargo's convention for sharing code between examples without it becoming its own example
 //! target) so the visual demo and the raw-throughput benchmark measure the identical scenes.
 
+use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+use bevy::ecs::system::{Local, Res};
 use bevy::math::{IVec3, UVec3};
+use bevy::time::Time;
 use voxel_engine::{fill_heightmap_terrain, HeightmapParams, PerlinNoise, VoxelChunk, VoxelId};
 
 pub const CHUNK_VOXELS: u32 = 128;
@@ -68,6 +71,31 @@ fn stamp_sphere(chunk: &mut VoxelChunk, center: IVec3, radius: i32, material: Vo
                 }
             }
         }
+    }
+}
+
+/// Prints the smoothed FPS once a second — a real, measurable number capturable via
+/// `timeout N ./target/.../<example>.exe 2>&1`, the same pattern this engine's CPU-side
+/// benchmarks already use, since there's no way in this environment to read an on-screen
+/// `FpsOverlayPlugin` overlay any other way. Shared across examples (originally written for
+/// `voxel_scene.rs`, moved here once `voxel_world.rs` needed the identical system) rather than
+/// duplicated — the exact "wait until a second real use shows up" moment this engine's own
+/// library-creation discipline calls for before promoting something out of a single file.
+///
+/// Deliberately `eprintln!` (stderr), not `println!` (stdout): under a pipe (as opposed to a real
+/// terminal), Rust's stdout is fully block-buffered, and a process killed by `timeout` rather than
+/// exiting cleanly can lose everything still sitting in that buffer — confirmed the hard way in
+/// `voxel_scene.rs`'s own history; Bevy's own tracing output already goes to stderr and reliably
+/// shows up in the same capture, which is what surfaced the discrepancy in the first place.
+pub fn log_fps_once_per_second(diagnostics: Res<DiagnosticsStore>, time: Res<Time>, mut since_last_log: Local<f32>) {
+    *since_last_log += time.delta_secs();
+    if *since_last_log < 1.0 {
+        return;
+    }
+    *since_last_log = 0.0;
+
+    if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|d| d.smoothed()) {
+        eprintln!("fps: {fps:.1}");
     }
 }
 
