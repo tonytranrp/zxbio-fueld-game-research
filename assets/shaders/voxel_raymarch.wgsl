@@ -173,6 +173,15 @@ fn level_occupied(lvl: i32, cell: vec3<u32>, brick_dims: vec3<u32>) -> bool {
         return textureLoad(brick_occupancy, vec3<i32>(cell), 0).r > 0u;
     }
     let dims = mip_dims_at(lvl, brick_dims);
+    // Out-of-range is unoccupied, matching `OccupancyMip::get`'s own convention exactly -- `cell`
+    // should always be in-bounds by construction here (dda_enter/dda_enter_at clamp on entry,
+    // dda_advance refuses to step out of bounds), but indexing a storage buffer past this level's
+    // own slice without checking would silently read a NEIGHBORING level's data instead of
+    // failing loudly, which is a real risk worth guarding against even though nothing has found a
+    // way to actually trigger it.
+    if (cell.x >= dims.x || cell.y >= dims.y || cell.z >= dims.z) {
+        return false;
+    }
     let offset = mip_level_offset(lvl, brick_dims);
     let idx = cell.x + cell.y * dims.x + cell.z * dims.x * dims.y;
     return mip_occupancy[offset + idx] > 0u;
@@ -463,6 +472,17 @@ fn pop_and_advance(levels: ptr<function, array<i32, MAX_STACK>>, ddas: ptr<funct
 // function side-by-side with that one, not on its own, if verifying a change to either.
 fn march_hierarchical(origin: vec3<f32>, dir: vec3<f32>, max_dist: f32) -> MarchResult {
     var result = empty_result();
+
+    // Matches `cast_ray`'s own early-out (src/raymarch.rs) exactly -- a zero direction can't slab-
+    // test against anything (every axis would hit the `dir==0` branch in ray_aabb_full with no
+    // way to ever establish a valid t_enter/t_exit), and a non-positive max_dist can never contain
+    // a valid hit. Both call sites below (primary ray, shadow ray) look unreachable in practice
+    // (primary comes from a normalize() of a presumably-nonzero vector; the shadow ray is gated
+    // behind ndotl > 0.0, which already implies a non-degenerate direction) -- kept as an explicit
+    // guard anyway rather than relying on that, matching the CPU reference's own defensiveness.
+    if ((dir.x == 0.0 && dir.y == 0.0 && dir.z == 0.0) || max_dist <= 0.0) {
+        return result;
+    }
 
     let chunk_dims = params.chunk_dims;
     let brick_dims = params.brick_dims;
