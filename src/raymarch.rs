@@ -104,9 +104,9 @@ pub fn cast_ray(chunk: &VoxelChunk, origin: Vec3, dir: Vec3, max_dist: f32) -> O
 }
 
 /// Marches through one level of the occupancy hierarchy, confined to `[bounds_min, bounds_max]`
-/// (the parent cell that led to this call, or the whole chunk for the initial top-level call),
-/// recursing into [`Level::finer`] for each occupied cell found until reaching [`Level::Voxel`],
-/// where a direct [`VoxelChunk::get`] check either returns a hit or continues the march.
+/// (the whole chunk, for the initial top-level call — [`march_loop`] handles recursive descents
+/// into finer levels itself, without re-entering here). Slab-tests once to find the entry cell,
+/// then hands off to [`march_loop`] for the actual traversal.
 fn march(
     chunk: &VoxelChunk,
     level: Level,
@@ -118,8 +118,23 @@ fn march(
 ) -> Option<RayHit> {
     let dims = level.dims(chunk);
     let cell_size = level.cell_size();
-    let mut dda = Dda::enter(origin, dir, cell_size, dims, bounds_min, bounds_max, max_dist)?;
+    let dda = Dda::enter(origin, dir, cell_size, dims, bounds_min, bounds_max, max_dist)?;
+    march_loop(chunk, level, origin, dir, dda, max_dist)
+}
 
+/// The actual traversal loop for one level, recursing into [`Level::finer`] for each occupied
+/// cell found until reaching [`Level::Voxel`], where a direct [`VoxelChunk::get`] check either
+/// returns a hit or continues the march.
+///
+/// Recursive descents build their own finer [`Dda`] via [`Dda::enter_at`], not [`Dda::enter`] —
+/// the entry point for a descent is always exactly the parent level's own current `t_enter` (the
+/// ray is never coordinate-shifted between levels, only `cell_size` changes), so it's already
+/// known to be valid and doesn't need re-deriving through a fresh ray/AABB slab test. This is a
+/// real, measured cost in the hot path: `enter`'s slab test runs once per cell (`ray_aabb_
+/// intersect`'s three-axis branchy min/max), which for a chunk with N mip levels means N-1 fully
+/// redundant slab tests per hierarchy descent before this change. Only the true top-level call
+/// (via [`march`]) has an unknown starting point and genuinely needs the full test.
+fn march_loop(chunk: &VoxelChunk, level: Level, origin: Vec3, dir: Vec3, mut dda: Dda, max_dist: f32) -> Option<RayHit> {
     loop {
         if dda.t_enter > max_dist {
             return None;
@@ -143,10 +158,20 @@ fn march(
             // stop at this cell's own boundary and hand control back here, without needing to
             // explicitly re-derive "which finer cells belong to this coarse cell."
             let cell_exit = dda.t_max.x.min(dda.t_max.y).min(dda.t_max.z).min(max_dist);
-            let cell_min = Vec3::new(cell.x as f32, cell.y as f32, cell.z as f32) * cell_size;
-            let cell_max = cell_min + Vec3::splat(cell_size);
             let finer = level.finer().expect("non-Voxel level always has a finer level");
-            if let Some(hit) = march(chunk, finer, origin, dir, cell_min, cell_max, cell_exit) {
+
+            let entry_t = dda.t_enter.max(0.0);
+            let entry_point = origin + dir * entry_t;
+            let finer_dda = Dda::enter_at(
+                origin,
+                entry_point,
+                entry_t,
+                dir,
+                finer.cell_size(),
+                finer.dims(chunk),
+                dda.last_normal,
+            );
+            if let Some(hit) = march_loop(chunk, finer, origin, dir, finer_dda, cell_exit) {
                 return Some(hit);
             }
         }
@@ -233,6 +258,60 @@ impl Dda {
             t_enter,
             last_normal,
         })
+    }
+
+    /// Enters a finer grid at an ALREADY-KNOWN valid point on the ray — `entry_point`/`entry_t`
+    /// must be a genuine point the ray passes through (typically a coarser `Dda`'s own current
+    /// `t_enter`/entry point, when recursively descending into a finer level; see
+    /// [`march_loop`]'s own doc comment for why that's always safe here). Skips the full
+    /// ray/AABB slab test [`Self::enter`] needs for a truly unknown starting point — real,
+    /// measured overhead in a hot recursive path.
+    fn enter_at(
+        origin: Vec3,
+        entry_point: Vec3,
+        entry_t: f32,
+        dir: Vec3,
+        cell_size: f32,
+        dims: UVec3,
+        last_normal: IVec3,
+    ) -> Self {
+        let cell = IVec3::new(
+            (entry_point.x / cell_size).floor() as i32,
+            (entry_point.y / cell_size).floor() as i32,
+            (entry_point.z / cell_size).floor() as i32,
+        );
+        let cell = IVec3::new(
+            cell.x.clamp(0, dims.x as i32 - 1),
+            cell.y.clamp(0, dims.y as i32 - 1),
+            cell.z.clamp(0, dims.z as i32 - 1),
+        );
+
+        let step = IVec3::new(sign(dir.x), sign(dir.y), sign(dir.z));
+        let t_delta = Vec3::new(
+            safe_div(cell_size, dir.x.abs()),
+            safe_div(cell_size, dir.y.abs()),
+            safe_div(cell_size, dir.z.abs()),
+        );
+        let next_boundary = Vec3::new(
+            boundary(cell.x, step.x, cell_size),
+            boundary(cell.y, step.y, cell_size),
+            boundary(cell.z, step.z, cell_size),
+        );
+        let t_max = Vec3::new(
+            axis_t_max(next_boundary.x, origin.x, dir.x),
+            axis_t_max(next_boundary.y, origin.y, dir.y),
+            axis_t_max(next_boundary.z, origin.z, dir.z),
+        );
+
+        Self {
+            cell,
+            dims,
+            step,
+            t_max,
+            t_delta,
+            t_enter: entry_t,
+            last_normal,
+        }
     }
 
     /// Advances to the next cell along the ray. Returns `false` if doing so would leave the
