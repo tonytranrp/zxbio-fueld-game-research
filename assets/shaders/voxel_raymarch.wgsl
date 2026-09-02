@@ -569,11 +569,26 @@ fn march_hierarchical(origin: vec3<f32>, dir: vec3<f32>, max_dist: f32) -> March
                 let ucell = vec3<u32>(cell);
                 let brick_idx = ucell.x + ucell.y * brick_dims.x + ucell.z * brick_dims.x * brick_dims.y;
                 result.hit = true;
-                result.voxel = cell;
+                // `cell` is a BRICK coordinate here, not a voxel one -- scale to the brick's own
+                // origin corner so `.voxel` stays honest about which SPACE it's in (voxel-index),
+                // even though it's necessarily an approximation of the true hit voxel (there is
+                // no single one at this level). Nothing reads `.voxel` today, but a future
+                // picking/debug consumer reading it without checking `.is_lod` first should still
+                // get a real voxel-space point, not a brick index silently passed off as one.
+                result.voxel = cell * vec3<i32>(i32(BRICK_SIZE));
                 result.is_lod = true;
                 result.lod_color = brick_lod_colors[brick_idx];
                 result.normal = vec3<f32>(dda.last_normal);
                 result.distance = dda.t_enter;
+                // Explicit, not relied-on-by-omission: `material` has no meaning for an LOD hit
+                // (there is no single voxel), but `fragment()`'s `select()` reads
+                // `palette[primary.material]` unconditionally even on this branch (WGSL's
+                // `select` isn't short-circuiting) -- 0 is always a safe, in-bounds palette index
+                // (256 entries, always uploaded). Writing it explicitly here means that safety
+                // no longer depends on nothing else touching `result.material` before this
+                // `return`, which was previously true only because `empty_result()` happened to
+                // zero it and no earlier branch in this call had run.
+                result.material = 0u;
                 return result;
             }
 
