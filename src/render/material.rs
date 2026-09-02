@@ -44,7 +44,16 @@ struct VoxelParams {
     sun_direction: Vec3,
     sun_color: Vec3,
     sun_intensity: f32,
+    /// How many levels [`VoxelChunk::mip_level_count`] the shader's own mip hierarchy has —
+    /// `0` for a chunk too small to have any, in which case the marcher starts at the brick
+    /// level directly, matching `cast_ray`'s own CPU-side fallback.
+    mip_level_count: u32,
 }
+
+/// Must match `MAX_STACK - 2` in `voxel_raymarch.wgsl` (the shader's fixed-size stack holds every
+/// mip level plus the brick and voxel levels) — see that constant's own comment for why this is
+/// generous headroom, not a real limitation, at any chunk size this engine has ever built.
+const MAX_MIP_STACK_LEVELS: usize = 10;
 
 /// Renders one [`VoxelChunk`] via GPU ray marching. Constructed by [`crate::spawn_voxel_chunk`] —
 /// not meant to be built directly, since its bind-group data (two 3D textures) must stay in sync
@@ -63,6 +72,10 @@ pub struct VoxelMaterial {
     /// matters here.
     #[storage(3, read_only)]
     palette: Handle<ShaderBuffer>,
+    /// The flattened mip-occupancy hierarchy — see [`build_mip_occupancy_buffer`] for the exact
+    /// layout and `voxel_raymarch.wgsl`'s own comment for how the shader indexes into it.
+    #[storage(4, read_only)]
+    mip_occupancy: Handle<ShaderBuffer>,
 }
 
 /// A directional light reasonable enough to see by if a consumer never calls
@@ -82,6 +95,15 @@ impl VoxelMaterial {
         brick_occupancy: Handle<Image>,
         buffers: &mut Assets<ShaderBuffer>,
     ) -> Self {
+        assert!(
+            chunk.mip_level_count() <= MAX_MIP_STACK_LEVELS,
+            "chunk has {} mip levels, more than the GPU marcher's fixed-size stack supports \
+             ({}) — see MAX_STACK in voxel_raymarch.wgsl and MAX_MIP_STACK_LEVELS here, which \
+             must stay in sync",
+            chunk.mip_level_count(),
+            MAX_MIP_STACK_LEVELS,
+        );
+
         let palette_colors: Vec<Vec4> = (0u16..256)
             .map(|id| {
                 let color = palette.get(crate::storage::VoxelId::new(id as u8)).color;
@@ -90,6 +112,9 @@ impl VoxelMaterial {
             .collect();
         let mut palette_buffer = ShaderBuffer::default();
         palette_buffer.set_data(palette_colors);
+
+        let mut mip_buffer = ShaderBuffer::default();
+        mip_buffer.set_data(build_mip_occupancy_buffer(chunk));
 
         Self {
             params: VoxelParams {
@@ -100,10 +125,12 @@ impl VoxelMaterial {
                 sun_direction: DEFAULT_SUN_DIRECTION.normalize_or_zero(),
                 sun_color: DEFAULT_SUN_COLOR,
                 sun_intensity: DEFAULT_SUN_INTENSITY,
+                mip_level_count: chunk.mip_level_count() as u32,
             },
             voxel_data,
             brick_occupancy,
             palette: buffers.add(palette_buffer),
+            mip_occupancy: buffers.add(mip_buffer),
         }
     }
 
@@ -158,6 +185,37 @@ pub(crate) fn build_voxel_image(chunk: &VoxelChunk) -> Image {
         TextureFormat::R8Uint,
         RenderAssetUsages::RENDER_WORLD,
     )
+}
+
+/// Packs `chunk`'s full mip-occupancy hierarchy into one flat buffer for the `mip_occupancy`
+/// storage binding: level 0 (finest, immediately above bricks) first, through the coarsest level
+/// last, each level's own cells in the same x-major/y/z order as
+/// [`crate::storage::coords::flatten`] — mirrored exactly in `voxel_raymarch.wgsl`'s own
+/// `mip_level_offset`/`level_occupied`, which compute each level's flat offset instead of
+/// uploading it, since it's a pure function of `brick_dims` and the level index (see that file's
+/// own comment).
+///
+/// Always at least one element: a zero-length storage buffer isn't valid to create on every wgpu
+/// backend, and a chunk with no mip levels at all (too small — see
+/// [`VoxelChunk::mip_level_count`]) would otherwise produce an empty `Vec`. The shader never
+/// indexes into this buffer when `mip_level_count == 0` (it starts marching at the brick level
+/// directly instead); the dummy element only exists to satisfy wgpu.
+fn build_mip_occupancy_buffer(chunk: &VoxelChunk) -> Vec<u32> {
+    let mut data = Vec::new();
+    for level in 0..chunk.mip_level_count() {
+        let dims = chunk.mip_dims(level);
+        for z in 0..dims.z {
+            for y in 0..dims.y {
+                for x in 0..dims.x {
+                    data.push(chunk.mip_occupied(level, UVec3::new(x, y, z)) as u32);
+                }
+            }
+        }
+    }
+    if data.is_empty() {
+        data.push(0);
+    }
+    data
 }
 
 /// Packs `chunk`'s per-brick occupancy into a 3D `R8Uint` image (`1` = occupied, `0` = empty) —

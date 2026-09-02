@@ -109,4 +109,47 @@ mod tests {
         assert!(!levels[0].set(UVec3::ZERO, true), "true -> true is not a change");
         assert!(levels[0].set(UVec3::ZERO, false), "true -> false is a real change");
     }
+
+    /// `voxel_raymarch.wgsl`'s `mip_dims_at` computes a mip level's dims as a single closed-form
+    /// division — `ceil(brick_dims / 2^(level+1))` — rather than `hierarchy_for`'s own iterated
+    /// per-level halving, because WGSL has no fixed upper bound on a runtime loop it could use to
+    /// replay the iteration at shader-compile time. The two are only equivalent because of a real
+    /// number-theory identity, `ceil(ceil(n/a)/b) == ceil(n/(a*b))` for positive integers — worth
+    /// verifying directly here, in Rust, where it's actually testable, rather than trusting it
+    /// unverified in a shader this project has no way to unit test at all (see this project's own
+    /// "cross-check anything with a determinate answer two independent ways" discipline).
+    #[test]
+    fn closed_form_mip_dims_matches_the_iterative_hierarchy_the_shader_cant_replay() {
+        fn div_ceil(n: u32, d: u32) -> u32 {
+            n.div_ceil(d)
+        }
+        fn closed_form_dims_at(level: usize, brick_dims: UVec3) -> UVec3 {
+            let divisor = 1u32 << (level as u32 + 1);
+            UVec3::new(
+                div_ceil(brick_dims.x, divisor),
+                div_ceil(brick_dims.y, divisor),
+                div_ceil(brick_dims.z, divisor),
+            )
+        }
+
+        for brick_dims in [
+            UVec3::splat(16),
+            UVec3::splat(3),
+            UVec3::splat(1),
+            UVec3::new(8, 16, 24),
+            UVec3::new(5, 5, 5),
+            UVec3::new(1, 32, 7),
+            UVec3::splat(256),
+        ] {
+            let levels = OccupancyMip::hierarchy_for(brick_dims);
+            for (level, mip) in levels.iter().enumerate() {
+                assert_eq!(
+                    closed_form_dims_at(level, brick_dims),
+                    mip.dims(),
+                    "brick_dims={brick_dims:?} level={level}: closed form disagrees with the \
+                     iterative hierarchy"
+                );
+            }
+        }
+    }
 }
