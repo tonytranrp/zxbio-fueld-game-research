@@ -134,17 +134,28 @@ All measured on this project's own hardware (RTX 4070 Laptop GPU), never assumed
 
 | Scene | Voxels | FPS |
 |---|---|---|
-| 16 chunks, `DepthPrepass`+`OcclusionCulling`, ground-level camera | 33.5M | ~79 (from ~22 without those two components) |
-| 256 chunks, birds-eye camera | 537M | ~50 |
-| 1024 chunks, birds-eye camera | **2.15 billion** | ~38, no crash, no OOM |
+| `voxel_scene.rs`, 16 chunks, ground-level camera | 33.5M | ~79 (from ~22 without `DepthPrepass`+`OcclusionCulling`) |
+| `voxel_world.rs`, 256 chunks, birds-eye camera | 537M | ~50 |
+| `voxel_world.rs`, 256 chunks, ground-level camera | 537M | ~89 |
+| `voxel_world.rs`, 1024 chunks, birds-eye camera | **2.15 billion** | ~38, no crash, no OOM |
+| `voxel_world.rs`, 1024 chunks, ground-level camera | **2.15 billion** | ~76, no crash, no OOM |
 
 The 1024-chunk scene measured ~2.8GiB VRAM — real headroom on an 8GB GPU, not close to exhausted at
-this scale. Reproduce it yourself:
+this scale. Reproduce the birds-eye numbers yourself:
 
 ```bash
 VOXEL_WORLD_GRID_SIZE=32 cargo run --release --example voxel_world --features dev_tools \
   --config profile.release.lto=false --config profile.release.codegen-units=16
 ```
+
+**Ground level is the more realistic camera angle, and it's consistently *faster*, not slower** —
+worth calling out since it's the opposite of what you might expect from "more chunks in view at
+once." Terrain has real vertical relief, so nearby hills naturally occlude distant chunks along a
+ground-level sightline; the already-shipped `OcclusionCulling` exploits that, while a birds-eye view
+of comparatively flat-looking terrain from far above gives it far less to work with. The gap widens
+with scale, not shrinks — 256 chunks: +78% over birds-eye; 1024 chunks: +99% (~2x). Add
+`VOXEL_WORLD_CAMERA=ground` to the command above to see it yourself (see `CameraMode`'s own doc
+comment in `examples/voxel_world.rs` for the full numbers and reasoning).
 
 (The `--config` flags work around this project's own `lto = "fat"` release profile — tuned for the
 library's real shipped runtime performance — running LLVM out of memory when linking an example

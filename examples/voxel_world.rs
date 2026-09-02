@@ -68,6 +68,70 @@ fn grid_size() -> i32 {
         .unwrap_or(4)
 }
 
+/// Which camera to spawn, selected via the `VOXEL_WORLD_CAMERA` environment variable
+/// (`"ground"` or anything else / unset for the default `BirdsEye`).
+///
+/// Every scaling number in `grid_size`'s own doc comment (74/50/38fps at 16/256/1024 chunks) was
+/// measured with `BirdsEye` -- a high, outside-the-grid, looking-down camera where most chunks sit
+/// outside the view frustum or nearly edge-on to it at any given moment. `Ground` is the case that
+/// camera can never exercise: positioned INSIDE the grid at roughly eye height, looking level
+/// across the full diagonal so as many chunks as possible are simultaneously in frame with none of
+/// them behind the camera. This is the scenario the billion-voxel milestone's own memory flagged
+/// as unmeasured beyond the smallest (16-chunk) grid size -- "a ground-level camera with many
+/// chunks actually visible... costs meaningfully more per visible chunk" was asserted from a single
+/// small-scale data point, never confirmed at the scales this engine actually claims to handle.
+///
+/// **Real numbers, release mode, same LOD+`DepthPrepass`+`OcclusionCulling` setup as `BirdsEye`**
+/// (see the engine's own memory/notes for the full writeup) -- the prior assumption was WRONG, in
+/// the favorable direction: `Ground` is consistently *faster* than `BirdsEye` at every scale
+/// tested, and the gap widens as the grid grows, not shrinks:
+/// - 16 chunks: ~90fps ground (76.2-98.5) vs. ~74fps birds-eye (+21%)
+/// - 256 chunks: ~89fps ground (66.3-104.6) vs. ~50fps birds-eye (+78%)
+/// - 1024 chunks / 2.15B voxels: ~76fps ground (62.0-88.4) vs. ~38fps birds-eye (+99%, ~2x)
+///
+/// Best-supported explanation (mechanistic, not just correlational): this scene's terrain has real
+/// vertical relief (`amplitude=20` voxel-index units = 2.0m world height either side of the mean,
+/// per `common::build_terrain_chunk`'s params) -- from ground level, nearby hills naturally occlude
+/// most distant chunks along the sightline, so `OcclusionCulling` (already shipped, see
+/// [[voxel-engine-scale-research]]) skips their fragment work entirely. `BirdsEye` looks nearly
+/// straight down at comparatively flat-looking terrain from far above, where far less natural
+/// self-occlusion exists between chunks -- most of what's in frustum actually gets shaded. Ground
+/// level isn't just "not a hidden weakness" the way the milestone memory worried it might be; the
+/// two shipped optimizations (occlusion culling + real terrain relief) compound in exactly the
+/// camera scenario that matters most for an actual player, not just an overview screenshot.
+enum CameraMode {
+    BirdsEye,
+    Ground,
+}
+
+fn camera_mode() -> CameraMode {
+    match std::env::var("VOXEL_WORLD_CAMERA").ok().as_deref() {
+        Some("ground") => CameraMode::Ground,
+        _ => CameraMode::BirdsEye,
+    }
+}
+
+/// The `Ground` camera's own transform, factored out from `setup` so it can be unit tested (the
+/// same reasoning `chunk_render_transform` above already applies: a placement bug here wouldn't
+/// fail any existing test, it would silently point the camera at the sky or bury it in terrain --
+/// worth checking the arithmetic directly rather than only by eye in a running window).
+///
+/// Positioned half a chunk width in from the grid's `(0,0)` corner (not exactly ON the corner, so
+/// it isn't sitting exactly on a chunk boundary), at a fixed 8m eye height -- clears this scene's
+/// own terrain heightmap (`base_height=40` +-`amplitude=20` voxel-index units = 4.0m +-2.0m world
+/// height, per `common::build_terrain_chunk`'s params, so terrain tops out around 6m) without
+/// floating so high the shot degenerates back toward a birds-eye angle. Looks level (same Y as the
+/// camera itself, not angled down) toward the mirrored point half a chunk width in from the far
+/// `(grid_size, grid_size)` corner -- the longest sightline the grid offers, maximizing how many
+/// chunks fall inside the frustum at once.
+fn ground_camera_transform(grid_size: i32) -> Transform {
+    let grid_extent = grid_size as f32 * common::CHUNK_VOXELS as f32 * VOXEL_SIZE;
+    let margin = common::CHUNK_VOXELS as f32 * VOXEL_SIZE * 0.5;
+    let eye_height = 8.0;
+    Transform::from_xyz(margin, eye_height, margin)
+        .looking_at(Vec3::new(grid_extent - margin, eye_height, grid_extent - margin), Vec3::Y)
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -140,19 +204,17 @@ fn setup(
 
     let grid_extent = grid_size as f32 * common::CHUNK_VOXELS as f32 * VOXEL_SIZE;
     let center = grid_extent / 2.0;
+    let transform = match camera_mode() {
+        CameraMode::BirdsEye => Transform::from_xyz(center, grid_extent * 0.9, center + grid_extent * 1.1)
+            .looking_at(Vec3::new(center, 0.0, center), Vec3::Y),
+        CameraMode::Ground => ground_camera_transform(grid_size),
+    };
     // DepthPrepass + OcclusionCulling: real, measured win (~22fps -> ~79fps with DepthPrepass
     // alone on this exact grid from a ground-level camera, per the engine's own memory/notes) --
     // this shader's fragment() unconditionally `discard`s on a miss and never writes an explicit
     // depth, which disables hardware early-Z without a prepass. See voxel_scene.rs's camera setup
     // for the full reasoning; kept brief here since it's identical for this scene.
-    commands.spawn((
-        Camera3d::default(),
-        DepthPrepass,
-        OcclusionCulling,
-        Transform::from_xyz(center, grid_extent * 0.9, center + grid_extent * 1.1)
-            .looking_at(Vec3::new(center, 0.0, center), Vec3::Y),
-        VoxelFlycam::default(),
-    ));
+    commands.spawn((Camera3d::default(), DepthPrepass, OcclusionCulling, transform, VoxelFlycam::default()));
 }
 
 fn build_palette() -> VoxelPalette {
@@ -214,5 +276,49 @@ mod tests {
         assert_eq!(next_x.translation.z, origin.translation.z);
         assert!((next_z.translation.z - origin.translation.z - expected_gap).abs() < 1e-4);
         assert_eq!(next_z.translation.x, origin.translation.x);
+    }
+
+    #[test]
+    fn ground_camera_sits_inside_the_grid_at_a_fixed_eye_height_looking_level_toward_the_far_corner() {
+        let grid_size = 16;
+        let transform = ground_camera_transform(grid_size);
+        let grid_extent = grid_size as f32 * common::CHUNK_VOXELS as f32 * VOXEL_SIZE;
+        let margin = common::CHUNK_VOXELS as f32 * VOXEL_SIZE * 0.5;
+
+        // Positioned a real half-chunk-width inside the grid's own extent, not at/outside its edge.
+        assert_eq!(transform.translation, Vec3::new(margin, 8.0, margin));
+        assert!(margin > 0.0 && margin < grid_extent, "camera must sit inside the grid, not on its boundary");
+
+        // forward() must point toward positive X and Z (the far corner), with zero Y component for
+        // a level gaze, since the look target shares the camera's own Y exactly.
+        let forward = *transform.forward();
+        assert!(forward.x > 0.0 && forward.z > 0.0, "camera must look toward the far corner, not away from the grid");
+        assert!(forward.y.abs() < 1e-5, "gaze must be level (look target shares the camera's own Y), got {forward:?}");
+    }
+
+    /// A first draft of this test asserted the two cameras' `forward()` vectors must differ --
+    /// wrong, and caught by actually running it: for a SQUARE grid with an equal margin on both
+    /// axes, the diagonal from `(margin, margin)` to `(grid_extent - margin, grid_extent - margin)`
+    /// is always exactly 45 degrees regardless of `grid_extent`'s own magnitude, so direction alone
+    /// can never distinguish a small grid from a large one here -- a real, intentional consequence
+    /// of the symmetric design, not a bug. What actually changes with grid size is the *distance*
+    /// to that target, which is what this test checks instead.
+    #[test]
+    fn ground_camera_targets_a_point_further_away_for_a_larger_grid_while_staying_on_the_same_diagonal() {
+        let margin = common::CHUNK_VOXELS as f32 * VOXEL_SIZE * 0.5;
+        let target_distance = |grid_size: i32| {
+            let grid_extent = grid_size as f32 * common::CHUNK_VOXELS as f32 * VOXEL_SIZE;
+            let target = Vec3::new(grid_extent - margin, 8.0, grid_extent - margin);
+            ground_camera_transform(grid_size).translation.distance(target)
+        };
+        assert!(
+            target_distance(64) > target_distance(4),
+            "a larger grid's far corner should sit further from the same fixed camera position"
+        );
+
+        let small = ground_camera_transform(4);
+        let large = ground_camera_transform(64);
+        assert_eq!(small.translation, large.translation);
+        assert_eq!(*small.forward(), *large.forward());
     }
 }
