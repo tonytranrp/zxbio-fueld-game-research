@@ -94,6 +94,67 @@ impl VoxelChunk {
         }
     }
 
+    /// Fills every voxel in column `(x, z)` from `y_start` (inclusive) to `y_end` (exclusive)
+    /// with `material` — behaviorally identical to calling [`Self::set`] for every voxel in that
+    /// range, but far cheaper for a large contiguous fill: brick-occupancy and mip-hierarchy
+    /// bookkeeping happen once per BRICK the column passes through, not once per voxel. `x`/`z`
+    /// outside the chunk, or an empty/inverted `y` range, are silently no-ops, mirroring
+    /// [`Self::set`]'s own treatment of out-of-bounds coordinates.
+    ///
+    /// This exists because it measurably matters, not speculatively: a benchmark generating
+    /// procedural terrain via a sequence of individual `set()` calls found that bookkeeping
+    /// alone (not the per-voxel write itself) accounted for roughly 80% of total generation
+    /// time, dominated by brick/mip overhead repeated once per voxel instead of once per brick —
+    /// see the engine's own procedural-generation memory/commit history for the exact numbers.
+    pub fn fill_column(&mut self, x: u32, z: u32, y_start: u32, y_end: u32, material: VoxelId) {
+        if x >= self.dims.x || z >= self.dims.z || y_start >= y_end {
+            return;
+        }
+        let y_end = y_end.min(self.dims.y);
+        if y_start >= y_end {
+            return;
+        }
+
+        let mut y = y_start;
+        while y < y_end {
+            let brick_y = y / BRICK_SIZE;
+            let brick_y_voxel_end = (brick_y + 1) * BRICK_SIZE;
+            let segment_end = y_end.min(brick_y_voxel_end);
+
+            let brick_coord = UVec3::new(x / BRICK_SIZE, brick_y, z / BRICK_SIZE);
+
+            let mut delta: i32 = 0;
+            for yy in y..segment_end {
+                let idx = flatten(UVec3::new(x, yy, z), self.dims);
+                let old = self.voxels[idx];
+                if old != material {
+                    self.voxels[idx] = material;
+                    match (old.is_air(), material.is_air()) {
+                        (true, false) => delta += 1,
+                        (false, true) => delta -= 1,
+                        _ => {}
+                    }
+                }
+            }
+
+            if delta != 0 {
+                // `brick_coord` is already known in-bounds here (derived from `x`/`z`/`y`, all
+                // already range-checked above), so this indexes `brick_occupancy` directly
+                // rather than going through `brick_occupied()`'s own bounds-check + a second,
+                // redundant `flatten` call for the same coordinate computed just above.
+                let b_idx = flatten(brick_coord, self.brick_dims);
+                let old_count = self.brick_occupancy[b_idx];
+                let new_count = (old_count as i32 + delta) as u16;
+                self.brick_occupancy[b_idx] = new_count;
+                if (old_count > 0) != (new_count > 0) {
+                    self.update_mips(brick_coord);
+                }
+            }
+
+            y = segment_end;
+        }
+    }
+
     /// Recomputes the mip hierarchy starting from the brick at `brick_coord`, propagating
     /// upward only as long as each level's own value actually changes — called exactly when
     /// [`Self::set`] just flipped that brick's own occupied/empty status (its count crossed
@@ -367,5 +428,101 @@ mod tests {
     fn mip_out_of_range_is_unoccupied_not_a_panic() {
         let chunk = VoxelChunk::new(UVec3::splat(128));
         assert!(!chunk.mip_occupied(0, UVec3::splat(1000)));
+    }
+
+    #[test]
+    fn fill_column_agrees_with_an_equivalent_sequence_of_set_calls() {
+        // The whole point of fill_column is being a faster path to an IDENTICAL result --
+        // verify that directly across several columns spanning multiple bricks, rather than
+        // trusting the bookkeeping logic by inspection alone.
+        let cases: [(u32, u32, u32, u32); 5] = [
+            (0, 0, 0, 20),   // spans bricks (0) and (1) in Y, partial in each
+            (5, 5, 8, 16),   // exactly one whole brick
+            (10, 3, 1, 33),  // spans three bricks, partial at both ends
+            (127, 127, 0, 128), // a full-height column at the far corner
+            (3, 3, 5, 5),    // empty range (y_start == y_end) -- must be a no-op
+        ];
+
+        for (x, z, y_start, y_end) in cases {
+            let mut via_fill = VoxelChunk::new(UVec3::splat(128));
+            via_fill.fill_column(x, z, y_start, y_end, VoxelId::new(3));
+
+            let mut via_set = VoxelChunk::new(UVec3::splat(128));
+            for y in y_start..y_end {
+                via_set.set(UVec3::new(x, y, z), VoxelId::new(3));
+            }
+
+            for y in 0..128u32 {
+                let pos = UVec3::new(x, y, z);
+                assert_eq!(
+                    via_fill.get(pos),
+                    via_set.get(pos),
+                    "voxel mismatch at {pos:?} for case ({x},{z},{y_start},{y_end})"
+                );
+            }
+
+            // Brick occupancy must agree too, not just the raw voxel values -- this is the part
+            // fill_column actually optimizes, so it's the part most likely to be silently wrong
+            // if the batching logic has a bug the plain voxel comparison above wouldn't catch.
+            for by in 0..16u32 {
+                let brick = UVec3::new(x / 8, by, z / 8);
+                assert_eq!(
+                    via_fill.brick_occupied(brick),
+                    via_set.brick_occupied(brick),
+                    "brick occupancy mismatch at {brick:?} for case ({x},{z},{y_start},{y_end})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fill_column_out_of_range_x_or_z_is_a_no_op() {
+        let mut chunk = VoxelChunk::new(UVec3::splat(16));
+        chunk.fill_column(100, 0, 0, 16, VoxelId::new(1));
+        chunk.fill_column(0, 100, 0, 16, VoxelId::new(1));
+        for y in 0..16u32 {
+            assert_eq!(chunk.get(UVec3::new(0, y, 0)), VoxelId::AIR);
+        }
+    }
+
+    #[test]
+    fn fill_column_clamps_y_end_to_chunk_height_instead_of_panicking() {
+        let mut chunk = VoxelChunk::new(UVec3::splat(16));
+        chunk.fill_column(1, 1, 10, 1000, VoxelId::new(1));
+        assert_eq!(chunk.get(UVec3::new(1, 15, 1)), VoxelId::new(1));
+        assert_eq!(chunk.get(UVec3::new(1, 10, 1)), VoxelId::new(1));
+    }
+
+    #[test]
+    fn fill_column_updates_mip_hierarchy_correctly_across_multiple_bricks() {
+        let mut chunk = VoxelChunk::new(UVec3::splat(128));
+        // A tall column spanning bricks 0 through 3 in Y (32 voxels / 8 = bricks 0,1,2,3).
+        chunk.fill_column(10, 10, 0, 32, VoxelId::new(1));
+
+        for by in 0..4u32 {
+            assert!(
+                chunk.brick_occupied(UVec3::new(1, by, 1)),
+                "brick (1,{by},1) should be occupied after the fill"
+            );
+        }
+        for level in 0..chunk.mip_level_count() {
+            assert!(
+                chunk.mip_occupied(level, UVec3::ZERO),
+                "mip level {level} should see the fill too"
+            );
+        }
+    }
+
+    #[test]
+    fn fill_column_clearing_back_to_air_correctly_clears_occupancy() {
+        let mut chunk = VoxelChunk::new(UVec3::splat(16));
+        chunk.fill_column(2, 2, 0, 16, VoxelId::new(1));
+        assert!(chunk.brick_occupied(UVec3::ZERO));
+
+        chunk.fill_column(2, 2, 0, 16, VoxelId::AIR);
+        assert!(!chunk.brick_occupied(UVec3::ZERO));
+        for y in 0..16u32 {
+            assert_eq!(chunk.get(UVec3::new(2, y, 2)), VoxelId::AIR);
+        }
     }
 }

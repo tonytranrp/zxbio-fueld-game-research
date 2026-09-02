@@ -50,9 +50,11 @@ pub fn fill_heightmap_terrain(chunk: &mut VoxelChunk, noise: &PerlinNoise, param
             let height = (sample * params.amplitude + params.base_height).max(0.0);
             let height_voxels = (height.floor() as u32).min(dims.y);
 
-            for y in 0..height_voxels {
-                chunk.set(UVec3::new(x, y, z), material);
-            }
+            // fill_column, not a per-voxel set() loop: measured to matter a great deal (see this
+            // function's own history / the engine's procedural-generation memory) -- set()'s own
+            // brick/mip bookkeeping, repeated once per voxel instead of once per brick, was
+            // roughly 80% of this function's total cost before this change.
+            chunk.fill_column(x, z, 0, height_voxels, material);
         }
     }
 }
@@ -139,5 +141,76 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Splits `fill_heightmap_terrain`'s own cost between noise sampling and
+    /// `VoxelChunk::set()` bookkeeping, to answer a question worth resolving BEFORE investing in
+    /// SIMD-optimized noise (the next queued step per the engine's own SIMD research): for a
+    /// 128-voxel chunk, a full terrain fill takes ~16,384 noise samples (one `sample_fbm` per
+    /// X/Z column) but potentially ~10x-100x more `set()` calls (one per SOLID VOXEL placed, not
+    /// per column -- a column reaching height 60 is 60 individual `set()` calls, each with its
+    /// own bounds check, old/new comparison, and -- for the voxel that flips a brick's own
+    /// occupied/empty status -- mip-hierarchy propagation). If `set()` overhead turns out to
+    /// dominate, SIMD-optimizing the noise function alone would barely move the needle on overall
+    /// generation time, and a bulk-fill API on `VoxelChunk` (updating occupancy once per BRICK
+    /// touched by a contiguous fill, not once per voxel) would be the better next investment.
+    ///
+    /// `#[ignore]`d for the same reason as the raymarch ablation benchmark: a timing measurement,
+    /// not a correctness check, meaningless in debug builds. Run via `cargo test --release --lib
+    /// -- --ignored --nocapture generation_cost_split` (through `rtk proxy`, not plain `cargo
+    /// test`, or the printed numbers won't appear -- see the engine's own tooling notes).
+    #[test]
+    #[ignore = "timing measurement, not a correctness check -- run explicitly, see this test's own doc comment"]
+    fn generation_cost_split_between_noise_sampling_and_voxel_placement() {
+        let noise = PerlinNoise::new(1);
+        let params = HeightmapParams::default();
+        let dims = UVec3::splat(128);
+
+        // Warm up.
+        for z in 0..dims.z {
+            for x in 0..dims.x {
+                std::hint::black_box(noise.sample_fbm(
+                    x as f32 * params.frequency,
+                    0.0,
+                    z as f32 * params.frequency,
+                    params.octaves,
+                ));
+            }
+        }
+
+        // Pure noise-sampling cost: exactly the same sample_fbm calls fill_heightmap_terrain
+        // makes internally, with zero VoxelChunk interaction.
+        let mut total_height_voxels: u64 = 0;
+        let start = std::time::Instant::now();
+        for z in 0..dims.z {
+            for x in 0..dims.x {
+                let sample = std::hint::black_box(noise.sample_fbm(
+                    x as f32 * params.frequency,
+                    0.0,
+                    z as f32 * params.frequency,
+                    params.octaves,
+                ));
+                let height = (sample * params.amplitude + params.base_height).max(0.0);
+                total_height_voxels += (height.floor() as u32).min(dims.y) as u64;
+            }
+        }
+        let noise_only = start.elapsed();
+
+        // Full generation: the same noise sampling, plus VoxelChunk::set() for every solid
+        // voxel -- total_height_voxels calls' worth, computed above from the identical noise.
+        let start = std::time::Instant::now();
+        let mut chunk = VoxelChunk::new(dims);
+        fill_heightmap_terrain(&mut chunk, &noise, params, VoxelId::new(1));
+        let full = start.elapsed();
+
+        let implied_set_cost = full.saturating_sub(noise_only);
+        println!("chunk: {}^3, {total_height_voxels} solid voxels placed (~{} set() calls)", dims.x, total_height_voxels);
+        println!("noise sampling only: {noise_only:?} ({} samples)", dims.x * dims.z * params.octaves);
+        println!("full generation:     {full:?}");
+        println!(
+            "implied set() cost:  {implied_set_cost:?} ({:.1}% of total, ~{:.1} ns/set call)",
+            100.0 * implied_set_cost.as_secs_f64() / full.as_secs_f64(),
+            implied_set_cost.as_nanos() as f64 / total_height_voxels.max(1) as f64,
+        );
     }
 }
