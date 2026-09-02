@@ -64,7 +64,7 @@ fn setup(
         Transform::from_xyz(20.0, 0.0, 0.0).with_scale(Vec3::splat(VOXEL_SIZE)),
     );
 
-    let terrain = common::build_terrain_chunk(1);
+    let terrain = common::build_terrain_chunk(1, IVec3::ZERO);
     spawn_voxel_chunk(
         &mut commands,
         &mut meshes,

@@ -37,7 +37,13 @@ pub fn build_dense_chunk() -> VoxelChunk {
 /// from above) but with genuine empty sky above it (like the sparse scene), and none of it
 /// hand-placed. This is the shape "billions of voxels" actually needs to come from -- no one
 /// hand-authors that much content.
-pub fn build_terrain_chunk(seed: u64) -> VoxelChunk {
+///
+/// `world_origin` positions this chunk in the SAME world-space noise field `fill_heightmap_
+/// terrain` samples from -- call this repeatedly with origins offset by `CHUNK_VOXELS` in X/Z
+/// to build a multi-chunk world with seamless terrain across chunk boundaries (see that
+/// function's own doc comment, and its `adjacent_chunks_produce_seamless_terrain_matching_a_
+/// single_larger_chunk` test, for exactly what guarantee this relies on).
+pub fn build_terrain_chunk(seed: u64, world_origin: IVec3) -> VoxelChunk {
     let mut chunk = VoxelChunk::new(UVec3::splat(CHUNK_VOXELS));
     let noise = PerlinNoise::new(seed);
     let params = HeightmapParams {
@@ -46,7 +52,7 @@ pub fn build_terrain_chunk(seed: u64) -> VoxelChunk {
         base_height: 40.0,
         octaves: 4,
     };
-    fill_heightmap_terrain(&mut chunk, &noise, params, VoxelId::new(2));
+    fill_heightmap_terrain(&mut chunk, &noise, params, world_origin, VoxelId::new(2));
     chunk
 }
 

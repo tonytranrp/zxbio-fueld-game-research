@@ -3,6 +3,8 @@
 //! first real content generator, replacing hand-authored/hand-stamped test scenes with something
 //! that can actually approach the scale the engine is meant for.
 
+use bevy::math::IVec3;
+
 use super::noise::PerlinNoise;
 use crate::storage::{VoxelChunk, VoxelId};
 
@@ -39,12 +41,21 @@ impl Default for HeightmapParams {
 /// air. `chunk` is not cleared first; terrain is only ever added, never overwritten with air, so
 /// this composes with content already placed (call it before hand-authored detail, not after, if
 /// you want the detail to survive).
-pub fn fill_heightmap_terrain(chunk: &mut VoxelChunk, noise: &PerlinNoise, params: HeightmapParams, material: VoxelId) {
+///
+/// `world_origin` is `chunk`'s own position in WORLD voxel-index space — noise is sampled at
+/// `world_origin + local_xz`, not at the chunk-local coordinate alone, specifically so multiple
+/// adjacent chunks generate seamlessly-continuous terrain rather than each restarting the noise
+/// field from its own local `(0, 0)` (see `adjacent_chunks_produce_seamless_terrain_matching_a_
+/// single_larger_chunk` for the exact property this guarantees). Pass [`IVec3::ZERO`] for a
+/// single standalone chunk with no world position of its own.
+pub fn fill_heightmap_terrain(chunk: &mut VoxelChunk, noise: &PerlinNoise, params: HeightmapParams, world_origin: IVec3, material: VoxelId) {
     let dims = chunk.dims();
 
     for z in 0..dims.z {
         for x in 0..dims.x {
-            let sample = noise.sample_fbm(x as f32 * params.frequency, 0.0, z as f32 * params.frequency, params.octaves);
+            let world_x = world_origin.x + x as i32;
+            let world_z = world_origin.z + z as i32;
+            let sample = noise.sample_fbm(world_x as f32 * params.frequency, 0.0, world_z as f32 * params.frequency, params.octaves);
             let height = (sample * params.amplitude + params.base_height).max(0.0);
             let height_voxels = (height.floor() as u32).min(dims.y);
 
@@ -73,7 +84,7 @@ mod tests {
             base_height: 20.0,
             octaves: 3,
         };
-        fill_heightmap_terrain(&mut chunk, &noise, params, VoxelId::new(1));
+        fill_heightmap_terrain(&mut chunk, &noise, params, IVec3::ZERO, VoxelId::new(1));
 
         // Every column's solid material should stop somewhere within [base - amplitude - 1,
         // base + amplitude + 1] (a little slack for the fbm normalization not being perfectly
@@ -118,7 +129,7 @@ mod tests {
             base_height: 4.0,
             octaves: 2,
         };
-        fill_heightmap_terrain(&mut chunk, &noise, params, VoxelId::new(1));
+        fill_heightmap_terrain(&mut chunk, &noise, params, IVec3::ZERO, VoxelId::new(1));
 
         assert_eq!(chunk.get(UVec3::new(5, 31, 5)), VoxelId::new(9));
     }
@@ -130,14 +141,54 @@ mod tests {
         let mut b = VoxelChunk::new(UVec3::splat(32));
         let noise = PerlinNoise::new(55);
 
-        fill_heightmap_terrain(&mut a, &noise, params, VoxelId::new(1));
-        fill_heightmap_terrain(&mut b, &noise, params, VoxelId::new(1));
+        fill_heightmap_terrain(&mut a, &noise, params, IVec3::ZERO, VoxelId::new(1));
+        fill_heightmap_terrain(&mut b, &noise, params, IVec3::ZERO, VoxelId::new(1));
 
         for z in 0..32u32 {
             for y in 0..32u32 {
                 for x in 0..32u32 {
                     let pos = UVec3::new(x, y, z);
                     assert_eq!(a.get(pos), b.get(pos));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn adjacent_chunks_produce_seamless_terrain_matching_a_single_larger_chunk() {
+        // The whole point of `world_origin`: two adjacent chunks generated independently must
+        // produce EXACTLY what a single larger chunk spanning the same world-space region would
+        // -- not just "plausible-looking" terrain, but voxel-for-voxel identical, since that's
+        // the actual property multi-chunk worlds depend on (no visible seam/discontinuity at a
+        // chunk boundary).
+        let noise = PerlinNoise::new(7);
+        let params = HeightmapParams::default();
+
+        let mut whole = VoxelChunk::new(UVec3::new(256, 64, 128));
+        fill_heightmap_terrain(&mut whole, &noise, params, IVec3::ZERO, VoxelId::new(1));
+
+        let mut left = VoxelChunk::new(UVec3::new(128, 64, 128));
+        fill_heightmap_terrain(&mut left, &noise, params, IVec3::ZERO, VoxelId::new(1));
+
+        let mut right = VoxelChunk::new(UVec3::new(128, 64, 128));
+        fill_heightmap_terrain(&mut right, &noise, params, IVec3::new(128, 0, 0), VoxelId::new(1));
+
+        for z in 0..128u32 {
+            for y in 0..64u32 {
+                for x in 0..128u32 {
+                    let whole_left = whole.get(UVec3::new(x, y, z));
+                    let whole_right = whole.get(UVec3::new(x + 128, y, z));
+                    assert_eq!(
+                        left.get(UVec3::new(x, y, z)),
+                        whole_left,
+                        "left chunk diverges from the reference at local ({x},{y},{z})"
+                    );
+                    assert_eq!(
+                        right.get(UVec3::new(x, y, z)),
+                        whole_right,
+                        "right chunk diverges from the reference at local ({x},{y},{z}) (world x={})",
+                        x + 128
+                    );
                 }
             }
         }
@@ -200,7 +251,7 @@ mod tests {
         // voxel -- total_height_voxels calls' worth, computed above from the identical noise.
         let start = std::time::Instant::now();
         let mut chunk = VoxelChunk::new(dims);
-        fill_heightmap_terrain(&mut chunk, &noise, params, VoxelId::new(1));
+        fill_heightmap_terrain(&mut chunk, &noise, params, IVec3::ZERO, VoxelId::new(1));
         let full = start.elapsed();
 
         let implied_set_cost = full.saturating_sub(noise_only);

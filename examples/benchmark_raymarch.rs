@@ -45,7 +45,7 @@ mod common;
 
 use std::time::Instant;
 
-use bevy::math::Vec3;
+use bevy::math::{IVec3, Vec3};
 use voxel_engine::cast_ray;
 
 const RAYS_PER_AXIS: u32 = 128;
@@ -54,7 +54,7 @@ const RAY_MAX_DIST: f32 = 300.0;
 fn main() {
     let sparse = common::build_sparse_chunk();
     let dense = common::build_dense_chunk();
-    let terrain = common::build_terrain_chunk(1);
+    let terrain = common::build_terrain_chunk(1, IVec3::ZERO);
 
     let sparse_result = benchmark("sparse", &sparse);
     let dense_result = benchmark("dense", &dense);
