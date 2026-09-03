@@ -44,10 +44,15 @@ public:
 private:
     void worker_loop(std::stop_token stop_token);
 
-    std::vector<std::jthread> workers_;
+    // Declaration order is load-bearing: members destruct in REVERSE declaration order, and
+    // workers_ must be destroyed (joined) before mutex_/cv_/tasks_ are torn down, or a worker
+    // still mid-wait() ends up touching an already-destroyed mutex/condition_variable — real,
+    // observed UB ("unlock of unowned mutex" from the MSVC STL) when this was ordered the other
+    // way. workers_ goes last so its destructor (join) runs first.
     std::queue<std::function<void()>> tasks_;
     std::mutex mutex_;
     std::condition_variable cv_;
+    std::vector<std::jthread> workers_;
 };
 
 } // namespace engine::jobs

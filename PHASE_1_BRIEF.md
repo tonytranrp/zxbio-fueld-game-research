@@ -364,11 +364,20 @@ Each still independently resumable and independently "done" — the internal str
 GPU-required is noted per milestone now that GPU build is confirmed but GPU runtime isn't yet
 (§0's own caveat).
 
-**M1.1 — Engine skeleton, for real (no GPU/display needed).** Fill in Phase 0's stub
-`engine/{core,ecs,jobs}`: `Clock`, `Config`, `Log` in `core`; the EnTT registry wrapper in `ecs`;
-the `std::jthread`-based `ThreadPool` from `PROJECT_BRIEF.md` §6 in `jobs`, unit-tested with
+**M1.1 — Engine skeleton, for real (no GPU/display needed). ✅ DONE (2026-09-02).** Fill in Phase
+0's stub `engine/{core,ecs,jobs}`: `Clock`, `Config`, `Log` in `core`; the EnTT registry wrapper in
+`ecs`; the `std::jthread`-based `ThreadPool` from `PROJECT_BRIEF.md` §6 in `jobs`, unit-tested with
 synthetic work under ASan/TSan. Done when: the app boots, ticks at a stable rate, and the job pool
-executes and joins correctly under sanitizers — no chunk-shaped work yet.
+executes and joins correctly under sanitizers — no chunk-shaped work yet. **Confirmed**: 10/10
+Catch2 unit tests pass (`engine_core_tests`, `engine_ecs_tests`, `engine_jobs_tests`), `voxel_app`
+boots/ticks/exits cleanly, ASan is clean across 5 repeated runs. TSan is confirmed unavailable on
+this machine via all three realistic paths (see `CLAUDE.md`), not assumed absent.
+**A real concurrency bug was found and fixed along the way**: `ThreadPool`'s `mutex_`/`cv_` were
+declared *before* `workers_`, so C++'s reverse member-destruction order tore down the mutex and
+condition variable while worker threads could still be using them — real, observed UB ("unlock of
+unowned mutex" from the MSVC STL) and multi-minute test hangs. Fixed by declaring `workers_` last
+(destroyed first, joining every thread before its synchronization primitives go away) — see the
+comment in `engine/jobs/include/engine/jobs/thread_pool.hpp`.
 
 **M1.2 — World generation (no GPU/display needed).** `world/chunk` (paletted storage, pmr-pooled,
 per `PROJECT_BRIEF.md` §5) and `world/generation` (FastNoise2 heightmap + land/mountain/water fill
@@ -452,10 +461,27 @@ Diligent surfaces a toggle for Vulkan validation layers (including synchronizati
 they need independent Vulkan SDK layer configuration, and any known conflict with RenderDoc's own
 layer. Web research only, every claim cited.
 
-The full, verbatim ready-to-fire prompt text for each subagent (exact task lists and rules) is
-preserved in this repo's git history in the message that introduced this brief — reconstruct from
-§2/§3/§5's content above if needed; the summaries here are what each subagent must cover, not a
-paraphrase that drops requirements.
+**All four ran 2026-09-02; full reports saved to `research/`** — read these directly before
+writing any M1.4 code, don't work from the summaries above alone:
+- [`research/diligent-core-api-surface.md`](research/diligent-core-api-surface.md) — Subagent A.
+  Exact signatures for Static/Mutable/Dynamic binding, minimal PSO shape, `IRenderStateCache`
+  (hot-reload cannot be retrofitted — shaders/PSOs must be created through the cache from the
+  start), the full Vulkan native-handle chain for Tracy, debug naming, deferred contexts.
+- [`research/radient-tessera-investigation.md`](research/radient-tessera-investigation.md) —
+  Subagent B. Radient is a whole-scene ECS/asset/GLTF-import/PBR-renderer framework built on top
+  of `DiligentFX/PBR/`; provides **zero** culling of any kind (confirmed by exhaustive grep) — it
+  does not help §2.6's GPU-driven-culling stretch goal at all. Recommendation: poor fit for
+  terrain rendering, not worth adopting now.
+- [`research/gpu-driven-voxel-rendering-survey.md`](research/gpu-driven-voxel-rendering-survey.md)
+  — Subagent C. Project Ascendant's real chunk-draw struct layout, 6 additional real sources for
+  voxel-terrain-at-scale rendering, 4 distinct chunk-boundary/LOD-stitching techniques
+  (Transvoxel, Gildea's seam octree, Roblox's skirts, godot_voxel's real-world Transvoxel bugs),
+  and the exact compute→indirect-draw barrier plus frame-in-flight buffering pattern.
+  - [`research/profiling-tooling-integration.md`](research/profiling-tooling-integration.md) —
+  Subagent D. RenderDoc needs no Diligent-specific glue (launch-through, not inject); Tracy's real
+  target is `Tracy::TracyClient` with `TRACY_ENABLE` propagating automatically via linking;
+  Diligent has its own `SetValidationLevel` API (don't double-enable validation via both that and
+  RenderDoc's checkbox).
 
 ## 10. Guardrails specific to this phase
 

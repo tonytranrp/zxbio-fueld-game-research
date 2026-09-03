@@ -73,6 +73,28 @@ Always pass `-DGIT_EXECUTABLE="C:/Program Files/Git/cmd/git.exe"` explicitly whe
   fails the same `HEAD^0` way described above, even after fixing `GIT_EXECUTABLE`. A pinned tag
   has nothing to check for anyway.
 
+## Sanitizers (M1.1's ASan/TSan verification)
+
+**ASan works, via MSVC's `/fsanitize=address`, but needs one extra runtime DLL not on PATH
+outside a vcvars-sourced shell**: `clang_rt.asan_dynamic-x86_64.dll`, under
+`VC\Tools\MSVC\<ver>\bin\Hostx64\x64\` in the Build Tools install. Either run the ASan binary from
+within a `vcvars64.bat`-sourced session, or copy that DLL next to the binary — otherwise it fails
+to launch with `clang_rt.asan_dynamic-x86_64.dll: cannot open shared object file`.
+
+**TSan is not available on this machine, confirmed via all three realistic paths, not assumed:**
+- MSVC (`cl.exe`) has no ThreadSanitizer support at all — it's a Clang/GCC-only sanitizer.
+- llvm-mingw's `clang++` explicitly refuses it: `unsupported option '-fsanitize=thread' for target
+  'x86_64-w64-windows-gnu'`.
+- WSL2 Ubuntu is installed but has no C++ compiler, and `apt-get install g++` blocks on an
+  interactive sudo password (`sudo: timed out`) that can't be supplied non-interactively.
+
+If TSan coverage matters later: either install a compiler in WSL yourself (`sudo apt install g++`
+or `clang`, entering the password interactively) and compile the platform-independent code there —
+`engine/jobs`'s `ThreadPool` has zero Windows-specific dependencies, so this works cleanly once a
+compiler exists — or get `clang-cl` added to the Build Tools install
+(`Microsoft.VisualStudio.Component.VC.Llvm.Clang`), though Windows TSan support under clang-cl is
+historically less mature than Linux's.
+
 ## Phase status
 
 **Phase 0 (repo scaffold + dependency fetch/build smoke test): DONE.** Clean configure+build
