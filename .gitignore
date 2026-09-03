@@ -1,0 +1,20 @@
+# Build output
+/build/
+/out/
+/cmake-build-*/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+_deps/
+
+# IDE
+.vs/
+.vscode/
+*.user
+
+# Leftover Rust tooling directory from this branch's prior history — not used by the C++ track
+/target/

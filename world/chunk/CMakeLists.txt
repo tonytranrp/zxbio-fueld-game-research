@@ -1,0 +1,2 @@
+add_library(world_chunk INTERFACE)
+target_link_libraries(world_chunk INTERFACE project_warnings)

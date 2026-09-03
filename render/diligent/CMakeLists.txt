@@ -1,0 +1,2 @@
+add_library(render_diligent INTERFACE)
+target_link_libraries(render_diligent INTERFACE project_warnings)

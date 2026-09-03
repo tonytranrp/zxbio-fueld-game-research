@@ -1,0 +1,2 @@
+add_library(world_meshing INTERFACE)
+target_link_libraries(world_meshing INTERFACE project_warnings)

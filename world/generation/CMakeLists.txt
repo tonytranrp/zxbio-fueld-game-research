@@ -1,0 +1,2 @@
+add_library(world_generation INTERFACE)
+target_link_libraries(world_generation INTERFACE project_warnings)
