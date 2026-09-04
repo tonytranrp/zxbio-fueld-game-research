@@ -52,6 +52,11 @@ void GlfwInput::key_callback(GLFWwindow* window, int key, int /*scancode*/, int 
             state.pending_walk_toggle = true; // edge: consumed by take_walk_toggle()
         }
         break;
+    case GLFW_KEY_F2:
+        if (down) {
+            state.pending_screenshot = true; // edge: consumed by take_screenshot()
+        }
+        break;
     case GLFW_KEY_ESCAPE:
         if (down) {
             state.quit_requested = true;

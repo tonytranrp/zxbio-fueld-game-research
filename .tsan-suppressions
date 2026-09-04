@@ -1,0 +1,12 @@
+# ThreadSanitizer suppressions (wired via TSAN_OPTIONS in .github/workflows/ci.yml's TSan job).
+#
+# FastNoise2's SmartNode memory allocator has an internal data race in its own bookkeeping
+# (SmartNode.cpp, SmartNodeMemoryAllocator::Alloc) when noise node trees are CONSTRUCTED from
+# multiple threads concurrently -- third-party code, first flagged by this project's first real
+# TSan CI run (2026-09-04) via the concurrent-generation tests, which build one generator per
+# thread. Our own production path constructs the HeightmapGenerator ONCE on the main thread and
+# only *samples* it concurrently (documented thread-safe), so this race is a test-construction
+# pattern plus upstream internals, not an engine bug. Suppressed rather than "fixed" locally so
+# TSan keeps checking OUR code at full strength; revisit if FastNoise2 is ever upgraded.
+race:FastNoise::SmartNodeMemoryAllocator
+race:SmartNode.cpp

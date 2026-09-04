@@ -38,9 +38,13 @@ target_include_directories(render_diligent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
 # consumes nothing but the opaque native window handle. Diligent-Imgui provides the ImGui renderer
 # + the vendored imgui headers (PUBLIC include on that target); Tracy::TracyClient carries
 # TRACY_ENABLE transitively into these TUs' zone macros.
+# Diligent-TextureLoader is linked ONLY for EncodePng (frame_verify.cpp's PNG dumps, goals.md
+# Group B) -- the bundled libpng was already in the dependency tree, so PNG output costs zero new
+# dependencies.
 target_link_libraries(render_diligent
     PUBLIC project_warnings engine_core world_chunk world_meshing render_interface
-    PRIVATE Diligent-GraphicsEngineVk-static Diligent-Imgui glfw Tracy::TracyClient
+    PRIVATE Diligent-GraphicsEngineVk-static Diligent-Imgui Diligent-TextureLoader glfw
+    PRIVATE Tracy::TracyClient
 )
 
 # DiligentCore headers use the Graphics/...-from-repo-root include style. SYSTEM keeps third-party
@@ -53,6 +57,8 @@ target_include_directories(render_diligent SYSTEM PRIVATE
     # ImGuiImplDiligent.hpp lives in DiligentTools' interface dir; backends/ for imgui_impl_glfw.h.
     "${DiligentEngine_SOURCE_DIR}/DiligentTools/Imgui/interface"
     "${DiligentEngine_SOURCE_DIR}/DiligentTools/ThirdParty/imgui"
+    # DiligentTools root for the TextureLoader/interface/PNGCodec.h include style.
+    "${DiligentEngine_SOURCE_DIR}/DiligentTools"
 )
 
 # Tracy's Vulkan context is created through runtime-loaded function pointers (see vulkan_tools.cpp).

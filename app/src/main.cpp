@@ -52,6 +52,12 @@ struct AppOptions {
     bool autofly = false; // Group D smoke check: fly +X automatically; fail if unload never bounds the loaded set
     bool walk = false;    // start in walk (gravity) mode; with --autofly, also asserts no fall-through
     std::size_t upload_budget = 4; // mesh commits per frame; 0 = unlimited (the pre-fix stutter behavior)
+    std::uint32_t dump_every = 0;  // goal 7: write a numbered frame dump every N frames (0 = off)
+    // Debug camera overrides for the visual-verification workflow (goal 8's multi-angle baseline
+    // and every later "view a dump from X" check): unset = the default start pose.
+    std::optional<glm::vec3> start_pos;
+    std::optional<float> start_yaw_deg;
+    std::optional<float> start_pitch_deg;
 };
 
 // How long --verify-frame keeps waiting for streaming to settle before declaring failure. At
@@ -96,6 +102,30 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             const char* value = next_value();
             options.upload_budget =
                 value ? static_cast<std::size_t>(std::strtoul(value, nullptr, 10)) : options.upload_budget;
+        } else if (arg == "--dump-every") {
+            const char* value = next_value();
+            options.dump_every =
+                value ? static_cast<std::uint32_t>(std::strtoul(value, nullptr, 10)) : options.dump_every;
+        } else if (arg == "--pos") {
+            const char* value = next_value();
+            glm::vec3 p{};
+#if defined(_MSC_VER)
+            const int parsed = value ? sscanf_s(value, "%f,%f,%f", &p.x, &p.y, &p.z) : 0;
+#else
+            const int parsed = value ? std::sscanf(value, "%f,%f,%f", &p.x, &p.y, &p.z) : 0;
+#endif
+            if (parsed == 3) {
+                options.start_pos = p;
+            } else {
+                log(LogLevel::Error, "--pos expects x,y,z");
+                return std::nullopt;
+            }
+        } else if (arg == "--yaw") {
+            const char* value = next_value();
+            options.start_yaw_deg = value ? static_cast<float>(std::strtod(value, nullptr)) : 0.0f;
+        } else if (arg == "--pitch") {
+            const char* value = next_value();
+            options.start_pitch_deg = value ? static_cast<float>(std::strtod(value, nullptr)) : 0.0f;
 #ifndef NDEBUG
         } else if (arg == "--crash-test") {
             // Group J task 20's check: deliberately exercise each crash-handler hook. Debug-only
@@ -115,7 +145,7 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             return std::nullopt;
 #endif
         } else {
-            log(LogLevel::Error, "unknown argument \"{}\" (known: --mode vk|d3d12, --frames N, --radius N, --seed N, --verify-frame, --validation, --autofly, --walk)", arg);
+            log(LogLevel::Error, "unknown argument \"{}\" (known: --mode vk|d3d12, --frames N, --radius N, --seed N, --verify-frame, --validation, --autofly, --walk, --upload-budget N, --dump-every N)", arg);
             return std::nullopt;
         }
     }
@@ -169,6 +199,16 @@ int run(const AppOptions& options) {
         const glm::vec3 toOrigin = glm::normalize(glm::vec3(0.0f, 20.0f, 0.0f) - transform.position);
         spectator.yaw_radians = std::atan2(-toOrigin.x, -toOrigin.z);
         spectator.pitch_radians = std::asin(toOrigin.y);
+        // Debug pose overrides (goal 8's multi-angle visual baseline) win over the derived pose.
+        if (options.start_pos) {
+            transform.position = *options.start_pos;
+        }
+        if (options.start_yaw_deg) {
+            spectator.yaw_radians = glm::radians(*options.start_yaw_deg);
+        }
+        if (options.start_pitch_deg) {
+            spectator.pitch_radians = glm::radians(*options.start_pitch_deg);
+        }
         if (options.walk) {
             spectator.mode = app::CameraMoveMode::Walk; // starts mid-air and falls to the ground
         }
@@ -203,6 +243,7 @@ int run(const AppOptions& options) {
     float smoothedFrameMs = 0.0f;
     float worstFrameMs = 0.0f; // per 2s window -- the number a stutter actually is (Group T task 17)
     std::uint32_t walkViolations = 0; // frames ending below the ground surface in walk mode
+    std::uint32_t screenshotCounter = 0; // F2 capture numbering (goal 9)
 
     // VK_EXT_memory_budget is polled on a timer per its own documented usage pattern, never per
     // frame (task 30).
@@ -310,6 +351,22 @@ int run(const AppOptions& options) {
                 "{} chunks streamed in",
                 static_cast<double>(fraction) * 100.0, streaming.ready_chunk_count());
         }
+        // Goal 7 (--dump-every N) + goal 9 (F2 screenshot): captured like the verifier -- before
+        // Present, while this is still the current back buffer. Debug workflows; the staging-copy
+        // stall is the accepted cost.
+        if (options.dump_every > 0 && frame % options.dump_every == 0) {
+            char dumpPath[64];
+            std::snprintf(dumpPath, sizeof(dumpPath), "frame_%05u.png", frame);
+            (void)render::diligent::dump_frame(context, dumpPath);
+        }
+        if (input.take_screenshot()) {
+            char shotPath[64];
+            std::snprintf(shotPath, sizeof(shotPath), "screenshot_%03u.png", screenshotCounter++);
+            const bool shotOk = render::diligent::dump_frame(context, shotPath);
+            log(shotOk ? LogLevel::Info : LogLevel::Error, "screenshot: {} ({})", shotPath,
+                shotOk ? "written" : "FAILED");
+        }
+
         if (options.verify_frame && !verifyRan && frame >= kVerifyStreamingTimeoutFrames) {
             log(LogLevel::Error, "frame verification: streaming never settled within {} frames", frame);
             break;

@@ -22,12 +22,15 @@ struct VSInput
     float4 Pos      : ATTRIB0; // UNORM16 x4: chunk-local position, fixed point at 1/1024 voxel (w unused -- DXGI has no 3x16 format)
     float2 Oct      : ATTRIB1; // UNORM8 x2: 16-bit octahedral normal
     uint   Material : ATTRIB2; // world::chunk::MaterialID
+    float  AO       : ATTRIB3; // UNORM8: baked per-vertex concavity AO (1 = fully open)
 };
 
 struct PSInput
 {
     float4 Pos      : SV_POSITION;
     float3 Normal   : NORMAL0;
+    float3 WorldPos : TEXCOORD1; // for albedo variation now; distance fog reuses it later
+    float  AO       : TEXCOORD2; // interpolates across triangles like the smooth normal does
     nointerpolation uint Material : TEXCOORD0; // integer varying -- must be flat
 };
 
@@ -54,5 +57,7 @@ void main(in VSInput VSIn, out PSInput PSIn)
     const float3 worldPos = localPos + g_ChunkOriginWorld.xyz;
     PSIn.Pos      = mul(g_ViewProj, float4(worldPos, 1.0));
     PSIn.Normal   = DecodeOctahedral(VSIn.Oct);
+    PSIn.WorldPos = worldPos;
+    PSIn.AO       = VSIn.AO;
     PSIn.Material = VSIn.Material;
 }

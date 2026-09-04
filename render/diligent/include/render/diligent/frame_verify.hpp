@@ -14,4 +14,12 @@ namespace render::diligent {
 // between backends.
 [[nodiscard]] float sample_non_reference_pixel_fraction(RenderContext& context);
 
+// Writes the current back buffer to `path` (goals.md Group B): PNG via DiligentTools' bundled
+// libpng encoder unless the path ends in ".ppm" (the original uncompressed format, kept for
+// zero-dependency debugging). Same staging-copy + WaitForIdle cost profile as the sampler above --
+// a debug/verification tool, never a per-frame call in shipping paths (the --dump-every and
+// screenshot-hotkey callers are explicitly debug workflows). Throws on staging/copy failure;
+// returns false only if the file itself could not be written or encoded.
+bool dump_frame(RenderContext& context, const char* path);
+
 } // namespace render::diligent

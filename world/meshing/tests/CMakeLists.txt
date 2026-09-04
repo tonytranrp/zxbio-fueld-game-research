@@ -7,6 +7,7 @@ add_executable(world_meshing_tests
     test_vertex_quantization.cpp
     test_normal_continuity.cpp
     test_surface_coverage.cpp
+    test_baked_ao.cpp
 )
 target_link_libraries(world_meshing_tests PRIVATE world_meshing world_generation Catch2::Catch2WithMain project_warnings)
 

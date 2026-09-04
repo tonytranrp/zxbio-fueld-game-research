@@ -20,6 +20,7 @@ struct InputState {
     bool look_active = false;   // right mouse button held (cursor captured while true)
     bool quit_requested = false; // Escape -- reported here; whether to actually quit is app policy
     bool pending_walk_toggle = false; // G pressed since last take_walk_toggle() (edge, not level)
+    bool pending_screenshot = false;  // F2 pressed since last take_screenshot() (edge, not level)
 
     // Cursor movement in pixels accumulated since the last take_look_delta(), only while
     // look_active. Accumulation + explicit take keeps callback cadence (per event) decoupled from
@@ -38,6 +39,13 @@ struct InputState {
         const bool toggled = pending_walk_toggle;
         pending_walk_toggle = false;
         return toggled;
+    }
+
+    // Interactive screenshot trigger (goals.md goal 9): fire-once edge, same pattern as above.
+    [[nodiscard]] bool take_screenshot() noexcept {
+        const bool requested = pending_screenshot;
+        pending_screenshot = false;
+        return requested;
     }
 };
 

@@ -20,14 +20,16 @@ constexpr std::size_t kMaterialCount = static_cast<std::size_t>(world::chunk::Ma
 static_assert(kMaterialCount == 6, "terrain.psh.hlsl declares g_MaterialColors[6] -- update both together");
 
 // Linear-space albedo per MaterialID; index 0 (Air) is never sampled by a real fragment but keeps
-// indexing direct.
+// indexing direct. Goal 19's pass: richer/more saturated than the original deliberately-muted
+// placeholders, judged against viewed before/after dumps (not picked blind) -- stone warmed off
+// pure gray, dirt/wood deepened, water toward a real ocean blue, leaves toward meadow green.
 constexpr float kMaterialColors[kMaterialCount][4] = {
     {0.0f, 0.0f, 0.0f, 1.0f},    // Air (unused)
-    {0.55f, 0.55f, 0.58f, 1.0f}, // Stone
-    {0.45f, 0.32f, 0.18f, 1.0f}, // Dirt
-    {0.13f, 0.35f, 0.72f, 1.0f}, // Water
-    {0.35f, 0.22f, 0.10f, 1.0f}, // Wood (tree trunks)
-    {0.16f, 0.42f, 0.14f, 1.0f}, // Leaves (tree canopies)
+    {0.52f, 0.49f, 0.44f, 1.0f}, // Stone (warm gray, not blue-gray)
+    {0.44f, 0.28f, 0.14f, 1.0f}, // Dirt (richer brown)
+    {0.09f, 0.33f, 0.58f, 1.0f}, // Water (deeper ocean blue)
+    {0.36f, 0.22f, 0.09f, 1.0f}, // Wood (tree trunks)
+    {0.20f, 0.50f, 0.12f, 1.0f}, // Leaves (livelier canopy green)
 };
 
 // The GPU input layout is a byte-for-byte contract with detail::GpuVertexCompressed (built at
@@ -38,6 +40,7 @@ static_assert(sizeof(GpuVertexCompressed) == 12);
 static_assert(offsetof(GpuVertexCompressed, px) == 0);
 static_assert(offsetof(GpuVertexCompressed, octU) == 8);
 static_assert(offsetof(GpuVertexCompressed, material) == 10);
+static_assert(offsetof(GpuVertexCompressed, ao) == 11);
 
 RefCntAutoPtr<IShader> create_shader(TerrainRenderer::Impl& impl, IShaderSourceInputStreamFactory* streamFactory,
                                      SHADER_TYPE type, const char* file, const char* name) {
@@ -103,7 +106,7 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
     // the two normalized attributes arrive in the VS as plain floats in [0,1], and the only
     // shader-side work is one mad (position) and the octahedral refold (arithmetic). Explicit
     // offsets/stride, not LAYOUT_ELEMENT_AUTO_*, because of the 3 tail padding bytes.
-    LayoutElement layout[3];
+    LayoutElement layout[4];
     // 4 components: DXGI has no 3-component 16-bit vertex format (R16G16B16_UNORM does not
     // exist), so 3x VT_UINT16 asserts in the D3D12 backend while silently working on Vulkan.
     layout[0].InputIndex = 0; // ATTRIB0: position, 4x uint16 UNORM fixed point (1/1024 voxel; w unused)
@@ -124,8 +127,14 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
     layout[2].IsNormalized = False; // integer attribute, read as uint in HLSL
     layout[2].RelativeOffset = static_cast<Uint32>(offsetof(GpuVertexCompressed, material));
     layout[2].Stride = sizeof(GpuVertexCompressed);
+    layout[3].InputIndex = 3; // ATTRIB3: baked AO, uint8 UNORM (the former pad byte -- stride unchanged)
+    layout[3].NumComponents = 1;
+    layout[3].ValueType = VT_UINT8;
+    layout[3].IsNormalized = True;
+    layout[3].RelativeOffset = static_cast<Uint32>(offsetof(GpuVertexCompressed, ao));
+    layout[3].Stride = sizeof(GpuVertexCompressed);
     psoCI.GraphicsPipeline.InputLayout.LayoutElements = layout;
-    psoCI.GraphicsPipeline.InputLayout.NumElements = 3;
+    psoCI.GraphicsPipeline.InputLayout.NumElements = 4;
 
     // Fixed-function defaults (solid fill, back-face cull, depth LESS) are correct EXCEPT the
     // winding convention: Phase 1's on-paper derivation concluded the default

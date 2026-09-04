@@ -56,24 +56,24 @@ Table of contents: [A. Documentation migration](#a-documentation-migration) ·
 Foundational — every visual-richness group below (C–F) depends on being able to actually look at a
 result, per the standing methodology note.
 
-5. Add a PNG-writing path alongside (or instead of) `VOXEL_DUMP_FRAME`'s current PPM output — PPM
+5. [x] Add a PNG-writing path alongside (or instead of) `VOXEL_DUMP_FRAME`'s current PPM output — PPM
    is uncompressed and not universally viewable; PNG is directly openable by an image-viewing tool
    with no conversion step. **Check**: `VOXEL_DUMP_FRAME=out.png` produces a file that opens
    correctly when viewed directly.
-6. If a PNG encoder isn't already available transitively through an existing dependency, use the
+6. [x] If a PNG encoder isn't already available transitively through an existing dependency, use the
    smallest reasonable option (a single-header encoder is proportionate here — this is a debug dump,
    not a shipping asset pipeline) rather than pulling in a general image library. **Check**: the
    encoder choice and why it was proportionate is written down.
-7. Add a `--dump-every N` debug flag: write a numbered frame dump every N frames during a run,
+7. [x] Add a `--dump-every N` debug flag: write a numbered frame dump every N frames during a run,
    instead of only once via `--verify-frame`'s single capture point — useful for watching a visual
    change settle over the first several seconds of streaming, not just the end state. **Check**: a
    short run with `--dump-every 30` produces a numbered sequence, each one individually viewable.
-8. Do one full pass right now, before any other visual work, viewing the current terrain frame from
+8. [x] Do one full pass right now, before any other visual work, viewing the current terrain frame from
    several camera angles (default start position, from ground level in walk mode, looking straight
    down) to establish a real baseline — not relying on the two screenshots from the original bug
    report, which predate the winding fix. **Check**: at least 3 viewed images, described in one
    sentence each in a scratch note, confirming what "correct, unimproved" currently looks like.
-9. Extend the debug overlay with a one-key screenshot-to-disk trigger (distinct from the exit-time
+9. [x] Extend the debug overlay with a one-key screenshot-to-disk trigger (distinct from the exit-time
    `--verify-frame` dump) so a capture can be taken interactively during a longer `--autofly` run
    without restarting. **Check**: pressing the key during a live run produces a viewable file.
 
@@ -83,7 +83,7 @@ Cheapest, highest-impact-per-effort group — no new render pass, no new G-buffe
 data already computed at mesh-generation time and the existing lighting math. Do this group first
 among the visual work.
 
-10. Design the baked voxel-neighbor AO scheme concretely: per the researched technique (0fps.net's
+10. [x] Design the baked voxel-neighbor AO scheme concretely: per the researched technique (0fps.net's
     "Ambient occlusion for Minecraft-like worlds," and thenumb.at's Exile pipeline note on the
     per-face-not-per-vertex subtlety), each of a quad's 4 corners gets its own AO value from its 3
     adjacent solid/air neighbor checks, stored **per-face-corner, not shared per-vertex** — a vertex
@@ -92,52 +92,52 @@ among the visual work.
     visibly wrong results at the very seams this technique is meant to soften. **Check**: this
     design note is written down before touching `mesh_extractor.cpp`, including which of the (up to)
     4 occlusion levels maps to which neighbor-count per the 0fps.net scheme.
-11. Extend `world::meshing::Vertex` (or the per-quad emission path) to carry an AO value per corner
+11. [x] Extend `world::meshing::Vertex` (or the per-quad emission path) to carry an AO value per corner
     without breaking the existing compressed-vertex contract (`GpuVertexCompressed`'s frozen
     `static_assert`ed layout) — this likely means AO is a new packed field, not a change to the
     existing 12 bytes, given that layout is deliberately frozen. **Check**: the `static_assert`s in
     `pso_terrain.cpp` still compile after the change, updated deliberately if the layout genuinely
     grows, not left silently stale.
-12. Implement the AO computation in `mesh_extractor.cpp`'s existing padded cross-chunk sampling pass
+12. [x] Implement the AO computation in `mesh_extractor.cpp`'s existing padded cross-chunk sampling pass
     (it already resolves neighbor occupancy for the surface extraction itself — reuse that, don't
     add a second neighbor-resolution pass). **Check**: a standalone unit test on a hand-constructed
     small voxel arrangement with a known correct AO value at a known corner (a concave corner with 3
     solid neighbors should read the darkest of the 4 levels).
-13. Multiply AO into the pixel shader's final lit color (`terrain.psh.hlsl`), as a straightforward
+13. [x] Multiply AO into the pixel shader's final lit color (`terrain.psh.hlsl`), as a straightforward
     multiplicative term alongside the existing diffuse/ambient math. **Check**: view a dumped frame
     of a chunk boundary or a concave terrain feature (a valley, the inside of a slope) and confirm
     visible, correctly-shaped darkening — not just that the shader compiles.
-14. Replace the flat `0.25` ambient floor in `terrain.psh.hlsl` with a two-color hemisphere ambient
+14. [x] Replace the flat `0.25` ambient floor in `terrain.psh.hlsl` with a two-color hemisphere ambient
     term (a warm sky-tint color for upward-facing surface normals, a cooler/darker ground-bounce
     tint for downward-facing ones, lerped by `normal.y`) — the single biggest step away from "flat
     Lambert" per the research, and it composes directly with AO from goal 13 rather than replacing
     it. **Check**: view a dump; upward-facing terrain (hilltops) should read warmer/brighter than the
     underside of an overhang or a steep north-facing slope, distinctly from the old uniform floor.
-15. Tune the directional sun to a warmer color temperature (currently implicitly white — `PSOut.Color`
+15. [x] Tune the directional sun to a warmer color temperature (currently implicitly white — `PSOut.Color`
     multiplies albedo by a plain scalar diffuse term with no light color at all) — add an actual
     warm-white/golden `float3` sun color, not just intensity. **Check**: viewed dump shows a warm,
     not clinical-white, lit side on terrain.
-16. Add low-frequency, world-position-based noise color variation multiplied into each material's
+16. [x] Add low-frequency, world-position-based noise color variation multiplied into each material's
     base albedo in the pixel shader (a second, cheap FastNoise2-adjacent noise sample, or a simple
     hash-based value noise if pulling FastNoise2 into shader-adjacent CPU precompute is more
     proportionate) — breaks up the current perfectly flat per-material color across a whole chunk.
     **Check**: view a dump of a large flat grass/stone area; color should read as naturally mottled,
     not uniform, at a scale that doesn't look like visible noise-grid artifacts.
-17. Re-verify `--verify-frame`'s threshold still makes sense once AO/ambient/color-variation land —
+17. [x] Re-verify `--verify-frame`'s threshold still makes sense once AO/ambient/color-variation land —
     the pixel-difference-from-sky-reference metric could shift meaningfully with real lighting
     changes. **Check**: re-measure the actual fraction on the standard scene and confirm 25% is still
     a meaningful bar, adjusting with written justification if not.
-18. Benchmark the pixel-shader cost delta from goals 13–16 combined (extra ALU per fragment: AO
+18. [x] Benchmark the pixel-shader cost delta from goals 13–16 combined (extra ALU per fragment: AO
     multiply, hemisphere lerp, noise sample) — cheap operations individually, worth confirming
     combined cost is still negligible rather than assumed. **Check**: a real before/after frame-time
     number from the existing overlay or a Tracy capture, not an assumption that "it's just a few ALU
     ops."
-19. Update `kMaterialColors` in `pso_terrain.cpp` to genuinely richer, more saturated base colors as
+19. [x] Update `kMaterialColors` in `pso_terrain.cpp` to genuinely richer, more saturated base colors as
     a first pass — the current 6 are deliberately muted placeholders (confirmed by direct reading);
     richer base colors compound with goals 13–16 rather than fighting them. **Check**: view a dump
     side-by-side (before/after) and confirm the change reads as "richer," not "oversaturated/garish"
     — a subjective call, made by actually looking, not by picking hex values blind.
-20. Write up this group's combined before/after in one place (a short note, images referenced by
+20. [x] Write up this group's combined before/after in one place (a short note, images referenced by
     path) — the first real "does it look like progress toward the goal" checkpoint, since Stage 1 is
     the foundation every later stage builds on.
 

@@ -74,6 +74,7 @@ void TerrainRenderer::upload_chunk_mesh(world::chunk::ChunkCoord coord, const wo
         out.octU = oct.u;
         out.octV = oct.v;
         out.material = static_cast<std::uint8_t>(v.material);
+        out.ao = static_cast<std::uint8_t>(std::clamp(v.ao, 0.0f, 1.0f) * 255.0f + 0.5f);
         compressed.push_back(out);
     }
     if (mesh.vertices.size() > std::numeric_limits<std::uint16_t>::max()) {

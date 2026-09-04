@@ -41,6 +41,9 @@ static_assert(sizeof(ChunkConstantsCpu) == 16, "must match the 16-byte HLSL cbuf
 //             design review warned about. pw is zero padding the GPU ignores.
 //   normal:   2x uint8 UNORM, 16-bit octahedral (octahedral.hpp; iTwin.js-width precedent)
 //   material: uint8, plain integer attribute (unchanged semantics from the uncompressed layout)
+//   ao:       uint8 UNORM, baked per-vertex concavity AO (research/baked-ao-design.md) -- this
+//             deliberately consumed the former pad byte, so the stride is STILL 12; the layout
+//             static_asserts in pso_terrain.cpp were extended for it, not loosened.
 struct GpuVertexCompressed {
     std::uint16_t px = 0;
     std::uint16_t py = 0;
@@ -49,7 +52,7 @@ struct GpuVertexCompressed {
     std::uint8_t octU = 0;
     std::uint8_t octV = 0;
     std::uint8_t material = 0;
-    std::uint8_t pad = 0; // stride 12: keeps the buffer 4-byte aligned per vertex
+    std::uint8_t ao = 255; // UNORM: 255 = fully open
 };
 static_assert(sizeof(GpuVertexCompressed) == 12, "GPU input layout in pso_terrain.cpp assumes stride 12");
 

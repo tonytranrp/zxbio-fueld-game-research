@@ -1,5 +1,6 @@
 #include "world/meshing/mesh_extractor.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -84,16 +85,25 @@ struct CellSample {
     bool active = false;
     glm::vec3 vertexPos{0.0f};             // valid only if active; chunk-local space
     MaterialID material = MaterialID::Air; // valid only if active
+    float ao = 1.0f;                       // baked concavity AO (research/baked-ao-design.md)
 
     static CellSample compute(const NeighborCache& neighbors, std::int32_t cx, std::int32_t cy, std::int32_t cz) {
         std::array<MaterialID, 8> corners{};
+        int solidCorners = 0;
         for (std::size_t i = 0; i < 8; ++i) {
             const glm::vec3& off = kCornerOffsets[i];
             corners[i] = neighbors.sample(cx + static_cast<std::int32_t>(off.x), cy + static_cast<std::int32_t>(off.y),
                                           cz + static_cast<std::int32_t>(off.z));
+            solidCorners += is_solid(corners[i]) ? 1 : 0;
         }
 
         CellSample cell;
+        // AO from the cell's own enclosure (zero extra samples -- the corners above already went
+        // through the padded cross-chunk cache): flat ground is s=4 and MUST stay 1.0 (a linear
+        // map over the whole range would uniformly dim all flat terrain, which is global dimming,
+        // not occlusion); only the concave half darkens, in the 4 discrete levels the reference
+        // cube-quad scheme also uses. s in {5,6,7} -> {0.85, 0.70, 0.55}.
+        cell.ao = 1.0f - 0.15f * static_cast<float>(std::max(0, solidCorners - 4));
         glm::vec3 sum{0.0f};
         int crossingCount = 0;
         for (const auto& edge : kEdges) {
@@ -288,7 +298,7 @@ MeshData extract_mesh(const ChunkStore& store, ChunkCoord coord) {
                     continue;
                 }
                 vertexIndex[idx] = static_cast<std::uint32_t>(mesh.vertices.size());
-                mesh.vertices.push_back(Vertex{cell.vertexPos, glm::vec3{0.0f}, cell.material});
+                mesh.vertices.push_back(Vertex{cell.vertexPos, glm::vec3{0.0f}, cell.material, cell.ao});
             }
         }
     }

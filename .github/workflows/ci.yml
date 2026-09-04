@@ -86,6 +86,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
+      # SPIRV-Cross (inside DiligentCore's dependency tree) ships test reference files whose
+      # names alone exceed MAX_PATH -- without long-path support the DiligentEngine git clone
+      # itself fails ("Filename too long", first real CI run 2026-09-04). The short C:/b build
+      # dir cannot help here; the paths are long inside the repo.
+      - name: Enable git long paths
+        run: git config --global core.longpaths true
       # restore/save split so the expensive dependency fetch survives a failed build (goal 63).
       - name: CPM source cache (restore)
         id: cpm-cache
@@ -131,10 +137,13 @@ jobs:
     continue-on-error: true # goal 67: software-Vulkan results are best-effort, never merge-gating
     steps:
       - uses: actions/checkout@v4
-      - name: Install toolchain + X11/GL/Vulkan deps
+      # GLFW 3.5 builds its Wayland backend by default, so the wayland/xkbcommon dev packages are
+      # required alongside X11's even though the smoke run itself uses Xvfb (first-run failure at
+      # glfw/src/CMakeLists.txt's wayland check, 2026-09-04).
+      - name: Install toolchain + X11/Wayland/GL/Vulkan deps
         run: >
           sudo apt-get update && sudo apt-get install -y ninja-build xorg-dev libgl1-mesa-dev
-          mesa-vulkan-drivers xvfb
+          libwayland-dev libxkbcommon-dev wayland-protocols mesa-vulkan-drivers xvfb
       - name: CPM source cache
         uses: actions/cache@v4
         with:
@@ -211,8 +220,12 @@ jobs:
       - name: Build
         run: cmake --build build
       # The ThreadPool, streaming-decision, and concurrent generation/meshing stress tests are the
-      # actual point of this job -- the only TSan coverage this project has anywhere.
+      # actual point of this job -- the only TSan coverage this project has anywhere. The
+      # suppressions file silences ONE third-party race (FastNoise2's SmartNode allocator -- see
+      # .tsan-suppressions for the analysis); our own code runs unsuppressed.
       - name: Test
+        env:
+          TSAN_OPTIONS: suppressions=${{ github.workspace }}/.tsan-suppressions
         run: ctest --test-dir build --output-on-failure --timeout 900
 
   clang-tidy-linux:
