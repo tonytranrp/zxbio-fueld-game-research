@@ -194,13 +194,89 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
             throw std::runtime_error(std::string("terrain shader variable not found: ") + variable);
         }
     };
+    {
+        BufferDesc desc;
+        desc.Name = "Terrain FogConstants CB";
+        desc.Size = 16; // float4 g_CameraPosWorld
+        desc.Usage = USAGE_DYNAMIC;
+        desc.BindFlags = BIND_UNIFORM_BUFFER;
+        desc.CPUAccessFlags = CPU_ACCESS_WRITE;
+        impl.context->impl().device->CreateBuffer(desc, nullptr, &impl.fogConstants);
+        if (!impl.fogConstants) {
+            throw std::runtime_error("fog constants buffer creation failed");
+        }
+    }
+
     bind_static(SHADER_TYPE_VERTEX, "FrameConstants", impl.frameConstants);
     bind_static(SHADER_TYPE_VERTEX, "ChunkConstants", impl.chunkConstants);
     bind_static(SHADER_TYPE_PIXEL, "MaterialPalette", impl.materialPalette);
+    bind_static(SHADER_TYPE_PIXEL, "FogConstants", impl.fogConstants);
 
     impl.pso->CreateShaderResourceBinding(&impl.srb, true); // true: copy the static bindings in
     if (!impl.srb) {
         throw std::runtime_error("terrain SRB creation failed");
+    }
+}
+
+// Analytic sky (Group L): fullscreen triangle emitted at far depth, LESS_EQUAL + no depth write,
+// drawn after the chunk draws so only sky-visible pixels shade. Same shader dir + conventions as
+// the terrain PSO above.
+void create_sky_pipeline(TerrainRenderer::Impl& impl) {
+    auto& rc = impl.context->impl();
+
+    RefCntAutoPtr<IShaderSourceInputStreamFactory> streamFactory;
+    rc.factory->CreateDefaultShaderSourceStreamFactory(VOXEL_TERRAIN_SHADER_DIR, &streamFactory);
+    if (!streamFactory) {
+        throw std::runtime_error("failed to create shader source stream factory for sky");
+    }
+
+    RefCntAutoPtr<IShader> vs = create_shader(impl, streamFactory, SHADER_TYPE_VERTEX, "sky.vsh.hlsl", "Sky VS");
+    RefCntAutoPtr<IShader> ps = create_shader(impl, streamFactory, SHADER_TYPE_PIXEL, "sky.psh.hlsl", "Sky PS");
+
+    GraphicsPipelineStateCreateInfo psoCI;
+    psoCI.PSODesc.Name = "Sky PSO";
+    psoCI.pVS = vs;
+    psoCI.pPS = ps;
+    const SwapChainDesc& scDesc = rc.swapchain->GetDesc();
+    psoCI.GraphicsPipeline.NumRenderTargets = 1;
+    psoCI.GraphicsPipeline.RTVFormats[0] =
+        rc.sceneColor ? rc.sceneColor->GetDesc().Format : scDesc.ColorBufferFormat;
+    psoCI.GraphicsPipeline.DSVFormat = scDesc.DepthBufferFormat;
+    psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
+    psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = True;
+    psoCI.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = False;
+    psoCI.GraphicsPipeline.DepthStencilDesc.DepthFunc = COMPARISON_FUNC_LESS_EQUAL;
+
+    ShaderResourceVariableDesc vars[] = {
+        {SHADER_TYPE_PIXEL, "SkyConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+    };
+    psoCI.PSODesc.ResourceLayout.Variables = vars;
+    psoCI.PSODesc.ResourceLayout.NumVariables = 1;
+
+    rc.device->CreateGraphicsPipelineState(psoCI, &impl.skyPso);
+    if (!impl.skyPso) {
+        throw std::runtime_error("sky PSO creation failed");
+    }
+
+    BufferDesc cbDesc;
+    cbDesc.Name = "Sky constants CB";
+    cbDesc.Size = sizeof(SkyConstantsCpu);
+    cbDesc.Usage = USAGE_DYNAMIC;
+    cbDesc.BindFlags = BIND_UNIFORM_BUFFER;
+    cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
+    rc.device->CreateBuffer(cbDesc, nullptr, &impl.skyConstants);
+    if (!impl.skyConstants) {
+        throw std::runtime_error("sky constants buffer creation failed");
+    }
+    if (IShaderResourceVariable* var = impl.skyPso->GetStaticVariableByName(SHADER_TYPE_PIXEL, "SkyConstants")) {
+        var->Set(impl.skyConstants);
+    } else {
+        throw std::runtime_error("sky shader variable not found: SkyConstants");
+    }
+    impl.skyPso->CreateShaderResourceBinding(&impl.skySrb, true);
+    if (!impl.skySrb) {
+        throw std::runtime_error("sky SRB creation failed");
     }
 }
 

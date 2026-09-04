@@ -195,16 +195,16 @@ among the visual work.
     directional sun, water's roughness being much lower than terrain's). **Check**: view a dump with
     the sun roughly behind the camera looking at water — a visible bright glint, not a flat diffuse
     water surface.
-33. Implement exponential-squared distance fog (`f = exp(-(d*density)^2)`, per Inigo Quilez's and the
+33. [x] Implement exponential-squared distance fog (`f = exp(-(d*density)^2)`, per Inigo Quilez's and the
     OpenGL EXP2 formulation from research), fog color tinted toward the current sky/clear color (or
     Group L's sky gradient once that exists) rather than a fixed gray. **Check**: view a dump with
     distant terrain visible — should show visible atmospheric recession, not a hard pop where
     geometry simply stops rendering at draw distance.
-34. Add height-based fog density falloff (denser near ground level, per Quilez's `d(y) = a*e^(-b*y)`
+34. [x] Add height-based fog density falloff (denser near ground level, per Quilez's `d(y) = a*e^(-b*y)`
     form) as a refinement once flat-density fog (goal 33) is confirmed working. **Check**: view a
     dump from a hilltop looking down into a valley — valley floor should read hazier than the
     hilltop itself.
-35. Benchmark fog's cost (a cheap per-fragment exp, should be negligible) per the goal-18 standard.
+35. [x] Benchmark fog's cost (a cheap per-fragment exp, should be negligible) per the goal-18 standard.
     **Check**: real number, not assumed negligible.
 36. Design foliage variety beyond the current single box-trunk/octahedron-canopy tree shape: at
     least 2–3 additional silhouettes (a taller conifer-like shape, a shorter shrub/bush) using the
@@ -482,24 +482,24 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
 
 ## L. Sky & atmosphere
 
-88. Replace the current flat clear-color sky (confirmed by direct reading — no sky rendering pass
+88. [x] Replace the current flat clear-color sky (confirmed by direct reading — no sky rendering pass
     exists, just a swap-chain clear) with a real sky — a simple analytic gradient (horizon-to-zenith
     color lerp, cheap, no new geometry) is the proportionate first step given the rest of this
     document's cost discipline. **Check**: view a dump; visible gradient from horizon to zenith,
     not a flat color.
-89. Tie the sky gradient's colors to the same warm-sun/hemisphere-ambient palette goal 14–15
+89. [x] Tie the sky gradient's colors to the same warm-sun/hemisphere-ambient palette goal 14–15
     established, so sky and terrain lighting read as consistent rather than two independently-tuned
     color schemes. **Check**: a viewed dump where the terrain's lit highlights and the sky's horizon
     color visibly share a warm hue family, not clashing.
-90. Consider a simple sun disc/glow in the sky itself (a cheap analytic disc at the sun direction,
+90. [x] Consider a simple sun disc/glow in the sky itself (a cheap analytic disc at the sun direction,
     reusing the existing directional light vector) — small addition, real payoff for the "golden
     hour" feeling the research points at. **Check**: view a dump with the sun direction roughly
     toward the camera; a visible, reasonably-positioned sun disc.
-91. Re-tie fog's color (goal 33) to the sky gradient (goal 88) rather than a separately-tuned fog
+91. [x] Re-tie fog's color (goal 33) to the sky gradient (goal 88) rather than a separately-tuned fog
     color, once both exist — atmospheric perspective reads correctly only when fog and sky agree.
     **Check**: viewed dump shows fog blending smoothly into the horizon color at draw distance, not
     a visible seam between "fogged terrain" and "sky."
-92. Benchmark the sky pass's cost (should be negligible — a full-screen gradient, no per-object work)
+92. [x] Benchmark the sky pass's cost (should be negligible — a full-screen gradient, no per-object work)
     per the goal-18 standard. **Check**: real number.
 
 ## M. Material palette expansion

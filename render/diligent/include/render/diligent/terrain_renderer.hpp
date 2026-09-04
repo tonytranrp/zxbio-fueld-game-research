@@ -49,6 +49,10 @@ public:
     // intersects the camera frustum. Does not present -- the caller owns frame pacing.
     void render(const render::interface::Camera& camera);
 
+    // Group L: the analytic gradient-sky pass (drawn where no terrain covers the frame). On by
+    // default; --no-sky maps here (goal 52's per-pass isolation discipline).
+    void set_sky_enabled(bool enabled) noexcept;
+
     [[nodiscard]] std::size_t chunk_count() const noexcept;
     [[nodiscard]] std::size_t last_visible_count() const noexcept; // culling stat from the most recent render()
     [[nodiscard]] const GpuAllocationTracker& gpu_memory() const noexcept;

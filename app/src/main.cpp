@@ -59,6 +59,7 @@ struct AppOptions {
     bool no_post = false;    // whole post chain off: render straight to swap chain (pre-Stage-2 path)
     bool no_bloom = false;   // bloom off, tonemap composite still on
     bool no_tonemap = false; // tonemap off (raw clamp), bloom still on
+    bool no_sky = false;     // gradient-sky pass off (falls back to the flat clear color)
     // Debug camera overrides for the visual-verification workflow (goal 8's multi-angle baseline
     // and every later "view a dump from X" check): unset = the default start pose.
     std::optional<glm::vec3> start_pos;
@@ -114,6 +115,8 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
                 value ? static_cast<std::uint32_t>(std::strtoul(value, nullptr, 10)) : options.dump_every;
         } else if (arg == "--no-post") {
             options.no_post = true;
+        } else if (arg == "--no-sky") {
+            options.no_sky = true;
         } else if (arg == "--no-bloom") {
             options.no_bloom = true;
         } else if (arg == "--no-tonemap") {
@@ -202,6 +205,7 @@ int run(const AppOptions& options) {
         postProcess->set_tonemap_enabled(!options.no_tonemap);
     }
     render::diligent::TerrainRenderer renderer(context);
+    renderer.set_sky_enabled(!options.no_sky);
     render::diligent::attach_gpu_profiler(context); // Tracy GPU zones (Vulkan only; safe no-op elsewhere)
 
     // The camera is an ordinary ECS entity (Phase 1 brief §6): Transform + CameraLens are
@@ -365,13 +369,13 @@ int run(const AppOptions& options) {
         if (options.verify_frame && !verifyRan && frame >= 5 && streaming.settled() &&
             streaming.ready_chunk_count() > 0) {
             const float fraction = render::diligent::sample_non_reference_pixel_fraction(context);
-            // 25%, raised from the original 5% after the winding bug: back-face-culled terrain
-            // still passed 5% on silhouette slivers alone for two whole passes. A full landmass
-            // from this camera measures ~39%; 25% fails on anything ribbon-like again.
-            verifyOk = fraction >= 0.25f;
+            // Local-contrast metric (see frame_verify.cpp for the two prior metrics it replaced
+            // and why): terrain texture measures 12.3% at this pose, sky-only 0.9%. 6% keeps the
+            // winding-bug lesson's discrimination -- sliver-band frames fail hard.
+            verifyOk = fraction >= 0.06f;
             verifyRan = true;
             log(verifyOk ? LogLevel::Info : LogLevel::Error,
-                "frame verification: {:.1f}% of pixels differ from the sky reference pixel (threshold 25%) after "
+                "frame verification: {:.1f}% of pixels carry terrain-scale local contrast (threshold 6%) after "
                 "{} chunks streamed in",
                 static_cast<double>(fraction) * 100.0, streaming.ready_chunk_count());
         }

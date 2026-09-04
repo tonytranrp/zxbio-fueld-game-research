@@ -43,6 +43,7 @@ constexpr float kChunkSizeF = static_cast<float>(world::chunk::kChunkSize);
 TerrainRenderer::TerrainRenderer(RenderContext& context) : impl_(std::make_unique<Impl>()) {
     impl_->context = &context;
     create_terrain_pipeline(*impl_);
+    create_sky_pipeline(*impl_);
 }
 
 TerrainRenderer::~TerrainRenderer() = default;
@@ -172,19 +173,40 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
     ctx->ClearRenderTarget(rtv, kClearColor.data(), RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     ctx->ClearDepthStencil(dsv, CLEAR_DEPTH_FLAG, 1.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-    if (impl_->chunks.empty()) {
-        impl_->lastVisible = 0;
-        return;
-    }
-
     const SwapChainDesc& scDesc = rc.swapchain->GetDesc();
     const float aspect =
         scDesc.Height > 0 ? static_cast<float>(scDesc.Width) / static_cast<float>(scDesc.Height) : 1.0f;
     const glm::mat4 viewProj = projection_matrix(camera, aspect) * view_matrix(camera);
 
+    // The sky pass draws even with zero chunks (it replaced the flat clear color as "what you see
+    // where there is no terrain"), so the empty case no longer returns early.
+    const auto draw_sky = [&] {
+        if (!impl_->skyEnabled || !impl_->skyPso) {
+            return;
+        }
+        {
+            MapHelper<SkyConstantsCpu> sky(ctx, impl_->skyConstants, MAP_WRITE, MAP_FLAG_DISCARD);
+            sky->invViewProj = glm::inverse(viewProj);
+            sky->cameraPosWorld = glm::vec4(camera.position, 1.0f);
+        }
+        ctx->SetPipelineState(impl_->skyPso);
+        ctx->CommitShaderResources(impl_->skySrb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ctx->Draw({3, DRAW_FLAG_VERIFY_ALL, 1});
+    };
+
+    if (impl_->chunks.empty()) {
+        draw_sky();
+        impl_->lastVisible = 0;
+        return;
+    }
+
     {
         MapHelper<detail::FrameConstantsCpu> frame(ctx, impl_->frameConstants, MAP_WRITE, MAP_FLAG_DISCARD);
         frame->viewProj = viewProj;
+    }
+    {
+        MapHelper<glm::vec4> fog(ctx, impl_->fogConstants, MAP_WRITE, MAP_FLAG_DISCARD);
+        *fog = glm::vec4(camera.position, 0.0f);
     }
 
     ctx->SetPipelineState(impl_->pso);
@@ -271,6 +293,10 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
     if (dumpThisFrame) {
         dumpedOnce = true;
     }
+
+    // After terrain so LESS_EQUAL at far depth shades only pixels no chunk covered.
+    draw_sky();
+
 #if defined(TRACY_ENABLE)
     if (tracyCtx != nullptr && ctxVk) {
         gpuZone.reset(); // end the zone in the same command buffer state before collecting
@@ -278,6 +304,10 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
     }
 #endif
     impl_->lastVisible = visible;
+}
+
+void TerrainRenderer::set_sky_enabled(bool enabled) noexcept {
+    impl_->skyEnabled = enabled;
 }
 
 std::size_t TerrainRenderer::chunk_count() const noexcept {

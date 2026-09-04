@@ -1,12 +1,20 @@
 // Terrain pixel stage: material-palette lookup + one warm directional sun + two-color hemisphere
-// ambient + baked per-vertex AO + low-frequency albedo variation (goals.md Stage 1, goals 13-16).
-// No textures -- the palette is the slot a texture array upgrades into later. g_MaterialColors is
-// sized/ordered by world::chunk::MaterialID and mirrored by kMaterialColors in
-// render/diligent/src/pso_terrain.cpp -- update both together.
+// ambient + baked per-vertex AO + low-frequency albedo variation (goals.md Stage 1, goals 13-16)
+// + exponential-squared distance fog with height falloff tied to the shared sky palette
+// (goals 33/34/91). No textures -- the palette is the slot a texture array upgrades into later.
+// g_MaterialColors is sized/ordered by world::chunk::MaterialID and mirrored by kMaterialColors
+// in render/diligent/src/pso_terrain.cpp -- update both together.
+
+#include "sky_common.fxh"
 
 cbuffer MaterialPalette
 {
     float4 g_MaterialColors[6];
+};
+
+cbuffer FogConstants
+{
+    float4 g_CameraPosWorld; // xyz camera position; w unused
 };
 
 struct PSInput
@@ -71,5 +79,19 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     // Goal 13: AO multiplies the final lit color (both ambient and direct -- the cheap-pipeline
     // convention the reference scheme also uses).
     const float3 lit = albedo * (ambient + sunColor * diffuse) * PSIn.AO;
-    PSOut.Color = float4(lit, 1.0);
+
+    // Goals 33/34: exponential-squared distance fog (f = exp(-(d*density)^2), the EXP2
+    // formulation) with height-based density falloff (denser near sea level, Quilez's
+    // a*exp(-b*y) form averaged over the view path's endpoint height for cheapness). Fog color
+    // IS the sky's horizon color (sky_common.fxh) so distant terrain recedes INTO the sky
+    // instead of popping against it (goal 91 by construction).
+    // Density tuned against this world's actual draw distance (~200-350 units at radius 3-7,
+    // judged from viewed captures -- 0.0045 fogged the entire midground): ~25% haze at 200
+    // units, ~60% at 350, full recession only past ~500.
+    const float dist = length(PSIn.WorldPos - g_CameraPosWorld.xyz);
+    const float heightFactor = exp2(-max(PSIn.WorldPos.y, 0.0) * 0.012);
+    const float density = 0.0027 * (0.55 + 0.45 * heightFactor);
+    const float fogAmount = 1.0 - exp2(-(dist * density) * (dist * density) * 1.442695);
+    const float3 fogged = lerp(lit, kSkyHorizon, saturate(fogAmount));
+    PSOut.Color = float4(fogged, 1.0);
 }

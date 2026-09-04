@@ -79,6 +79,13 @@ struct TerrainRenderer::Impl {
     Diligent::RefCntAutoPtr<Diligent::IBuffer> frameConstants; // dynamic, mapped once per frame
     Diligent::RefCntAutoPtr<Diligent::IBuffer> chunkConstants; // dynamic, mapped once per visible chunk draw
     Diligent::RefCntAutoPtr<Diligent::IBuffer> materialPalette; // immutable
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> fogConstants; // dynamic, camera pos for distance fog
+    // Analytic sky pass (Group L): fullscreen triangle at far depth, drawn AFTER terrain so
+    // LESS_EQUAL testing shades only sky pixels.
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState> skyPso;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> skySrb;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> skyConstants; // dynamic, mapped once per frame
+    bool skyEnabled = true;
     // CoordMap (flat) matters most HERE of anywhere: this map is iterated every frame for the
     // draw loop, and flat contiguous storage is the iteration-friendly layout.
     world::chunk::CoordMap<detail::ChunkGpuMesh> chunks;
@@ -89,5 +96,15 @@ struct TerrainRenderer::Impl {
 // world::meshing::Vertex, the terrain PSO, the three constant buffers, and the SRB. Throws
 // std::runtime_error on any creation failure.
 void create_terrain_pipeline(TerrainRenderer::Impl& impl);
+
+// Mirror of sky.psh.hlsl's cbuffer SkyConstants -- update both together.
+struct SkyConstantsCpu {
+    glm::mat4 invViewProj;
+    glm::vec4 cameraPosWorld;
+};
+static_assert(sizeof(SkyConstantsCpu) == 80, "must match the 80-byte HLSL cbuffer exactly");
+
+// Implemented in pso_terrain.cpp alongside the terrain PSO (same stream factory/conventions).
+void create_sky_pipeline(TerrainRenderer::Impl& impl);
 
 } // namespace render::diligent

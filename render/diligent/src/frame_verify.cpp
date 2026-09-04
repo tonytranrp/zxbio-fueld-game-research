@@ -148,22 +148,33 @@ float sample_non_reference_pixel_fraction(RenderContext& context) {
     read_back_buffer(rc, frame);
 
     const auto* base = static_cast<const std::uint8_t*>(frame.mapped.pData);
-    const std::uint8_t* refPx = base;
 
-    // Tolerance-based comparison, not bytewise (goal 26's re-verify): the Stage-2 bloom pass
-    // spreads a soft gradient across the sky, so with exact comparison nearly EVERY sky pixel
-    // "differs" from the top-left reference (measured 97.7% on a normal frame) and the metric
-    // stops meaning "terrain visible". Bloom's sky-gradient deltas measure <=11/255 per channel;
-    // terrain-vs-sky differences are 50+. 16 cleanly separates the two regimes.
-    constexpr int kChannelTolerance = 16;
+    // LOCAL-CONTRAST metric (third iteration, and the durable one). History: the original
+    // bytewise compare-to-top-left died when Stage 2's bloom made 97.7% of sky pixels "differ";
+    // a tolerance band fixed that, then Group L's analytic gradient sky (a 100+/255 vertical
+    // sweep) broke any single-reference-pixel scheme for good. What actually distinguishes
+    // "terrain visible" from "sky only" is spatial frequency: terrain carries terracing, AO,
+    // albedo mottle, trees, and shorelines (high local contrast), while sky/fog/bloom are smooth
+    // by construction -- an analytic gradient's neighbor-to-neighbor delta is < 1/255. A pixel
+    // counts when it differs from its LEFT or UP neighbor by >4 on any channel. Calibrated
+    // against a real frame pair at the standard verify pose: terrain-visible measures 12.3%, a
+    // forced-empty frame (VOXEL_ONLY_CHUNK_Y=99) 0.9% (that floor is the overlay panel's own
+    // text) -- 13.7x separation; the caller's 6% threshold sits between. A ribbon-class
+    // regression (thin sliver bands) lands near the empty floor, far under the bar.
+    constexpr int kChannelTolerance = 4;
     std::uint64_t differing = 0;
-    for (std::uint32_t y = 0; y < frame.height; ++y) {
+    for (std::uint32_t y = 1; y < frame.height; ++y) {
         const std::uint8_t* row = base + static_cast<std::size_t>(y) * frame.mapped.Stride;
-        for (std::uint32_t x = 0; x < frame.width; ++x) {
+        const std::uint8_t* rowUp = base + static_cast<std::size_t>(y - 1) * frame.mapped.Stride;
+        for (std::uint32_t x = 1; x < frame.width; ++x) {
             const std::uint8_t* px = row + static_cast<std::size_t>(x) * 4u;
-            const bool differs = std::abs(int(px[0]) - int(refPx[0])) > kChannelTolerance ||
-                                 std::abs(int(px[1]) - int(refPx[1])) > kChannelTolerance ||
-                                 std::abs(int(px[2]) - int(refPx[2])) > kChannelTolerance;
+            const std::uint8_t* pxLeft = row + static_cast<std::size_t>(x - 1) * 4u;
+            const std::uint8_t* pxUp = rowUp + static_cast<std::size_t>(x) * 4u;
+            bool differs = false;
+            for (int c = 0; c < 3 && !differs; ++c) {
+                differs = std::abs(int(px[c]) - int(pxLeft[c])) > kChannelTolerance ||
+                          std::abs(int(px[c]) - int(pxUp[c])) > kChannelTolerance;
+            }
             differing += differs ? 1u : 0u;
         }
     }
