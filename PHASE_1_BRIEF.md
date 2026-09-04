@@ -379,10 +379,19 @@ unowned mutex" from the MSVC STL) and multi-minute test hangs. Fixed by declarin
 (destroyed first, joining every thread before its synchronization primitives go away) — see the
 comment in `engine/jobs/include/engine/jobs/thread_pool.hpp`.
 
-**M1.2 — World generation (no GPU/display needed).** `world/chunk` (paletted storage, pmr-pooled,
-per `PROJECT_BRIEF.md` §5) and `world/generation` (FastNoise2 heightmap + land/mountain/water fill
-rules, per `PROJECT_BRIEF.md` §8). Done when: requesting a chunk coordinate deterministically
-produces a filled `Chunk`, validated by unit test.
+**M1.2 — World generation (no GPU/display needed). ✅ DONE (2026-09-03).** Superseded by
+[`M1_2_BRIEF.md`](M1_2_BRIEF.md) — see that document for the real paletted-storage scheme (§1),
+concrete FastNoise2 usage including the determinism mitigation (§2), coordinate math (§3), the
+fill algorithm (§4), and the ECS integration boundary (§5). Done when: requesting a chunk
+coordinate deterministically produces a filled `Chunk`, validated by unit test. **Confirmed**:
+24/24 tests pass across `engine_core_tests`/`engine_ecs_tests`/`engine_jobs_tests`/
+`world_chunk_tests`/`world_generation_tests`, including palette-promotion correctness at all four
+bit-width boundaries, negative-coordinate math, and same-thread/cross-thread generation
+determinism (5 repeated runs, no flakiness). One real bug found and fixed:
+`FastSIMD::FeatureSet::SCALAR` (M1_2_BRIEF.md §2.5's originally-planned pin) isn't compiled into
+this project's FastNoise2 build (only SSE2/SSE41/AVX2/AVX512 are — see `CLAUDE.md`), so
+`FastNoise::New<T>` returned null and the very first dereference segfaulted; re-pinned to `SSE2`
+(the actual lowest compiled level, still a safe universal floor for this x86-64-only project).
 
 **M1.3 — Meshing (no GPU/display needed).** `world/meshing` (Surface Nets, chunk-boundary-correct),
 normals computed per §2.6, `tools/mesh_dump` extended to also emit material IDs. Done when:

@@ -1,0 +1,48 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": { "major": 3, "minor": 23, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "windows-debug",
+      "displayName": "Windows Debug (Ninja, short build dir)",
+      "description": "Builds outside the repo under C:/b -- this project's own deeply nested DiligentEngine/glslang source paths combined with this repo's own path length exceed Windows' 260-char MAX_PATH when built in-tree (e.g. the default out/build/<preset> location). See CLAUDE.md for the full story. Works from Visual Studio's/VS Code's own 'Open Folder' CMake integration or plain `cmake --preset windows-debug`.",
+      "generator": "Ninja",
+      "binaryDir": "C:/b/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows Release (Ninja, short build dir)",
+      "inherits": "windows-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "output": { "outputOnFailure": true },
+      "execution": { "timeout": 60 }
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "output": { "outputOnFailure": true },
+      "execution": { "timeout": 60 }
+    }
+  ]
+}

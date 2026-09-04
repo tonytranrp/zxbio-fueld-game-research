@@ -35,10 +35,19 @@ include(${CPM_DOWNLOAD_LOCATION})
 # Explicit GIT_TAG (not the "gh:owner/repo@version" shorthand) deliberately — that shorthand's
 # version parsing auto-prepends "v", which double-prefixed this tag into the invalid
 # "vv3.16.0" the first time. Explicit GIT_TAG is passed straight through, unmangled.
+#
+# UPDATE_DISCONNECTED TRUE is set on every package below, not just as a speed optimization: every
+# pinned tag is immutable by definition, so FetchContent's separate git "update" step (re-checking
+# a pinned ref for upstream changes on every reconfigure) has nothing real to do — and on this
+# machine that step is also where the HEAD^0/GIT_EXECUTABLE bug documented in CLAUDE.md and at the
+# top of the root CMakeLists.txt actually manifests. The root CMakeLists.txt's GIT_EXECUTABLE fix
+# closes the bug at its real source (so this isn't strictly load-bearing anymore), but skipping a
+# genuinely pointless network round-trip on every configure is worth doing regardless.
 CPMAddPackage(
   NAME entt
   GITHUB_REPOSITORY skypjack/entt
   GIT_TAG v3.16.0
+  UPDATE_DISCONNECTED TRUE
 )
 
 # --- Math: GLM ------------------------------------------------------------------------------
@@ -46,6 +55,7 @@ CPMAddPackage(
   NAME glm
   GITHUB_REPOSITORY g-truc/glm
   GIT_TAG 1.0.3
+  UPDATE_DISCONNECTED TRUE
 )
 
 # --- Windowing: GLFW ------------------------------------------------------------------------
@@ -53,6 +63,7 @@ CPMAddPackage(
   NAME glfw
   GITHUB_REPOSITORY glfw/glfw
   GIT_TAG 3.5.1
+  UPDATE_DISCONNECTED TRUE
   OPTIONS
     "GLFW_BUILD_EXAMPLES OFF"
     "GLFW_BUILD_TESTS OFF"
@@ -64,6 +75,7 @@ CPMAddPackage(
   NAME Catch2
   GITHUB_REPOSITORY catchorg/Catch2
   GIT_TAG v3.9.1
+  UPDATE_DISCONNECTED TRUE
 )
 if(Catch2_SOURCE_DIR)
   list(APPEND CMAKE_MODULE_PATH "${Catch2_SOURCE_DIR}/extras")
@@ -74,6 +86,7 @@ CPMAddPackage(
   NAME FastNoise2
   GITHUB_REPOSITORY Auburn/FastNoise2
   GIT_TAG v1.1.1
+  UPDATE_DISCONNECTED TRUE
   OPTIONS
     "FASTNOISE2_NOISETOOL OFF"
     "FASTNOISE2_TESTS OFF"

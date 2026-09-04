@@ -7,30 +7,63 @@ machine, learned the hard way during Phase 0. Read it before running `cmake` on 
 
 ## Building — must read before running cmake
 
-**Build to a short out-of-repo directory, not `build/` inside this repo.** This repo's own path
-is long enough that DiligentCore's `ThirdParty/glslang` build (whose object paths mirror the full
-absolute CPM cache source path) exceeds Windows' 260-char MAX_PATH when nested under
-`<repo>\build\_deps\...`, and `cl.exe` fails with `fatal error C1083: Cannot open compiler
-generated file: '': Invalid argument`. Use `C:\b` (verified working):
+**Use the `CMakePresets.json` at the repo root** — this is now the primary, recommended way to
+build, and it's what makes Visual Studio's/VS Code's own "Open Folder" CMake integration work
+without any manual setup: opening this repo's folder in either one auto-detects the
+`windows-debug`/`windows-release` presets and Just Works. From a command line (after sourcing a
+real MSVC environment — see below), the equivalent is:
 
 ```
-cmake -B C:\b -G Ninja -DGIT_EXECUTABLE="C:/Program Files/Git/cmd/git.exe"
-cmake --build C:\b
+cmake --preset windows-debug
+cmake --build --preset windows-debug
+ctest --preset windows-debug
 ```
+
+The preset builds to `C:/b/<preset-name>` (e.g. `C:/b/windows-debug`), **not** `out/build/...`
+under the repo — see the MAX_PATH note below for why this is load-bearing, not a style choice.
+`GIT_EXECUTABLE` is now handled automatically by the root `CMakeLists.txt` itself (see the comment
+there) rather than needing a manual `-D` flag — this was the actual fix that makes plain
+`cmake --preset ...`, this repo's own scripts, and Visual Studio's own CMake integration all work
+identically regardless of entry point; see the git-shim note below for why it was ever needed.
+
+**Build to a short directory outside the repo — this is why the preset doesn't use `out/build/...`.**
+This repo's own path is long enough that DiligentCore's `ThirdParty/glslang` build (whose object
+paths mirror the full absolute CPM cache source path) exceeds Windows' 260-char MAX_PATH once
+nested under almost any in-repo build directory (`<repo>\build\_deps\...` *and* Visual Studio's own
+default `<repo>\out\build\x64-Debug\_deps\...` both blow it), and `cl.exe` fails with
+`fatal error C1083: Cannot open compiler generated file: '': Invalid argument`. If you ever build
+without the preset, use a short absolute path like `C:\b` explicitly (`cmake -B C:\b`) — don't let
+it default to an in-repo directory.
 
 **Must run from a real MSVC environment**, not a plain shell — `cl`/`link` aren't on PATH by
-default. Source the VS toolchain first (adjust the version folder below if it changes):
+default. Source a VS toolchain first (either edition works — both are on this machine and both are
+verified: see "Multiple VS installs" below):
 
 ```
 call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 ```
 
-This machine's Visual Studio is branded **"18" / 2026** internally (folder
-`...\Microsoft Visual Studio\18\BuildTools\`), not `2022` — `vswhere.exe` does **not** detect it
-(its registry/COM-based discovery is broken on this machine; confirmed working via direct
-filesystem search + `vcvars64.bat` instead). Don't trust `vswhere -all` returning empty as proof
-MSVC is absent — check for `cl.exe` directly:
-`C:\Program Files (x86)\Microsoft Visual Studio\**\Hostx64\x64\cl.exe`.
+(Visual Studio's/VS Code's own CMake integration sources this for you automatically when you open
+the folder — you only need this manual step for a command-line build.)
+
+### Multiple VS installs on this machine — both verified working
+
+There are **two separate VS "18"/2026 installs** on this machine, at different MSVC point versions
+— both confirmed to build this whole project (all 5 dependencies, D3D11/D3D12/OpenGL/Vulkan
+backends, all our own tests) cleanly via `CMakePresets.json`:
+
+- **Build Tools**: `C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\` — MSVC
+  `14.50.35717`. Note the `(x86)` in the path despite being a 64-bit-capable toolchain; this is
+  where the ATL component had to be added manually during Phase 0 (see below).
+- **Community**: `C:\Program Files\Microsoft Visual Studio\18\Community\` — MSVC `14.51.36231`
+  (no `(x86)`; this is the edition Visual Studio's own IDE "Open Folder" flow uses). Already had
+  ATL preinstalled.
+
+`vswhere.exe` does **not** detect either one (its registry/COM-based discovery is broken on this
+machine; confirmed working via direct filesystem search + `vcvars64.bat` instead). Don't trust
+`vswhere -all` returning empty as proof MSVC is absent — check for `cl.exe` directly:
+`C:\Program Files*\Microsoft Visual Studio\**\Hostx64\x64\cl.exe` (note the two different
+`Program Files` roots above).
 
 **MinGW/clang (llvm-mingw) does NOT work for this project** — tried first, hit multiple real
 incompatibilities: FastSIMD's `-Wa,-muse-unaligned-vector-move` flag (fixed, see the guard in
@@ -53,8 +86,16 @@ vs_buildtools.exe modify --installPath "C:\Program Files (x86)\Microsoft Visual 
 **`git` on PATH may resolve to a `.cmd` shim**, not real `git.exe` (seen at
 `C:\Users\Tonyt\AppData\Roaming\npm\git.cmd`, likely from a token-optimizer/RTK hook). That shim
 goes through cmd.exe's batch interpreter, which mangles a literal `^` in arguments — this broke
-FetchContent's internal `git rev-parse HEAD^0` into `HEAD0` (`fatal: ambiguous argument 'HEAD0'`).
-Always pass `-DGIT_EXECUTABLE="C:/Program Files/Git/cmd/git.exe"` explicitly when configuring.
+FetchContent's internal `git rev-parse HEAD^0` into `HEAD0` (`fatal: ambiguous argument 'HEAD0'`)
+for *any* CPM package, not just one (first found via DiligentEngine, but it later hit `entt` too
+under Visual Studio's own CMake integration, which doesn't go through this repo's own scripts).
+**Fixed at the project level now** — the root `CMakeLists.txt` explicitly searches
+`C:/Program Files/Git/{cmd,bin}` for the real `git.exe` and sets it as the `GIT_EXECUTABLE` cache
+variable before any dependency fetch runs, so this works from any entry point (plain `cmake`, this
+repo's scripts, VS's/VS Code's own integration) without a manual `-D` flag. If you ever see the
+`HEAD0` error again despite this, an existing stale build directory's cache likely already has the
+wrong `GIT_EXECUTABLE` baked in from before this fix — delete that build directory and reconfigure
+fresh rather than trying to patch the existing cache.
 
 ## Dependency notes (see `cmake/Dependencies.cmake` for the full pins + inline reasoning)
 
@@ -95,9 +136,27 @@ compiler exists — or get `clang-cl` added to the Build Tools install
 (`Microsoft.VisualStudio.Component.VC.Llvm.Clang`), though Windows TSan support under clang-cl is
 historically less mature than Linux's.
 
+## FastNoise2 SIMD levels actually compiled in this build
+
+**`FastSIMD::FeatureSet::SCALAR` is NOT compiled into this project's FastNoise2** — only
+`SSE2`/`SSE41`/`AVX2`/`AVX512` are (confirmed in Phase 0's own build log: `FastSIMD: Created
+dispatch library "FastSIMD_FastNoise" with Feature Sets (RELAXED): SSE2;SSE41;AVX2;AVX512` — no
+`SCALAR` in that list). `FastNoise::New<T>(FastSIMD::FeatureSet::SCALAR)` silently returns
+**null** for an uncompiled feature set rather than erroring — dereferencing it segfaults on the
+very first call. If pinning to one explicit SIMD level for determinism (`world/generation`
+already does this — see `M1_2_BRIEF.md` §2.5), pin to `SSE2` instead: it's the actual lowest level
+compiled in, and still a safe universal floor for this x86-64-only project (SSE2 is mandatory
+baseline on every x86-64 CPU, unlike SSE41/AVX2/AVX512). `world/generation/src/heightmap_generator.cpp`
+wraps `FastNoise::New<T>` in a helper that throws instead of returning null/segfaulting if this
+ever regresses — check there before assuming a given `FeatureSet` value is safe to request.
+
 ## Phase status
 
 **Phase 0 (repo scaffold + dependency fetch/build smoke test): DONE.** Clean configure+build
 succeeds with all 5 dependencies — DiligentCore/Tools/FX build with D3D11, D3D12, OpenGL, and
 Vulkan backends all linking — and our own stub `voxel_app`/`mesh_dump` executables build and run.
-See `PROJECT_BRIEF.md` §11 for Phase 1's definition of done before starting it.
+
+**Phase 1 M1.1 (engine skeleton) and M1.2 (world generation): DONE.** See `PHASE_1_BRIEF.md` and
+`M1_2_BRIEF.md` for full details and per-milestone status. 24/24 tests pass across
+`engine_core_tests`/`engine_ecs_tests`/`engine_jobs_tests`/`world_chunk_tests`/
+`world_generation_tests`. Next: M1.3 (Surface Nets meshing) — see `PHASE_1_BRIEF.md` §8.

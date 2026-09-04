@@ -469,6 +469,9 @@ Structure-of-Arrays only matters once a hot loop touches one or two fields of ma
 single flat `std::vector<uint8_t>` (or `uint16_t` once the material count needs it) per chunk is
 the right starting shape, not a struct-of-arrays split that has nothing to split yet.
 
+See M1_2_BRIEF.md §1 for the full palette scheme this flat-array description turns out to be
+the ceiling case of.
+
 Allocation. Chunks are a textbook alloc-many/free-together pattern once a render-distance ring of
 them loads and unloads together — exactly the case `memory-and-performance.md` §3 names as a real
 win for pooling. Per the skill's own house style (`std::pmr` is the default, a hand-rolled arena is
