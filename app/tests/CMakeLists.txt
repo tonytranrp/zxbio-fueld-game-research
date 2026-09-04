@@ -6,10 +6,13 @@ set(CMAKE_CXX_CLANG_TIDY "")
 # dependency story.
 add_executable(app_tests
     test_spectator_camera.cpp
+    test_tree_decoration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/spectator_camera.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tree_decoration.cpp
 )
 target_include_directories(app_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
-target_link_libraries(app_tests PRIVATE engine_core engine_ecs engine_input Catch2::Catch2WithMain project_warnings)
+target_link_libraries(app_tests PRIVATE engine_core engine_ecs engine_input world_generation world_meshing
+                                        Catch2::Catch2WithMain project_warnings)
 
 include(Catch)
 catch_discover_tests(app_tests)

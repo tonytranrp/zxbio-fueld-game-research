@@ -210,6 +210,53 @@ per-task decision log with evidence in `research/engine-hardening-log.md`; headl
   quantization), verify-frame both backends, autofly bounded, ASan-clean concurrency stress
   subset. New deps flow into CI automatically via the `Dependencies.cmake`-hash cache keys.
 
+---
+
+**Terrain Fixes & Gameplay pass (Groups Q–X): DONE (2026-09-04).** Full evidence log in
+`research/terrain-fixes-log.md`. Headlines:
+
+- **The ribbon bug (Group Q) — TWO stacked causes, both fixed.** (1) §2.2's Chebyshev-CUBE
+  design was wrong on Y — the "render distance means Minecraft" citation actually implies
+  horizontal-only radius over full-height columns; verified before fixing (196 ready = exactly
+  7×7 columns × 4 of 6 band layers with the camera above the band), desired set is now full-band
+  columns and the band [-3,2] is the documented generator-derived Y-bound. (2) Deeper and older:
+  **the terrain's front-face winding was inverted since Phase 1** (`FrontCounterClockwise` left
+  at the default False against extract_mesh's CCW emission) — up-facing triangles were back-face
+  culled EVERYWHERE, so all any camera ever saw was steep silhouette slivers, and the 5%
+  verify threshold passed on those for two entire passes. Found by an evidence chain (full-column
+  counts ✓ → CPU surface-coverage test ✓ → per-draw dump shows chunks drawn-yet-invisible →
+  cull kill-switch changes nothing → the ground-level capture shows terrain visible from BELOW).
+  One-bit fix: verify fraction 14.3% → **39.4%**, continuous landmass with valleys, standing
+  trees, and the ocean rendering for the first time. Verify threshold raised 5% → 25% so this
+  class fails loudly forever after.
+- **Corrugation (Group R)**: diagnosed by elimination with permanent tests — RAW heightmap
+  smooth (max 1-unit step 3.80 vs analytic bound ~8), CPU normals continuous (mean 7.0°/max
+  29.5° over 4440 edges), and the contour-stripe artifact itself was the winding bug's grazing
+  slivers (gone with it). Remaining appearance is ordinary voxel-scale terracing; possible
+  subtle oct8 normal banding stays a named future polish A/B (RG16 normals).
+- **Overlay fps/ms (Group S)**: root cause exactly as predicted — slow-EMA fps beside RAW
+  instantaneous ms. Both now derive from ONE smoothed frame time (consistent by construction);
+  the 2s log prints worst-frame ms.
+- **Stutter (Groups T/U)**: per-frame mesh upload budget (`--upload-budget`, default 4,
+  0=pre-fix behavior for A/B) + budgeted GPU buffer RELEASE on unload (the godot_voxel-documented
+  destroy-churn spike — a boundary crossing dumps a whole trailing face) + nearest-first job
+  submission (every surveyed engine orders; single-producer FIFO makes it real). Both subagent
+  reports landed and reconciled: the planned FIXED-BUCKET pool was the outlier design — Diligent
+  ships `IBufferSuballocator`/`VertexPool`, recorded as the adoption path if post-budget captures
+  still show buffer churn (with the freed-region-quarantine caveat to verify first).
+- **Walk mode (Group V)**: G toggles fly/walk (`--walk` starts in it); gravity (-32u/s²) +
+  analytic ground clamp via `HeightmapGenerator::height_at` (sea-level-clamped — stride across
+  water, no swimming v1); 4 new controller physics tests incl. a big-dt tunneling guard;
+  `--autofly --walk` asserts zero below-ground frames; ground query verified against the actual
+  extracted mesh surface at 5 columns (incl. negative coords — which flushed out the
+  under-ocean-column subtlety: submerged terrain isn't meshed, water top is). Jolt named+deferred
+  in writing.
+- **Trees (Group W)**: deterministic jittered-grid placement (splitmix hash; masks: height
+  [1.5,45], slope ≤2.0 — calibrated against the measured mean slope 1.34, not guessed) appended
+  into the chunk's own compressed mesh (same PSO/format/culling/budgets; Wood/Leaves materials
+  4/5; skip-if-crossing-chunk-top v1). Overlay "objects" count. 3 new tests: determinism,
+  spacing/masks, chunk-local bounds.
+
 **Group F (consolidation, tasks 33–35): DONE (2026-09-03), with stated limits.** Task 33 happened
 naturally at Group D: streaming + camera + rendering + overlay already run as one `voxel_app` loop
 (final gate re-run: 49/49 tests, `--verify-frame` green on Vulkan AND D3D12, `--autofly` bounded).

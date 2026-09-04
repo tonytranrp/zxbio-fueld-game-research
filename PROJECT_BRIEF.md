@@ -692,6 +692,13 @@ first green run of the workflow on GitHub's own runners (written, not yet exerci
 when: a fresh clone builds clean through CI on the sanitizer and static-analysis jobs, not just
 the plain build.
 
+**Terrain fixes & gameplay pass (2026-09-04): ✅ DONE.** The streaming ribbon bug (radius applied
+to Y — §5's cube design corrected to horizontal-radius full-height columns), the overlay fps/ms
+inconsistency, stutter budgets (upload + GPU-release + nearest-first jobs, grounded in a 2-subagent
+research pass), camera WALK mode (gravity + analytic ground query; Jolt named-and-deferred), and
+deterministic procedural trees (primitive geometry appended into chunk meshes, Wood/Leaves
+materials). 69/69 tests. Log: `research/terrain-fixes-log.md`.
+
 **Engine hardening pass (post-Phase-1, 2026-09-04): ✅ DONE.** `ENGINE_HARDENING_BRIEF.md`
 Groups G–P executed; decision log with all evidence in `research/engine-hardening-log.md`.
 Highlights: compressed 12B GPU vertex + 16-bit indices (VRAM 17.0→7.1 MiB measured on autofly,

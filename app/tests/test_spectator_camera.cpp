@@ -98,3 +98,67 @@ TEST_CASE("Opposed inputs cancel to no movement without dividing by zero", "[cam
     update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f);
     CHECK(approx(transform.position, {0.0f, 0.0f, 0.0f}));
 }
+
+TEST_CASE("Walk mode falls under gravity and rests exactly at ground plus eye height", "[camera][walk]") {
+    // TERRAIN_FIXES_BRIEF Group V task 24's check: dropped from height, comes to rest at the
+    // queried ground height -- not through it, not hovering above it.
+    InputState input;
+    Transform transform;
+    transform.position = {0.0f, 50.0f, 0.0f};
+    SpectatorCameraState state;
+    state.mode = app::CameraMoveMode::Walk;
+    constexpr float kGround = 12.5f;
+
+    for (int i = 0; i < 600; ++i) { // 10 simulated seconds at 60Hz -- far beyond the fall time
+        update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f / 60.0f, kGround);
+        CHECK(transform.position.y >= kGround + app::kEyeHeight - 1e-3f); // never tunnels through
+    }
+    CHECK(std::abs(transform.position.y - (kGround + app::kEyeHeight)) < 1e-3f);
+    CHECK(state.vertical_velocity == 0.0f);
+}
+
+TEST_CASE("Walk mode survives one huge dt step without tunneling", "[camera][walk]") {
+    // A stutter frame (exactly what Group T is about) must not let physics integrate through the
+    // ground: one 0.5s step from just above the surface.
+    InputState input;
+    Transform transform;
+    transform.position = {0.0f, 5.0f, 0.0f};
+    SpectatorCameraState state;
+    state.mode = app::CameraMoveMode::Walk;
+
+    update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 0.5f, 0.0f);
+    CHECK(transform.position.y >= app::kEyeHeight - 1e-3f);
+    CHECK(state.vertical_velocity == 0.0f);
+}
+
+TEST_CASE("Walk mode moves along yaw only and ignores vertical inputs", "[camera][walk]") {
+    InputState input;
+    input.move_forward = true;
+    input.move_up = true;   // Space must be inert on the ground...
+    input.move_down = true; // ...and so must Ctrl
+
+    Transform transform;
+    transform.position = {0.0f, app::kEyeHeight, 0.0f}; // standing on flat ground at y=0
+    SpectatorCameraState state;
+    state.mode = app::CameraMoveMode::Walk;
+    state.pitch_radians = glm::radians(-80.0f); // staring at the ground must not slow walking
+
+    update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f, 0.0f);
+    // Full walk speed along -Z (yaw 0), zero sideways drift, still standing at eye height.
+    CHECK(std::abs(transform.position.z - (-state.move_speed * app::kWalkSpeedFactor)) < 1e-3f);
+    CHECK(std::abs(transform.position.x) < 1e-4f);
+    CHECK(std::abs(transform.position.y - app::kEyeHeight) < 1e-3f);
+}
+
+TEST_CASE("Fly mode is untouched by the walk fields", "[camera][walk]") {
+    // Regression guard for the mode split: default-constructed state (Fly) with the new ground
+    // parameter supplied must behave exactly as before -- ground is ignored in Fly.
+    InputState input;
+    input.move_down = true;
+    Transform transform;
+    transform.position = {0.0f, 1.0f, 0.0f};
+    SpectatorCameraState state;
+
+    update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f, 1000.0f);
+    CHECK(std::abs(transform.position.y - (1.0f - state.move_speed)) < 1e-3f); // flew straight down
+}

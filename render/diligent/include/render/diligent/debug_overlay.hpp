@@ -21,6 +21,7 @@ struct OverlayStats {
     std::size_t ready_chunks = 0;
     std::size_t visible_chunks = 0;
     std::size_t total_chunk_meshes = 0;
+    std::size_t objects = 0; // decoration objects (trees) in ready chunks
     std::size_t jobs_in_flight = 0;
     std::uint64_t gpu_self_bytes = 0;      // §2.3 number 1: our own chunk buffers (GpuAllocationTracker)
     std::uint64_t gpu_self_peak_bytes = 0;

@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstdlib>
 #include <format>
 #include <limits>
 #include <optional>
@@ -185,6 +187,17 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
     ctx->CommitShaderResources(impl_->srb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     const Frustum frustum = extract_frustum(viewProj);
+    // Diagnostic kill switch (ribbon-bug bisection): render everything when set, isolating
+    // whether missing chunks are culled (this fixes them) or mis-drawn (it doesn't).
+    static const bool kDisableCulling = [] {
+#if defined(_MSC_VER)
+        char buffer[8] = {};
+        std::size_t len = 0;
+        return getenv_s(&len, buffer, sizeof(buffer), "VOXEL_NO_CULL") == 0 && len > 0;
+#else
+        return std::getenv("VOXEL_NO_CULL") != nullptr;
+#endif
+    }();
     std::size_t visible = 0;
 #if defined(TRACY_ENABLE)
     std::optional<tracy::VkCtxScope> gpuZone;
@@ -193,8 +206,41 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
         gpuZone.emplace(tracyCtx, &kDrawLoc, ctxVk->GetVkCommandBuffer(), true);
     }
 #endif
+    static const bool kDumpDraws = [] {
+#if defined(_MSC_VER)
+        char buffer[8] = {};
+        std::size_t len = 0;
+        return getenv_s(&len, buffer, sizeof(buffer), "VOXEL_DUMP_DRAWS") == 0 && len > 0;
+#else
+        return std::getenv("VOXEL_DUMP_DRAWS") != nullptr;
+#endif
+    }();
+    static bool dumpedOnce = false;
+    const bool dumpThisFrame = kDumpDraws && !dumpedOnce && impl_->chunks.size() > 80;
+    static const std::optional<int> kOnlyChunkY = []() -> std::optional<int> {
+#if defined(_MSC_VER)
+        char buffer[16] = {};
+        std::size_t len = 0;
+        if (getenv_s(&len, buffer, sizeof(buffer), "VOXEL_ONLY_CHUNK_Y") == 0 && len > 0) {
+            return std::atoi(buffer);
+        }
+        return std::nullopt;
+#else
+        const char* v = std::getenv("VOXEL_ONLY_CHUNK_Y");
+        return v ? std::optional<int>(std::atoi(v)) : std::nullopt;
+#endif
+    }();
     for (const auto& [coord, mesh] : impl_->chunks) {
-        if (!intersects(frustum, Aabb{mesh.aabbMin, mesh.aabbMax})) {
+        if (kOnlyChunkY && coord.y != *kOnlyChunkY) {
+            continue; // ribbon-bug bisection: isolate one chunk-Y layer
+        }
+        const bool culled = !intersects(frustum, Aabb{mesh.aabbMin, mesh.aabbMax});
+        if (dumpThisFrame) {
+            std::fprintf(stderr, "draw chunk(%d,%d,%d) idx=%u aabbY=[%.1f,%.1f]%s\n", coord.x, coord.y, coord.z,
+                         mesh.indexCount, static_cast<double>(mesh.aabbMin.y), static_cast<double>(mesh.aabbMax.y),
+                         culled ? " CULLED" : "");
+        }
+        if (!kDisableCulling && culled) {
             continue; // task 14: skip the draw call entirely
         }
         ++visible;
@@ -217,6 +263,9 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
         draw.IndexType = VT_UINT16; // halved with the compressed vertex format (Group K task 27)
         draw.Flags = DRAW_FLAG_VERIFY_ALL;
         ctx->DrawIndexed(draw);
+    }
+    if (dumpThisFrame) {
+        dumpedOnce = true;
     }
 #if defined(TRACY_ENABLE)
     if (tracyCtx != nullptr && ctxVk) {

@@ -50,6 +50,8 @@ struct AppOptions {
     bool verify_frame = false;  // Group B smoke check: read the frame back, fail on an empty one
     bool validation = false;
     bool autofly = false; // Group D smoke check: fly +X automatically; fail if unload never bounds the loaded set
+    bool walk = false;    // start in walk (gravity) mode; with --autofly, also asserts no fall-through
+    std::size_t upload_budget = 4; // mesh commits per frame; 0 = unlimited (the pre-fix stutter behavior)
 };
 
 // How long --verify-frame keeps waiting for streaming to settle before declaring failure. At
@@ -88,6 +90,12 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             options.validation = true;
         } else if (arg == "--autofly") {
             options.autofly = true;
+        } else if (arg == "--walk") {
+            options.walk = true;
+        } else if (arg == "--upload-budget") {
+            const char* value = next_value();
+            options.upload_budget =
+                value ? static_cast<std::size_t>(std::strtoul(value, nullptr, 10)) : options.upload_budget;
 #ifndef NDEBUG
         } else if (arg == "--crash-test") {
             // Group J task 20's check: deliberately exercise each crash-handler hook. Debug-only
@@ -107,7 +115,7 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             return std::nullopt;
 #endif
         } else {
-            log(LogLevel::Error, "unknown argument \"{}\" (known: --mode vk|d3d12, --frames N, --radius N, --seed N, --verify-frame, --validation, --autofly)", arg);
+            log(LogLevel::Error, "unknown argument \"{}\" (known: --mode vk|d3d12, --frames N, --radius N, --seed N, --verify-frame, --validation, --autofly, --walk)", arg);
             return std::nullopt;
         }
     }
@@ -161,6 +169,9 @@ int run(const AppOptions& options) {
         const glm::vec3 toOrigin = glm::normalize(glm::vec3(0.0f, 20.0f, 0.0f) - transform.position);
         spectator.yaw_radians = std::atan2(-toOrigin.x, -toOrigin.z);
         spectator.pitch_radians = std::asin(toOrigin.y);
+        if (options.walk) {
+            spectator.mode = app::CameraMoveMode::Walk; // starts mid-air and falls to the ground
+        }
     }
 
     engine::input::GlfwInput input(window.handle());
@@ -179,7 +190,7 @@ int run(const AppOptions& options) {
     ChunkEventCounters chunkCounters;
     chunkCounters.connect(dispatcher);
     app::ChunkStreamingSystem streaming(streamingConfig, options.seed, std::jthread::hardware_concurrency(),
-                                        renderer, registry, dispatcher);
+                                        renderer, registry, dispatcher, options.upload_budget);
     log(LogLevel::Info, "streaming with load radius {}, unload radius {} (+{:.0f}s delay), {} worker threads",
         streamingConfig.load_radius, streamingConfig.unload_radius, streamingConfig.unload_delay_seconds,
         streaming.worker_thread_count());
@@ -189,7 +200,9 @@ int run(const AppOptions& options) {
     std::uint32_t frame = 0;
     auto lastReport = std::chrono::steady_clock::now();
     std::uint32_t framesSinceReport = 0;
-    float smoothedFps = 0.0f;
+    float smoothedFrameMs = 0.0f;
+    float worstFrameMs = 0.0f; // per 2s window -- the number a stutter actually is (Group T task 17)
+    std::uint32_t walkViolations = 0; // frames ending below the ground surface in walk mode
 
     // VK_EXT_memory_budget is polled on a timer per its own documented usage pattern, never per
     // frame (task 30).
@@ -205,12 +218,30 @@ int run(const AppOptions& options) {
 
         auto [transform, lens, spectator] =
             registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(cameraEntity);
+        if (input.take_walk_toggle()) {
+            // Deliberate transition handling (Group V task 25): position is untouched, vertical
+            // velocity zeroed -- entering walk mid-air simply starts a clean fall; leaving it
+            // freezes wherever you are. No snap in either direction.
+            spectator.mode = spectator.mode == app::CameraMoveMode::Fly ? app::CameraMoveMode::Walk
+                                                                        : app::CameraMoveMode::Fly;
+            spectator.vertical_velocity = 0.0f;
+            log(LogLevel::Info, "camera mode: {}", spectator.mode == app::CameraMoveMode::Walk ? "walk" : "fly");
+        }
+        const float groundHeight = streaming.ground_height(transform.position.x, transform.position.z);
         app::update_spectator_camera(transform, spectator, input.state(), input.take_look_delta(),
-                                     static_cast<float>(clock.delta_seconds()));
+                                     static_cast<float>(clock.delta_seconds()), groundHeight);
         if (options.autofly) {
-            // Constant sideways travel at boost speed -- exercises the full load/unload cycle
-            // (hysteresis, delayed removal, GPU teardown) with no human at the controls.
-            transform.position.x += 160.0f * static_cast<float>(clock.delta_seconds());
+            // Constant sideways travel (at boost speed in fly mode; ground-bound in walk mode) --
+            // exercises the full load/unload cycle with no human at the controls.
+            transform.position.x += (options.walk ? 20.0f : 160.0f) * static_cast<float>(clock.delta_seconds());
+        }
+        if (options.walk && spectator.mode == app::CameraMoveMode::Walk) {
+            // Group V task 27's mechanical check, evaluated EVERY frame of a walk run: the camera
+            // must never end an update below the ground surface (fall-through at chunk seams or
+            // steep slopes is exactly the bug class this watches for).
+            if (transform.position.y < groundHeight + app::kEyeHeight - 0.01f) {
+                ++walkViolations;
+            }
         }
 
         streaming.update(transform.position, clock.elapsed_seconds());
@@ -243,15 +274,20 @@ int run(const AppOptions& options) {
             }
         }
         {
+            // Group S fix (TERRAIN_FIXES_BRIEF task 12): fps and ms are BOTH derived from the
+            // same smoothed frame time, so the two displayed numbers are arithmetically
+            // consistent (fps == 1000/ms) by construction. The old code paired a slow-EMA fps
+            // with the INSTANTANEOUS dt -- during any hiccup the pair disagreed wildly (the
+            // screenshots' 275 fps next to 31.14 ms).
             const float dtMs = static_cast<float>(clock.delta_seconds()) * 1000.0f;
-            const float instantFps = dtMs > 0.0f ? 1000.0f / dtMs : 0.0f;
-            smoothedFps = smoothedFps == 0.0f ? instantFps : smoothedFps * 0.95f + instantFps * 0.05f;
+            smoothedFrameMs = smoothedFrameMs == 0.0f ? dtMs : smoothedFrameMs * 0.95f + dtMs * 0.05f;
             render::diligent::OverlayStats stats;
-            stats.fps = smoothedFps;
-            stats.frame_ms = dtMs;
+            stats.fps = smoothedFrameMs > 0.0f ? 1000.0f / smoothedFrameMs : 0.0f;
+            stats.frame_ms = smoothedFrameMs;
             stats.ready_chunks = chunkCounters.ready; // event-sourced (task 33), not polled
             stats.visible_chunks = renderer.last_visible_count();
             stats.total_chunk_meshes = renderer.chunk_count();
+            stats.objects = streaming.object_count();
             stats.jobs_in_flight = streaming.in_flight_count();
             stats.gpu_self_bytes = renderer.gpu_memory().allocated_bytes();
             stats.gpu_self_peak_bytes = renderer.gpu_memory().peak_bytes();
@@ -264,10 +300,13 @@ int run(const AppOptions& options) {
         if (options.verify_frame && !verifyRan && frame >= 5 && streaming.settled() &&
             streaming.ready_chunk_count() > 0) {
             const float fraction = render::diligent::sample_non_reference_pixel_fraction(context);
-            verifyOk = fraction >= 0.05f;
+            // 25%, raised from the original 5% after the winding bug: back-face-culled terrain
+            // still passed 5% on silhouette slivers alone for two whole passes. A full landmass
+            // from this camera measures ~39%; 25% fails on anything ribbon-like again.
+            verifyOk = fraction >= 0.25f;
             verifyRan = true;
             log(verifyOk ? LogLevel::Info : LogLevel::Error,
-                "frame verification: {:.1f}% of pixels differ from the sky reference pixel (threshold 5%) after "
+                "frame verification: {:.1f}% of pixels differ from the sky reference pixel (threshold 25%) after "
                 "{} chunks streamed in",
                 static_cast<double>(fraction) * 100.0, streaming.ready_chunk_count());
         }
@@ -286,16 +325,19 @@ int run(const AppOptions& options) {
             break;
         }
 
+        worstFrameMs = std::max(worstFrameMs, static_cast<float>(clock.delta_seconds()) * 1000.0f);
         const auto now = std::chrono::steady_clock::now();
         if (now - lastReport >= std::chrono::seconds(2)) {
             const double seconds = std::chrono::duration<double>(now - lastReport).count();
+            const auto [yLo, yHi] = streaming.loaded_y_range();
             log(LogLevel::Info,
-                "{:.1f} fps, {}/{} chunk meshes visible after culling, {} ready / {} in flight "
-                "(pending {}, gen {}, mesh {}), {:.1f} MiB GPU",
-                framesSinceReport / seconds, renderer.last_visible_count(), renderer.chunk_count(),
-                streaming.ready_chunk_count(), streaming.in_flight_count(), streaming.pending_mesh_count(),
+                "{:.1f} fps (worst {:.1f} ms), {}/{} chunk meshes visible after culling, {} ready "
+                "(chunk-Y {}..{}) / {} in flight (pending {}, gen {}, mesh {}), {:.1f} MiB GPU",
+                framesSinceReport / seconds, worstFrameMs, renderer.last_visible_count(), renderer.chunk_count(),
+                streaming.ready_chunk_count(), yLo, yHi, streaming.in_flight_count(), streaming.pending_mesh_count(),
                 streaming.generation_in_flight_count(), streaming.mesh_in_flight_count(),
                 static_cast<double>(renderer.gpu_memory().allocated_bytes()) / (1024.0 * 1024.0));
+            worstFrameMs = 0.0f;
             // Task 33's check, mechanically: the event-derived count must always equal the polled
             // one. A divergence means a lifecycle event is missing or double-fired.
             if (chunkCounters.ready != streaming.ready_chunk_count()) {
@@ -307,13 +349,26 @@ int run(const AppOptions& options) {
         }
     }
 
+    bool walkOk = true;
+    if (options.walk) {
+        walkOk = walkViolations == 0;
+        log(walkOk ? LogLevel::Info : LogLevel::Error,
+            "walk mode: {} frames ended below the ground surface (0 required)", walkViolations);
+    }
+
     bool autoflyOk = true;
     if (options.autofly) {
-        // If delayed unload (tasks 22/25/26) works, the loaded set stays near one desired cube;
-        // if it silently never unloads, 15s of travel accumulates hundreds of stale chunks. 2x the
-        // full cube is a deliberately loose bound that still cleanly separates the two.
+        // Bound = the desired column block PLUS the unload-hysteresis trailing band, which is
+        // fps-INDEPENDENT because both the camera's travel and the unload delay run on sim time:
+        // trailing columns ~= speed * unload_delay / chunk_size. (The old fixed 2x-cube bound
+        // implicitly assumed stale completions were discarded; they are now applied and cleaned
+        // up by hysteresis instead -- see chunk_streaming.cpp -- so the band is real and
+        // bounded, not a leak.) +3 columns of slack for in-flight arrivals.
         const auto span = static_cast<std::size_t>(2 * options.radius + 1);
-        const std::size_t bound = span * span * 6 * 2;
+        const float autoflySpeed = options.walk ? 20.0f : 160.0f;
+        const auto trailingColumns = static_cast<std::size_t>(
+            autoflySpeed * static_cast<float>(streamingConfig.unload_delay_seconds) / 32.0f + 3.0f);
+        const std::size_t bound = span * span * 6 + trailingColumns * span * 6;
         autoflyOk = streaming.ready_chunk_count() <= bound;
         log(autoflyOk ? LogLevel::Info : LogLevel::Error,
             "autofly: {} chunks loaded at exit (bound {}), {:.1f} MiB GPU, peak {:.1f} MiB",
@@ -323,7 +378,7 @@ int run(const AppOptions& options) {
     }
 
     log(LogLevel::Info, "exiting after {} frames on {}", frame, render::diligent::to_string(context.backend()));
-    return verifyOk && autoflyOk ? EXIT_SUCCESS : EXIT_FAILURE;
+    return verifyOk && autoflyOk && walkOk ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 } // namespace

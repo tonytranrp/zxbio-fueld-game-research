@@ -16,8 +16,8 @@ using namespace Diligent;
 // The material palette cbuffer (float4 per MaterialID) is sized to the actual material count from
 // world/chunk -- adding a material means updating this array AND g_MaterialColors[] in
 // terrain.psh.hlsl together (task 12).
-constexpr std::size_t kMaterialCount = static_cast<std::size_t>(world::chunk::MaterialID::Water) + 1;
-static_assert(kMaterialCount == 4, "terrain.psh.hlsl declares g_MaterialColors[4] -- update both together");
+constexpr std::size_t kMaterialCount = static_cast<std::size_t>(world::chunk::MaterialID::Leaves) + 1;
+static_assert(kMaterialCount == 6, "terrain.psh.hlsl declares g_MaterialColors[6] -- update both together");
 
 // Linear-space albedo per MaterialID; index 0 (Air) is never sampled by a real fragment but keeps
 // indexing direct.
@@ -26,6 +26,8 @@ constexpr float kMaterialColors[kMaterialCount][4] = {
     {0.55f, 0.55f, 0.58f, 1.0f}, // Stone
     {0.45f, 0.32f, 0.18f, 1.0f}, // Dirt
     {0.13f, 0.35f, 0.72f, 1.0f}, // Water
+    {0.35f, 0.22f, 0.10f, 1.0f}, // Wood (tree trunks)
+    {0.16f, 0.42f, 0.14f, 1.0f}, // Leaves (tree canopies)
 };
 
 // The GPU input layout is a byte-for-byte contract with detail::GpuVertexCompressed (built at
@@ -125,8 +127,17 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
     psoCI.GraphicsPipeline.InputLayout.LayoutElements = layout;
     psoCI.GraphicsPipeline.InputLayout.NumElements = 3;
 
-    // Fixed-function defaults are already correct for opaque terrain (research/
-    // diligent-core-api-surface.md Task 2): solid fill, back-face cull, depth test+write LESS.
+    // Fixed-function defaults (solid fill, back-face cull, depth LESS) are correct EXCEPT the
+    // winding convention: Phase 1's on-paper derivation concluded the default
+    // FrontCounterClockwise=False matched the mesher's output, but the TERRAIN_FIXES ribbon-bug
+    // bisection proved it empirically wrong -- the visual capture showed terrain visible from
+    // BELOW and invisible from above (up-facing triangles were the ones being back-face culled;
+    // the "ribbons" were just steep silhouette slivers that survived). extract_mesh emits
+    // counter-clockwise-when-viewed-from-outside triangles under GLM's RH/[0,1] conventions, so
+    // the rasterizer must treat CCW as front. The lesson stands in
+    // research/terrain-fixes-log.md: a winding derivation is not verified until an actual frame
+    // capture has been looked at from both sides.
+    psoCI.GraphicsPipeline.RasterizerDesc.FrontCounterClockwise = True;
     // Only the attachment formats are mandatory -- read from the real swap chain, never assumed.
     const SwapChainDesc& scDesc = rc.swapchain->GetDesc();
     psoCI.GraphicsPipeline.NumRenderTargets = 1;

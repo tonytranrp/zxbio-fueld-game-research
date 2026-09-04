@@ -5,7 +5,7 @@
 
 cbuffer MaterialPalette
 {
-    float4 g_MaterialColors[4];
+    float4 g_MaterialColors[6];
 };
 
 struct PSInput
@@ -25,7 +25,7 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const float3 lightDir = normalize(float3(0.4, -1.0, 0.25)); // sun, slightly off-axis so all face orientations shade distinctly
     const float3 normal   = normalize(PSIn.Normal);
     const float  diffuse  = saturate(dot(normal, -lightDir));
-    const float3 albedo   = g_MaterialColors[min(PSIn.Material, 3u)].rgb;
+    const float3 albedo   = g_MaterialColors[min(PSIn.Material, 5u)].rgb;
     const float3 lit      = albedo * (0.25 + 0.75 * diffuse); // 0.25 ambient floor keeps unlit faces readable
     PSOut.Color = float4(lit, 1.0);
 }

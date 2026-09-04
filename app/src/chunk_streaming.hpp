@@ -1,7 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 #include "engine/core/math.hpp"
@@ -34,9 +36,12 @@ namespace app {
 // unload/discard. Voxel data itself never lives in the registry (M1_2_BRIEF.md §5).
 class ChunkStreamingSystem {
 public:
+    // uploadBudgetPerTick: max mesh completions committed to the GPU per update() call
+    // (TERRAIN_FIXES_BRIEF Group T task 16's stutter fix); 0 = unlimited (the pre-fix behavior,
+    // kept selectable for A/B measurement).
     ChunkStreamingSystem(world::streaming::StreamingConfig config, int seed, std::size_t workerThreads,
                          render::diligent::TerrainRenderer& renderer, engine::ecs::Registry& registry,
-                         engine::events::Dispatcher& dispatcher);
+                         engine::events::Dispatcher& dispatcher, std::size_t uploadBudgetPerTick = 4);
 
     // Not movable/copyable: worker jobs capture `this` for the completion queues.
     ChunkStreamingSystem(const ChunkStreamingSystem&) = delete;
@@ -52,11 +57,24 @@ public:
     [[nodiscard]] bool settled() const;
 
     [[nodiscard]] std::size_t ready_chunk_count() const noexcept { return streamer_.loaded_count(); }
+    [[nodiscard]] std::pair<std::int32_t, std::int32_t> loaded_y_range() const noexcept {
+        return streamer_.loaded_y_range();
+    }
+
+    // Walk mode's analytic ground query (Group V task 23) -- the same height function that
+    // generates the terrain, so camera physics and the rendered surface agree by construction.
+    // Clamped to sea level: an underwater column's terrain surface is submerged (the mesher
+    // renders the WATER top there, not the stone), so v1 walking strides across the water
+    // surface rather than descending under the ocean -- no swimming yet, documented scope.
+    [[nodiscard]] float ground_height(float worldX, float worldZ) const {
+        return std::max(heightmap_.height_at(worldX, worldZ), 0.0f);
+    }
     [[nodiscard]] std::size_t in_flight_count() const noexcept {
         return pending_mesh_.size() + gen_in_flight_.size() + mesh_in_flight_.size();
     }
     [[nodiscard]] std::size_t worker_thread_count() const noexcept { return pool_.thread_count(); }
     [[nodiscard]] std::size_t pending_mesh_count() const noexcept { return pending_mesh_.size(); }
+    [[nodiscard]] std::size_t object_count() const noexcept { return total_tree_count_; } // Group W task 35
     [[nodiscard]] std::size_t generation_in_flight_count() const noexcept { return gen_in_flight_.size(); }
     [[nodiscard]] std::size_t mesh_in_flight_count() const noexcept { return mesh_in_flight_.size(); }
 
@@ -68,19 +86,25 @@ private:
     struct MeshCompletion {
         world::chunk::ChunkCoord coord;
         world::meshing::MeshData mesh;
+        std::size_t tree_count = 0; // decoration objects appended to this chunk's mesh (Group W)
         bool failed = false;
     };
 
     void request_generation(world::chunk::ChunkCoord coord);
     void drain_generation_completions();
-    void submit_ready_mesh_jobs();
+    void submit_ready_mesh_jobs(world::chunk::ChunkCoord anchor);
     void drain_mesh_completions();
     void apply_unloads(const std::vector<world::chunk::ChunkCoord>& coords);
+    void release_gpu_meshes_budgeted();
     void sweep_generation_margin(world::chunk::ChunkCoord anchor);
     void destroy_chunk_entity(world::chunk::ChunkCoord coord);
     [[nodiscard]] bool neighborhood_generated(world::chunk::ChunkCoord coord) const;
 
     world::streaming::ChunkStreamer streamer_;
+    std::size_t upload_budget_per_tick_ = 4;
+    int seed_ = 0; // tree placement shares the terrain seed (deterministic decoration, Group W)
+    world::chunk::CoordMap<std::size_t> tree_counts_; // per ready chunk, for the overlay count
+    std::size_t total_tree_count_ = 0;
     world::chunk::ChunkStore store_;
     world::generation::HeightmapGenerator heightmap_; // concurrent generate calls are safe + deterministic (stress-tested)
     render::diligent::TerrainRenderer& renderer_;
@@ -90,6 +114,11 @@ private:
     engine::events::Dispatcher& dispatcher_;
 
     world::chunk::CoordMap<engine::ecs::Entity> chunk_entities_;
+    // Unloaded chunks whose GPU buffers are not yet destroyed: buffer destruction is budgeted
+    // per tick (TERRAIN_FIXES research: godot_voxel's Tracy-profiled finding that destroying the
+    // trailing face of meshes on a boundary crossing is itself a main-thread spike). Main-thread
+    // only.
+    std::vector<world::chunk::ChunkCoord> gpu_release_queue_;
     world::chunk::CoordSet pending_mesh_;   // streamer-requested, waiting on neighbors
     world::chunk::CoordSet generated_;      // voxels present in store_
     world::chunk::CoordSet gen_in_flight_;  // generation job running

@@ -36,16 +36,19 @@ void complete_all(ChunkStreamer& streamer, const std::vector<ChunkCoord>& coords
 
 } // namespace
 
-TEST_CASE("First tick requests exactly the Chebyshev cube clamped to the terrain band", "[streaming]") {
+TEST_CASE("First tick requests full-band columns within the horizontal radius", "[streaming]") {
     ChunkStreamer streamer(small_config());
     const auto commands = streamer.tick({0, 0, 0}, 0.0);
 
-    // radius 1 => x,z in [-1,1]; y in [-1,1] (inside band [-3,2]) => 3*3*3 = 27.
-    CHECK(commands.start_loading.size() == 27);
+    // radius 1 => x,z in [-1,1]; y ALWAYS spans the whole band [-3,2] (the ribbon-bug fix:
+    // render distance is horizontal, columns are full-height) => 3*3*6 = 54.
+    CHECK(commands.start_loading.size() == 54);
     CHECK(commands.unload.empty());
-    CHECK(streamer.in_flight_count() == 27);
+    CHECK(streamer.in_flight_count() == 54);
     CHECK(contains(commands.start_loading, {1, 1, 1}));
-    CHECK_FALSE(contains(commands.start_loading, {2, 0, 0})); // outside the cube
+    CHECK(contains(commands.start_loading, {0, -3, 0})); // band bottom loads even at camera y=0
+    CHECK(contains(commands.start_loading, {0, 2, 0}));  // band top too
+    CHECK_FALSE(contains(commands.start_loading, {2, 0, 0})); // outside the horizontal radius
 
     // Same camera, nothing completed: no duplicate requests while in flight.
     const auto again = streamer.tick({0, 0, 0}, 0.1);
@@ -53,19 +56,24 @@ TEST_CASE("First tick requests exactly the Chebyshev cube clamped to the terrain
     CHECK(again.unload.empty());
 }
 
-TEST_CASE("The desired-set y range clamps to the terrain band and distance is band-anchored", "[streaming]") {
+TEST_CASE("Camera altitude never narrows the loaded band (the ribbon-bug regression test)", "[streaming]") {
     ChunkStreamer streamer(small_config());
 
-    // Camera far above the world: the cube anchors at y_max, not at the camera's y.
+    // Camera far above the world: every desired column still spans the FULL band -- the old
+    // radius-on-Y behavior cropped this to a camera-relative slice and rendered ribbons.
     const auto commands = streamer.tick({0, 20, 0}, 0.0);
-    CHECK_FALSE(commands.start_loading.empty());
+    CHECK(commands.start_loading.size() == 54);
+    std::int32_t yLo = 100;
+    std::int32_t yHi = -100;
     for (const ChunkCoord& coord : commands.start_loading) {
-        CHECK(coord.y <= 2);
-        CHECK(coord.y >= 1); // anchor y=2, radius 1, clamped to the band's top
+        yLo = std::min(yLo, coord.y);
+        yHi = std::max(yHi, coord.y);
     }
+    CHECK(yLo == -3);
+    CHECK(yHi == 2);
     complete_all(streamer, commands.start_loading);
 
-    // Climbing even higher must NOT unload the terrain underneath (the anchored-distance rule).
+    // Climbing even higher must NOT unload the terrain underneath (distance is horizontal-only).
     const auto higher = streamer.tick({0, 100, 0}, 10.0);
     CHECK(higher.unload.empty());
     const auto muchLater = streamer.tick({0, 100, 0}, 100.0);
@@ -82,7 +90,7 @@ TEST_CASE("Moving one chunk sideways requests the new edge and unloads nothing (
     // case the two-radii design exists to prevent.
     const auto commands = streamer.tick({1, 0, 0}, 1.0);
     CHECK(commands.unload.empty());
-    CHECK(commands.start_loading.size() == 9); // one new 3x3 x-column
+    CHECK(commands.start_loading.size() == 18); // one new x-slab: 3 z-columns x 6 band layers
     for (const ChunkCoord& coord : commands.start_loading) {
         CHECK(coord.x == 2);
     }
@@ -96,9 +104,9 @@ TEST_CASE("Unload requires being continuously outside R_unload for the configure
     CHECK(streamer.tick({100, 0, 0}, 10.0).unload.empty());
     // Half the delay later: still nothing.
     CHECK(streamer.tick({100, 0, 0}, 11.0).unload.empty());
-    // Past the delay: all 27 old chunks unload.
+    // Past the delay: all 54 old chunks unload.
     const auto expired = streamer.tick({100, 0, 0}, 12.5).unload;
-    CHECK(expired.size() == 27);
+    CHECK(expired.size() == 54);
     CHECK(streamer.loaded_count() == 0);
 }
 
@@ -113,7 +121,7 @@ TEST_CASE("Returning inside R_unload resets the delay clock -- outside time is c
     // 1.5s after the restart: cumulative outside time is 3s > 2s, continuous is only 1.5s < 2s.
     CHECK(streamer.tick({100, 0, 0}, 13.5).unload.empty());
     // 2s after the restart: now it goes.
-    CHECK(streamer.tick({100, 0, 0}, 14.0).unload.size() == 27);
+    CHECK(streamer.tick({100, 0, 0}, 14.0).unload.size() == 54);
 }
 
 TEST_CASE("A stale completion is discardable and the coordinate is re-requested when desired again",

@@ -47,6 +47,11 @@ void GlfwInput::key_callback(GLFWwindow* window, int key, int /*scancode*/, int 
     case GLFW_KEY_SPACE: state.move_up = down; break;
     case GLFW_KEY_LEFT_CONTROL: state.move_down = down; break;
     case GLFW_KEY_LEFT_SHIFT: state.speed_boost = down; break;
+    case GLFW_KEY_G:
+        if (down) {
+            state.pending_walk_toggle = true; // edge: consumed by take_walk_toggle()
+        }
+        break;
     case GLFW_KEY_ESCAPE:
         if (down) {
             state.quit_requested = true;

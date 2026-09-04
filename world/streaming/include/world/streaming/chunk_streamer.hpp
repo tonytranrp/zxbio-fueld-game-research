@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "world/chunk/chunk_coord.hpp"
@@ -12,16 +14,20 @@ namespace world::streaming {
 // delay, not one radius: a single boundary thrashes load/unload for a camera hovering near it --
 // the real, shipped fix (PaperMC's delayed-unload patch) is hysteresis in both space and time.
 struct StreamingConfig {
-    std::int32_t load_radius = 3;   // R_load: desired chunks within this Chebyshev distance
-    std::int32_t unload_radius = 5; // R_unload: only chunks beyond this are unload candidates.
+    std::int32_t load_radius = 3;   // R_load: desired columns within this HORIZONTAL Chebyshev
+                                    // distance (X/Z only -- Y is never distance-tested; see below)
+    std::int32_t unload_radius = 5; // R_unload: only columns beyond this are unload candidates.
                                     // Keep >= load_radius + 2: the gap guarantees an unloaded
                                     // chunk is never inside the 1-chunk meshing halo of any
                                     // still-desired chunk, which is what makes dropping its
                                     // voxel data on unload safe by construction.
     double unload_delay_seconds = 2.0; // continuously outside R_unload for this long before unload
-    // Vertical band that can contain terrain (heights are remapped to ±64 world-Y, sea level 0).
-    // The desired set clamps to it, and distance is measured from the camera's y clamped into it
-    // -- flying high above the world must not unload the terrain underneath you.
+    // The world's generated vertical extent in chunk-Y: every desired column loads this FULL
+    // band regardless of camera altitude (the ribbon-bug fix, TERRAIN_FIXES_BRIEF Group Q --
+    // applying the radius to Y loaded only a camera-relative altitude band and rendered the
+    // terrain as thin camera-following ribbons). Derived from the generator, not the camera:
+    // heightmap amplitude is +/-64 world-Y around sea level (surface chunks [-3, 1]); [-3, 2]
+    // covers that with headroom. Update alongside kAmplitude in heightmap_generator.cpp.
     std::int32_t y_min = -3;
     std::int32_t y_max = 2;
 };
@@ -65,6 +71,20 @@ public:
 
     [[nodiscard]] std::size_t loaded_count() const noexcept { return loaded_.size(); }
     [[nodiscard]] std::size_t in_flight_count() const noexcept { return in_flight_.size(); }
+
+    // Diagnostic for the ribbon-bug investigation (TERRAIN_FIXES Group Q task 1): the min/max
+    // chunk-Y currently loaded. {0,-1} (empty range) when nothing is loaded.
+    [[nodiscard]] std::pair<std::int32_t, std::int32_t> loaded_y_range() const noexcept {
+        std::int32_t lo = 0;
+        std::int32_t hi = -1;
+        bool first = true;
+        for (const world::chunk::ChunkCoord& coord : loaded_) {
+            lo = first ? coord.y : std::min(lo, coord.y);
+            hi = first ? coord.y : std::max(hi, coord.y);
+            first = false;
+        }
+        return {lo, hi};
+    }
     [[nodiscard]] const StreamingConfig& config() const noexcept { return config_; }
 
 private:

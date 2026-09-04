@@ -25,6 +25,7 @@ public:
 
     [[nodiscard]] const InputState& state() const noexcept { return state_; }
     [[nodiscard]] glm::vec2 take_look_delta() noexcept { return state_.take_look_delta(); }
+    [[nodiscard]] bool take_walk_toggle() noexcept { return state_.take_walk_toggle(); }
 
 private:
     static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);

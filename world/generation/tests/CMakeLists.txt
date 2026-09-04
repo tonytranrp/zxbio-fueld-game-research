@@ -4,8 +4,10 @@ add_executable(world_generation_tests
     test_terrain_fill.cpp
     test_determinism.cpp
     test_concurrent_stress.cpp
+    test_heightmap_smoothness.cpp
+    test_ground_query.cpp
 )
-target_link_libraries(world_generation_tests PRIVATE world_generation engine_jobs Catch2::Catch2WithMain project_warnings)
+target_link_libraries(world_generation_tests PRIVATE world_generation world_meshing engine_jobs Catch2::Catch2WithMain project_warnings)
 
 include(Catch)
 catch_discover_tests(world_generation_tests)

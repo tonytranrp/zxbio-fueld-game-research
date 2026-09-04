@@ -200,6 +200,30 @@ smoke-tested standalone under real MSVC before wiring in. CI needs no workflow c
 caches key on `hashFiles('cmake/Dependencies.cmake')`, so new pins invalidate and fetch
 automatically.
 
+## Terrain fixes & gameplay pass (2026-09-04, after the hardening pass)
+
+Decision log: `research/terrain-fixes-log.md`. Fixed: the **ribbon bug — TWO stacked causes**:
+(1) streaming applied the Chebyshev radius to Y (desired set is now full [-3,2]-band COLUMNS in
+a horizontal-only radius; the pre-fix "196 chunks" was exactly 7×7×4 cropped layers), and (2)
+**terrain winding inverted since Phase 1** — `FrontCounterClockwise` was left False against the
+mesher's CCW output, so up-facing triangles were back-face culled everywhere and every prior
+"verified" frame was silhouette slivers scraping past a 5% threshold. Fix in `pso_terrain.cpp`
+(=True): verify fraction 14.3%→39.4%, continuous landmass + the ocean's first-ever render;
+threshold raised to 25%. Never trust a winding derivation without reviewing a real capture from
+both sides — `VOXEL_DUMP_FRAME=<path>` + `--verify-frame` writes a PPM for exactly that (more
+env debug tools: `VOXEL_DUMP_DRAWS`, `VOXEL_NO_CULL`, `VOXEL_ONLY_CHUNK_Y=<n>`). Also fixed: the
+**overlay fps/ms mismatch** (both now derive from one smoothed frame time — consistent by
+construction), and load-stutter mitigations grounded in two research reports
+(per-frame mesh upload budget `--upload-budget N` default 4, 0=unlimited for A/B; budgeted GPU
+buffer RELEASE on unload — the godot_voxel-documented destroy-churn spike; nearest-first job
+submission). New gameplay: **walk mode** (`G` toggles fly/walk, `--walk` starts in it; gravity +
+analytic ground clamp from `HeightmapGenerator::height_at`, clamped to sea level — you stride on
+water, no swimming yet) and **procedural trees** (deterministic jittered-grid placement masked by
+height/slope, box trunk + octahedron canopy appended into the chunk's own compressed mesh; Wood/
+Leaves materials 4/5; overlay "objects" count). `--verify-frame` writes a reviewable PPM when
+env `VOXEL_DUMP_FRAME=<path>` is set. `--autofly --walk` asserts no ground fall-through per
+frame. The 2s stats line now prints worst-frame ms and the loaded chunk-Y range.
+
 ## Phase status
 
 **Phase 0 (repo scaffold + dependency fetch/build smoke test): DONE.** Clean configure+build

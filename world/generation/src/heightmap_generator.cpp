@@ -93,4 +93,8 @@ HeightmapMinMax HeightmapGenerator::generate_column_heights(std::int32_t worldXO
     return HeightmapMinMax{minMax.min, minMax.max};
 }
 
+float HeightmapGenerator::height_at(float worldX, float worldZ) const {
+    return impl_->root->GenSingle2D(worldX, worldZ, impl_->seed);
+}
+
 } // namespace world::generation

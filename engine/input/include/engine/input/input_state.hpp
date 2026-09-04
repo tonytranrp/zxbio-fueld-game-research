@@ -19,6 +19,7 @@ struct InputState {
     bool speed_boost = false;   // Left Shift
     bool look_active = false;   // right mouse button held (cursor captured while true)
     bool quit_requested = false; // Escape -- reported here; whether to actually quit is app policy
+    bool pending_walk_toggle = false; // G pressed since last take_walk_toggle() (edge, not level)
 
     // Cursor movement in pixels accumulated since the last take_look_delta(), only while
     // look_active. Accumulation + explicit take keeps callback cadence (per event) decoupled from
@@ -29,6 +30,14 @@ struct InputState {
         const glm::vec2 delta = pending_look_delta;
         pending_look_delta = glm::vec2{0.0f};
         return delta;
+    }
+
+    // Same accumulate-then-take pattern for the fly/walk mode toggle: a key PRESS is an event,
+    // not a held state, and must fire exactly once per press regardless of frame timing.
+    [[nodiscard]] bool take_walk_toggle() noexcept {
+        const bool toggled = pending_walk_toggle;
+        pending_walk_toggle = false;
+        return toggled;
     }
 };
 
