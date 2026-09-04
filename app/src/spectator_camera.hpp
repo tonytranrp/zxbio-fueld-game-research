@@ -8,7 +8,7 @@ namespace app {
 
 // Per-camera movement-policy state for the free-flying spectator (task 19). Yaw/pitch are the
 // *controller's* working values -- the ECS Transform still stores a quaternion, per
-// PHASE_1_BRIEF.md §6. Rebuilding orientation = yaw-about-world-up * pitch-about-local-right each
+// Phase 1 brief §6. Rebuilding orientation = yaw-about-world-up * pitch-about-local-right each
 // update is gimbal-safe (lock needs three chained axes; this uses two in fixed order), stays
 // well-defined at exactly ±90° pitch, keeps the horizon level (no roll drift from composed
 // increments), and gives the clamp below a number to clamp -- extracting pitch back out of a
@@ -34,7 +34,7 @@ inline constexpr float kWalkSpeedFactor = 0.25f;       // walking is deliberatel
 inline constexpr float kGravityAcceleration = -32.0f;  // world units/s^2 (voxel-scale gravity)
 inline constexpr float kEyeHeight = 1.7f;              // camera above the ground surface when standing
 
-// Delta-time-integrated update (PHASE_1_BRIEF.md §6: speed must not couple to framerate). Pure
+// Delta-time-integrated update (Phase 1 brief §6: speed must not couple to framerate). Pure
 // function of plain data -- unit-testable without GLFW or a window; the app's frame loop is just
 // glue around this. groundHeightWorld: the terrain surface height at the camera's current (x,z)
 // column (from the same height function that generated the terrain); only read in Walk mode.

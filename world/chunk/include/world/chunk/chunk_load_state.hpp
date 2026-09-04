@@ -12,7 +12,7 @@ enum class ChunkLoadState {
     Ready,
 };
 
-// ECS component (PROJECT_BRIEF.md §2.4, M1_2_BRIEF.md §5): a chunk's *pipeline state* lives on an
+// ECS component (project brief §2.4, M1.2 brief §5): a chunk's *pipeline state* lives on an
 // EnTT entity as this small, homogeneous component. The chunk's actual voxel data (ChunkVoxels)
 // stays plain-owned in ChunkStore -- it is never EnTT component data; EnTT's sparse-set storage
 // is for many small, cache-friendly components, not one variable-sized paletted blob per entity.

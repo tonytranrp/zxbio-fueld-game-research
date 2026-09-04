@@ -28,7 +28,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
 endif()
 
-# Deliberate decision (ENGINE_HARDENING_BRIEF.md Group J task 21), not the CMake default: Release
+# Deliberate decision (engine-hardening brief Group J task 21), not the CMake default: Release
 # keeps full PDBs. MSVC's default Release flags carry no /Zi, so a Release crash would hand the
 # crash handler a symbol-less stack -- exactly the situation a crash handler exists to prevent.
 # /Zi + /DEBUG cost nothing at runtime (debug info lives in the .pdb beside the .exe, not in the
@@ -48,7 +48,7 @@ include(CTest)
 # dependency fetches entirely.
 option(VOXEL_BUILD_RENDERER "Build the GPU renderer, windowing, input, and voxel_app" ON)
 
-# Micro-benchmark harnesses (ENGINE_HARDENING_BRIEF.md Group N). OFF by default: benchmark numbers
+# Micro-benchmark harnesses (engine-hardening brief Group N). OFF by default: benchmark numbers
 # from a Debug build are meaningless, so these are built deliberately, in a Release configure
 # (`cmake --preset windows-release -DVOXEL_BUILD_BENCHMARKS=ON`), not as part of every dev build.
 option(VOXEL_BUILD_BENCHMARKS "Build Google Benchmark harnesses (use a Release configure)" OFF)

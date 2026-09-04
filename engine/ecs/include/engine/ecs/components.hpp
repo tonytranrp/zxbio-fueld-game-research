@@ -15,7 +15,7 @@ struct Name {
     std::string value;
 };
 
-// Lens half of a camera entity (PHASE_1_BRIEF.md §6): pose lives in the entity's Transform, so
+// Lens half of a camera entity (Phase 1 brief §6): pose lives in the entity's Transform, so
 // the camera is an ordinary entity, not a bespoke class outside the ECS. Mirrors
 // render::interface::Camera's lens fields -- app code copies Transform + CameraLens into that
 // boundary struct each frame rather than render/ ever reading the registry.

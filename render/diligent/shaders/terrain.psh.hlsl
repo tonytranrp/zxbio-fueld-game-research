@@ -1,5 +1,5 @@
 // Terrain pixel stage: material-palette lookup + one fixed directional light, simple Lambertian
-// (PHASE_1_BRIEF.md §2.6 -- no textures in this phase; the palette is the slot a texture array
+// (Phase 1 brief §2.6 -- no textures in this phase; the palette is the slot a texture array
 // upgrades into later). g_MaterialColors is sized/ordered by world::chunk::MaterialID and
 // mirrored by kMaterialColors in render/diligent/src/pso_terrain.cpp -- update both together.
 

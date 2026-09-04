@@ -153,7 +153,7 @@ int run(const AppOptions& options) {
     render::diligent::TerrainRenderer renderer(context);
     render::diligent::attach_gpu_profiler(context); // Tracy GPU zones (Vulkan only; safe no-op elsewhere)
 
-    // The camera is an ordinary ECS entity (PHASE_1_BRIEF.md §6): Transform + CameraLens are
+    // The camera is an ordinary ECS entity (Phase 1 brief §6): Transform + CameraLens are
     // engine components, SpectatorCameraState is this app's movement policy. Starts above the
     // terrain looking toward the origin; WASD + Space/Ctrl fly it, holding RMB mouse-looks,
     // Shift boosts, Esc quits.

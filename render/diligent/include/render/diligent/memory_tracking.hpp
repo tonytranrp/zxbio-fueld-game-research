@@ -5,7 +5,7 @@
 
 namespace render::diligent {
 
-// Self-tracked GPU allocation accounting (PHASE_1_COMPLETION_BRIEF.md §2.3): a running byte total
+// Self-tracked GPU allocation accounting (Phase 1 completion brief §2.3): a running byte total
 // this project maintains itself, incremented/decremented on every chunk vertex/index buffer
 // create/destroy. Answers "how much VRAM is our own chunk system using" regardless of what any
 // graphics API exposes -- the VK_EXT_memory_budget number (Group E, task 30) answers the

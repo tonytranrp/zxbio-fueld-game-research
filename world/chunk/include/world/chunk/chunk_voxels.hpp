@@ -13,7 +13,7 @@ inline constexpr std::int32_t kChunkSize = 32;
 inline constexpr std::size_t kVoxelsPerChunk =
     static_cast<std::size_t>(kChunkSize) * static_cast<std::size_t>(kChunkSize) * static_cast<std::size_t>(kChunkSize);
 
-// Paletted voxel storage for one chunk (M1_2_BRIEF.md §1): a small palette of the distinct
+// Paletted voxel storage for one chunk (M1.2 brief §1): a small palette of the distinct
 // materials actually present, plus a bit-packed index per voxel at the minimum width the current
 // palette size needs (0/1/2/4/8 bits -- always a power of two so no voxel's index ever straddles
 // a byte boundary). palette_.size() == 1 is the common case for real terrain (chunks entirely

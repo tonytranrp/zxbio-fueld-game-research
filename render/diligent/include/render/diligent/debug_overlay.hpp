@@ -29,7 +29,7 @@ struct OverlayStats {
 };
 
 // Dear ImGui debug overlay: Diligent's vendored ImGui renderer (DiligentTools) + the vendored
-// GLFW platform backend -- no new dependency (PHASE_1_COMPLETION_BRIEF.md §2.5). Chain-installs
+// GLFW platform backend -- no new dependency (Phase 1 completion brief §2.5). Chain-installs
 // its GLFW callbacks, so construct it AFTER any engine/input callback registration and it will
 // forward events on.
 class DebugOverlay {

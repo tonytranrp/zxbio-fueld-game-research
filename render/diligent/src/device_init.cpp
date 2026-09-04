@@ -16,7 +16,7 @@ namespace {
 using Diligent::IDeviceContext;
 using Diligent::SwapChainDesc;
 
-// One immediate context, zero deferred: PHASE_1_BRIEF.md §2.4's measured caution against
+// One immediate context, zero deferred: Phase 1 brief §2.4's measured caution against
 // speculative multithreaded submission -- deferred contexts wait for a frame-time number proving
 // single-threaded submission is the bottleneck.
 constexpr std::uint32_t kNumContexts = 1;
@@ -104,7 +104,7 @@ RenderContext::RenderContext(const RenderContextCreateInfo& info) : impl_(std::m
         throw std::runtime_error("swap chain creation failed");
     }
 
-    // The runtime device-enumeration proof PHASE_1_BRIEF.md §0 asked for -- "the build succeeded"
+    // The runtime device-enumeration proof Phase 1 brief §0 asked for -- "the build succeeded"
     // is not "a device actually initializes on this machine."
     const GraphicsAdapterInfo& adapter = impl_->device->GetAdapterInfo();
     engine::core::log(engine::core::LogLevel::Info, "render device ready: {} on \"{}\" ({}x{})",

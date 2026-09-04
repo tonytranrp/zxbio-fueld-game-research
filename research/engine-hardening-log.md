@@ -1,5 +1,10 @@
 # Engine Hardening & Optimization — decision log
 
+> **Historical-citation note (2026-09-04):** brief filenames cited below (PROJECT_BRIEF.md,
+> PHASE_1_BRIEF.md, M1_2_BRIEF.md, PHASE_1_COMPLETION_BRIEF.md, ENGINE_HARDENING_BRIEF.md) refer
+> to root-level documents deleted in the docs migration to `docs/progress.md` + `docs/goals.md`.
+> They remain retrievable from git history; citations kept verbatim as primary-evidence context.
+
 Execution log for [`ENGINE_HARDENING_BRIEF.md`](../ENGINE_HARDENING_BRIEF.md) (Groups G–P), run
 2026-09-04. Every entry states the task's **check** and what actually happened — a claim without
 its performed check is not marked done, per the brief's own guardrail. Three read-only research

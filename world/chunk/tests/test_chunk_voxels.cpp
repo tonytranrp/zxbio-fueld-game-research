@@ -39,7 +39,7 @@ TEST_CASE("Setting a second distinct material promotes to 1 bit/voxel and preser
 }
 
 TEST_CASE("Every palette-promotion boundary preserves previously-set voxel values", "[chunk]") {
-    // M1_2_BRIEF.md §1.3: the correctness-critical part is that promotion re-packs every
+    // M1.2 brief §1.3: the correctness-critical part is that promotion re-packs every
     // EXISTING voxel at the new bit width without corrupting it. This walks through all four
     // boundaries the brief names (1->2, 2->3, 4->5, 16->17 distinct materials) by introducing one
     // new distinct material at a time, re-verifying every previously-set voxel after each one --

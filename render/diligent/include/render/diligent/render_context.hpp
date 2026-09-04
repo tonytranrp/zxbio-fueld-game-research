@@ -7,8 +7,8 @@
 namespace render::diligent {
 
 // Which Diligent backend to initialize. Vulkan is the project's primary target
-// (PROJECT_BRIEF.md §2.1); D3D12 exists to keep the code honestly cross-backend from day one
-// (PHASE_1_COMPLETION_BRIEF.md task 16) -- a backend-specific bug caught now is far cheaper than
+// (project brief §2.1); D3D12 exists to keep the code honestly cross-backend from day one
+// (Phase 1 completion brief task 16) -- a backend-specific bug caught now is far cheaper than
 // one caught after months of Vulkan-only development.
 enum class Backend {
     Vulkan,
@@ -23,9 +23,9 @@ struct RenderContextCreateInfo {
     bool enable_validation = false;       // Diligent validation layer (debug naming flows through it too)
 };
 
-// Owns the Diligent device, immediate context, and swap chain (PHASE_1_BRIEF.md §2.1–§2.3).
+// Owns the Diligent device, immediate context, and swap chain (Phase 1 brief §2.1–§2.3).
 // PIMPL is the module's compile firewall: no DiligentCore header leaks past this boundary, so
-// app/ and world/ stay GPU-header-free (PROJECT_BRIEF.md §3) -- the same pattern
+// app/ and world/ stay GPU-header-free (project brief §3) -- the same pattern
 // world/generation uses to contain FastNoise2.
 class RenderContext {
 public:
@@ -48,7 +48,7 @@ public:
     [[nodiscard]] std::uint32_t height() const noexcept;
 
     // The enumerated adapter's human-readable name -- the M1.4 "device enumeration actually works
-    // at runtime, not just builds" proof (PHASE_1_BRIEF.md §0), logged at startup and available
+    // at runtime, not just builds" proof (Phase 1 brief §0), logged at startup and available
     // for the Group E overlay.
     [[nodiscard]] std::string adapter_description() const;
 

@@ -1,5 +1,10 @@
 # Research Report: RenderDoc + Tracy Integration for Diligent Engine (Vulkan, MSVC, Windows)
 
+> **Historical-citation note (2026-09-04):** brief filenames cited below (PROJECT_BRIEF.md,
+> PHASE_1_BRIEF.md, M1_2_BRIEF.md, PHASE_1_COMPLETION_BRIEF.md, ENGINE_HARDENING_BRIEF.md) refer
+> to root-level documents deleted in the docs migration to `docs/progress.md` + `docs/goals.md`.
+> They remain retrievable from git history; citations kept verbatim as primary-evidence context.
+
 Subagent D from `PHASE_1_BRIEF.md` §9, completed 2026-09-02. Web research (Exa).
 
 ## Task 1 — DiligentEngine + RenderDoc integration

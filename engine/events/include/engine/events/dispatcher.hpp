@@ -9,7 +9,7 @@ namespace engine::events {
 // synchronous dispatch, enqueue<T> + update() for deferred), and wrapping it would only obscure
 // EnTT's own documentation. EnTT is already a pinned dependency; this adds nothing new.
 //
-// Event-vs-polling convention (ENGINE_HARDENING_BRIEF.md Group L task 34):
+// Event-vs-polling convention (engine-hardening brief Group L task 34):
 //
 //   Reach for an EVENT when state *changes* somewhere and one-or-more *other* systems need to
 //   react to the change itself — chunk loaded/unloaded/mesh-ready (chunk_events.hpp), a future

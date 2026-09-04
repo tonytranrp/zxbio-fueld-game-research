@@ -5,7 +5,7 @@
 namespace engine::input {
 
 // Plain snapshot of what the player is currently doing, written by the GLFW callback layer
-// (glfw_input.hpp) and read by whatever movement system cares (PHASE_1_BRIEF.md §6). Deliberately
+// (glfw_input.hpp) and read by whatever movement system cares (Phase 1 brief §6). Deliberately
 // semantic ("move_forward"), not raw keycodes: the key mapping is the callback layer's concern,
 // and consumers stay testable with hand-built snapshots and portable to any future input source.
 // No GLFW types anywhere in this header.

@@ -11,7 +11,7 @@ target_sources(world_streaming PUBLIC
 )
 
 # Depends on world_chunk for ChunkCoord only -- a system beside the data modules, not an owner of
-# any of them (PHASE_1_COMPLETION_BRIEF.md §3): the generate/mesh/upload pipeline it commands is
+# any of them (Phase 1 completion brief §3): the generate/mesh/upload pipeline it commands is
 # wired by the caller.
 target_link_libraries(world_streaming PUBLIC project_warnings world_chunk)
 

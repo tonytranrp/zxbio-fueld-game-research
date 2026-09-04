@@ -10,7 +10,7 @@
 
 namespace world::streaming {
 
-// Tuning for the load/unload decision (PHASE_1_COMPLETION_BRIEF.md §2.2). Two radii plus a time
+// Tuning for the load/unload decision (Phase 1 completion brief §2.2). Two radii plus a time
 // delay, not one radius: a single boundary thrashes load/unload for a camera hovering near it --
 // the real, shipped fix (PaperMC's delayed-unload patch) is hysteresis in both space and time.
 struct StreamingConfig {

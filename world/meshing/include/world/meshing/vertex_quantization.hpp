@@ -6,7 +6,7 @@
 
 namespace world::meshing {
 
-// Chunk-local position quantization for the compressed GPU vertex (ENGINE_HARDENING_BRIEF.md
+// Chunk-local position quantization for the compressed GPU vertex (engine-hardening brief
 // Group K task 24; full derivation in research/engine-hardening-log.md). Positions span
 // [-1, 32] per axis (32-cell chunk + 1-cell boundary layer). Quantized to 16-bit fixed point at
 // a DYADIC step of 1/1024 voxel: q = round((p + 1) * 1024), so q_max = 33 * 1024 = 33792 with

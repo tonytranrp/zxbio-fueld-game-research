@@ -5,7 +5,7 @@
 // Inputs are the COMPRESSED 12-byte vertex (detail::GpuVertexCompressed): fixed-function
 // normalized fetch delivers Pos/OctNormal as floats in [0,1], so the decode below is pure
 // arithmetic -- deliberately no bit-manipulation intrinsics, which do not translate reliably
-// across every Diligent shader-conversion path (ENGINE_HARDENING_BRIEF.md Group K task 26).
+// across every Diligent shader-conversion path (engine-hardening brief Group K task 26).
 
 cbuffer FrameConstants
 {

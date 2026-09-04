@@ -2,7 +2,7 @@
 set(CMAKE_CXX_CLANG_TIDY "")
 # Headless tests only: frustum math and the allocation tracker have no GPU dependency by design.
 # Device/PSO/draw paths are exercised by voxel_app's own --frames/--verify-frame smoke run
-# (PHASE_1_COMPLETION_BRIEF.md Group B), not by ctest, so the suite stays runnable on GPU-less CI.
+# (Phase 1 completion brief Group B), not by ctest, so the suite stays runnable on GPU-less CI.
 add_executable(render_diligent_tests
     test_frustum.cpp
     test_memory_tracking.cpp

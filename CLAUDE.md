@@ -1,7 +1,8 @@
 # C++ Voxel Engine (branch: `C++-voxel`)
 
-Phase-based build per [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) (John Lin-inspired voxel terrain
-engine on DiligentEngine + EnTT + GLM + GLFW + FastNoise2, CMake + CPM.cmake). Read that file for
+Phase-based build per [`docs/progress.md`](docs/progress.md) (current state) and
+[`docs/goals.md`](docs/goals.md) (living backlog) — John Lin-inspired voxel terrain
+engine on DiligentEngine + EnTT + GLM + GLFW + FastNoise2, CMake + CPM.cmake. Read those two for
 vision/architecture/phase roadmap — this file is operational build notes only, specific to this
 machine, learned the hard way during Phase 0. Read it before running `cmake` on this project.
 
@@ -181,7 +182,7 @@ dispatch library "FastSIMD_FastNoise" with Feature Sets (RELAXED): SSE2;SSE41;AV
 `SCALAR` in that list). `FastNoise::New<T>(FastSIMD::FeatureSet::SCALAR)` silently returns
 **null** for an uncompiled feature set rather than erroring — dereferencing it segfaults on the
 very first call. If pinning to one explicit SIMD level for determinism (`world/generation`
-already does this — see `M1_2_BRIEF.md` §2.5), pin to `SSE2` instead: it's the actual lowest level
+already does this — see `M1.2 brief` §2.5), pin to `SSE2` instead: it's the actual lowest level
 compiled in, and still a safe universal floor for this x86-64-only project (SSE2 is mandatory
 baseline on every x86-64 CPU, unlike SSE41/AVX2/AVX512). `world/generation/src/heightmap_generator.cpp`
 wraps `FastNoise::New<T>` in a helper that throws instead of returning null/segfaulting if this
@@ -230,8 +231,8 @@ frame. The 2s stats line now prints worst-frame ms and the loaded chunk-Y range.
 succeeds with all 5 dependencies — DiligentCore/Tools/FX build with D3D11, D3D12, OpenGL, and
 Vulkan backends all linking — and our own stub `voxel_app`/`mesh_dump` executables build and run.
 
-**Phase 1 M1.1–M1.7: DONE (2026-09-03).** See `PHASE_1_BRIEF.md` §8 and
-`PHASE_1_COMPLETION_BRIEF.md`'s per-group logs. `voxel_app` opens a window, streams Surface-Nets
+**Phase 1 M1.1–M1.7: DONE (2026-09-03).** See `Phase 1 brief` §8 and
+`Phase 1 completion brief`'s per-group logs. `voxel_app` opens a window, streams Surface-Nets
 terrain in/out around a flyable spectator camera (WASD + Space/Ctrl, RMB mouse-look, Shift boost,
 Esc quits) on Vulkan AND D3D12, with a Tracy client + ImGui overlay + VK_EXT_memory_budget
 diagnostics. 49/49 tests. Smoke flags: `--mode vk|d3d12`, `--frames N`, `--verify-frame`

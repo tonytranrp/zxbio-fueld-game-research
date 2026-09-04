@@ -10,8 +10,8 @@ struct HeightmapMinMax {
     float max;
 };
 
-// Wraps the FastNoise2 node tree (M1_2_BRIEF.md §2) -- the only place FastNoise2 headers are
-// included (PROJECT_BRIEF.md §8: "FastNoise2 usage lives here, nowhere else"). PIMPL keeps
+// Wraps the FastNoise2 node tree (M1.2 brief §2) -- the only place FastNoise2 headers are
+// included (project brief §8: "FastNoise2 usage lives here, nowhere else"). PIMPL keeps
 // FastNoise2's own types from leaking into this header, the same compile-firewall pattern
 // render/diligent uses for DiligentCore.
 class HeightmapGenerator {

@@ -4,11 +4,11 @@
 
 namespace render::interface {
 
-// Free-flying spectator camera pose + lens (PHASE_1_BRIEF.md §6). Orientation is the
+// Free-flying spectator camera pose + lens (Phase 1 brief §6). Orientation is the
 // world-from-view rotation as a quaternion (no Euler angles -- gimbal lock at ±90° pitch is a
 // real failure mode for a spectator camera): view-space forward is -Z, up is +Y, GLM's
 // right-handed convention. Plain data + pure-GLM helpers only -- no DiligentCore types cross this
-// boundary (PROJECT_BRIEF.md §3), which is also what makes the frustum-culling math testable
+// boundary (project brief §3), which is also what makes the frustum-culling math testable
 // headless.
 struct Camera {
     glm::vec3 position{0.0f};
@@ -25,7 +25,7 @@ struct Camera {
 
 // Produces a [0,1]-NDC-depth matrix (Diligent's normalized convention across every backend) --
 // engine/core/math.hpp's GLM_FORCE_DEPTH_ZERO_TO_ONE is what makes glm::perspective do this;
-// including GLM any other way is the silent depth-range bug PHASE_1_BRIEF.md §2.3 exists to
+// including GLM any other way is the silent depth-range bug Phase 1 brief §2.3 exists to
 // prevent.
 [[nodiscard]] inline glm::mat4 projection_matrix(const Camera& camera, float aspect) noexcept {
     return glm::perspective(camera.fov_y_radians, aspect, camera.near_plane, camera.far_plane);

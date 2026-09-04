@@ -7,7 +7,7 @@
 namespace world::meshing {
 
 // Naive Surface Nets. No DiligentCore types cross this boundary -- MeshData is plain vertex/index
-// vectors, per PROJECT_BRIEF.md §3's render/interface boundary.
+// vectors, per project brief §3's render/interface boundary.
 //
 // Precondition the caller (the streaming system) is responsible for: all 26 neighbors of `coord`
 // (6 face + 12 edge + 8 corner) must be at least generated -- ChunkStore::find() returns non-null

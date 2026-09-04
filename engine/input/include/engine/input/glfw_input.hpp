@@ -7,7 +7,7 @@ struct GLFWwindow; // GLFW stays out of this header; src/glfw_input.cpp is the o
 namespace engine::input {
 
 // Registers GLFW key/mouse-button/cursor callbacks on an existing window (owned elsewhere) and
-// folds them into an InputState (PHASE_1_BRIEF.md §7's engine/input). Holding the right mouse
+// folds them into an InputState (Phase 1 brief §7's engine/input). Holding the right mouse
 // button captures the cursor (GLFW_CURSOR_DISABLED) for mouse-look and releases it on button-up
 // -- editor-style, so the window never traps the cursor permanently.
 //

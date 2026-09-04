@@ -5,7 +5,7 @@
 using namespace world::chunk;
 
 TEST_CASE("Coordinate math handles negative world coordinates correctly", "[chunk]") {
-    // The canonical case flagged in M1_2_BRIEF.md §3: naive truncating '/' and '%' get this
+    // The canonical case flagged in M1.2 brief §3: naive truncating '/' and '%' get this
     // wrong (X/32==0, X%32==-1 for X=-1) the moment a coordinate goes negative.
     REQUIRE(world_to_chunk(-1) == -1);
     REQUIRE(world_to_local(-1) == 31);

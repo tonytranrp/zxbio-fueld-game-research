@@ -33,7 +33,7 @@ namespace app {
 //
 // The ECS side (task 25): every streamed chunk coordinate gets an entity carrying
 // world::chunk::ChunkPipelineState (Requested -> Generated -> Meshing -> Ready), destroyed on
-// unload/discard. Voxel data itself never lives in the registry (M1_2_BRIEF.md §5).
+// unload/discard. Voxel data itself never lives in the registry (M1.2 brief §5).
 class ChunkStreamingSystem {
 public:
     // uploadBudgetPerTick: max mesh completions committed to the GPU per update() call

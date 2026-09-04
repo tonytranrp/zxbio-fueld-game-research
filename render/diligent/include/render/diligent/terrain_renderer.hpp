@@ -20,7 +20,7 @@ inline constexpr std::array<float, 4> kClearColor{0.25f, 0.5f, 0.8f, 1.0f};
 // Uploads world/meshing MeshData into per-chunk GPU vertex/index buffers and draws the visible
 // set each frame: one terrain PSO (hand-written HLSL pair under render/diligent/shaders/),
 // CPU-side frustum culling per chunk, single-threaded immediate-context submission
-// (PHASE_1_BRIEF.md §2.2, §2.6, and §2.4's measured caution against deferred contexts). Same
+// (Phase 1 brief §2.2, §2.6, and §2.4's measured caution against deferred contexts). Same
 // PIMPL compile-firewall as RenderContext: consumers never see a DiligentCore type.
 class TerrainRenderer {
 public:

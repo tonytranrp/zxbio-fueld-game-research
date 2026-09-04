@@ -30,7 +30,7 @@ struct ChunkConstantsCpu {
 };
 static_assert(sizeof(ChunkConstantsCpu) == 16, "must match the 16-byte HLSL cbuffer exactly");
 
-// The compressed GPU vertex (ENGINE_HARDENING_BRIEF.md Group K): 12 bytes vs the CPU-side
+// The compressed GPU vertex (engine-hardening brief Group K): 12 bytes vs the CPU-side
 // world::meshing::Vertex's 28 -- 2.33x. Decoded entirely by fixed-function normalized vertex
 // fetch + arithmetic in the VS (no shader bit manipulation; Subagent 3's cross-backend finding).
 //   position: 4x uint16 UNORM, chunk-local fixed point at 1/1024 voxel (vertex_quantization.hpp).

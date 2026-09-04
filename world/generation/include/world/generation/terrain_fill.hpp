@@ -11,7 +11,7 @@ struct TerrainFillParams {
     std::int32_t seaLevel = 0;
 };
 
-// Fills `chunk` in place from `heightmap` (M1_2_BRIEF.md §4): samples one surface height per
+// Fills `chunk` in place from `heightmap` (M1.2 brief §4): samples one surface height per
 // (worldX, worldZ) column, short-circuits to a uniform Air/Stone chunk via the heightmap's own
 // min/max (§2.4) before touching a single voxel where possible, and falls through to a per-voxel
 // fill only for chunks that actually straddle the generated surface or sea level. Deliberately no

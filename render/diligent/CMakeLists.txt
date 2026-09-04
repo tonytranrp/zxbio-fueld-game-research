@@ -31,7 +31,7 @@ target_sources(render_diligent PUBLIC
 
 # detail/ headers (the PIMPL innards holding real Diligent types) are includable by this module's
 # own src/ only -- deliberately not part of the public FILE_SET, so the DiligentCore compile
-# firewall (PROJECT_BRIEF.md §3) is enforced by the build, not by convention.
+# firewall (project brief §3) is enforced by the build, not by convention.
 target_include_directories(render_diligent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # glfw is PRIVATE and ONLY for the ImGui platform backend TU above -- the rendering core still

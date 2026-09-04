@@ -21,7 +21,7 @@ struct ChunkCoord {
 
 // World-voxel-space -> chunk coordinate / local-voxel-offset. Correct for negative coordinates by
 // construction -- arithmetic right-shift + mask on a power-of-two chunk size, well-defined by
-// C++20's two's-complement standardization (M1_2_BRIEF.md §3) -- not by a branch.
+// C++20's two's-complement standardization (M1.2 brief §3) -- not by a branch.
 inline std::int32_t world_to_chunk(std::int32_t worldVoxelCoord) noexcept {
     return worldVoxelCoord >> kChunkShift;
 }

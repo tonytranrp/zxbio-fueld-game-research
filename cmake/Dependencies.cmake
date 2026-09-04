@@ -74,7 +74,7 @@ endif()
 
 # --- Job queue: moodycamel::ConcurrentQueue ---------------------------------------------------
 # BlockingConcurrentQueue is ThreadPool's interior queue since the Group I hardening pass
-# (ENGINE_HARDENING_BRIEF.md; decision log in research/engine-hardening-log.md). v1.0.5 verified
+# (engine-hardening brief; decision log in research/engine-hardening-log.md). v1.0.5 verified
 # live via git ls-remote on 2026-09-04 and smoke-tested standalone under real MSVC (jthread +
 # stop_token worker shape) before adoption. Licenses: dual Simplified-BSD/BSL, plus zlib for the
 # embedded lightweight semaphore. A modified copy of this queue already ships inside this binary
@@ -132,7 +132,7 @@ endif()
 if(VOXEL_BUILD_BENCHMARKS)
 # v1.9.5 and v4.9.2 verified live against `git ls-remote --tags` on 2026-09-04, and both
 # smoke-tested standalone under this machine's real MSVC before being wired in here
-# (ENGINE_HARDENING_BRIEF.md Group G task 3). Apache-2.0 / MIT respectively, read from the
+# (engine-hardening brief Group G task 3). Apache-2.0 / MIT respectively, read from the
 # fetched LICENSE files, not assumed.
 CPMAddPackage(
   NAME benchmark
@@ -159,7 +159,7 @@ endif()
 
 # --- Coordinate containers: Boost.Unordered ---------------------------------------------------
 # boost::unordered_flat_map/_flat_set back the CoordMap/CoordSet aliases in
-# world/chunk/coord_containers.hpp (ENGINE_HARDENING_BRIEF.md Group H). The pick was made on this
+# world/chunk/coord_containers.hpp (engine-hardening brief Group H). The pick was made on this
 # machine's own MSVC Release benchmark at the realistic 558-chunk scale -- no independent
 # MSVC-run numbers exist anywhere for these containers (Subagent 1's finding), so
 # benchmarks/bench_chunk_map.cpp decided it: boost_flat beat std::unordered_map AND
@@ -182,7 +182,7 @@ if(VOXEL_BUILD_RENDERER)
 # v0.14.1 verified live against git ls-remote on 2026-09-03 (latest tag). TRACY_ON_DEMAND keeps
 # the client dormant (no event buffering) until a Tracy server actually connects -- the right
 # default for a dev app that is usually run without a profiler attached; the ~15ns/zone cost only
-# exists while profiling (PHASE_1_COMPLETION_BRIEF.md §2.4).
+# exists while profiling (Phase 1 completion brief §2.4).
 CPMAddPackage(
   NAME tracy
   GITHUB_REPOSITORY wolfpld/tracy

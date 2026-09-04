@@ -6,7 +6,7 @@
 
 namespace world::streaming {
 
-// Chunk lifecycle events (ENGINE_HARDENING_BRIEF.md §8's proof case). Plain PODs with no
+// Chunk lifecycle events (engine-hardening brief §8's proof case). Plain PODs with no
 // dispatcher dependency: this module defines WHAT happened; engine/events carries HOW it is
 // delivered. Fired from the main thread only, during ChunkStreamingSystem's completion drains
 // (see engine/events/dispatcher.hpp for the threading rule).

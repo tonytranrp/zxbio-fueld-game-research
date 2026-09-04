@@ -4,7 +4,7 @@ namespace world::chunk {
 
 namespace {
 
-// Rounds a palette size up to the next bit width in {0,1,2,4,8} (M1_2_BRIEF.md §1.2's table) --
+// Rounds a palette size up to the next bit width in {0,1,2,4,8} (M1.2 brief §1.2's table) --
 // always a power of two so a voxel's index never straddles a byte boundary, at the cost of a
 // looser bound than a tight ceil(log2(n)) would give (e.g. 5 distinct materials costs 4
 // bits/voxel here, not 3) in exchange for trivially simple, branch-light packing.

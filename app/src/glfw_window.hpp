@@ -9,7 +9,7 @@ namespace app {
 
 // App-local GLFW glue (task 10): owns the one window and the GLFW library lifetime. Created with
 // GLFW_NO_API -- Diligent drives Vulkan/D3D12 itself; GLFW is windowing + (in M1.5) input only.
-// Not an engine module on purpose: PHASE_1_BRIEF.md §7's tree adds engine/input for callbacks
+// Not an engine module on purpose: Phase 1 brief §7's tree adds engine/input for callbacks
 // later, but window ownership is application glue, and render/diligent deliberately consumes only
 // the opaque native handle so it never links GLFW.
 class GlfwWindow {

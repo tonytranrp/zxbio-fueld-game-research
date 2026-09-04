@@ -1,60 +1,182 @@
-# CI matrix per tooling-testing-and-ci.md §5 / PHASE_1_COMPLETION_BRIEF.md task 35: the plain
-# build+test job runs PARALLEL to the sanitizer/static-analysis jobs (never sequenced behind
-# them), so contributors get the fast signal first.
+# CI shape per docs/goals.md Group I (goals 62-70):
+#   - "core" = fast, no-GPU matrix (Windows MSVC / Linux GCC / Linux Clang, -DVOXEL_BUILD_RENDERER=OFF:
+#     engine/{core,ecs,jobs,input,events} + all of world/ + their tests; no DiligentEngine/GLFW/Tracy
+#     fetch). This is the merge-gating signal.
+#   - "renderer" jobs build the full tree. GitHub-hosted runners have no GPU, so execution is
+#     software-rasterized (D3D12 WARP on Windows, Mesa Lavapipe under Xvfb on Linux) and treated as
+#     BEST-EFFORT (goal 67): the Windows renderer job gates on build+ctest but its WARP smoke run is
+#     continue-on-error; the Linux renderer job is continue-on-error entirely.
+#   - Sanitizers (ASan+UBSan combined; TSan separate -- they're mutually exclusive) and clang-tidy run
+#     PARALLEL to core, never sequenced behind it (goal 70). TSan-on-Linux is the ONLY TSan coverage
+#     this project has anywhere -- the Windows dev machine has no TSan by any path (see CLAUDE.md).
+#   - Two-layer caching (goals 63-64): CPM source cache keyed on cmake/Dependencies.cmake (dependency
+#     *sources*) + ccache/sccache (compile *artifacts*). The Windows renderer job splits cache
+#     restore/save so a failed 150-min build still saves its fetched dependencies for the next run.
 #
-# The Linux jobs build the headless subset only (-DVOXEL_BUILD_RENDERER=OFF: engine/{core,ecs,jobs}
-# + all of world/ + their tests, no DiligentEngine/GLFW/Tracy fetch) -- that is deliberate, not a
-# shortcut: TSan does not exist on the Windows dev machine by any realistic path (see CLAUDE.md),
-# and the threaded code that needs TSan (jobs, streaming, concurrent generation/meshing) is
-# exactly the platform-independent subset. UBSan is likewise Clang-only, so it rides with ASan on
-# Linux instead of the MSVC job.
+# NOTE the deliberately filter-less `on: push`: this repo's working branch is literally named
+# "C++-voxel", and `+` is a quantifier in GitHub's branch-pattern glob syntax -- a `branches:
+# ["C++-voxel"]` filter is an INVALID PATTERN that kills every run at startup with zero jobs
+# ("push event contained invalid branches patterns"), which is exactly how the first three runs of
+# this workflow died. Do not reintroduce a branch filter containing an unescaped `+`.
 name: ci
 
 on:
   push:
-    branches: ["C++-voxel", main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
 
 jobs:
-  build-test-windows:
-    name: build + test (Windows, MSVC, full tree)
+  core:
+    name: core (${{ matrix.name }}, no-GPU subset)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-msvc, os: windows-latest }
+          - { name: linux-gcc, os: ubuntu-latest, cc: gcc, cxx: g++ }
+          - { name: linux-clang, os: ubuntu-latest, cc: clang, cxx: clang++ }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Install toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build ${{ matrix.cc }}
+      - name: CPM source cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-${{ runner.os }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          variant: ${{ runner.os == 'Windows' && 'sccache' || 'ccache' }}
+          key: core-${{ matrix.name }}
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        # CMP0141=NEW + Embedded debug info (/Z7 instead of /Zi): sccache cannot cache /Zi objects.
+        run: >
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DVOXEL_BUILD_RENDERER=OFF
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: >
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DVOXEL_BUILD_RENDERER=OFF
+          -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 300
+
+  renderer-windows:
+    name: renderer (Windows, MSVC, full tree + WARP smoke)
     runs-on: windows-latest
     timeout-minutes: 150 # DiligentEngine (4 backends) is a heavyweight first-time build
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
-      - uses: actions/cache@v4
+      # restore/save split so the expensive dependency fetch survives a failed build (goal 63).
+      - name: CPM source cache (restore)
+        id: cpm-cache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.cpm-cache
-          key: cpm-windows-${{ hashFiles('cmake/Dependencies.cmake') }}
+          key: cpm-renderer-windows-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          variant: sccache
+          key: renderer-windows
       # Short out-of-tree build dir is load-bearing, not style: DiligentCore's glslang object
       # paths exceed MAX_PATH under a nested in-repo build directory (see CLAUDE.md).
       - name: Configure
-        run: cmake -B C:/b -G Ninja -DCMAKE_BUILD_TYPE=Debug
+        run: >
+          cmake -B C:/b -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
       - name: Build
         run: cmake --build C:/b
+      - name: CPM source cache (save)
+        if: always() && steps.cpm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-renderer-windows-${{ hashFiles('cmake/Dependencies.cmake') }}
       - name: Test
         run: ctest --test-dir C:/b --output-on-failure --timeout 300
+      # Software-rasterized smoke (goal 66): no GPU on hosted runners; D3D12 should fall back to
+      # the WARP adapter. Best-effort per goal 67 -- failure here is reported, not merge-gating.
+      - name: WARP smoke run
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & C:/b/app/voxel_app.exe --mode d3d12 --frames 5
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::WARP smoke run exited $LASTEXITCODE (best-effort, non-gating)"; exit $LASTEXITCODE }
+
+  renderer-linux:
+    name: renderer (Linux, GCC, full tree + Lavapipe smoke, best-effort)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true # goal 67: software-Vulkan results are best-effort, never merge-gating
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain + X11/GL/Vulkan deps
+        run: >
+          sudo apt-get update && sudo apt-get install -y ninja-build xorg-dev libgl1-mesa-dev
+          mesa-vulkan-drivers xvfb
+      - name: CPM source cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-renderer-linux-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: renderer-linux
+      - name: Configure
+        run: >
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 300
+      - name: Lavapipe smoke run (Xvfb)
+        run: xvfb-run -a ./build/app/voxel_app --mode vk --frames 5
 
   asan-ubsan-linux:
-    name: ASan + UBSan (Linux, Clang, headless subset)
+    name: ASan + UBSan (Linux, Clang, no-GPU subset)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.cpm-cache
-          key: cpm-linux-${{ hashFiles('cmake/Dependencies.cmake') }}
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+      - name: CPM source cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-Linux-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: asan-ubsan
       - name: Configure
         run: >
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DVOXEL_BUILD_RENDERER=OFF
           -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -g"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
       - name: Build
@@ -63,21 +185,27 @@ jobs:
         run: ctest --test-dir build --output-on-failure --timeout 600
 
   tsan-linux:
-    name: TSan (Linux, Clang, headless subset)
+    name: TSan (Linux, Clang, no-GPU subset)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60 # budget for the researched 5-15x TSan slowdown (goal 68)
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.cpm-cache
-          key: cpm-linux-${{ hashFiles('cmake/Dependencies.cmake') }}
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+      - name: CPM source cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-Linux-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: tsan
       - name: Configure
         run: >
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DVOXEL_BUILD_RENDERER=OFF
           -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_FLAGS="-fsanitize=thread -g"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
       - name: Build
@@ -88,23 +216,26 @@ jobs:
         run: ctest --test-dir build --output-on-failure --timeout 900
 
   clang-tidy-linux:
-    name: clang-tidy (Linux, headless subset)
+    name: clang-tidy (Linux, no-GPU subset)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.cpm-cache
-          key: cpm-linux-${{ hashFiles('cmake/Dependencies.cmake') }}
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y ninja-build clang clang-tidy
+      - name: CPM source cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-Linux-${{ hashFiles('cmake/Dependencies.cmake') }}
       - name: Configure
         run: >
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DVOXEL_BUILD_RENDERER=OFF
           -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
           -DVOXEL_CLANG_TIDY=ON
-      # Analysis happens during compilation (CMAKE_CXX_CLANG_TIDY); a finding fails the build via
-      # the .clang-tidy WarningsAsErrors setting.
+      # Analysis happens during compilation (CMAKE_CXX_CLANG_TIDY, applied per-target to OUR
+      # targets only -- _deps/third-party never get it); a finding fails the build via the
+      # .clang-tidy WarningsAsErrors setting. No ccache here: a launcher would skip re-analysis
+      # on cache hits, silently turning this job into a no-op.
       - name: Build (analyze)
         run: cmake --build build

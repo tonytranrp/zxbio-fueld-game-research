@@ -64,7 +64,7 @@ TEST_CASE("Same seed + chunk coordinate produces byte-identical output when gene
           "ThreadPool worker threads",
           "[generation][determinism]") {
     // This is simultaneously a world-gen correctness test AND a second, independent stress test
-    // of M1.1's ThreadPool destructor-order fix under real concurrent load (M1_2_BRIEF.md's own
+    // of M1.1's ThreadPool destructor-order fix under real concurrent load (M1.2 brief's own
     // opening note) -- many worker threads genuinely racing to generate, not just queued serially.
     engine::jobs::ThreadPool pool(8);
 

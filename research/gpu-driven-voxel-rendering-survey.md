@@ -1,5 +1,10 @@
 # Research Report: GPU-Driven Voxel/Chunk Terrain Rendering in Vulkan
 
+> **Historical-citation note (2026-09-04):** brief filenames cited below (PROJECT_BRIEF.md,
+> PHASE_1_BRIEF.md, M1_2_BRIEF.md, PHASE_1_COMPLETION_BRIEF.md, ENGINE_HARDENING_BRIEF.md) refer
+> to root-level documents deleted in the docs migration to `docs/progress.md` + `docs/goals.md`.
+> They remain retrievable from git history; citations kept verbatim as primary-evidence context.
+
 Subagent C from `PHASE_1_BRIEF.md` §9, completed 2026-09-02. Web research (Exa), covering
 GPU-driven chunk rendering, additional real sources beyond the three named in the brief,
 chunk-boundary/LOD stitching, and cross-frame compute-culling synchronization.

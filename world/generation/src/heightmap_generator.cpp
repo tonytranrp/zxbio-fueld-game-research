@@ -9,7 +9,7 @@ namespace world::generation {
 namespace {
 
 // Tunable terrain-shape constants, named rather than left as magic numbers scattered in
-// build_terrain_noise() (M1_2_BRIEF.md §2.3: "worth exposing as a tunable constant, not
+// build_terrain_noise() (M1.2 brief §2.3: "worth exposing as a tunable constant, not
 // hardcoding a specific count as gospel").
 constexpr float kFeatureScale = 200.0f; // world units per noise period
 constexpr int kOctaveCount = 4;
@@ -25,7 +25,7 @@ constexpr float kNoiseOutputMax = 1.0f;
 constexpr float kBaseHeight = 0.0f;
 constexpr float kAmplitude = 64.0f;
 
-// Pinned to one explicit, low SIMD level deliberately (M1_2_BRIEF.md §2.5): world generation must
+// Pinned to one explicit, low SIMD level deliberately (M1.2 brief §2.5): world generation must
 // be bit-identical for a given seed regardless of which CPU/SIMD level runs it, and pinning avoids
 // ISA-dependent instructions (FMA etc.) that could introduce last-bit rounding differences across
 // machines or across FastSIMD's own runtime auto-dispatch. SCALAR would be the strictest choice,

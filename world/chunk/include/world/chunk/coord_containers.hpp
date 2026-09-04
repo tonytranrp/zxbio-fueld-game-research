@@ -7,7 +7,7 @@
 
 namespace world::chunk {
 
-// THE coordinate-keyed container aliases (ENGINE_HARDENING_BRIEF.md Group H tasks 9/11): every
+// THE coordinate-keyed container aliases (engine-hardening brief Group H tasks 9/11): every
 // map/set keyed by ChunkCoord goes through these, so re-evaluating the container is a change
 // HERE, not another migration. Backed by boost::unordered_flat_map/_flat_set, chosen on this
 // machine's own MSVC benchmark data (benchmarks/bench_chunk_map.cpp; decision + numbers in

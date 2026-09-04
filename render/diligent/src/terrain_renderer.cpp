@@ -89,7 +89,7 @@ void TerrainRenderer::upload_chunk_mesh(world::chunk::ChunkCoord coord, const wo
     const Uint64 vbSize = compressed.size() * sizeof(detail::GpuVertexCompressed);
     const Uint64 ibSize = indices16.size() * sizeof(std::uint16_t);
 
-    // Named per PHASE_1_BRIEF.md §4 -- these are the strings RenderDoc/Nsight show instead of hex
+    // Named per Phase 1 brief §4 -- these are the strings RenderDoc/Nsight show instead of hex
     // handles. Diligent copies the name at creation, so the temporaries are fine.
     const std::string vbName = std::format("ChunkVB[{},{},{}]", coord.x, coord.y, coord.z);
     const std::string ibName = std::format("ChunkIB[{},{},{}]", coord.x, coord.y, coord.z);

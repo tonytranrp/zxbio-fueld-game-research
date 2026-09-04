@@ -98,7 +98,7 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
     psoCI.pVS = vs;
     psoCI.pPS = ps;
 
-    // Interleaved AoS vertex fetch (PHASE_1_BRIEF.md §2.6) of the COMPRESSED 12-byte vertex
+    // Interleaved AoS vertex fetch (Phase 1 brief §2.6) of the COMPRESSED 12-byte vertex
     // (Group K): the decode happens in fixed-function normalized fetch, not shader bit ops --
     // the two normalized attributes arrive in the VS as plain floats in [0,1], and the only
     // shader-side work is one mad (position) and the octahedral refold (arithmetic). Explicit
