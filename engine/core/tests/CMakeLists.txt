@@ -1,3 +1,5 @@
+# Not analyzed by clang-tidy: Catch2 assertion macros are structurally noisy under several bugprone checks, and tests are not product code (see the root VOXEL_CLANG_TIDY option).
+set(CMAKE_CXX_CLANG_TIDY "")
 add_executable(engine_core_tests
     test_clock.cpp
     test_application.cpp

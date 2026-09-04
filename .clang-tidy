@@ -1,0 +1,17 @@
+# Wired into CI via CMAKE_CXX_CLANG_TIDY (tooling-testing-and-ci.md §2) -- not a manual step.
+# Check set is deliberately high-signal: real-bug and performance families plus the static
+# analyzer, no style-war families. WarningsAsErrors '*' so CI actually fails on findings.
+Checks: >
+  bugprone-*,
+  performance-*,
+  portability-*,
+  clang-analyzer-*,
+  misc-unused-using-decls,
+  misc-redundant-expression,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -performance-enum-size,
+  -portability-avoid-pragma-once
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(engine|world|render|app)[/\\].*'
+FormatStyle: none

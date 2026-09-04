@@ -156,7 +156,15 @@ ever regresses — check there before assuming a given `FeatureSet` value is saf
 succeeds with all 5 dependencies — DiligentCore/Tools/FX build with D3D11, D3D12, OpenGL, and
 Vulkan backends all linking — and our own stub `voxel_app`/`mesh_dump` executables build and run.
 
-**Phase 1 M1.1 (engine skeleton) and M1.2 (world generation): DONE.** See `PHASE_1_BRIEF.md` and
-`M1_2_BRIEF.md` for full details and per-milestone status. 24/24 tests pass across
-`engine_core_tests`/`engine_ecs_tests`/`engine_jobs_tests`/`world_chunk_tests`/
-`world_generation_tests`. Next: M1.3 (Surface Nets meshing) — see `PHASE_1_BRIEF.md` §8.
+**Phase 1 M1.1–M1.7: DONE (2026-09-03).** See `PHASE_1_BRIEF.md` §8 and
+`PHASE_1_COMPLETION_BRIEF.md`'s per-group logs. `voxel_app` opens a window, streams Surface-Nets
+terrain in/out around a flyable spectator camera (WASD + Space/Ctrl, RMB mouse-look, Shift boost,
+Esc quits) on Vulkan AND D3D12, with a Tracy client + ImGui overlay + VK_EXT_memory_budget
+diagnostics. 49/49 tests. Smoke flags: `--mode vk|d3d12`, `--frames N`, `--verify-frame`
+(mechanical terrain-visible check via back-buffer readback), `--autofly` (bounded-memory streaming
+check), `--radius`, `--seed`, `--validation`. Headless CI subset: configure with
+`-DVOXEL_BUILD_RENDERER=OFF` (no Diligent/GLFW/Tracy fetch); static analysis:
+`-DVOXEL_CLANG_TIDY=ON` (on this machine pass
+`-DVOXEL_CLANG_TIDY_EXE="C:/Program Files/LLVM/bin/clang-tidy.exe"`). Known deferred: in-app
+RenderDoc trigger (no vendored `renderdoc_app.h`; launch through RenderDoc UI instead),
+`tools/mesh_dump` .obj export, first GitHub-runner execution of `.github/workflows/ci.yml`.

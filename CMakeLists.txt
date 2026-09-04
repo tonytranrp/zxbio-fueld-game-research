@@ -30,11 +30,35 @@ endif()
 
 include(CTest)
 
+# ON: the full Windows build (DiligentEngine, GLFW, Tracy, the render modules, and voxel_app).
+# OFF: only the platform-independent core -- engine/{core,ecs,jobs}, all of world/, and their
+# tests -- which is what the Linux CI sanitizer/clang-tidy jobs build (TSan does not exist on
+# this Windows dev machine by any realistic path; see CLAUDE.md), skipping the heavyweight GPU
+# dependency fetches entirely.
+option(VOXEL_BUILD_RENDERER "Build the GPU renderer, windowing, input, and voxel_app" ON)
+
 include(cmake/CompilerWarnings.cmake)
 include(cmake/Dependencies.cmake)
 
+# Static analysis wired into the build itself (tooling-testing-and-ci.md §2), not a manual step.
+# Deliberately set AFTER Dependencies.cmake so third-party targets declared above are never
+# analyzed; test directories clear it locally (Catch2's assertion macros are structurally noisy
+# under several bugprone checks, and tests are not product code).
+option(VOXEL_CLANG_TIDY "Compile every project TU under clang-tidy (the CI static-analysis job)" OFF)
+if(VOXEL_CLANG_TIDY)
+  find_program(VOXEL_CLANG_TIDY_EXE NAMES clang-tidy REQUIRED)
+  set(CMAKE_CXX_CLANG_TIDY "${VOXEL_CLANG_TIDY_EXE}")
+  if(MSVC)
+    # tidy's cl driver mode loses /EHsc from the reproduced command line on this setup, then
+    # hard-errors on every `throw` -- restate it so local MSVC runs match the Linux CI job.
+    list(APPEND CMAKE_CXX_CLANG_TIDY "--extra-arg=/EHsc")
+  endif()
+endif()
+
 add_subdirectory(engine)
 add_subdirectory(world)
-add_subdirectory(render)
-add_subdirectory(app)
+if(VOXEL_BUILD_RENDERER)
+  add_subdirectory(render)
+  add_subdirectory(app)
+endif()
 add_subdirectory(tools)

@@ -8,7 +8,7 @@ ThreadPool::ThreadPool(std::size_t thread_count) {
     }
     workers_.reserve(thread_count);
     for (std::size_t i = 0; i < thread_count; ++i) {
-        workers_.emplace_back([this](std::stop_token stop_token) { worker_loop(stop_token); });
+        workers_.emplace_back([this](const std::stop_token& stop_token) { worker_loop(stop_token); });
     }
 }
 

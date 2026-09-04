@@ -664,18 +664,29 @@ executables build and run. DiligentEngine ended up re-pinned from tag `API256015
 machine-specific build gotchas (git shim, missing ATL component, MAX_PATH, dependency declaration
 order) are now documented there so Phase 1+ doesn't rediscover them.
 
-**Phase 1 — Terrain, Vulkan rendering & movement.** Superseded by `PHASE_1_BRIEF.md` — see that
-document for the full milestone breakdown (M1.1–M1.7), the Vulkan/Diligent-specific research (§2),
-and the subagent research plan (§9). Absorbs what this section originally called Phase 1–5; the
-internal milestone structure is what keeps it resumable one session at a time. Status: in
-progress — see `PHASE_1_BRIEF.md` §8 for per-milestone status as it's updated.
+**Phase 1 — Terrain, Vulkan rendering & movement. ✅ DONE through M1.6 (2026-09-03).** Superseded
+by `PHASE_1_BRIEF.md` — see that document for the full milestone breakdown (M1.1–M1.7), the
+Vulkan/Diligent-specific research (§2), and the subagent research plan (§9). Absorbs what this
+section originally called Phase 1–5; the internal milestone structure is what keeps it resumable
+one session at a time. Status: M1.1–M1.6 all complete per `PHASE_1_BRIEF.md` §8 and
+`PHASE_1_COMPLETION_BRIEF.md`'s per-group logs (terrain generates, meshes, streams around a
+flyable spectator camera on Vulkan AND D3D12, with Tracy/overlay/memory-budget diagnostics);
+M1.7's consolidation is done in substance (one `voxel_app` runs everything) — remaining nits
+tracked in `PHASE_1_COMPLETION_BRIEF.md`.
 
-**Phase 5 — Streaming & polish.** GPU + display required. Chunk load/unload by render distance
-tied into the job system end to end, deferred-context multithreaded draw submission (§7), water as
-a distinct simple material. Done when: flying through generated terrain shows land, mountains, and
-water loading/unloading smoothly at a real render distance.
+**Phase 5 — Streaming & polish. Streaming itself landed early** (pulled into Phase 1 by
+`PHASE_1_COMPLETION_BRIEF.md` §2.2's design: two-radii + time-delay hysteresis, stale-result
+discard, verified by an automated bounded-memory autofly check). Still open from this phase's
+original scope: deferred-context multithreaded draw submission (§7 — still gated on a measured
+single-thread bottleneck, per `PHASE_1_BRIEF.md` §2.4) and water as a *rendered-distinct* material
+beyond its palette color. 
 
-**Phase 6 — Tooling & CI hardening.** Mixed. The CI matrix from §9 actually wired up and green,
+**Phase 6 — Tooling & CI hardening. Partially landed early**: the CI matrix (build+test on
+Windows/MSVC, ASan+UBSan and TSan and clang-tidy on Linux over the headless subset) is wired in
+`.github/workflows/ci.yml` with clang-tidy already running clean locally; the Dear ImGui debug
+overlay shipped with Phase 1's Group E. Still open here: PCH/ccache/mold, benchmarks-as-baseline,
+and the first green run of the workflow on GitHub's own runners (written, not yet exercised
+there).
 Dear ImGui debug overlay (§7), PCH/ccache/mold in place, benchmarks from §10 run and recorded as a
 baseline. Done when: a fresh clone builds clean through CI on the sanitizer and static-analysis
 jobs, not just the plain build.

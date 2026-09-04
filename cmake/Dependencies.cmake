@@ -59,6 +59,7 @@ CPMAddPackage(
 )
 
 # --- Windowing: GLFW ------------------------------------------------------------------------
+if(VOXEL_BUILD_RENDERER)
 CPMAddPackage(
   NAME glfw
   GITHUB_REPOSITORY glfw/glfw
@@ -69,6 +70,7 @@ CPMAddPackage(
     "GLFW_BUILD_TESTS OFF"
     "GLFW_BUILD_DOCS OFF"
 )
+endif()
 
 # --- Testing: Catch2 -------------------------------------------------------------------------
 CPMAddPackage(
@@ -109,6 +111,22 @@ if(MINGW AND TARGET FastSIMD_FastNoise)
   unset(_fastsimd_opts)
 endif()
 
+# --- Profiling: Tracy client (renderer builds only) -------------------------------------------
+if(VOXEL_BUILD_RENDERER)
+# v0.14.1 verified live against git ls-remote on 2026-09-03 (latest tag). TRACY_ON_DEMAND keeps
+# the client dormant (no event buffering) until a Tracy server actually connects -- the right
+# default for a dev app that is usually run without a profiler attached; the ~15ns/zone cost only
+# exists while profiling (PHASE_1_COMPLETION_BRIEF.md §2.4).
+CPMAddPackage(
+  NAME tracy
+  GITHUB_REPOSITORY wolfpld/tracy
+  GIT_TAG v0.14.1
+  UPDATE_DISCONNECTED TRUE
+  OPTIONS
+    "TRACY_ENABLE ON"
+    "TRACY_ON_DEMAND ON"
+)
+
 # --- Rendering: DiligentEngine (Core + Tools + FX) ------------------------------------------
 # Switched from the coordinated tag API256015 (2026-03-26) to this fresher master commit:
 # under real VS "18"/2026 MSVC (19.50), API256015's vendored SPIRV-Tools snapshot fails with
@@ -130,3 +148,4 @@ CPMAddPackage(
     "DILIGENT_BUILD_TOOLS ON"
     "DILIGENT_BUILD_FX ON"
 )
+endif() # VOXEL_BUILD_RENDERER (Tracy + DiligentEngine)

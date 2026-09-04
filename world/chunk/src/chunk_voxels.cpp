@@ -17,6 +17,9 @@ std::uint8_t bits_for_palette_size(std::size_t paletteSize) {
 }
 
 std::uint8_t read_index(const std::pmr::vector<std::byte>& indices, std::size_t localIndex, std::uint8_t bits) {
+    if (bits == 0) {
+        return 0; // homogeneous: every voxel is implicitly palette index 0 (see packed_byte_count)
+    }
     const std::size_t voxelsPerByte = 8 / bits;
     const std::size_t byteIndex = localIndex / voxelsPerByte;
     const auto bitOffset = static_cast<std::uint8_t>((localIndex % voxelsPerByte) * bits);
@@ -25,6 +28,9 @@ std::uint8_t read_index(const std::pmr::vector<std::byte>& indices, std::size_t 
 }
 
 void write_index(std::pmr::vector<std::byte>& indices, std::size_t localIndex, std::uint8_t bits, std::uint8_t value) {
+    if (bits == 0) {
+        return; // homogeneous: no index buffer exists to write into (see packed_byte_count)
+    }
     const std::size_t voxelsPerByte = 8 / bits;
     const std::size_t byteIndex = localIndex / voxelsPerByte;
     const auto bitOffset = static_cast<std::uint8_t>((localIndex % voxelsPerByte) * bits);
@@ -37,6 +43,12 @@ void write_index(std::pmr::vector<std::byte>& indices, std::size_t localIndex, s
 }
 
 std::size_t packed_byte_count(std::size_t voxelCount, std::uint8_t bits) {
+    if (bits == 0) {
+        // Homogeneous representation stores no index buffer at all. Unreachable from promote()
+        // (its callers only ever widen to >= 1 bit), but the invariant lives two functions away --
+        // cheap to state here rather than trust at a distance.
+        return 0;
+    }
     const std::size_t voxelsPerByte = 8 / bits;
     return (voxelCount + voxelsPerByte - 1) / voxelsPerByte;
 }

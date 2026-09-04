@@ -1,0 +1,110 @@
+# CI matrix per tooling-testing-and-ci.md §5 / PHASE_1_COMPLETION_BRIEF.md task 35: the plain
+# build+test job runs PARALLEL to the sanitizer/static-analysis jobs (never sequenced behind
+# them), so contributors get the fast signal first.
+#
+# The Linux jobs build the headless subset only (-DVOXEL_BUILD_RENDERER=OFF: engine/{core,ecs,jobs}
+# + all of world/ + their tests, no DiligentEngine/GLFW/Tracy fetch) -- that is deliberate, not a
+# shortcut: TSan does not exist on the Windows dev machine by any realistic path (see CLAUDE.md),
+# and the threaded code that needs TSan (jobs, streaming, concurrent generation/meshing) is
+# exactly the platform-independent subset. UBSan is likewise Clang-only, so it rides with ASan on
+# Linux instead of the MSVC job.
+name: ci
+
+on:
+  push:
+    branches: ["C++-voxel", main]
+  pull_request:
+
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
+jobs:
+  build-test-windows:
+    name: build + test (Windows, MSVC, full tree)
+    runs-on: windows-latest
+    timeout-minutes: 150 # DiligentEngine (4 backends) is a heavyweight first-time build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-windows-${{ hashFiles('cmake/Dependencies.cmake') }}
+      # Short out-of-tree build dir is load-bearing, not style: DiligentCore's glslang object
+      # paths exceed MAX_PATH under a nested in-repo build directory (see CLAUDE.md).
+      - name: Configure
+        run: cmake -B C:/b -G Ninja -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build C:/b
+      - name: Test
+        run: ctest --test-dir C:/b --output-on-failure --timeout 300
+
+  asan-ubsan-linux:
+    name: ASan + UBSan (Linux, Clang, headless subset)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-linux-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+      - name: Configure
+        run: >
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DVOXEL_BUILD_RENDERER=OFF
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -g"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 600
+
+  tsan-linux:
+    name: TSan (Linux, Clang, headless subset)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-linux-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+      - name: Configure
+        run: >
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DVOXEL_BUILD_RENDERER=OFF
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_CXX_FLAGS="-fsanitize=thread -g"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+      - name: Build
+        run: cmake --build build
+      # The ThreadPool, streaming-decision, and concurrent generation/meshing stress tests are the
+      # actual point of this job -- the only TSan coverage this project has anywhere.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 900
+
+  clang-tidy-linux:
+    name: clang-tidy (Linux, headless subset)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cpm-cache
+          key: cpm-linux-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang clang-tidy
+      - name: Configure
+        run: >
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DVOXEL_BUILD_RENDERER=OFF
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DVOXEL_CLANG_TIDY=ON
+      # Analysis happens during compilation (CMAKE_CXX_CLANG_TIDY); a finding fails the build via
+      # the .clang-tidy WarningsAsErrors setting.
+      - name: Build (analyze)
+        run: cmake --build build

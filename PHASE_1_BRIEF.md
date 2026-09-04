@@ -393,33 +393,59 @@ this project's FastNoise2 build (only SSE2/SSE41/AVX2/AVX512 are — see `CLAUDE
 `FastNoise::New<T>` returned null and the very first dereference segfaulted; re-pinned to `SSE2`
 (the actual lowest compiled level, still a safe universal floor for this x86-64-only project).
 
-**M1.3 — Meshing (no GPU/display needed).** `world/meshing` (Surface Nets, chunk-boundary-correct),
-normals computed per §2.6, `tools/mesh_dump` extended to also emit material IDs. Done when:
-`mesh_dump` produces a seamless multi-chunk `.obj`, inspectable on any machine, no Diligent
-involved.
+**M1.3 — Meshing (no GPU/display needed). ✅ DONE (2026-09-03), per PHASE_1_COMPLETION_BRIEF.md's
+Group A.** `world/meshing` real Naive Surface Nets implementation, chunk-boundary-correct via a
+padded (up to 26-neighbor) cross-chunk sampling function. 5/5 new tests pass (29/29 whole suite),
+including a signed-volume winding/orientation check and a cross-chunk seam-continuity check that
+verifies matching world-space vertex positions between independently-meshed adjacent chunks. **Note
+a scope narrowing**: `PHASE_1_COMPLETION_BRIEF.md`'s own Group A (the current authoritative task
+list for this milestone) does not include extending `tools/mesh_dump` to emit meshed `.obj`
+output, unlike this line's original done-when criterion — that specific tool integration remains
+undone if still wanted; flagged rather than silently dropped or silently claimed complete.
 
 **M1.4 — Rendering core (GPU + display required — the first milestone that actually needs the
-runtime check §0 flagged).** Device/context/swap-chain init (§2.1–§2.3), the terrain PSO +
-hand-written shader pair (§2.2, §4), GLFW window (`PROJECT_BRIEF.md` §2.2), the vertex/index
-layout from §2.6, single-threaded immediate-context draw of M1.3's generated chunks with CPU-side
-frustum culling. Done when: generated terrain — land, mountains, water — is actually visible on
-screen, correct depth/culling (§2.3's gotcha didn't bite), at whatever framerate. Correctness over
-speed here.
+runtime check §0 flagged). ✅ DONE (2026-09-03), per PHASE_1_COMPLETION_BRIEF.md's Group B.**
+Device/context/swap-chain init (§2.1–§2.3), the terrain PSO + hand-written shader pair (§2.2, §4),
+GLFW window (`PROJECT_BRIEF.md` §2.2), the vertex/index layout from §2.6, single-threaded
+immediate-context draw of M1.3's generated chunks with CPU-side frustum culling. Done when:
+generated terrain — land, mountains, water — is actually visible on screen, correct depth/culling
+(§2.3's gotcha didn't bite), at whatever framerate. Correctness over speed here. **Confirmed on
+both Vulkan and D3D12** on the real GPU (RTX 4070 Laptop), with visibility checked mechanically:
+`voxel_app --frames 10 --verify-frame` reads the frame back and fails on an all-sky image — both
+backends produce an identical 16.8% terrain-pixel fraction. §2.3's depth gotcha and the winding
+convention both came out correct on the first lit frame (the §2.3 define had been in
+`engine/core/math.hpp` since M1.1, as designed).
 
-**M1.5 — Camera & movement.** §6 in full: ECS camera entity, quaternion orientation, GLFW input →
-`engine/input` → camera system, delta-time-integrated flight. Done when: free-flying through the
-M1.4 terrain feels correct — no gimbal lock, no framerate-coupled speed.
+**M1.5 — Camera & movement. ✅ DONE (2026-09-03), per PHASE_1_COMPLETION_BRIEF.md's Group C.** §6
+in full: ECS camera entity, quaternion orientation, GLFW input → `engine/input` → camera system,
+delta-time-integrated flight. Done when: free-flying through the M1.4 terrain feels correct — no
+gimbal lock, no framerate-coupled speed. The mechanical half is unit-tested (dt-independence,
+pitch-clamp behavior at ±90°, movement-basis rotation); the "feels correct" half is yours to fly.
+**Bonus beyond the original M1.5 scope: chunk streaming (the §1 deferral) is also DONE** — see
+PHASE_1_COMPLETION_BRIEF.md Group D: terrain now streams in/out around the moving camera with
+two-radii + time-delay hysteresis, verified by an automated `--autofly` bounded-memory check.
 
-**M1.6 — Profiling & debug tooling.** §5 in full: RenderDoc captures working end to end on a chunk
-draw, Tracy wired into the job system (`ZoneScoped` in generate/mesh/upload) and, once §2.5's
-native handle is confirmed, into the Vulkan submission path (`TracyVkContext`/`TracyVkZone`). Done
-when: a RenderDoc capture of one frame is legible (named objects, per §4), and a live Tracy session
-shows the job system's actual parallelism, not just an assumption that it's working.
+**M1.6 — Profiling & debug tooling. ✅ DONE (2026-09-03), per PHASE_1_COMPLETION_BRIEF.md's Group
+E** (one flagged deferral). §5: Tracy wired into the job system (`ZoneScopedN` on generate/mesh/
+upload/render/streaming-update, `FrameMark` per frame) and into the Vulkan submission path — the
+GPU-zone context attaches on the real device via the §2.5 native-handle chain ("Tracy Vulkan
+GPU-zone context attached" confirmed at runtime); the ImGui overlay (vendored, no new dependency)
+shows chunk/culling/job counts plus BOTH VRAM numbers — the self-tracked chunk-buffer total and
+`VK_EXT_memory_budget`'s machine-wide budget/usage (real values confirmed: 7180 MiB budget on this
+RTX 4070). The live-Tracy-session and RenderDoc-capture halves of the done-when are inherently
+interactive — every object is debug-named per §4, and launching `voxel_app` through RenderDoc's UI
+gives F12 captures with zero integration. **Flagged deferral**: the *in-app* capture-trigger
+hotkey needs `renderdoc_app.h`, which is not vendored in any local dependency — deferred rather
+than hand-declaring the API struct layout from memory.
 
-**M1.7 — Consolidation.** Everything above integrated into one running app (`voxel_app`), not five
-disconnected pieces; `PROJECT_BRIEF.md` §11 updated per §11 below. Done when: a fresh build of
-`voxel_app` boots, generates and renders terrain, and is flyable — the actual "most of the game, no
-models yet" deliverable this document was written for.
+**M1.7 — Consolidation. ✅ DONE in substance (2026-09-03).** Everything above runs as one
+`voxel_app` (streaming + camera + rendering + overlay in a single loop — this happened naturally
+at Group D rather than as a final assembly step); `PROJECT_BRIEF.md` §11 updated. The CI matrix is
+wired (`.github/workflows/ci.yml`: Windows build+test, Linux ASan+UBSan / TSan / clang-tidy over
+the headless `-DVOXEL_BUILD_RENDERER=OFF` subset; clang-tidy runs clean locally with
+`WarningsAsErrors: '*'`) — its first run on GitHub's own runners is still pending a push. Done
+when: a fresh build of `voxel_app` boots, generates and renders terrain, and is flyable — true
+on both backends, with the flight-feel check being yours.
 
 Explicitly stretch, not part of Phase 1's done-when: chunk streaming by render distance (§1),
 GPU-driven indirect draw + compute culling (§2.6), deferred-context multithreaded submission
