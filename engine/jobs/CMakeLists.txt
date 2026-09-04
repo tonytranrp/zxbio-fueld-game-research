@@ -12,6 +12,10 @@ target_sources(engine_jobs PUBLIC
 
 target_link_libraries(engine_jobs PUBLIC project_warnings Threads::Threads)
 
+# PRIVATE on purpose: the queue is an implementation detail of thread_pool.cpp -- the public
+# header exposes no moodycamel types (see the Impl split), so consumers never see this include.
+target_include_directories(engine_jobs SYSTEM PRIVATE "${concurrentqueue_SOURCE_DIR}")
+
 if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()

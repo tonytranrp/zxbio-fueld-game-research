@@ -72,6 +72,23 @@ CPMAddPackage(
 )
 endif()
 
+# --- Job queue: moodycamel::ConcurrentQueue ---------------------------------------------------
+# BlockingConcurrentQueue is ThreadPool's interior queue since the Group I hardening pass
+# (ENGINE_HARDENING_BRIEF.md; decision log in research/engine-hardening-log.md). v1.0.5 verified
+# live via git ls-remote on 2026-09-04 and smoke-tested standalone under real MSVC (jthread +
+# stop_token worker shape) before adoption. Licenses: dual Simplified-BSD/BSL, plus zlib for the
+# embedded lightweight semaphore. A modified copy of this queue already ships inside this binary
+# via Tracy's client, so this adds a second, pinned, unmodified instance -- not a new class of
+# dependency. Header-only: consumed via include dir, no CMake targets needed (its own CMakeLists
+# would add install/export noise), hence DOWNLOAD_ONLY.
+CPMAddPackage(
+  NAME concurrentqueue
+  GITHUB_REPOSITORY cameron314/concurrentqueue
+  GIT_TAG v1.0.5
+  UPDATE_DISCONNECTED TRUE
+  DOWNLOAD_ONLY TRUE
+)
+
 # --- Testing: Catch2 -------------------------------------------------------------------------
 CPMAddPackage(
   NAME Catch2
@@ -110,6 +127,55 @@ if(MINGW AND TARGET FastSIMD_FastNoise)
   endif()
   unset(_fastsimd_opts)
 endif()
+
+# --- Benchmarking: Google Benchmark + comparison candidates (benchmark builds only) -----------
+if(VOXEL_BUILD_BENCHMARKS)
+# v1.9.5 and v4.9.2 verified live against `git ls-remote --tags` on 2026-09-04, and both
+# smoke-tested standalone under this machine's real MSVC before being wired in here
+# (ENGINE_HARDENING_BRIEF.md Group G task 3). Apache-2.0 / MIT respectively, read from the
+# fetched LICENSE files, not assumed.
+CPMAddPackage(
+  NAME benchmark
+  GITHUB_REPOSITORY google/benchmark
+  GIT_TAG v1.9.5
+  UPDATE_DISCONNECTED TRUE
+  OPTIONS
+    "BENCHMARK_ENABLE_TESTING OFF"
+    "BENCHMARK_ENABLE_GTEST_TESTS OFF"
+    "BENCHMARK_ENABLE_INSTALL OFF"
+)
+# unordered_dense is fetched for the Group H task-12 comparison harness (std::unordered_map vs
+# ankerl::unordered_dense::{map,segmented_map} on the real ChunkCoord workload). It is
+# deliberately NOT linked into any engine module yet -- adopting it inside ChunkStore is Group H
+# task 7's decision, taken on this harness's numbers, and the ChunkMap alias makes that a
+# one-line change when it happens.
+CPMAddPackage(
+  NAME unordered_dense
+  GITHUB_REPOSITORY martinus/unordered_dense
+  GIT_TAG v4.9.2
+  UPDATE_DISCONNECTED TRUE
+)
+endif()
+
+# --- Coordinate containers: Boost.Unordered ---------------------------------------------------
+# boost::unordered_flat_map/_flat_set back the CoordMap/CoordSet aliases in
+# world/chunk/coord_containers.hpp (ENGINE_HARDENING_BRIEF.md Group H). The pick was made on this
+# machine's own MSVC Release benchmark at the realistic 558-chunk scale -- no independent
+# MSVC-run numbers exist anywhere for these containers (Subagent 1's finding), so
+# benchmarks/bench_chunk_map.cpp decided it: boost_flat beat std::unordered_map AND
+# ankerl::unordered_dense on every workload (build+teardown 17.3us vs 38.0/30.3us; find-hit
+# 3.0us vs 3.7/6.2us), and unlike unordered_dense its iterators are custom (not std::vector's),
+# so MSVC _ITERATOR_DEBUG_LEVEL=2 checked-iterator locking -- the class of the measured Group D
+# Debug collapse -- cannot attach to them. Fetched the official CPM way (CMake-enabled release
+# archive + BOOST_INCLUDE_LIBRARIES, header-only usage, nothing else of Boost is built).
+# boost-1.92.0 verified live against the GitHub release listing on 2026-09-04 (1.91's asset was
+# re-tagged 1.91.0-1; 1.92.0 is current stable).
+CPMAddPackage(
+  NAME Boost
+  VERSION 1.92.0
+  URL https://github.com/boostorg/boost/releases/download/boost-1.92.0/boost-1.92.0-cmake.tar.xz
+  OPTIONS "BOOST_ENABLE_CMAKE ON" "BOOST_INCLUDE_LIBRARIES unordered"
+)
 
 # --- Profiling: Tracy client (renderer builds only) -------------------------------------------
 if(VOXEL_BUILD_RENDERER)

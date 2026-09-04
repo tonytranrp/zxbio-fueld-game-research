@@ -7,6 +7,7 @@ target_sources(world_streaming PUBLIC
     BASE_DIRS include
     FILES
         include/world/streaming/chunk_streamer.hpp
+        include/world/streaming/chunk_events.hpp
 )
 
 # Depends on world_chunk for ChunkCoord only -- a system beside the data modules, not an owner of

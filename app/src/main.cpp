@@ -28,6 +28,7 @@
 #include "render/diligent/render_context.hpp"
 #include "render/diligent/terrain_renderer.hpp"
 #include "render/interface/camera.hpp"
+#include "world/streaming/chunk_events.hpp"
 #include "world/streaming/chunk_streamer.hpp"
 
 #if defined(TRACY_ENABLE)
@@ -87,6 +88,24 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             options.validation = true;
         } else if (arg == "--autofly") {
             options.autofly = true;
+#ifndef NDEBUG
+        } else if (arg == "--crash-test") {
+            // Group J task 20's check: deliberately exercise each crash-handler hook. Debug-only
+            // by construction -- the flag does not exist in release builds.
+            const char* value = next_value();
+            const std::string_view mode = value ? value : "";
+            log(LogLevel::Info, "crash-test: triggering \"{}\"", mode);
+            if (mode == "av") {
+                int* p = nullptr;
+                *p = 42; // NOLINT(clang-analyzer-core.NullDereference) -- the point of the test
+            } else if (mode == "abort") {
+                std::abort();
+            } else if (mode == "terminate") {
+                std::terminate();
+            }
+            log(LogLevel::Error, "--crash-test expects av|abort|terminate, got \"{}\"", mode);
+            return std::nullopt;
+#endif
         } else {
             log(LogLevel::Error, "unknown argument \"{}\" (known: --mode vk|d3d12, --frames N, --radius N, --seed N, --verify-frame, --validation, --autofly)", arg);
             return std::nullopt;
@@ -94,6 +113,25 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
     }
     return options;
 }
+
+// Group L task 33's proof case: the overlay's ready-chunk count is *defined* by lifecycle events
+// (ChunkMeshReady/ChunkUnloaded pairs) instead of polling the streaming system. The unguarded
+// decrement is deliberate -- an unpaired ChunkUnloaded would wrap the count and trip the
+// event-vs-poll consistency check in the 2s stats report instead of being silently masked.
+struct ChunkEventCounters {
+    std::size_t ready = 0;
+    std::size_t lifetime_loaded = 0; // ChunkLoaded events seen (voxels applied); monotonic
+
+    void on_loaded(const world::streaming::ChunkLoaded&) { ++lifetime_loaded; }
+    void on_mesh_ready(const world::streaming::ChunkMeshReady&) { ++ready; }
+    void on_unloaded(const world::streaming::ChunkUnloaded&) { --ready; }
+
+    void connect(engine::events::Dispatcher& dispatcher) {
+        dispatcher.sink<world::streaming::ChunkLoaded>().connect<&ChunkEventCounters::on_loaded>(*this);
+        dispatcher.sink<world::streaming::ChunkMeshReady>().connect<&ChunkEventCounters::on_mesh_ready>(*this);
+        dispatcher.sink<world::streaming::ChunkUnloaded>().connect<&ChunkEventCounters::on_unloaded>(*this);
+    }
+};
 
 int run(const AppOptions& options) {
     app::GlfwWindow window(1280, 720, "voxel_app");
@@ -137,8 +175,11 @@ int run(const AppOptions& options) {
     world::streaming::StreamingConfig streamingConfig;
     streamingConfig.load_radius = options.radius;
     streamingConfig.unload_radius = options.radius + 2;
+    engine::events::Dispatcher dispatcher;
+    ChunkEventCounters chunkCounters;
+    chunkCounters.connect(dispatcher);
     app::ChunkStreamingSystem streaming(streamingConfig, options.seed, std::jthread::hardware_concurrency(),
-                                        renderer, registry);
+                                        renderer, registry, dispatcher);
     log(LogLevel::Info, "streaming with load radius {}, unload radius {} (+{:.0f}s delay), {} worker threads",
         streamingConfig.load_radius, streamingConfig.unload_radius, streamingConfig.unload_delay_seconds,
         streaming.worker_thread_count());
@@ -208,7 +249,7 @@ int run(const AppOptions& options) {
             render::diligent::OverlayStats stats;
             stats.fps = smoothedFps;
             stats.frame_ms = dtMs;
-            stats.ready_chunks = streaming.ready_chunk_count();
+            stats.ready_chunks = chunkCounters.ready; // event-sourced (task 33), not polled
             stats.visible_chunks = renderer.last_visible_count();
             stats.total_chunk_meshes = renderer.chunk_count();
             stats.jobs_in_flight = streaming.in_flight_count();
@@ -255,6 +296,12 @@ int run(const AppOptions& options) {
                 streaming.ready_chunk_count(), streaming.in_flight_count(), streaming.pending_mesh_count(),
                 streaming.generation_in_flight_count(), streaming.mesh_in_flight_count(),
                 static_cast<double>(renderer.gpu_memory().allocated_bytes()) / (1024.0 * 1024.0));
+            // Task 33's check, mechanically: the event-derived count must always equal the polled
+            // one. A divergence means a lifecycle event is missing or double-fired.
+            if (chunkCounters.ready != streaming.ready_chunk_count()) {
+                log(LogLevel::Error, "event/poll chunk-count mismatch: events say {}, streamer says {}",
+                    chunkCounters.ready, streaming.ready_chunk_count());
+            }
             lastReport = now;
             framesSinceReport = 0;
         }

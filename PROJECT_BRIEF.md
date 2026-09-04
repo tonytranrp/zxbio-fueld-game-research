@@ -681,15 +681,26 @@ original scope: deferred-context multithreaded draw submission (§7 — still ga
 single-thread bottleneck, per `PHASE_1_BRIEF.md` §2.4) and water as a *rendered-distinct* material
 beyond its palette color. 
 
-**Phase 6 — Tooling & CI hardening. Partially landed early**: the CI matrix (build+test on
-Windows/MSVC, ASan+UBSan and TSan and clang-tidy on Linux over the headless subset) is wired in
+**Phase 6 — Tooling & CI hardening. Mostly landed**: the CI matrix (build+test on Windows/MSVC,
+ASan+UBSan and TSan and clang-tidy on Linux over the headless subset) is wired in
 `.github/workflows/ci.yml` with clang-tidy already running clean locally; the Dear ImGui debug
-overlay shipped with Phase 1's Group E. Still open here: PCH/ccache/mold, benchmarks-as-baseline,
-and the first green run of the workflow on GitHub's own runners (written, not yet exercised
-there).
-Dear ImGui debug overlay (§7), PCH/ccache/mold in place, benchmarks from §10 run and recorded as a
-baseline. Done when: a fresh clone builds clean through CI on the sanitizer and static-analysis
-jobs, not just the plain build.
+overlay shipped with Phase 1's Group E; **benchmarks-as-baseline landed with the 2026-09-04
+hardening pass** (`-DVOXEL_BUILD_BENCHMARKS=ON`: Google Benchmark harnesses for chunk-map ops /
+octahedral codec / mesh extraction, first baseline JSON committed under `benchmarks/baselines/`,
+methodology in `research/engine-hardening-log.md`). Still open here: PCH/ccache/mold, and the
+first green run of the workflow on GitHub's own runners (written, not yet exercised there). Done
+when: a fresh clone builds clean through CI on the sanitizer and static-analysis jobs, not just
+the plain build.
+
+**Engine hardening pass (post-Phase-1, 2026-09-04): ✅ DONE.** `ENGINE_HARDENING_BRIEF.md`
+Groups G–P executed; decision log with all evidence in `research/engine-hardening-log.md`.
+Highlights: compressed 12B GPU vertex + 16-bit indices (VRAM 17.0→7.1 MiB measured on autofly,
+verify-frame green on Vulkan AND D3D12), every ChunkCoord container behind
+`CoordMap`/`CoordSet` aliases on `boost::unordered_flat_map/_set` (picked by local MSVC
+benchmark), ThreadPool interior on `moodycamel::BlockingConcurrentQueue` (jthread/stop_token
+shell unchanged), crash handler extended to five failure classes with a deliberate-crash test,
+`engine/events` (`entt::dispatcher`) with chunk lifecycle events driving the overlay, and
+Release PDBs on by decision. 59/59 tests.
 
 Stretch, unordered, pick up any time after Phase 6: John-Lin-technique meshing upgrade (§2.6),
 DiligentFX post-process effects layered onto the existing custom geometry pass (§7), bindless

@@ -11,6 +11,7 @@ target_link_libraries(voxel_app PRIVATE
     project_warnings
     engine_core
     engine_ecs
+    engine_events
     engine_input
     engine_jobs
     world_chunk

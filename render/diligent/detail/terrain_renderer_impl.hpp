@@ -4,9 +4,10 @@
 // pso_terrain.cpp (pipeline + constant-buffer creation) and terrain_renderer.cpp (upload/draw).
 
 #include <cstdint>
-#include <unordered_map>
 
 #include "render/diligent/terrain_renderer.hpp"
+
+#include "world/chunk/coord_containers.hpp"
 
 #include "detail/render_context_impl.hpp"
 
@@ -28,6 +29,29 @@ struct ChunkConstantsCpu {
     glm::vec4 chunkOriginWorld; // matches: cbuffer ChunkConstants { float4 g_ChunkOriginWorld; } -- xyz used, w padding
 };
 static_assert(sizeof(ChunkConstantsCpu) == 16, "must match the 16-byte HLSL cbuffer exactly");
+
+// The compressed GPU vertex (ENGINE_HARDENING_BRIEF.md Group K): 12 bytes vs the CPU-side
+// world::meshing::Vertex's 28 -- 2.33x. Decoded entirely by fixed-function normalized vertex
+// fetch + arithmetic in the VS (no shader bit manipulation; Subagent 3's cross-backend finding).
+//   position: 4x uint16 UNORM, chunk-local fixed point at 1/1024 voxel (vertex_quantization.hpp).
+//             FOUR components, not three, is load-bearing: DXGI has no R16G16B16_UNORM at all, so
+//             a 3-component VT_UINT16 layout asserts in Diligent's D3D12 format mapping
+//             ("Unsupported number of components") while working fine on Vulkan -- found by the
+//             per-backend --verify-frame check, exactly the silent-divergence class Group K's
+//             design review warned about. pw is zero padding the GPU ignores.
+//   normal:   2x uint8 UNORM, 16-bit octahedral (octahedral.hpp; iTwin.js-width precedent)
+//   material: uint8, plain integer attribute (unchanged semantics from the uncompressed layout)
+struct GpuVertexCompressed {
+    std::uint16_t px = 0;
+    std::uint16_t py = 0;
+    std::uint16_t pz = 0;
+    std::uint16_t pw = 0; // unused; exists so position is a DXGI-representable RGBA16 attribute
+    std::uint8_t octU = 0;
+    std::uint8_t octV = 0;
+    std::uint8_t material = 0;
+    std::uint8_t pad = 0; // stride 12: keeps the buffer 4-byte aligned per vertex
+};
+static_assert(sizeof(GpuVertexCompressed) == 12, "GPU input layout in pso_terrain.cpp assumes stride 12");
 
 // One uploaded chunk's GPU-side mesh (task 13). gpuBytes is remembered so the allocation
 // tracker's decrement on removal never has to touch a possibly-dying Diligent object.
@@ -52,7 +76,9 @@ struct TerrainRenderer::Impl {
     Diligent::RefCntAutoPtr<Diligent::IBuffer> frameConstants; // dynamic, mapped once per frame
     Diligent::RefCntAutoPtr<Diligent::IBuffer> chunkConstants; // dynamic, mapped once per visible chunk draw
     Diligent::RefCntAutoPtr<Diligent::IBuffer> materialPalette; // immutable
-    std::unordered_map<world::chunk::ChunkCoord, detail::ChunkGpuMesh> chunks;
+    // CoordMap (flat) matters most HERE of anywhere: this map is iterated every frame for the
+    // draw loop, and flat contiguous storage is the iteration-friendly layout.
+    world::chunk::CoordMap<detail::ChunkGpuMesh> chunks;
     std::size_t lastVisible = 0;
 };
 

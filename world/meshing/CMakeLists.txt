@@ -8,6 +8,8 @@ target_sources(world_meshing PUBLIC
     FILES
         include/world/meshing/mesh_data.hpp
         include/world/meshing/mesh_extractor.hpp
+        include/world/meshing/octahedral.hpp
+        include/world/meshing/vertex_quantization.hpp
 )
 
 target_link_libraries(world_meshing PUBLIC project_warnings world_chunk engine_core)

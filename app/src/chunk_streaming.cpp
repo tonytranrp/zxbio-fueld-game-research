@@ -8,6 +8,7 @@
 
 #include "engine/core/log.hpp"
 #include "world/chunk/chunk_load_state.hpp"
+#include "world/streaming/chunk_events.hpp"
 #include "world/generation/terrain_fill.hpp"
 #include "world/meshing/mesh_extractor.hpp"
 
@@ -40,8 +41,10 @@ std::int32_t chebyshev(ChunkCoord a, ChunkCoord b) noexcept {
 ChunkStreamingSystem::ChunkStreamingSystem(world::streaming::StreamingConfig config, int seed,
                                            std::size_t workerThreads,
                                            render::diligent::TerrainRenderer& renderer,
-                                           engine::ecs::Registry& registry)
-    : streamer_(config), heightmap_(seed), renderer_(renderer), registry_(registry), pool_(workerThreads) {}
+                                           engine::ecs::Registry& registry,
+                                           engine::events::Dispatcher& dispatcher)
+    : streamer_(config), heightmap_(seed), renderer_(renderer), registry_(registry), dispatcher_(dispatcher),
+      pool_(workerThreads) {}
 
 void ChunkStreamingSystem::update(const glm::vec3& cameraWorldPosition, double nowSeconds) {
     ZoneScopedN("streaming update");
@@ -119,6 +122,9 @@ void ChunkStreamingSystem::drain_generation_completions() {
             auto& state = registry_.get<ChunkPipelineState>(it->second);
             state.state = ChunkLoadState::Generated;
             state.chunk = store_.find(coord); // stable: unordered_map of unique_ptr, no reallocation of the Chunk
+            // Entity-gated on purpose: halo-only neighbors (generated for meshing, never streamed
+            // themselves) have no entity and no lifecycle -- they don't fire events either.
+            dispatcher_.trigger(world::streaming::ChunkLoaded{coord});
         }
     }
 }
@@ -225,6 +231,7 @@ void ChunkStreamingSystem::drain_mesh_completions() {
         if (const auto it = chunk_entities_.find(completion.coord); it != chunk_entities_.end()) {
             registry_.get<ChunkPipelineState>(it->second).state = ChunkLoadState::Ready;
         }
+        dispatcher_.trigger(world::streaming::ChunkMeshReady{completion.coord, completion.mesh.vertices.size()});
     }
 }
 
@@ -238,6 +245,7 @@ void ChunkStreamingSystem::apply_unloads(const std::vector<ChunkCoord>& coords) 
         destroy_chunk_entity(coord);
         store_.erase(coord);
         generated_.erase(coord);
+        dispatcher_.trigger(world::streaming::ChunkUnloaded{coord});
     }
 }
 

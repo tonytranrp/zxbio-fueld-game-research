@@ -1,6 +1,9 @@
 #include "crash_handler.hpp"
 
+#include <csignal>
 #include <cstdio>
+#include <cstdlib>
+#include <exception>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -12,24 +15,27 @@ namespace app {
 
 namespace {
 
-LONG WINAPI unhandled_filter(EXCEPTION_POINTERS* info) {
-    const DWORD code = info->ExceptionRecord->ExceptionCode;
-    std::fprintf(stderr, "\n=== FATAL: unhandled exception 0x%08lX at %p (thread %lu) ===\n", code,
-                 info->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
-    if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2) {
-        std::fprintf(stderr, "access violation: %s address %p\n",
-                     info->ExceptionRecord->ExceptionInformation[0] == 0 ? "reading"
-                     : info->ExceptionRecord->ExceptionInformation[0] == 1 ? "writing"
-                                                                          : "executing",
-                     reinterpret_cast<void*>(info->ExceptionRecord->ExceptionInformation[1]));
-    }
-
+// Symbolized walk of `context`'s stack to stderr. Shared by every hook below -- the SEH filter
+// walks the faulting context; the CRT/terminate hooks walk their own current context (the crash
+// site is then a few frames below the hook itself, which is fine for a readable report).
+//
+// By-REFERENCE parameter + aligned local copy on purpose: CONTEXT is declspec(align(16)), and a
+// by-value parameter is not guaranteed that alignment on x64 MSVC -- passing it by value made
+// StackWalk64 unwind garbage (raw stack addresses instead of frames), found by task 20's
+// deliberate crash test, not by review.
+void walk_and_print(const CONTEXT& contextIn) {
+    CONTEXT context = contextIn; // local declaration carries CONTEXT's required 16-byte alignment
     const HANDLE process = GetCurrentProcess();
     SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
-    SymInitialize(process, nullptr, TRUE);
+    if (SymInitialize(process, nullptr, TRUE) == FALSE) {
+        // ERROR_INVALID_PARAMETER (87) here means the process symbol handler is ALREADY
+        // initialized -- Tracy's client initializes dbghelp for its own callstack capture when
+        // linked in. Its init doesn't necessarily load the module list, so refresh it; the walk
+        // below then symbolizes against whoever's session is active. Found by task 20's
+        // deliberate crash test: without this, every frame printed as a raw address.
+        SymRefreshModuleList(process);
+    }
 
-    // Walk the faulting thread's stack from the exception context.
-    CONTEXT context = *info->ContextRecord;
     STACKFRAME64 frame{};
     frame.AddrPC.Offset = context.Rip;
     frame.AddrPC.Mode = AddrModeFlat;
@@ -71,13 +77,64 @@ LONG WINAPI unhandled_filter(EXCEPTION_POINTERS* info) {
         }
     }
     std::fflush(stderr);
+}
+
+void print_current_stack(const char* reason) {
+    std::fprintf(stderr, "\n=== FATAL: %s (thread %lu) ===\n", reason, GetCurrentThreadId());
+    CONTEXT context{};
+    context.ContextFlags = CONTEXT_FULL;
+    RtlCaptureContext(&context);
+    walk_and_print(context);
+}
+
+LONG WINAPI unhandled_filter(EXCEPTION_POINTERS* info) {
+    const DWORD code = info->ExceptionRecord->ExceptionCode;
+    std::fprintf(stderr, "\n=== FATAL: unhandled exception 0x%08lX at %p (thread %lu) ===\n", code,
+                 info->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
+    if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2) {
+        std::fprintf(stderr, "access violation: %s address %p\n",
+                     info->ExceptionRecord->ExceptionInformation[0] == 0 ? "reading"
+                     : info->ExceptionRecord->ExceptionInformation[0] == 1 ? "writing"
+                                                                          : "executing",
+                     reinterpret_cast<void*>(info->ExceptionRecord->ExceptionInformation[1]));
+    }
+    walk_and_print(*info->ContextRecord);
     return EXCEPTION_EXECUTE_HANDLER; // die, but with the report above in hand
+}
+
+// Group J task 20: the failure classes the plain SEH filter never saw -- identified by Subagent
+// 2's source audit of backward-cpp's Windows hook set (SIGABRT, std::terminate, pure virtual
+// call, CRT invalid parameter), re-implemented on the existing reporting path instead of
+// adopting the library (research/engine-hardening-log.md, task 19's written decision).
+[[noreturn]] void terminate_hook() {
+    print_current_stack("std::terminate (unhandled exception or noexcept violation)");
+    _exit(3);
+}
+
+extern "C" void abort_signal_hook(int) {
+    print_current_stack("abort()");
+    _exit(3);
+}
+
+[[noreturn]] void purecall_hook() {
+    print_current_stack("pure virtual call");
+    _exit(3);
+}
+
+void invalid_parameter_hook(const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, uintptr_t) {
+    print_current_stack("CRT invalid parameter");
+    _exit(3);
 }
 
 } // namespace
 
 void install_crash_handler() {
     SetUnhandledExceptionFilter(&unhandled_filter);
+    std::set_terminate(&terminate_hook);
+    std::signal(SIGABRT, &abort_signal_hook);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT); // our report replaces the CRT popup
+    _set_purecall_handler(&purecall_hook);
+    _set_invalid_parameter_handler(&invalid_parameter_hook);
 }
 
 } // namespace app

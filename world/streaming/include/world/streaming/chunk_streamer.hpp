@@ -1,11 +1,10 @@
 #pragma once
 
 #include <cstdint>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "world/chunk/chunk_coord.hpp"
+#include "world/chunk/coord_containers.hpp"
 
 namespace world::streaming {
 
@@ -70,12 +69,15 @@ public:
 
 private:
     StreamingConfig config_;
-    std::unordered_set<world::chunk::ChunkCoord> desired_;
-    std::unordered_set<world::chunk::ChunkCoord> in_flight_;
-    std::unordered_set<world::chunk::ChunkCoord> loaded_;
+    // CoordSet/CoordMap (Group H task 11): same flat containers as ChunkStore, behind the same
+    // alias boundary. desired_ is rebuilt every tick -- flat storage also retires most of the
+    // per-tick node churn task 39 flagged (clear() keeps capacity, inserts stop allocating).
+    world::chunk::CoordSet desired_;
+    world::chunk::CoordSet in_flight_;
+    world::chunk::CoordSet loaded_;
     // First instant a loaded chunk was seen outside R_unload; erased the moment it comes back
     // inside ("continuously outside" is the rule, not cumulative time outside).
-    std::unordered_map<world::chunk::ChunkCoord, double> outside_since_;
+    world::chunk::CoordMap<double> outside_since_;
 };
 
 } // namespace world::streaming

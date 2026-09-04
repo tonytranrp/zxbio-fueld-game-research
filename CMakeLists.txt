@@ -28,6 +28,17 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
 endif()
 
+# Deliberate decision (ENGINE_HARDENING_BRIEF.md Group J task 21), not the CMake default: Release
+# keeps full PDBs. MSVC's default Release flags carry no /Zi, so a Release crash would hand the
+# crash handler a symbol-less stack -- exactly the situation a crash handler exists to prevent.
+# /Zi + /DEBUG cost nothing at runtime (debug info lives in the .pdb beside the .exe, not in the
+# image); the only cost is link time and disk. Debug already gets /Zi from CMake's defaults.
+if(MSVC)
+  string(APPEND CMAKE_CXX_FLAGS_RELEASE " /Zi")
+  string(APPEND CMAKE_EXE_LINKER_FLAGS_RELEASE " /DEBUG /OPT:REF /OPT:ICF")
+  string(APPEND CMAKE_SHARED_LINKER_FLAGS_RELEASE " /DEBUG /OPT:REF /OPT:ICF")
+endif()
+
 include(CTest)
 
 # ON: the full Windows build (DiligentEngine, GLFW, Tracy, the render modules, and voxel_app).
@@ -36,6 +47,11 @@ include(CTest)
 # this Windows dev machine by any realistic path; see CLAUDE.md), skipping the heavyweight GPU
 # dependency fetches entirely.
 option(VOXEL_BUILD_RENDERER "Build the GPU renderer, windowing, input, and voxel_app" ON)
+
+# Micro-benchmark harnesses (ENGINE_HARDENING_BRIEF.md Group N). OFF by default: benchmark numbers
+# from a Debug build are meaningless, so these are built deliberately, in a Release configure
+# (`cmake --preset windows-release -DVOXEL_BUILD_BENCHMARKS=ON`), not as part of every dev build.
+option(VOXEL_BUILD_BENCHMARKS "Build Google Benchmark harnesses (use a Release configure)" OFF)
 
 include(cmake/CompilerWarnings.cmake)
 include(cmake/Dependencies.cmake)
@@ -62,3 +78,6 @@ if(VOXEL_BUILD_RENDERER)
   add_subdirectory(app)
 endif()
 add_subdirectory(tools)
+if(VOXEL_BUILD_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()

@@ -2,16 +2,16 @@
 
 #include <cstddef>
 #include <mutex>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "engine/core/math.hpp"
 #include "engine/ecs/registry.hpp"
+#include "engine/events/dispatcher.hpp"
 #include "engine/jobs/thread_pool.hpp"
 #include "render/diligent/terrain_renderer.hpp"
 #include "world/chunk/chunk.hpp"
 #include "world/chunk/chunk_store.hpp"
+#include "world/chunk/coord_containers.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/meshing/mesh_data.hpp"
 #include "world/streaming/chunk_streamer.hpp"
@@ -35,7 +35,8 @@ namespace app {
 class ChunkStreamingSystem {
 public:
     ChunkStreamingSystem(world::streaming::StreamingConfig config, int seed, std::size_t workerThreads,
-                         render::diligent::TerrainRenderer& renderer, engine::ecs::Registry& registry);
+                         render::diligent::TerrainRenderer& renderer, engine::ecs::Registry& registry,
+                         engine::events::Dispatcher& dispatcher);
 
     // Not movable/copyable: worker jobs capture `this` for the completion queues.
     ChunkStreamingSystem(const ChunkStreamingSystem&) = delete;
@@ -84,12 +85,15 @@ private:
     world::generation::HeightmapGenerator heightmap_; // concurrent generate calls are safe + deterministic (stress-tested)
     render::diligent::TerrainRenderer& renderer_;
     engine::ecs::Registry& registry_;
+    // Group L: chunk lifecycle events (world/streaming/chunk_events.hpp) fire through here,
+    // always from the main-thread drains -- never from a worker (engine/events threading rule).
+    engine::events::Dispatcher& dispatcher_;
 
-    std::unordered_map<world::chunk::ChunkCoord, engine::ecs::Entity> chunk_entities_;
-    std::unordered_set<world::chunk::ChunkCoord> pending_mesh_;   // streamer-requested, waiting on neighbors
-    std::unordered_set<world::chunk::ChunkCoord> generated_;      // voxels present in store_
-    std::unordered_set<world::chunk::ChunkCoord> gen_in_flight_;  // generation job running
-    std::unordered_set<world::chunk::ChunkCoord> mesh_in_flight_; // mesh job running
+    world::chunk::CoordMap<engine::ecs::Entity> chunk_entities_;
+    world::chunk::CoordSet pending_mesh_;   // streamer-requested, waiting on neighbors
+    world::chunk::CoordSet generated_;      // voxels present in store_
+    world::chunk::CoordSet gen_in_flight_;  // generation job running
+    world::chunk::CoordSet mesh_in_flight_; // mesh job running
 
     // Workers push, the main thread drains in update(). Guarded by their own mutexes so a worker
     // never contends with anything but the drain itself. mutable: settled() is logically const

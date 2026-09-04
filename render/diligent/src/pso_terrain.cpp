@@ -28,13 +28,14 @@ constexpr float kMaterialColors[kMaterialCount][4] = {
     {0.13f, 0.35f, 0.72f, 1.0f}, // Water
 };
 
-// The GPU input layout is a byte-for-byte contract with world::meshing::Vertex -- freeze it here
-// so a Vertex change breaks the build instead of the rendered image.
-using world::meshing::Vertex;
-static_assert(sizeof(Vertex) == 28);
-static_assert(offsetof(Vertex, position) == 0);
-static_assert(offsetof(Vertex, normal) == 12);
-static_assert(offsetof(Vertex, material) == 24);
+// The GPU input layout is a byte-for-byte contract with detail::GpuVertexCompressed (built at
+// upload time from world::meshing::Vertex) -- freeze it here so a layout change breaks the build
+// instead of the rendered image.
+using detail::GpuVertexCompressed;
+static_assert(sizeof(GpuVertexCompressed) == 12);
+static_assert(offsetof(GpuVertexCompressed, px) == 0);
+static_assert(offsetof(GpuVertexCompressed, octU) == 8);
+static_assert(offsetof(GpuVertexCompressed, material) == 10);
 
 RefCntAutoPtr<IShader> create_shader(TerrainRenderer::Impl& impl, IShaderSourceInputStreamFactory* streamFactory,
                                      SHADER_TYPE type, const char* file, const char* name) {
@@ -95,26 +96,32 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
     psoCI.pVS = vs;
     psoCI.pPS = ps;
 
-    // Interleaved AoS vertex fetch (PHASE_1_BRIEF.md §2.6): a vertex shader touches every field of
-    // one vertex at once -- the stated exception to the SoA default. Explicit offsets/stride, not
-    // LAYOUT_ELEMENT_AUTO_*, because Vertex carries 3 tail padding bytes auto-packing would elide.
+    // Interleaved AoS vertex fetch (PHASE_1_BRIEF.md §2.6) of the COMPRESSED 12-byte vertex
+    // (Group K): the decode happens in fixed-function normalized fetch, not shader bit ops --
+    // the two normalized attributes arrive in the VS as plain floats in [0,1], and the only
+    // shader-side work is one mad (position) and the octahedral refold (arithmetic). Explicit
+    // offsets/stride, not LAYOUT_ELEMENT_AUTO_*, because of the 3 tail padding bytes.
     LayoutElement layout[3];
-    layout[0].InputIndex = 0; // ATTRIB0: position
-    layout[0].NumComponents = 3;
-    layout[0].ValueType = VT_FLOAT32;
-    layout[0].RelativeOffset = static_cast<Uint32>(offsetof(Vertex, position));
-    layout[0].Stride = sizeof(Vertex);
-    layout[1].InputIndex = 1; // ATTRIB1: normal
-    layout[1].NumComponents = 3;
-    layout[1].ValueType = VT_FLOAT32;
-    layout[1].RelativeOffset = static_cast<Uint32>(offsetof(Vertex, normal));
-    layout[1].Stride = sizeof(Vertex);
+    // 4 components: DXGI has no 3-component 16-bit vertex format (R16G16B16_UNORM does not
+    // exist), so 3x VT_UINT16 asserts in the D3D12 backend while silently working on Vulkan.
+    layout[0].InputIndex = 0; // ATTRIB0: position, 4x uint16 UNORM fixed point (1/1024 voxel; w unused)
+    layout[0].NumComponents = 4;
+    layout[0].ValueType = VT_UINT16;
+    layout[0].IsNormalized = True;
+    layout[0].RelativeOffset = static_cast<Uint32>(offsetof(GpuVertexCompressed, px));
+    layout[0].Stride = sizeof(GpuVertexCompressed);
+    layout[1].InputIndex = 1; // ATTRIB1: 16-bit octahedral normal, 2x uint8 UNORM
+    layout[1].NumComponents = 2;
+    layout[1].ValueType = VT_UINT8;
+    layout[1].IsNormalized = True;
+    layout[1].RelativeOffset = static_cast<Uint32>(offsetof(GpuVertexCompressed, octU));
+    layout[1].Stride = sizeof(GpuVertexCompressed);
     layout[2].InputIndex = 2; // ATTRIB2: material id
     layout[2].NumComponents = 1;
     layout[2].ValueType = VT_UINT8;
     layout[2].IsNormalized = False; // integer attribute, read as uint in HLSL
-    layout[2].RelativeOffset = static_cast<Uint32>(offsetof(Vertex, material));
-    layout[2].Stride = sizeof(Vertex);
+    layout[2].RelativeOffset = static_cast<Uint32>(offsetof(GpuVertexCompressed, material));
+    layout[2].Stride = sizeof(GpuVertexCompressed);
     psoCI.GraphicsPipeline.InputLayout.LayoutElements = layout;
     psoCI.GraphicsPipeline.InputLayout.NumElements = 3;
 

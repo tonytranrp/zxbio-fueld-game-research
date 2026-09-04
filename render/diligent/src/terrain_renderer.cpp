@@ -2,6 +2,10 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <vector>
+
+#include "world/meshing/octahedral.hpp"
+#include "world/meshing/vertex_quantization.hpp"
 
 #include "detail/terrain_renderer_impl.hpp"
 
@@ -53,8 +57,35 @@ void TerrainRenderer::upload_chunk_mesh(world::chunk::ChunkCoord coord, const wo
     IRenderDevice* device = impl_->context->impl().device;
     detail::ChunkGpuMesh gpu;
 
-    const Uint64 vbSize = mesh.vertices.size() * sizeof(world::meshing::Vertex);
-    const Uint64 ibSize = mesh.indices.size() * sizeof(std::uint32_t);
+    // Group K tasks 26/27: compress at the upload boundary. The CPU-side mesh stays full-float
+    // (meshing/tests unchanged); only the bytes that cross the CPU->GPU boundary shrink -- 28B ->
+    // 12B per vertex, and 32-bit -> 16-bit indices (a 32^3 chunk can never exceed 33^3 = 35937
+    // vertices... which is under 65536, checked below rather than assumed).
+    std::vector<detail::GpuVertexCompressed> compressed;
+    compressed.reserve(mesh.vertices.size());
+    for (const world::meshing::Vertex& v : mesh.vertices) {
+        const auto oct = world::meshing::encode_octahedral_16(v.normal);
+        detail::GpuVertexCompressed out;
+        out.px = world::meshing::quantize_position_16(v.position.x);
+        out.py = world::meshing::quantize_position_16(v.position.y);
+        out.pz = world::meshing::quantize_position_16(v.position.z);
+        out.octU = oct.u;
+        out.octV = oct.v;
+        out.material = static_cast<std::uint8_t>(v.material);
+        compressed.push_back(out);
+    }
+    if (mesh.vertices.size() > std::numeric_limits<std::uint16_t>::max()) {
+        throw std::runtime_error(std::format("chunk [{},{},{}] has {} vertices, exceeding uint16 indices",
+                                             coord.x, coord.y, coord.z, mesh.vertices.size()));
+    }
+    std::vector<std::uint16_t> indices16;
+    indices16.reserve(mesh.indices.size());
+    for (const std::uint32_t index : mesh.indices) {
+        indices16.push_back(static_cast<std::uint16_t>(index));
+    }
+
+    const Uint64 vbSize = compressed.size() * sizeof(detail::GpuVertexCompressed);
+    const Uint64 ibSize = indices16.size() * sizeof(std::uint16_t);
 
     // Named per PHASE_1_BRIEF.md §4 -- these are the strings RenderDoc/Nsight show instead of hex
     // handles. Diligent copies the name at creation, so the temporaries are fine.
@@ -67,7 +98,7 @@ void TerrainRenderer::upload_chunk_mesh(world::chunk::ChunkCoord coord, const wo
         desc.Size = vbSize;
         desc.Usage = USAGE_IMMUTABLE; // meshes are replaced wholesale on re-mesh, never patched
         desc.BindFlags = BIND_VERTEX_BUFFER;
-        BufferData initial{mesh.vertices.data(), vbSize};
+        BufferData initial{compressed.data(), vbSize};
         device->CreateBuffer(desc, &initial, &gpu.vertexBuffer);
     }
     {
@@ -76,7 +107,7 @@ void TerrainRenderer::upload_chunk_mesh(world::chunk::ChunkCoord coord, const wo
         desc.Size = ibSize;
         desc.Usage = USAGE_IMMUTABLE;
         desc.BindFlags = BIND_INDEX_BUFFER;
-        BufferData initial{mesh.indices.data(), ibSize};
+        BufferData initial{indices16.data(), ibSize};
         device->CreateBuffer(desc, &initial, &gpu.indexBuffer);
     }
     if (!gpu.vertexBuffer || !gpu.indexBuffer) {
@@ -183,7 +214,7 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
 
         DrawIndexedAttribs draw;
         draw.NumIndices = mesh.indexCount;
-        draw.IndexType = VT_UINT32;
+        draw.IndexType = VT_UINT16; // halved with the compressed vertex format (Group K task 27)
         draw.Flags = DRAW_FLAG_VERIFY_ALL;
         ctx->DrawIndexed(draw);
     }

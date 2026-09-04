@@ -10,12 +10,14 @@ target_sources(world_chunk PUBLIC
         include/world/chunk/material.hpp
         include/world/chunk/chunk_voxels.hpp
         include/world/chunk/chunk_coord.hpp
+        include/world/chunk/coord_containers.hpp
         include/world/chunk/chunk.hpp
         include/world/chunk/chunk_load_state.hpp
         include/world/chunk/chunk_store.hpp
 )
 
-target_link_libraries(world_chunk PUBLIC project_warnings)
+# Boost::unordered backs coord_containers.hpp's CoordMap/CoordSet (header-only usage).
+target_link_libraries(world_chunk PUBLIC project_warnings Boost::unordered)
 
 if(BUILD_TESTING)
   add_subdirectory(tests)

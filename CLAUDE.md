@@ -65,6 +65,16 @@ machine; confirmed working via direct filesystem search + `vcvars64.bat` instead
 `C:\Program Files*\Microsoft Visual Studio\**\Hostx64\x64\cl.exe` (note the two different
 `Program Files` roots above).
 
+**Do NOT mix the two installs on one build directory** (hit for real 2026-09-04): a build dir
+whose cache pins Community's 14.51 compiler (what VS's own "Open Folder" configure picks) will
+**fail to link** from a BuildTools-14.50 `vcvars64` shell with `LNK2019: unresolved external
+symbol __std_max_element_4i` (and friends) — 14.51's STL headers emit calls to vectorized
+algorithm helpers that only exist in 14.51's static libs, and the linker takes its LIB paths from
+the shell, not the cache. Source the vcvars64.bat of the SAME edition the build dir was
+configured with (check `CMAKE_CXX_COMPILER` in `CMakeCache.txt` if unsure). Also beware: piping a
+build through `findstr`/`Select-String` makes `$?`/exit code report the FILTER's status, silently
+masking exactly this kind of link failure — check the build's own exit code, never a pipe's.
+
 **MinGW/clang (llvm-mingw) does NOT work for this project** — tried first, hit multiple real
 incompatibilities: FastSIMD's `-Wa,-muse-unaligned-vector-move` flag (fixed, see the guard in
 `cmake/Dependencies.cmake`), then unfixable ones — `lld` rejects DiligentCore's
@@ -96,6 +106,33 @@ repo's scripts, VS's/VS Code's own integration) without a manual `-D` flag. If y
 `HEAD0` error again despite this, an existing stale build directory's cache likely already has the
 wrong `GIT_EXECUTABLE` baked in from before this fix — delete that build directory and reconfigure
 fresh rather than trying to patch the existing cache.
+
+## Crash handler & symbols (Group J hardening, 2026-09-04)
+
+`app/src/crash_handler.cpp` hooks five failure classes, all printing a dbghelp-symbolized stack
+to stderr: SEH unhandled exceptions (`SetUnhandledExceptionFilter`, walks the *faulting* context),
+plus `std::terminate`, `SIGABRT`, pure-virtual calls, and CRT invalid-parameter (these walk their
+own current context — crash site is a few frames down). Debug builds accept
+`--crash-test av|abort|terminate` to exercise the hooks (flag compiled out in Release). Symbol
+policy is deliberate, not defaulted: Debug gets `/Zi` from CMake's defaults; **Release keeps full
+PDBs** (`/Zi` + `/DEBUG /OPT:REF /OPT:ICF` appended in the root `CMakeLists.txt`) so a Release
+crash still symbolizes — zero runtime cost, the info lives in the `.pdb` beside the exe. Note the
+handler needs that `.pdb` present next to the binary. `backward-cpp` (master pin, not the stale
+v1.6 tag) is the researched fallback if source-snippet traces are ever wanted — it does NOT chain
+an existing SEH filter (verified from its source), so it would replace, not coexist.
+
+## Benchmarks (Group N)
+
+`-DVOXEL_BUILD_BENCHMARKS=ON` (OFF by default) adds `benchmarks/voxel_benchmarks` — Google
+Benchmark harnesses for chunk-map ops, octahedral encode/decode, and `extract_mesh` (the standing
+regression baseline). Build it **Release, core-only** to avoid the full GPU dependency fetch:
+`cmake -B C:\b\bench-rel -G Ninja -DCMAKE_BUILD_TYPE=Release -DVOXEL_BUILD_RENDERER=OFF
+-DVOXEL_BUILD_BENCHMARKS=ON -DBUILD_TESTING=OFF`. Convention: save
+`--benchmark_out=benchmarks/baselines/<date>-<change>.json` beside significant changes; judge
+before/after with Benchmark's `tools/compare.py` (Mann-Whitney U-test), not single-run eyeballs.
+MSVC discipline (researched + confirmed locally): pass non-const lvalues to `DoNotOptimize` (the
+const-ref overload deprecation is a real /WX break), no LTCG on benchmark targets. The full
+methodology note lives in `research/engine-hardening-log.md`.
 
 ## Dependency notes (see `cmake/Dependencies.cmake` for the full pins + inline reasoning)
 
@@ -149,6 +186,19 @@ compiled in, and still a safe universal floor for this x86-64-only project (SSE2
 baseline on every x86-64 CPU, unlike SSE41/AVX2/AVX512). `world/generation/src/heightmap_generator.cpp`
 wraps `FastNoise::New<T>` in a helper that throws instead of returning null/segfaulting if this
 ever regresses — check there before assuming a given `FeatureSet` value is safe to request.
+
+## Dependency additions from the hardening pass (2026-09-04)
+
+Beyond the original five: `concurrentqueue` v1.0.5 (ThreadPool's interior queue; DOWNLOAD_ONLY,
+consumed as a PRIVATE include of `engine_jobs` — public header stays third-party-free), `Boost`
+1.92.0 via the official CMake release archive with `BOOST_INCLUDE_LIBRARIES unordered` only
+(backs `world/chunk/coord_containers.hpp`'s `CoordMap`/`CoordSet`; header-only usage), and —
+gated behind `VOXEL_BUILD_BENCHMARKS` — Google Benchmark v1.9.5 + `unordered_dense` v4.9.2 (the
+latter exists ONLY for the comparison harness; it lost the local benchmark and is not used by
+the engine). All tags verified live via `git ls-remote`/release API on 2026-09-04; all
+smoke-tested standalone under real MSVC before wiring in. CI needs no workflow change: the CPM
+caches key on `hashFiles('cmake/Dependencies.cmake')`, so new pins invalidate and fetch
+automatically.
 
 ## Phase status
 

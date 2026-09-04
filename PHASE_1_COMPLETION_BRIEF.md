@@ -157,6 +157,59 @@ that API's function-pointer-table layout from memory is exactly the kind of sile
 not worth taking — launching `voxel_app` through RenderDoc's UI already provides F12 captures
 (with every GPU object debug-named) at zero integration cost.
 
+---
+
+**Engine Hardening pass (ENGINE_HARDENING_BRIEF.md Groups G–P): DONE (2026-09-04).** Full
+per-task decision log with evidence in `research/engine-hardening-log.md`; headline results:
+
+- **3 research subagents** ran (§2's verbatim prompts); every decision-driving claim was
+  re-verified locally before adoption (Group G): live tag/license checks, isolated CPM+MSVC smoke
+  tests of all candidates, and a source-level confirmation of the one claim that changed a
+  decision (`unordered_dense::map`'s iterator IS `std::vector`'s → MSVC IDL=2-exposed).
+- **Compressed GPU vertex format (Group K)**: 28B→12B per vertex + 32→16-bit indices, decoded by
+  fixed-function normalized fetch + arithmetic only (no shader bit ops — chosen specifically
+  because glslang's HLSL front-end is deprecated and Diligent's GL converter lacks `f16tof32`).
+  Dyadic 1/1024-voxel position quantization keeps chunk seams lattice-aligned; 16-bit octahedral
+  normals (round-trip max error <1.5° asserted by test). **Measured: autofly VRAM 17.0→7.1 MiB
+  (2.39x), peak 18.1→8.3 MiB; `--verify-frame` passes on Vulkan (13.4%) AND D3D12 (13.1%).** The
+  per-backend check caught a real bug: DXGI has no 3-component 16-bit vertex format — 3x
+  VT_UINT16 asserted on D3D12 while working on Vulkan; fixed with a 4-component position.
+- **Coordinate containers (Group H)**: all ChunkCoord-keyed maps/sets now go through
+  `CoordMap`/`CoordSet` aliases backed by `boost::unordered_flat_map/_flat_set` — picked by THIS
+  machine's own MSVC benchmark (no independent MSVC numbers exist anywhere): at the realistic
+  558-chunk scale boost_flat beat both std and `ankerl::unordered_dense` on every workload
+  (build+teardown 17.3µs vs 38.0/30.3µs; find-hit 3.0µs vs 3.7/6.2µs), and its custom iterators
+  are immune to the IDL=2 checked-iterator locking class behind Group D's Debug collapse. The
+  existing `h*31` ChunkCoord hash was avalanche-TESTED (statistically uniform on clustered keys
+  under both extraction schemes; identity-style packing confirmed catastrophic).
+- **ThreadPool interior (Group I)**: mutex+`std::queue`+condvar replaced by
+  `moodycamel::BlockingConcurrentQueue` v1.0.5 (already shipping inside the binary via Tracy);
+  `std::jthread`+`stop_token` shell, public API, and future-returning `submit()` unchanged;
+  sentinel-wake shutdown preserves drain-on-destruction. No-FIFO-reliance verified (single
+  producer + explicit state machine).
+- **Crash handler (Group J)**: kept in-house (research showed backward-cpp is the same
+  architecture and does NOT chain SEH filters), extended with `std::terminate`/SIGABRT/purecall/
+  invalid-parameter hooks + debug-only `--crash-test av|abort|terminate`. The deliberate-crash
+  check caught two real bugs: a by-value `CONTEXT` losing its 16-byte alignment (StackWalk64
+  unwound garbage) and Tracy's dbghelp init making our `SymInitialize` fail (error 87 → now
+  `SymRefreshModuleList`). All three modes print traces naming the exact crash site. Release
+  builds now keep full PDBs (deliberate decision, root CMakeLists).
+- **Events (Group L)**: `engine/events` (`entt::dispatcher` alias, zero new deps) + chunk
+  lifecycle events; the overlay's ready-count is event-derived with a poll-consistency check that
+  stayed silent through verify+autofly runs. Event-vs-polling convention documented in the
+  header.
+- **Group M/N**: MSVC `/Qvec-report:2` shows NOTHING in Surface Nets auto-vectorizes (reasons
+  1106/1200/1305/503 quoted in the log — honest outcome, no change); Google Benchmark v1.9.5
+  harnesses for map ops / octahedral / `extract_mesh` (3.97ms, 869 verts baseline) with
+  `benchmarks/baselines/` JSON convention; methodology (Benchmark number + Tracy capture, before
+  and after) written down.
+- **Group O**: all 5 thread-owning sites audited correct; §7 stays a documented convention (a
+  base class would invert destruction the wrong way); RLE-on-palette rejected on shipped-practice
+  evidence (LZ4-at-serialization is the recorded future recipe).
+- **Regression gate**: 59/59 tests (49 before the pass; +3 dispatcher, +4 octahedral, +3
+  quantization), verify-frame both backends, autofly bounded, ASan-clean concurrency stress
+  subset. New deps flow into CI automatically via the `Dependencies.cmake`-hash cache keys.
+
 **Group F (consolidation, tasks 33–35): DONE (2026-09-03), with stated limits.** Task 33 happened
 naturally at Group D: streaming + camera + rendering + overlay already run as one `voxel_app` loop
 (final gate re-run: 49/49 tests, `--verify-frame` green on Vulkan AND D3D12, `--autofly` bounded).
