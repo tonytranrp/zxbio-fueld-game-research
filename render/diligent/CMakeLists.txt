@@ -4,6 +4,7 @@ add_library(render_diligent STATIC
     src/terrain_renderer.cpp
     src/frustum_cull.cpp
     src/frame_verify.cpp
+    src/post_process.cpp
     src/vulkan_tools.cpp
     src/debug_overlay.cpp
     # The vendored ImGui GLFW platform backend (renderer half comes from Diligent-Imgui). Compiled
@@ -25,6 +26,7 @@ target_sources(render_diligent PUBLIC
         include/render/diligent/frustum.hpp
         include/render/diligent/memory_tracking.hpp
         include/render/diligent/frame_verify.hpp
+        include/render/diligent/post_process.hpp
         include/render/diligent/gpu_tools.hpp
         include/render/diligent/debug_overlay.hpp
 )
@@ -40,10 +42,10 @@ target_include_directories(render_diligent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
 # TRACY_ENABLE transitively into these TUs' zone macros.
 # Diligent-TextureLoader is linked ONLY for EncodePng (frame_verify.cpp's PNG dumps, goals.md
 # Group B) -- the bundled libpng was already in the dependency tree, so PNG output costs zero new
-# dependencies.
+# dependencies. DiligentFX carries the Bloom/PostFXContext post-process modules (Group D).
 target_link_libraries(render_diligent
     PUBLIC project_warnings engine_core world_chunk world_meshing render_interface
-    PRIVATE Diligent-GraphicsEngineVk-static Diligent-Imgui Diligent-TextureLoader glfw
+    PRIVATE Diligent-GraphicsEngineVk-static Diligent-Imgui Diligent-TextureLoader DiligentFX glfw
     PRIVATE Tracy::TracyClient
 )
 
@@ -59,6 +61,8 @@ target_include_directories(render_diligent SYSTEM PRIVATE
     "${DiligentEngine_SOURCE_DIR}/DiligentTools/ThirdParty/imgui"
     # DiligentTools root for the TextureLoader/interface/PNGCodec.h include style.
     "${DiligentEngine_SOURCE_DIR}/DiligentTools"
+    # DiligentFX root for PostProcess/*/interface + Shaders/*/public includes (post_process.cpp).
+    "${DiligentEngine_SOURCE_DIR}/DiligentFX"
 )
 
 # Tracy's Vulkan context is created through runtime-loaded function pointers (see vulkan_tools.cpp).

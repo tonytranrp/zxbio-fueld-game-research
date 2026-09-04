@@ -143,31 +143,31 @@ among the visual work.
 
 ## D. Bloom & tone mapping (visual Stage 2)
 
-21. Confirm DiligentFX's `Bloom` class is reachable from `render/diligent` given the current CMake
+21. [x] Confirm DiligentFX's `Bloom` class is reachable from `render/diligent` given the current CMake
     linkage (it links `DiligentFX` already per the PBR/PostProcess research, but confirm the actual
     include path and library target resolve before writing integration code). **Check**: a trivial
     `#include` + type-exists compile check, isolated from the real integration.
-22. Integrate `Bloom` standalone per the researched pattern (`std::make_unique<Bloom>(device)`,
+22. [x] Integrate `Bloom` standalone per the researched pattern (`std::make_unique<Bloom>(device)`,
     `PrepareResources()`/`Execute()` each frame against the existing color-buffer SRV, composite
     `GetBloomTextureSRV()` back over the scene) — no `PostFXContext`/motion-vector dependency needed
     for Bloom specifically, per the research; don't pull that machinery in prematurely. **Check**:
     the integration compiles and runs without requiring a G-buffer or motion vectors this project
     doesn't have yet.
-23. Tune `BloomAttribs` (Intensity, Threshold, Softness, Radius) against real bright spots in the
+23. [x] Tune `BloomAttribs` (Intensity, Threshold, Softness, Radius) against real bright spots in the
     scene (sun-lit water highlights once goal 30+ exists, or bright sky/terrain edges meanwhile).
     **Check**: view a dump; bright areas should glow softly, not blow out the whole image or produce
     a barely-visible effect.
-24. Add a tone-mapping pass after Bloom compositing (DiligentFX ships tone-mapping shader utilities
+24. [x] Add a tone-mapping pass after Bloom compositing (DiligentFX ships tone-mapping shader utilities
     per prior research) — Bloom's HDR-ish glow needs a deliberate tone curve into the final LDR
     output, not a raw clamp. **Check**: viewed dump shows no harsh clipped-white blotches where Bloom
     is strong.
-25. Benchmark the frame-time cost of Bloom + tone mapping as its own pass, the same standard as goal
+25. [x] Benchmark the frame-time cost of Bloom + tone mapping as its own pass, the same standard as goal
     18. **Check**: real before/after number, and an explicit note if it meaningfully changes the
     "worst-frame" number the overlay already tracks (Group T's own stutter-sensitivity standard).
-26. Re-verify `--verify-frame` against the Bloom-composited image — the reference-pixel-difference
+26. [x] Re-verify `--verify-frame` against the Bloom-composited image — the reference-pixel-difference
     metric could behave differently against a post-processed frame. **Check**: same standard as
     goal 17.
-27. View a dump of the full Stage 1 + Stage 2 combination together (not each stage in isolation) —
+27. [x] View a dump of the full Stage 1 + Stage 2 combination together (not each stage in isolation) —
     effects can interact in ways that aren't visible testing them one at a time. **Check**: one
     viewed image, one-sentence assessment of whether it reads as real progress toward "colorful,
     less flat," written down.

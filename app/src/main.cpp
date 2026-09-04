@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -25,6 +26,7 @@
 #include "render/diligent/debug_overlay.hpp"
 #include "render/diligent/frame_verify.hpp"
 #include "render/diligent/gpu_tools.hpp"
+#include "render/diligent/post_process.hpp"
 #include "render/diligent/render_context.hpp"
 #include "render/diligent/terrain_renderer.hpp"
 #include "render/interface/camera.hpp"
@@ -53,6 +55,10 @@ struct AppOptions {
     bool walk = false;    // start in walk (gravity) mode; with --autofly, also asserts no fall-through
     std::size_t upload_budget = 4; // mesh commits per frame; 0 = unlimited (the pre-fix stutter behavior)
     std::uint32_t dump_every = 0;  // goal 7: write a numbered frame dump every N frames (0 = off)
+    // Goal 52's per-pass kill switches: isolate a visual regression to one pass without reverts.
+    bool no_post = false;    // whole post chain off: render straight to swap chain (pre-Stage-2 path)
+    bool no_bloom = false;   // bloom off, tonemap composite still on
+    bool no_tonemap = false; // tonemap off (raw clamp), bloom still on
     // Debug camera overrides for the visual-verification workflow (goal 8's multi-angle baseline
     // and every later "view a dump from X" check): unset = the default start pose.
     std::optional<glm::vec3> start_pos;
@@ -106,6 +112,12 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             const char* value = next_value();
             options.dump_every =
                 value ? static_cast<std::uint32_t>(std::strtoul(value, nullptr, 10)) : options.dump_every;
+        } else if (arg == "--no-post") {
+            options.no_post = true;
+        } else if (arg == "--no-bloom") {
+            options.no_bloom = true;
+        } else if (arg == "--no-tonemap") {
+            options.no_tonemap = true;
         } else if (arg == "--pos") {
             const char* value = next_value();
             glm::vec3 p{};
@@ -180,6 +192,15 @@ int run(const AppOptions& options) {
     contextCI.enable_validation = options.validation;
     render::diligent::RenderContext context(contextCI);
 
+    // Post-process chain (Group D): bloom + tonemap over an offscreen HDR scene target.
+    // Constructed BEFORE the renderer on purpose -- it registers the scene target whose format
+    // the terrain PSO is created against. Skippable wholesale for A/B against the direct path.
+    std::unique_ptr<render::diligent::PostProcessor> postProcess;
+    if (!options.no_post) {
+        postProcess = std::make_unique<render::diligent::PostProcessor>(context);
+        postProcess->set_bloom_enabled(!options.no_bloom);
+        postProcess->set_tonemap_enabled(!options.no_tonemap);
+    }
     render::diligent::TerrainRenderer renderer(context);
     render::diligent::attach_gpu_profiler(context); // Tracy GPU zones (Vulkan only; safe no-op elsewhere)
 
@@ -303,6 +324,9 @@ int run(const AppOptions& options) {
         }
 
         renderer.render(camera);
+        if (postProcess) {
+            postProcess->execute(frame);
+        }
 
         if (std::chrono::steady_clock::now() - lastBudgetPoll >= std::chrono::seconds(2)) {
             const bool firstPoll = !budget.available;

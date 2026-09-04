@@ -148,16 +148,23 @@ float sample_non_reference_pixel_fraction(RenderContext& context) {
     read_back_buffer(rc, frame);
 
     const auto* base = static_cast<const std::uint8_t*>(frame.mapped.pData);
-    std::uint32_t reference = 0;
-    std::memcpy(&reference, base, sizeof(reference));
+    const std::uint8_t* refPx = base;
 
+    // Tolerance-based comparison, not bytewise (goal 26's re-verify): the Stage-2 bloom pass
+    // spreads a soft gradient across the sky, so with exact comparison nearly EVERY sky pixel
+    // "differs" from the top-left reference (measured 97.7% on a normal frame) and the metric
+    // stops meaning "terrain visible". Bloom's sky-gradient deltas measure <=11/255 per channel;
+    // terrain-vs-sky differences are 50+. 16 cleanly separates the two regimes.
+    constexpr int kChannelTolerance = 16;
     std::uint64_t differing = 0;
     for (std::uint32_t y = 0; y < frame.height; ++y) {
         const std::uint8_t* row = base + static_cast<std::size_t>(y) * frame.mapped.Stride;
         for (std::uint32_t x = 0; x < frame.width; ++x) {
-            std::uint32_t pixel = 0;
-            std::memcpy(&pixel, row + static_cast<std::size_t>(x) * 4u, sizeof(pixel));
-            differing += pixel != reference ? 1u : 0u;
+            const std::uint8_t* px = row + static_cast<std::size_t>(x) * 4u;
+            const bool differs = std::abs(int(px[0]) - int(refPx[0])) > kChannelTolerance ||
+                                 std::abs(int(px[1]) - int(refPx[1])) > kChannelTolerance ||
+                                 std::abs(int(px[2]) - int(refPx[2])) > kChannelTolerance;
+            differing += differs ? 1u : 0u;
         }
     }
 

@@ -163,7 +163,10 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
     }
 #endif
 
-    ITextureView* rtv = rc.swapchain->GetCurrentBackBufferRTV();
+    // When the post-process chain is live, the scene draws into its offscreen HDR target and the
+    // composite pass owns the swap chain; otherwise draw straight to the swap chain as before.
+    ITextureView* rtv = rc.sceneColor ? rc.sceneColor->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET)
+                                      : rc.swapchain->GetCurrentBackBufferRTV();
     ITextureView* dsv = rc.swapchain->GetDepthBufferDSV();
     ctx->SetRenderTargets(1, &rtv, dsv, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     ctx->ClearRenderTarget(rtv, kClearColor.data(), RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

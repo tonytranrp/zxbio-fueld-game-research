@@ -40,3 +40,31 @@ Numbers:
   laptop, debug build: old PS math 164.9 fps ↔ Stage-1 PS math 165.1 fps — the added ALU
   (AO multiply + hemisphere lerp + 8 sin-hash noise samples) is below run-to-run noise. The PS
   A/B was done by swapping shader SOURCE at runtime (same varyings both sides), no rebuild.
+
+## Stage 2 — Bloom & tone mapping (goals 21–27)
+
+Wiring reality vs the research: at the pinned DiligentFX commit, `Bloom::Execute` gates on
+`PostFXContext::IsPSOsReady()`, and that flag is set ONLY inside `PostFXContext::Execute` — which
+demands depth/motion-vector/camera inputs Bloom never consumes and runs four full-res helper
+passes per call. Found empirically (bloom stayed PENDING forever; the first A/B diff measured
+bloom's contribution at literally zero once overlay text was masked). Resolution: ONE warm-up
+`PostFXContext::Execute` at startup with 2×2 dummy inputs flips the sticky readiness flag; per
+frame only `PrepareResources` runs. Scene now renders into an RGBA16F offscreen target
+(terrain PSO format follows it; construction order PostProcessor→TerrainRenderer is load-bearing);
+composite = soft-knee tonemap (identity below 0.75, tanh shoulder above — ACES was tried first
+and VISIBLY washed out mids ~30% in the viewed capture; the knee curve preserves the authored
+look and only rolls off bloom overshoot).
+
+Tuning by viewed captures + masked pixel-diffs (`stage2_default.png`):
+- First tune (Threshold 0.60): whole-frame haze, mean +8% everywhere — the SKY (max channel ~0.9)
+  is brighter than any terrain (~0.8), so a low threshold blooms 77% of the frame. Re-tuned to
+  0.80/0.12: soft silhouette glow only (max delta 11/255), no clipped whites. Stage 3's water
+  sun-glint (first real >1.0 emitter) is the intended true bloom source (goal 32 re-tunes).
+- Goal 26's predicted metric break happened EXACTLY: bloom's sky gradient made 97.7% of pixels
+  differ bytewise from the verify reference. Fixed by tolerance comparison (>16/channel — bloom
+  deltas ≤11, terrain-vs-sky 50+): verify returns 39.4% Vulkan / 39.2% D3D12, same as
+  pre-post-processing, restoring the metric's "terrain visible" meaning.
+- Goal 25 cost, measured settled at 700 frames: 165.0 fps with the full chain ↔ 165.0 fps
+  --no-post (worst-frame 7.2 vs 7.3 ms) — unmeasurable at this scene scale.
+- Goal 27 combined view: warm Stage-1 terrain + subtle Stage-2 silhouette glow reads as
+  atmosphere, not effect-soup; the remaining flatness is material identity (Group M), not light.

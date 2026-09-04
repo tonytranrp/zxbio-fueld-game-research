@@ -28,6 +28,12 @@ struct RenderContext::Impl {
     // types; destroyed via detach_gpu_profiler() from ~RenderContext, before the device dies.
     void* tracyVkCtx = nullptr;
     bool memoryBudgetExtensionEnabled = false; // VK_EXT_memory_budget was requested AND the device came up with it
+
+    // Post-process scene target (goals.md Group D): when PostProcessor is live, this is the
+    // offscreen HDR color texture the scene pass renders into (TerrainRenderer checks it each
+    // frame and falls back to the swap chain when null). Owned/updated by PostProcessor::Impl;
+    // lives here so the renderer needs no public-API change and no second plumbing path.
+    Diligent::RefCntAutoPtr<Diligent::ITexture> sceneColor;
 };
 
 } // namespace render::diligent

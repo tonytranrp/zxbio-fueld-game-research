@@ -150,7 +150,11 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
     // Only the attachment formats are mandatory -- read from the real swap chain, never assumed.
     const SwapChainDesc& scDesc = rc.swapchain->GetDesc();
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0] = scDesc.ColorBufferFormat;
+    // When the post-process chain registered its offscreen HDR scene target (PostProcessor is
+    // constructed before TerrainRenderer in the app for exactly this), the terrain PSO must be
+    // created against THAT format; the swap-chain format only applies on the direct path.
+    psoCI.GraphicsPipeline.RTVFormats[0] =
+        rc.sceneColor ? rc.sceneColor->GetDesc().Format : scDesc.ColorBufferFormat;
     psoCI.GraphicsPipeline.DSVFormat = scDesc.DepthBufferFormat;
     psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
