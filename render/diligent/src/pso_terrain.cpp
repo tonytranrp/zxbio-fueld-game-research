@@ -16,13 +16,13 @@ using namespace Diligent;
 // The material palette cbuffer (float4 per MaterialID) is sized to the actual material count from
 // world/chunk -- adding a material means updating this array AND g_MaterialColors[] in
 // terrain.psh.hlsl together (task 12).
-constexpr std::size_t kMaterialCount = static_cast<std::size_t>(world::chunk::MaterialID::Leaves) + 1;
-static_assert(kMaterialCount == 6, "terrain.psh.hlsl declares g_MaterialColors[6] -- update both together");
+constexpr std::size_t kMaterialCount = static_cast<std::size_t>(world::chunk::MaterialID::Grass) + 1;
+static_assert(kMaterialCount == 8, "terrain.psh.hlsl declares g_MaterialColors[8] -- update both together");
 
 // Linear-space albedo per MaterialID; index 0 (Air) is never sampled by a real fragment but keeps
 // indexing direct. Goal 19's pass: richer/more saturated than the original deliberately-muted
-// placeholders, judged against viewed before/after dumps (not picked blind) -- stone warmed off
-// pure gray, dirt/wood deepened, water toward a real ocean blue, leaves toward meadow green.
+// placeholders, judged against viewed before/after dumps (not picked blind); Group M (goal 94)
+// extended it with the sand/grass surface bands.
 constexpr float kMaterialColors[kMaterialCount][4] = {
     {0.0f, 0.0f, 0.0f, 1.0f},    // Air (unused)
     {0.52f, 0.49f, 0.44f, 1.0f}, // Stone (warm gray, not blue-gray)
@@ -30,6 +30,8 @@ constexpr float kMaterialColors[kMaterialCount][4] = {
     {0.09f, 0.33f, 0.58f, 1.0f}, // Water (deeper ocean blue)
     {0.36f, 0.22f, 0.09f, 1.0f}, // Wood (tree trunks)
     {0.20f, 0.50f, 0.12f, 1.0f}, // Leaves (livelier canopy green)
+    {0.78f, 0.70f, 0.46f, 1.0f}, // Sand (shoreline band)
+    {0.23f, 0.48f, 0.13f, 1.0f}, // Grass (surface skin on gentle land)
 };
 
 // The GPU input layout is a byte-for-byte contract with detail::GpuVertexCompressed (built at

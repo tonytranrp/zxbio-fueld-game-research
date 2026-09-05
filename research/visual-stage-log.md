@@ -68,3 +68,26 @@ Tuning by viewed captures + masked pixel-diffs (`stage2_default.png`):
   --no-post (worst-frame 7.2 vs 7.3 ms) — unmeasurable at this scene scale.
 - Goal 27 combined view: warm Stage-1 terrain + subtle Stage-2 silhouette glow reads as
   atmosphere, not effect-soup; the remaining flatness is material identity (Group M), not light.
+
+## Group M — material palette expansion (goals 81, 93–96)
+
+Target list (goal 93, written before touching the frozen asserts): exactly TWO new materials, each
+tied to a real feature — **Sand** (goal 81's shoreline band: columns with surface ≤ sea+1.75) and
+**Grass** (the missing "green ground" reading; surface voxel of gentle above-sea columns, slope ≤
+1.9 via a seam-exact 34×34 margin-grid central difference). Appended AFTER Wood/Leaves so every
+baked ID stays valid; both frozen counts updated 6→8 together (goal 94). Dirt — in the palette
+since Phase 1 but never once assigned — now actually exists as the soil band (depth 1–3).
+Mesher refinement: surface cells pick their HIGHEST solid corner's material (ties break away from
+water), so grass/sand skins read cleanly instead of whichever soil corner edge iteration hit first.
+
+Viewed (`groupM_shore.png`, `groupM_default.png`): green grass caps, dirt terrace bands, exposed
+rock on steep faces, a sand ring around every shore with the bright shallow-water band over it —
+the single biggest step toward "colorful" of the whole arc; the goal-95 mottle interaction reads
+as natural stylized variation, not chaos. Verify fraction rose 12.3%→14.2% (more material-boundary
+contrast), same 6% threshold. 71/71 tests.
+
+Goal 96 (per-material shading tweak) — written decision: NO further per-material specular now.
+Water already has the one genuinely different path (fresnel/ripple/glint); sand/grass/dirt/stone
+under shared Lambert+AO+hemisphere read correctly at this art style, and a per-material
+roughness constant would be a real material system's first slice — that belongs with textures,
+not before them.

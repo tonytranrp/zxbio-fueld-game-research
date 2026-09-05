@@ -9,7 +9,7 @@
 
 cbuffer MaterialPalette
 {
-    float4 g_MaterialColors[6];
+    float4 g_MaterialColors[8];
 };
 
 cbuffer FogConstants
@@ -104,7 +104,7 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const float n2 = ValueNoise(PSIn.WorldPos.xz * (1.0 / 7.0) + 17.31);
     const float mottle = 0.90 + 0.20 * (0.65 * n1 + 0.35 * n2);
 
-    const float3 albedo = g_MaterialColors[min(PSIn.Material, 5u)].rgb * mottle;
+    const float3 albedo = g_MaterialColors[min(PSIn.Material, 7u)].rgb * mottle;
 
     // Goal 13: AO multiplies the final lit color (both ambient and direct -- the cheap-pipeline
     // convention the reference scheme also uses).

@@ -106,16 +106,27 @@ struct CellSample {
         cell.ao = 1.0f - 0.15f * static_cast<float>(std::max(0, solidCorners - 4));
         glm::vec3 sum{0.0f};
         int crossingCount = 0;
+        float bestCornerY = -1.0f;
         for (const auto& edge : kEdges) {
             const MaterialID a = corners[static_cast<std::size_t>(edge[0])];
             const MaterialID b = corners[static_cast<std::size_t>(edge[1])];
             if (is_solid(a) != is_solid(b)) {
                 sum += (kCornerOffsets[static_cast<std::size_t>(edge[0])] + kCornerOffsets[static_cast<std::size_t>(edge[1])]) * 0.5f;
                 ++crossingCount;
-                if (cell.material == MaterialID::Air) {
-                    // First-encountered solid corner wins -- a cell straddling two different
-                    // solid materials is real but rare, not worth a blending scheme yet.
-                    cell.material = is_solid(a) ? a : b;
+                // Material pick (Group M refinement of the old "first solid corner wins"): the
+                // HIGHEST crossing solid corner wins, ties broken toward non-water. With banded
+                // surface materials this makes every surface cell read its actual TOP material
+                // (grass skin, sand shore) instead of whichever soil corner edge-iteration
+                // happened to visit first; the water tiebreak keeps shoreline edges land-colored.
+                const std::size_t solidIdx = static_cast<std::size_t>(is_solid(a) ? edge[0] : edge[1]);
+                const MaterialID solidMat = is_solid(a) ? a : b;
+                const float cornerY = kCornerOffsets[solidIdx].y;
+                const bool better = cornerY > bestCornerY ||
+                                    (cornerY == bestCornerY && cell.material == MaterialID::Water &&
+                                     solidMat != MaterialID::Water);
+                if (cell.material == MaterialID::Air || better) {
+                    cell.material = solidMat;
+                    bestCornerY = cornerY;
                 }
             }
         }

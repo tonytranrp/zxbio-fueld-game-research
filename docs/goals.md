@@ -449,7 +449,7 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
     cannot represent an overhang or a cave. **Check**: a written go/no-go with reasoning; if yes, this
     becomes its own future goals group rather than a single line item here, since it touches
     generation, meshing, AND streaming simultaneously.
-81. Biome variety beyond the current land/water/wood/leaves palette: at minimum a second terrain
+81. [x] Biome variety beyond the current land/water/wood/leaves palette: at minimum a second terrain
     material (e.g. sand near shorelines, distinguished by height-relative-to-sea-level, reusing
     `HeightmapGenerator::height_at` the same way tree placement already does) — a concrete, bounded
     first step rather than a full biome system. **Check**: view a dump of a shoreline; a visibly
@@ -507,20 +507,20 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
 Distinct from Stage 1's lighting/AO work — this is about the number and range of materials
 themselves, directly responsive to "colorful" as a materials question, not only a lighting one.
 
-93. Audit the current 6-entry `MaterialID` enum/palette for what's genuinely missing given goals 81
+93. [x] Audit the current 6-entry `MaterialID` enum/palette for what's genuinely missing given goals 81
     (sand) and any biome decision from goal 80/81 — write a concrete target list (a handful of new
     materials, not an open-ended "add lots") before touching the frozen array-size `static_assert`.
     **Check**: the target list exists and is justified (each new material ties to a real terrain/
     gameplay feature, not added speculatively).
-94. Extend `kMaterialColors`/`g_MaterialColors[N]` to the new count, updating both files together and
+94. [x] Extend `kMaterialColors`/`g_MaterialColors[N]` to the new count, updating both files together and
     both `static_assert`s that freeze the current count of 6, per the existing "update both together"
     comment convention already in the code. **Check**: build succeeds, the `static_assert`s reflect
     the new real count, not silently left at 6.
-95. Re-run goal 16's color-variation noise against the expanded palette — more materials plus per-
+95. [x] Re-run goal 16's color-variation noise against the expanded palette — more materials plus per-
     material variation compounds, worth confirming it still reads as natural rather than chaotic at
     the new material count. **Check**: view a dump of a scene showing several of the new materials
     together.
-96. Consider whether any of the new materials warrant their own shading tweak beyond the shared
+96. [x] Consider whether any of the new materials warrant their own shading tweak beyond the shared
     Lambertian+AO+hemisphere path (e.g. a material-specific specular/roughness value, even as a
     small per-material constant rather than a full PBR material system) — a real, bounded question,
     not an invitation to build a material system prematurely. **Check**: a written decision, and if
