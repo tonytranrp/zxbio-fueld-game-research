@@ -174,24 +174,24 @@ among the visual work.
 
 ## E. Water, fog & foliage (visual Stage 3)
 
-28. Design the fresnel water term concretely: `F = F0 + (1-F0)*(1-dot(V,N))^5` (Schlick's
+28. [x] Design the fresnel water term concretely: `F = F0 + (1-F0)*(1-dot(V,N))^5` (Schlick's
     approximation) mixing a reflection color (a cheap approximation — a fixed sky-tint or the
     existing hemisphere ambient's sky color, not full screen-space reflection) against refraction/
     transparency; deeper water (further below the surface at a given fragment) more opaque, shallow
     water near shore more transparent. **Check**: the formula and the depth-based opacity rule are
     written down before touching the shader.
-29. Water currently renders through the exact same opaque path as land (confirmed by direct reading
+29. [x] Water currently renders through the exact same opaque path as land (confirmed by direct reading
     of `terrain.psh.hlsl` — no alpha, no blend state) — this needs a real second material path, not
     a tweak to the existing one: either a second PSO with `BlendStateDesc` alpha blending enabled, or
     a forward-transparent pass after the opaque terrain pass. **Check**: the chosen approach (second
     PSO vs. second pass) is decided and written down, with the reasoning, before implementation.
-30. Implement water transparency + fresnel per goal 28's design. **Check**: view a dump directly over
+30. [x] Implement water transparency + fresnel per goal 28's design. **Check**: view a dump directly over
     water — should show visible depth-based transparency and a fresnel brightening at grazing
     angles, not the current flat opaque blue.
-31. Add an animated ripple normal (a simple scrolling/combined sine or noise-based normal
+31. [x] Add an animated ripple normal (a simple scrolling/combined sine or noise-based normal
     perturbation sampled per-fragment with time) so water isn't perfectly flat-shaded even when
     static-camera. **Check**: two dumps taken seconds apart show visibly different ripple pattern.
-32. Add a specular sun-glint term on water specifically (a Blinn-Phong or GGX-ish highlight from the
+32. [x] Add a specular sun-glint term on water specifically (a Blinn-Phong or GGX-ish highlight from the
     directional sun, water's roughness being much lower than terrain's). **Check**: view a dump with
     the sun roughly behind the camera looking at water — a visible bright glint, not a flat diffuse
     water surface.
@@ -206,25 +206,25 @@ among the visual work.
     hilltop itself.
 35. [x] Benchmark fog's cost (a cheap per-fragment exp, should be negligible) per the goal-18 standard.
     **Check**: real number, not assumed negligible.
-36. Design foliage variety beyond the current single box-trunk/octahedron-canopy tree shape: at
+36. [x] Design foliage variety beyond the current single box-trunk/octahedron-canopy tree shape: at
     least 2–3 additional silhouettes (a taller conifer-like shape, a shorter shrub/bush) using the
     same primitive-composition approach `tree_decoration.cpp` already established, selected
     deterministically per placement (the existing `placement_key` hash already gives a free,
     deterministic selector value to reuse). **Check**: the shape variants and the selection rule are
     written down before implementation.
-37. Implement the additional tree/object shapes from goal 36, reusing the existing deterministic
+37. [x] Implement the additional tree/object shapes from goal 36, reusing the existing deterministic
     placement, materials, and buffer-pool integration `tree_decoration.cpp` already has — this is
     variety in shape, not a new placement or rendering system. **Check**: view a dump of a forested
     area; visibly mixed silhouettes, not uniform copies of one shape.
-38. Add simple per-instance color jitter on Wood/Leaves materials (a small random hue/brightness
+38. [x] Add simple per-instance color jitter on Wood/Leaves materials (a small random hue/brightness
     offset per tree, seeded from the same deterministic placement key) so a forest doesn't read as
     perfectly uniform green. **Check**: view a dump of a dense tree cluster — visible natural color
     variation between individual trees.
-39. Add a simple wind sway animation on canopy/leaf vertices (a small time-based sinusoidal vertex
+39. [x] Add a simple wind sway animation on canopy/leaf vertices (a small time-based sinusoidal vertex
     offset, scaled by height-within-the-object so trunks stay still and canopies sway) — a real part
     of what makes Lin's foliage read as "alive" per the research. **Check**: two dumps taken seconds
     apart show visibly different canopy positions; trunk positions unchanged between them.
-40. Research and decide (a real research task, not assumed): does adding grass/flower ground-cover
+40. [x] Research and decide (a real research task, not assumed): does adding grass/flower ground-cover
     (small instanced billboards or cross-quads per the research, distinct from the tree system) fit
     this project's current scope, or is it a later addition given trees+terrain+water is already a
     substantial visual jump — write the decision down either way with reasoning, don't silently

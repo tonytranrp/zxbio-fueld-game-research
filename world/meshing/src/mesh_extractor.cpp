@@ -297,8 +297,21 @@ MeshData extract_mesh(const ChunkStore& store, ChunkCoord coord) {
                 if (!cell.active) {
                     continue;
                 }
+                float ao = cell.ao;
+                if (cell.material == MaterialID::Water) {
+                    // Water repurposes the AO attribute as WATER-COLUMN DEPTH (see
+                    // research/water-foliage-design.md goal 28): concavity-AO is meaningless on a
+                    // flat open surface, and the shader's water path wants depth for its
+                    // shallow-to-deep tint. Scan down through water voxels until ground, capped
+                    // at 8 (also the honest limit of the one-chunk neighbor halo).
+                    int depth = 0;
+                    while (depth < 8 && neighbors.sample(cx, cy - 1 - depth, cz) == MaterialID::Water) {
+                        ++depth;
+                    }
+                    ao = static_cast<float>(depth) / 8.0f;
+                }
                 vertexIndex[idx] = static_cast<std::uint32_t>(mesh.vertices.size());
-                mesh.vertices.push_back(Vertex{cell.vertexPos, glm::vec3{0.0f}, cell.material, cell.ao});
+                mesh.vertices.push_back(Vertex{cell.vertexPos, glm::vec3{0.0f}, cell.material, ao});
             }
         }
     }

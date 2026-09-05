@@ -22,12 +22,24 @@ namespace app {
 // but generation-DERIVED: the same seed + coordinate reproduces identical trees on every run,
 // which is the property the determinism standard actually cares about.
 
+// Silhouette variants (goal 36, research/water-foliage-design.md): selected deterministically
+// from the placement key -- shape variety, not a new placement or rendering system.
+enum class TreeShape : std::uint8_t {
+    Round,   // box trunk + single octahedron canopy (the original)
+    Conifer, // taller/thinner trunk + 3 stacked shrinking octahedra
+    Shrub,   // no trunk; one squashed octahedron on the ground
+};
+
 struct TreePlacement {
     float world_x = 0.0f;
     float world_z = 0.0f;
     float base_height = 0.0f;   // terrain surface world-Y at the tree's column
     float trunk_height = 0.0f;  // world units above base
     float canopy_radius = 0.0f; // octahedron half-extent
+    TreeShape shape = TreeShape::Round;
+    // Goal 38: per-tree brightness jitter in [0.80, 1.0], carried through the vertex AO
+    // attribute (tree geometry is unoccluded by construction, so the byte is free).
+    float color_jitter = 1.0f;
 };
 
 inline constexpr float kTreeMinSpacing = 4.0f;  // guaranteed by grid cell 8 + jitter range [2,6]

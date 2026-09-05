@@ -48,6 +48,41 @@ void push_quad(MeshData& mesh, const glm::vec3& a, const glm::vec3& b, const glm
     push_triangle(mesh, a, c, d, material);
 }
 
+// Octahedron with independent horizontal/vertical half-extents (rh, rv) -- the one canopy
+// primitive every silhouette variant composes from (goal 36: shape variety, same primitive kit).
+void push_octahedron(MeshData& mesh, const glm::vec3& center, float rh, float rv,
+                     world::chunk::MaterialID material) {
+    const glm::vec3 top = center + glm::vec3{0.0f, rv, 0.0f};
+    const glm::vec3 bottom = center - glm::vec3{0.0f, rv, 0.0f};
+    const glm::vec3 px = center + glm::vec3{rh, 0.0f, 0.0f};
+    const glm::vec3 nx = center - glm::vec3{rh, 0.0f, 0.0f};
+    const glm::vec3 pz = center + glm::vec3{0.0f, 0.0f, rh};
+    const glm::vec3 nz = center - glm::vec3{0.0f, 0.0f, rh};
+    push_triangle(mesh, top, px, pz, material);
+    push_triangle(mesh, top, pz, nx, material);
+    push_triangle(mesh, top, nx, nz, material);
+    push_triangle(mesh, top, nz, px, material);
+    push_triangle(mesh, bottom, pz, px, material);
+    push_triangle(mesh, bottom, nx, pz, material);
+    push_triangle(mesh, bottom, nz, nx, material);
+    push_triangle(mesh, bottom, px, nz, material);
+}
+
+void push_trunk(MeshData& mesh, float lx, float lz, float y0, float y1, float halfWidth) {
+    const glm::vec3 t00{lx - halfWidth, y0, lz - halfWidth};
+    const glm::vec3 t10{lx + halfWidth, y0, lz - halfWidth};
+    const glm::vec3 t11{lx + halfWidth, y0, lz + halfWidth};
+    const glm::vec3 t01{lx - halfWidth, y0, lz + halfWidth};
+    const glm::vec3 u00{t00.x, y1, t00.z};
+    const glm::vec3 u10{t10.x, y1, t10.z};
+    const glm::vec3 u11{t11.x, y1, t11.z};
+    const glm::vec3 u01{t01.x, y1, t01.z};
+    push_quad(mesh, t00, t10, u10, u00, world::chunk::MaterialID::Wood); // -Z face
+    push_quad(mesh, t11, t01, u01, u11, world::chunk::MaterialID::Wood); // +Z face
+    push_quad(mesh, t10, t11, u11, u10, world::chunk::MaterialID::Wood); // +X face
+    push_quad(mesh, t01, t00, u00, u01, world::chunk::MaterialID::Wood); // -X face
+}
+
 } // namespace
 
 std::vector<TreePlacement> compute_tree_placements(std::int32_t chunkX, std::int32_t chunkZ, int seed,
@@ -87,6 +122,20 @@ std::vector<TreePlacement> compute_tree_placements(std::int32_t chunkX, std::int
             tree.base_height = h;
             tree.trunk_height = 4.0f + static_cast<float>((key >> 24) & 0x3u); // 4..7
             tree.canopy_radius = 2.0f + static_cast<float>((key >> 26) & 0x1u); // 2..3
+            // Goal 36: silhouette selector from spare key bits (~3/8 round, ~3/8 conifer,
+            // ~1/4 shrub); goal 38: brightness jitter in [0.80, 1.0] from another byte.
+            const std::uint64_t shapeSel = (key >> 32) & 0xFFu;
+            tree.shape = shapeSel < 96u ? TreeShape::Round
+                         : shapeSel < 192u ? TreeShape::Conifer
+                                           : TreeShape::Shrub;
+            tree.color_jitter = 0.80f + 0.20f * static_cast<float>((key >> 40) & 0xFFu) / 255.0f;
+            if (tree.shape == TreeShape::Conifer) {
+                tree.trunk_height += 2.0f;   // taller...
+                tree.canopy_radius = 2.0f;   // ...and consistently narrow
+            } else if (tree.shape == TreeShape::Shrub) {
+                tree.trunk_height = 0.0f;
+                tree.canopy_radius = 1.5f;
+            }
             placements.push_back(tree);
         }
     }
@@ -101,7 +150,11 @@ std::size_t append_tree_meshes(MeshData& mesh, world::chunk::ChunkCoord chunk, i
         // Owned by the chunk whose Y range contains the base surface; skipped if the tree would
         // poke through this chunk's local ceiling (v1 simplification, deterministic).
         const float localBaseY = tree.base_height - chunkBaseY;
-        const float topY = localBaseY + tree.trunk_height + 2.0f * tree.canopy_radius;
+        // Ceiling check uses each shape's REAL top extent (the conifer's stacked canopy reaches
+        // 2.55x its radius above the trunk -- a plain 2x formula would let it clip the chunk top).
+        const float canopyRise = tree.shape == TreeShape::Conifer ? 2.55f * tree.canopy_radius
+                                                                  : 2.0f * tree.canopy_radius;
+        const float topY = localBaseY + tree.trunk_height + canopyRise;
         if (localBaseY < 0.0f || localBaseY >= static_cast<float>(kChunkSize) ||
             topY > static_cast<float>(kChunkSize)) {
             continue;
@@ -109,40 +162,40 @@ std::size_t append_tree_meshes(MeshData& mesh, world::chunk::ChunkCoord chunk, i
         const float lx = tree.world_x - static_cast<float>(chunk.x * kChunkSize);
         const float lz = tree.world_z - static_cast<float>(chunk.z * kChunkSize);
 
-        // Trunk: a square prism, sunk half a voxel so it never floats above the surface mesh.
+        const std::size_t treeVertexStart = mesh.vertices.size();
         constexpr float kTrunkHalfWidth = 0.35f;
-        const float y0 = localBaseY - 0.5f;
+        const float y0 = localBaseY - 0.5f; // sunk half a voxel so nothing floats above the surface
         const float y1 = localBaseY + tree.trunk_height;
-        const glm::vec3 t00{lx - kTrunkHalfWidth, y0, lz - kTrunkHalfWidth};
-        const glm::vec3 t10{lx + kTrunkHalfWidth, y0, lz - kTrunkHalfWidth};
-        const glm::vec3 t11{lx + kTrunkHalfWidth, y0, lz + kTrunkHalfWidth};
-        const glm::vec3 t01{lx - kTrunkHalfWidth, y0, lz + kTrunkHalfWidth};
-        const glm::vec3 u00{t00.x, y1, t00.z};
-        const glm::vec3 u10{t10.x, y1, t10.z};
-        const glm::vec3 u11{t11.x, y1, t11.z};
-        const glm::vec3 u01{t01.x, y1, t01.z};
-        push_quad(mesh, t00, t10, u10, u00, world::chunk::MaterialID::Wood); // -Z face
-        push_quad(mesh, t11, t01, u01, u11, world::chunk::MaterialID::Wood); // +Z face
-        push_quad(mesh, t10, t11, u11, u10, world::chunk::MaterialID::Wood); // +X face
-        push_quad(mesh, t01, t00, u00, u01, world::chunk::MaterialID::Wood); // -X face
 
-        // Canopy: an octahedron centered above the trunk.
-        const float r = tree.canopy_radius;
-        const glm::vec3 center{lx, y1 + r, lz};
-        const glm::vec3 top = center + glm::vec3{0.0f, r, 0.0f};
-        const glm::vec3 bottom = center - glm::vec3{0.0f, r, 0.0f};
-        const glm::vec3 px = center + glm::vec3{r, 0.0f, 0.0f};
-        const glm::vec3 nx = center - glm::vec3{r, 0.0f, 0.0f};
-        const glm::vec3 pz = center + glm::vec3{0.0f, 0.0f, r};
-        const glm::vec3 nz = center - glm::vec3{0.0f, 0.0f, r};
-        push_triangle(mesh, top, px, pz, world::chunk::MaterialID::Leaves);
-        push_triangle(mesh, top, pz, nx, world::chunk::MaterialID::Leaves);
-        push_triangle(mesh, top, nx, nz, world::chunk::MaterialID::Leaves);
-        push_triangle(mesh, top, nz, px, world::chunk::MaterialID::Leaves);
-        push_triangle(mesh, bottom, pz, px, world::chunk::MaterialID::Leaves);
-        push_triangle(mesh, bottom, nx, pz, world::chunk::MaterialID::Leaves);
-        push_triangle(mesh, bottom, nz, nx, world::chunk::MaterialID::Leaves);
-        push_triangle(mesh, bottom, px, nz, world::chunk::MaterialID::Leaves);
+        switch (tree.shape) {
+        case TreeShape::Round:
+            push_trunk(mesh, lx, lz, y0, y1, kTrunkHalfWidth);
+            push_octahedron(mesh, {lx, y1 + tree.canopy_radius, lz}, tree.canopy_radius,
+                            tree.canopy_radius, world::chunk::MaterialID::Leaves);
+            break;
+        case TreeShape::Conifer: {
+            // Thinner trunk, three stacked shrinking octahedra overlapping into a fir silhouette.
+            push_trunk(mesh, lx, lz, y0, y1, 0.25f);
+            const float r = tree.canopy_radius;
+            push_octahedron(mesh, {lx, y1 - 0.5f * r, lz}, r, r * 1.1f, world::chunk::MaterialID::Leaves);
+            push_octahedron(mesh, {lx, y1 + 0.7f * r, lz}, r * 0.72f, r * 0.95f,
+                            world::chunk::MaterialID::Leaves);
+            push_octahedron(mesh, {lx, y1 + 1.7f * r, lz}, r * 0.45f, r * 0.85f,
+                            world::chunk::MaterialID::Leaves);
+            break;
+        }
+        case TreeShape::Shrub:
+            // No trunk: one squashed octahedron sitting on (slightly into) the ground.
+            push_octahedron(mesh, {lx, y0 + 0.6f * tree.canopy_radius, lz}, tree.canopy_radius,
+                            tree.canopy_radius * 0.7f, world::chunk::MaterialID::Leaves);
+            break;
+        }
+
+        // Goal 38: per-tree brightness jitter through the (otherwise-unused-for-trees) AO
+        // attribute, applied to every vertex this tree just emitted.
+        for (std::size_t i = treeVertexStart; i < mesh.vertices.size(); ++i) {
+            mesh.vertices[i].ao = tree.color_jitter;
+        }
         ++emitted;
     }
     return emitted;

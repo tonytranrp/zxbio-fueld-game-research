@@ -21,9 +21,10 @@ namespace render::diligent::detail {
 // the matrix column_major explicitly, so the raw GLM (column-major) bytes upload verbatim -- no
 // transpose anywhere.
 struct FrameConstantsCpu {
-    glm::mat4 viewProj; // matches: cbuffer FrameConstants { column_major float4x4 g_ViewProj; }
+    glm::mat4 viewProj;   // matches: cbuffer FrameConstants { column_major float4x4 g_ViewProj; ... }
+    glm::vec4 timeAndPad; // x = elapsed seconds (foliage sway, goal 39); yzw unused
 };
-static_assert(sizeof(FrameConstantsCpu) == 64, "must match the 64-byte HLSL cbuffer exactly");
+static_assert(sizeof(FrameConstantsCpu) == 80, "must match the 80-byte HLSL cbuffer exactly");
 
 struct ChunkConstantsCpu {
     glm::vec4 chunkOriginWorld; // matches: cbuffer ChunkConstants { float4 g_ChunkOriginWorld; } -- xyz used, w padding

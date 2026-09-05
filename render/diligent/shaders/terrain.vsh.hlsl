@@ -10,6 +10,7 @@
 cbuffer FrameConstants
 {
     column_major float4x4 g_ViewProj;
+    float4 g_TimeAndPad; // x = elapsed seconds (foliage sway); yzw unused
 };
 
 cbuffer ChunkConstants
@@ -54,7 +55,17 @@ void main(in VSInput VSIn, out PSInput PSIn)
     // Mirror of world::meshing::dequantize_position_16: UNORM in [0,1] -> [-1, 32] voxel space.
     // 65535/1024 = 63.9990234375 is exactly representable in float32.
     const float3 localPos = VSIn.Pos.xyz * (65535.0 / 1024.0) - 1.0;
-    const float3 worldPos = localPos + g_ChunkOriginWorld.xyz;
+    float3 worldPos = localPos + g_ChunkOriginWorld.xyz;
+
+    // Goal 39: wind sway on tree CANOPIES only -- material 5 is Leaves; trunks (Wood) and
+    // terrain get zero offset, so trunks visibly stay still while canopies move.
+    if (VSIn.Material == 5u)
+    {
+        const float t = g_TimeAndPad.x;
+        worldPos.x += 0.15 * sin(t * 1.4 + worldPos.x * 0.37 + worldPos.z * 0.21);
+        worldPos.z += 0.15 * cos(t * 1.1 + worldPos.z * 0.29 + worldPos.x * 0.17);
+    }
+
     PSIn.Pos      = mul(g_ViewProj, float4(worldPos, 1.0));
     PSIn.Normal   = DecodeOctahedral(VSIn.Oct);
     PSIn.WorldPos = worldPos;

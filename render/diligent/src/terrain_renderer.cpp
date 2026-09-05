@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <format>
@@ -200,13 +201,20 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
         return;
     }
 
+    // Self-contained animation clock (foliage sway, water ripple): elapsed seconds since renderer
+    // construction -- no public-API time plumbing needed for a purely cosmetic phase input.
+    static const auto animStart = std::chrono::steady_clock::now();
+    const float animSeconds =
+        std::chrono::duration<float>(std::chrono::steady_clock::now() - animStart).count();
+
     {
         MapHelper<detail::FrameConstantsCpu> frame(ctx, impl_->frameConstants, MAP_WRITE, MAP_FLAG_DISCARD);
         frame->viewProj = viewProj;
+        frame->timeAndPad = glm::vec4(animSeconds, 0.0f, 0.0f, 0.0f);
     }
     {
         MapHelper<glm::vec4> fog(ctx, impl_->fogConstants, MAP_WRITE, MAP_FLAG_DISCARD);
-        *fog = glm::vec4(camera.position, 0.0f);
+        *fog = glm::vec4(camera.position, animSeconds);
     }
 
     ctx->SetPipelineState(impl_->pso);
