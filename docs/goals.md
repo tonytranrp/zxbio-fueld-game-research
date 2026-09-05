@@ -29,7 +29,14 @@ Table of contents: [A. Documentation migration](#a-documentation-migration) ·
 [G. Render architecture](#g-render-architecture) · [H. Code quality](#h-code-quality) ·
 [I. CI hardening](#i-ci-hardening) · [J. Deferred-item cleanup](#j-deferred-item-cleanup) ·
 [K. Gameplay completeness](#k-gameplay-completeness) · [L. Sky & atmosphere](#l-sky--atmosphere) ·
-[M. Material palette expansion](#m-material-palette-expansion) · [N. Consolidation](#n-consolidation)
+[M. Material palette expansion](#m-material-palette-expansion) · [N. Consolidation](#n-consolidation) ·
+[O. Goals surfaced by this pass's own work](#o-goals-surfaced-by-this-passs-own-work) ·
+[P. Modular block properties](#p-modular-block-properties) ·
+[Q. Blocky/greedy meshing](#q-blockygreedy-meshing) ·
+[R. Micro-voxel decorative objects](#r-micro-voxel-decorative-objects) ·
+[S. Static, bounded world](#s-static-bounded-world) ·
+[T. Storage compression, phased](#t-storage-compression-phased) ·
+[U. Redesign consolidation](#u-redesign-consolidation)
 
 ---
 
@@ -587,6 +594,132 @@ themselves, directly responsive to "colorful" as a materials question, not only 
 111. Blender/MeshLab open-check for mesh_dump's .obj (goal 74's honest partial: the Blender MCP
      addon wasn't running). **Check**: a screenshot of the imported chunk matching the in-engine
      render.
+
+---
+
+## Voxel Representation Redesign (groups P–U)
+
+A real architectural pivot, not a same-weight addition to A–O — full design rationale, sequencing,
+and citations live in `research/voxel-representation-redesign.md`. Sequencing is dependency-real
+(P before Q before S; R needs Q; T is explicitly phased and gated on S's real measured numbers) —
+see that document's §8 before assuming these run top-to-bottom or all at once.
+
+## P. Modular block properties
+
+112. Design the full `BlockProperties` field set (§6.2's sketch plus anything §2's mesher or §3's
+     generation-fill logic turns out to need — e.g. a `supports_growth` consumer in tree placement).
+     **Check**: every currently-scattered `== MaterialID::X` comparison in the codebase (grep first)
+     has a named property it will become.
+113. Implement `world/chunk/include/world/chunk/block_type.hpp` per §6.2, `constexpr`, no runtime
+     registry. **Check**: `static_assert`s confirm every `MaterialID` value has a table entry (a
+     missing entry is a compile error, not a runtime surprise).
+114. Migrate every scattered material-property comparison (swimming/buoyancy, ground-clamp, tree
+     placement's growth-surface check, the shader's water/leaves special-casing) to read from
+     `properties_of()`. **Check**: a grep confirms zero remaining bare `MaterialID::Water`-style
+     comparisons outside the table itself and genuinely material-identity-specific code (rendering
+     which color to draw, not which *behavior* applies).
+115. Generate `pso_terrain.cpp`'s color buffer and `terrain.psh.hlsl`'s expectations from
+     `kBlockTable` directly (a build-time or startup-time derivation) rather than a hand-duplicated
+     parallel array. **Check**: changing one color in `kBlockTable` changes the rendered result with
+     no second edit required anywhere else.
+116. Full regression run. **Check**: same pass count as before this group, behavior unchanged for
+     every existing material.
+
+## Q. Blocky/greedy meshing
+
+117. Rewrite `world/meshing/mesh_extractor.cpp`'s core algorithm from Naive Surface Nets to
+     per-voxel-face emission (naive visible-face culling first — simpler, and a real, valid
+     stopping point on its own per the research). **Check**: a hand-constructed single-solid-voxel
+     case produces exactly 6 correctly-wound outward faces (the same kind of golden-value test
+     Group A's original meshing work used).
+118. Add greedy face-merging on top of 117 (per `block_mesh`'s documented approach: expand a face in
+     each valid direction while neighbors share material and remain exposed). **Check**: a flat,
+     uniform-material region of N×N voxels produces measurably fewer quads than the naive version —
+     a real quad-count number, not assumed reduced.
+119. Rebuild `test_surface_coverage.cpp`/`test_normal_continuity.cpp`/`test_sliver_hunt.cpp` against
+     blocky meshing's actual correctness properties (exact face normals, no averaging question) —
+     don't keep smooth-meshing-era tests that no longer test anything meaningful for this algorithm.
+120. Re-verify the padded cross-chunk sampling / chunk-boundary logic (`docs/progress.md`'s own
+     account of this being "the actual hard part" historically) still produces seamless boundaries
+     under face-based meshing — the boundary-ownership rules differ from Surface Nets' dual-cell
+     scheme and need re-deriving, not assumed to carry over. **Check**: the cross-chunk seam test
+     from goal 119's rebuild, specifically exercised at a chunk boundary.
+121. View a dumped frame of the new blocky terrain directly (the standing methodology from the last
+     pass) — confirm it actually reads as "made of voxels" per the original complaint, not just that
+     it compiles and renders something. **Check**: a viewed image, compared side by side with image 1
+     from this conversation, with a one-sentence honest assessment.
+122. Benchmark meshing throughput before/after (Google Benchmark, the existing `bench_mesh_extract`
+     harness) — face-based meshing has a different cost profile than Surface Nets' padded-sampling
+     approach, worth a real number rather than assumed faster or slower.
+123. Re-tune baked AO (§2.2) for the blocky context specifically — confirm the existing 4th-vertex-
+     byte scheme still reads correctly per-face rather than assumed unaffected by the meshing change.
+
+## R. Micro-voxel decorative objects
+
+124. Design the local micro-grid format for small decorative objects (size, e.g. 8³/16³; how it's
+     authored — procedural per-object-type generator, not hand-authored per-instance). **Check**: the
+     design is written down, including how it composes with `tree_decoration.cpp`'s existing
+     deterministic placement rather than replacing it.
+125. Implement at least one micro-voxel decorative object type (a flower/berry cluster, per image 2)
+     using 124's format, greedy-meshed via Group Q's mesher and appended into the chunk's mesh the
+     same way trees already are. **Check**: view a dump; individually recognizable small cube
+     clusters, matching image 2's read, not smooth geometry.
+126. Confirm the memory cost of 125 is genuinely bounded (a handful of small grids per chunk, not a
+     hidden global resolution increase) — measure it directly rather than assuming §1's "bounded and
+     cheap" framing holds without checking.
+
+## S. Static, bounded world
+
+127. Add `kWorldRadiusChunks` (or equivalent bounds) as a real, named config constant, set to the
+     §3.2 trial size (48×48 columns) first — not 8km, not yet.
+128. Replace `ChunkStreamer`'s per-tick desired-set/hysteresis logic with the one-time parallel
+     generation pass from §3.3 — enqueue every in-bounds coordinate to the `ThreadPool` at startup.
+     **Check**: every chunk in bounds is generated exactly once, verified by a count, not assumed.
+129. Remove `world::streaming::ChunkStreamer`'s now-dead spatial/temporal hysteresis code path
+     deliberately (§3.4) — don't leave it inert and untested. **Check**: `git diff` shows real
+     deletion, not a disabled-but-present code path; the removed tests are removed, not skipped.
+130. Wire the loading-screen progress feedback from §5 to the generation pass's real completion
+     count. **Check**: view a screenshot of the loading screen mid-generation — a real, moving
+     progress indicator, not a static "Loading..." string.
+131. Measure real wall-clock generation time and real memory footprint (Release build specifically,
+     per §7's reframing) at the 48×48 trial size. **Check**: both numbers recorded in
+     `docs/progress.md`, with the methodology (build config, machine) stated.
+132. Decide, from 131's real numbers, whether to scale `kWorldRadiusChunks` toward the original 8km
+     ask, and by how much per step — re-measuring at each step per §3.2's explicit plan, not jumping
+     straight to the final number. **Check**: each size step has its own recorded measurement.
+133. Re-run `--autofly`-equivalent movement through the now-static, fully-generated world and confirm
+     the original stutter complaint is actually gone — frame time should show no generation-driven
+     spikes at all post-load, since nothing generates during play anymore. **Check**: a worst-frame
+     number from a full traverse of the loaded world, compared against the pre-redesign log's
+     collapse-to-1fps behavior.
+134. Full regression run once Groups P–S land together. **Check**: real pass count, stated explicitly.
+
+## T. Storage compression, phased
+
+135. Measure Phase 1 (§4.2) directly: the existing per-chunk palette compression's real total memory
+     across the full static world at the §3.2 trial size — this may already be small enough that
+     Phase 2/3 are unnecessary, and that's a real, good outcome to confirm rather than assume needs
+     more work.
+136. Only if 135's number doesn't fit a reasonable budget: implement Phase 2's sparse chunk-grid
+     (skip storage entirely for chunks known-uniform at generation time). **Check**: a real before/
+     after memory number, same standard as every other optimization claim in this project's history.
+137. Only if 136 still doesn't fit: scope Phase 3 (real SVO→SVDAG construction) as its own dedicated
+     design pass — cite §4.1's real numbers as the starting evidence, and treat it with the same
+     research depth this project gave the original rendering-API pivot, not a quick bolt-on. **Check**:
+     this becomes its own goals group, written before implementation, matching goal 108's own
+     precedent for "big enough to deserve its own group."
+
+## U. Redesign consolidation
+
+138. Update `docs/progress.md`'s architecture section to reflect the post-redesign shape (blocky
+     meshing, static world, the block-properties table) — the same discipline goal 97/100 already
+     established for keeping that section accurate rather than stale.
+139. Full visual review against both images from this conversation specifically — does the redesigned
+     engine's own capture read closer to image 2's aesthetic than image 1 did. **Check**: a written,
+     honest, specific comparison, not a generic "looks better."
+140. Write up what changed and why in one place for a future session that wasn't part of this
+     conversation — the same "conclusions, not just a list of things touched" standard the last
+     consolidation pass set.
 
 ---
 
