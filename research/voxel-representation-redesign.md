@@ -361,3 +361,67 @@ standard answer for a threaded world-generation loading screen (§5).
 `templates-and-metaprogramming.md` §2 (the CRTP/compile-time-known-set reasoning behind §6.3's
 constexpr-table-over-virtual-hierarchy decision); and `modular-architecture.md` §3 (why a plugin-style
 runtime block registry is named and correctly not what this project needs).
+
+---
+
+## §10. What actually happened (retrospective, goal 140)
+
+Written for a future session that wasn't part of implementing this — conclusions, not a diff list.
+Everything below is real, verified evidence; the numbered goals in `docs/goals.md` (112–140) carry
+the specific tests/commands/commits if you need to reproduce any of it.
+
+**Groups P, Q, and S — the three groups answering the four original complaints — are done and
+verified.** Group R (micro-voxel decorative objects) is designed but not built; Group T's phase
+gate was checked and correctly stayed closed.
+
+- **Group P (modular block properties)** was small and clean, as expected: `world/chunk/
+  block_type.hpp`'s `kBlockTable` is now the one place a material's color/solidity/liquidity live.
+  The real finding here was negative, and worth keeping: grep-verifying which scattered
+  comparisons actually needed migrating found that swimming and tree placement, despite this
+  document's own §6.1 assumption, were already purely height-based with no material access at
+  all — nothing to migrate there. Don't trust a design doc's own claims about existing code over a
+  grep; even a document written from direct reading can still be wrong about a detail.
+- **Group Q (blocky/greedy meshing)** was the highest-risk, highest-value piece, and it worked on
+  the first real build. The winding derivation (algebraic, not eyeballed) held. The real
+  correctness lesson was that greedy merging invalidates an entire *style* of test (vertex-
+  proximity probing), not just specific test cases — three test files needed rebuilding around
+  footprint/bounding-region checks, and doing that rebuild surfaced a genuine, separate bug in one
+  of the OLD tests itself (sampling a boundary's short-neighbor side instead of the solid source
+  column), not in the new mesher. The lesson generalizes: when an algorithm's fundamental output
+  SHAPE changes (dense-everywhere vertices → sparse-at-corners-only), audit every test's
+  assumptions about that shape, don't just re-run the old suite and patch failures individually.
+- **Group S (static, bounded world)** is where the actual reported pain (lag while moving,
+  streaming during gameplay) got fixed, and it's backed by the most dramatic before/after evidence
+  in the whole pass: exact chunk-count equality (1014/1014) and a 38ms worst-frame across an entire
+  autofly traverse, against a pasted log showing collapse to 1-2fps. It's also where the least
+  glamorous but most consequential bug of the whole redesign was found: a budget floor
+  ("drain at least 25% of the backlog") that was correct and tested at the OLD system's few-
+  hundred-chunk scale became nearly unbounded at the new ~15,000-chunk scale, and this was caught
+  only by actually running `--frames 60` at radius 20 and noticing the ENTIRE load finished anyway.
+  **The general lesson, worth carrying into any future scale-up**: a tuning constant's own
+  justification comment can be correct and the constant can still fail silently at 30x the scale it
+  was proven at — re-derive, don't just re-trust, when the input scale changes by an order of
+  magnitude or more.
+- **The "48×48" trial size was itself ambiguous** (side vs. radius — see goal 131's note) and
+  resolved toward the larger, more conservative reading rather than being silently "corrected" to
+  match the letter of the original phrasing, since real, good data already existed for the larger
+  interpretation.
+- **The literal 8km world-size ask is real, measured, and not reached**: two Release-build data
+  points (not one extrapolated guess) show ~1ms/chunk near-linear generation cost, and that rate
+  puts an 8km-equivalent world at several minutes of load time. The shipping default (radius 48,
+  ~3.1km per side, 53.6s) is a deliberate stopping point with the reasoning attached, not a
+  quiet failure to reach the original number. If a future session wants to push further, the
+  starting question is "where does the ~1ms/chunk actually go" (profiled, not guessed) — the
+  scaling data here rules out "just raise the radius" as sufficient on its own.
+- **Group R was scoped and then deliberately deferred**, not forgotten: its design
+  (`research/micro-voxel-object-design.md`) is real and specific enough to implement directly from,
+  but implementation was judged optional polish against the four originally reported complaints,
+  all already addressed by P/Q/S. A future session picking this up should start at goal 125.
+- **Group T's gate stayed shut, correctly**: the real measured number (343 MiB for the entire
+  static world's voxel storage) comfortably fits, so Phase 2 (sparse chunk-grid) and Phase 3
+  (SVO/SVDAG) were never started. This is the redesign doc's own hoped-for outcome (§4.2), not a
+  shortcut — don't build compression machinery a real measurement says isn't needed yet.
+
+**If you're picking this up cold**: read `docs/progress.md`'s current-state section first (it's
+the accurate, current summary), then this document for the *why* behind anything that looks like
+an unusual choice, then `docs/goals.md` groups P–U for the specific evidence behind each claim.

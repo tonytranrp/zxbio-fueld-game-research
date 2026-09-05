@@ -812,15 +812,30 @@ see that document's §8 before assuming these run top-to-bottom or all at once.
 
 ## U. Redesign consolidation
 
-138. Update `docs/progress.md`'s architecture section to reflect the post-redesign shape (blocky
+138. [x] Update `docs/progress.md`'s architecture section to reflect the post-redesign shape (blocky
      meshing, static world, the block-properties table) — the same discipline goal 97/100 already
-     established for keeping that section accurate rather than stale.
-139. Full visual review against both images from this conversation specifically — does the redesigned
+     established for keeping that section accurate rather than stale. Full rewrite: current-state
+     summary, architecture diagram (chunk/generation/meshing/streaming/render/app all updated),
+     a new "Decisions that survived contact with evidence" subsection for this pass's own findings,
+     and the honest-problems section re-examined (not just appended to) against what the redesign
+     actually changed.
+139. [x] Full visual review against both images from this conversation specifically — does the redesigned
      engine's own capture read closer to image 2's aesthetic than image 1 did. **Check**: a written,
-     honest, specific comparison, not a generic "looks better."
-140. Write up what changed and why in one place for a future session that wasn't part of this
+     honest, specific comparison, not a generic "looks better." New `docs/progress.md` section,
+     viewing `research/captures/baseline_default.png` (image 1's complaint made concrete) directly
+     alongside `blocky_default.png`/`group_s_static_world.png`. Verdict, specific not generic:
+     terrain now genuinely matches image 2's blocky aesthetic (a structural mesher change, not
+     shading); small decorative objects (image 2's berries) do NOT yet, since Group Q never touched
+     `tree_decoration.cpp`'s smooth primitives — named as an open gap, not glossed over.
+140. [x] Write up what changed and why in one place for a future session that wasn't part of this
      conversation — the same "conclusions, not just a list of things touched" standard the last
-     consolidation pass set.
+     consolidation pass set. Added as `research/voxel-representation-redesign.md` §10 (a
+     retrospective appended to the original pre-implementation design doc, mirroring how the last
+     pass's `visual-stage-log.md` grew a consolidation entry) — per-group conclusions and the
+     generalizable lessons (a tuning constant proven at one scale can fail silently at 30x scale;
+     an algorithm's output-shape change invalidates a whole style of test, not just individual
+     cases; a design doc's own claims about existing code still need grep-verification), plus a
+     "start here if picking this up cold" pointer to progress.md -> this doc -> goals.md groups P-U.
 
 ---
 
