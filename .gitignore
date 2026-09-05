@@ -18,3 +18,5 @@ _deps/
 
 # Leftover Rust tooling directory from this branch's prior history — not used by the C++ track
 /target/
+target/
+heightmap_profile.csv
