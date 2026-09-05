@@ -20,3 +20,4 @@ _deps/
 /target/
 target/
 heightmap_profile.csv
+.token-optimizer/
