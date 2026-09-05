@@ -1,6 +1,6 @@
 {
   "context": {
-    "date": "2026-09-04T18:39:32-10:00",
+    "date": "2026-09-04T21:50:03-10:00",
     "host_name": "TONYXNUVOLA",
     "executable": "C:\\b\\bench-rel\\benchmarks\\voxel_benchmarks.exe",
     "num_cpus": 16,
@@ -46,9 +46,9 @@
       "repetitions": 1,
       "repetition_index": 0,
       "threads": 1,
-      "iterations": 154,
-      "real_time": 5.3945993506511210e+00,
-      "cpu_time": 5.2759740259740262e+00,
+      "iterations": 90,
+      "real_time": 9.6316211111115990e+00,
+      "cpu_time": 9.0277777777777786e+00,
       "time_unit": "ms",
       "merged_quads": 8.0200000000000000e+02,
       "naive_faces_interior_only": 6.1440000000000000e+03,

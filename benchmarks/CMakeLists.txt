@@ -18,3 +18,9 @@ target_link_libraries(voxel_benchmarks PRIVATE
     world_generation
     world_meshing
 )
+
+# Goal 135: a one-shot memory report, not a repeatable timing benchmark -- its own tiny executable
+# rather than another voxel_benchmarks case, since Google Benchmark's iteration model has nothing
+# to offer a question that's purely "how many bytes did this produce."
+add_executable(measure_world_memory measure_world_memory.cpp)
+target_link_libraries(measure_world_memory PRIVATE world_chunk world_generation world_streaming)

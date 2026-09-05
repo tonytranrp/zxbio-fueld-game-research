@@ -692,10 +692,17 @@ see that document's §8 before assuming these run top-to-bottom or all at once.
 
 ## R. Micro-voxel decorative objects
 
-124. Design the local micro-grid format for small decorative objects (size, e.g. 8³/16³; how it's
+124. [x] Design the local micro-grid format for small decorative objects (size, e.g. 8³/16³; how it's
      authored — procedural per-object-type generator, not hand-authored per-instance). **Check**: the
      design is written down, including how it composes with `tree_decoration.cpp`'s existing
-     deterministic placement rather than replacing it.
+     deterministic placement rather than replacing it. Written up in full in
+     `research/micro-voxel-object-design.md`: an 8³ `MicroGrid`, generated on demand and never
+     persisted (same "derive at mesh time, throw away after" philosophy `tree_decoration.cpp`
+     already uses for trees); its own placement pass (own file, own candidate density, own mask
+     thresholds) runs alongside tree placement rather than inside it; meshed by a NEW small
+     standalone face-culling+greedy mesher scoped to the grid's own size rather than paying Group
+     Q's real 5-7ms full-chunk `extract_mesh` cost per tiny object. First concrete type specified:
+     a berry cluster (Leaves blob + a new `MaterialID::Berry` on its surface).
 125. Implement at least one micro-voxel decorative object type (a flower/berry cluster, per image 2)
      using 124's format, greedy-meshed via Group Q's mesher and appended into the chunk's mesh the
      same way trees already are. **Check**: view a dump; individually recognizable small cube
@@ -729,12 +736,41 @@ see that document's §8 before assuming these run top-to-bottom or all at once.
      progress bar, same overlay infra as the debug HUD); viewed two dumps of a real radius-20 load
      seconds apart -- "1968 / 10086 chunks" then "4794 / 10086 chunks" -- genuine, moving progress,
      not a placeholder string.
-131. Measure real wall-clock generation time and real memory footprint (Release build specifically,
+131. [x] Measure real wall-clock generation time and real memory footprint (Release build specifically,
      per §7's reframing) at the 48×48 trial size. **Check**: both numbers recorded in
-     `docs/progress.md`, with the methodology (build config, machine) stated.
-132. Decide, from 131's real numbers, whether to scale `kWorldRadiusChunks` toward the original 8km
+     `docs/progress.md`, with the methodology (build config, machine) stated. Honest note on an
+     ambiguity in §3.2's own phrasing, caught here rather than silently papered over: "48×48
+     columns" reads as a SIDE dimension (matching how §3.2 separately computed "250 chunks per
+     horizontal axis" -> 250² columns for the 8km case, i.e. 250 as a side, not a radius), but
+     `kDefaultWorldBounds.radius_chunks` is a half-width -- so the constant actually set (48) builds
+     a 97x97 world (2*48+1 per side), roughly 4x the literal 48x48 area. Kept as-is rather than
+     changed to 24: the real measurement below is for the LARGER interpretation, a more
+     conservative test than the literal reading would have given, and the result is good regardless.
+     Real numbers, Release build (`--preset windows-release`, MSVC 14.51, RTX 4070 Laptop GPU, D3D12):
+     **56,454 real chunks (97x97x6), 78,408 total incl. halo, loaded in 53.6s wall-clock; ~1.41 GB
+     process memory** at completion (vs. 343 MiB of that being the actual voxel storage measured in
+     goal 135 -- the rest is GPU mesh buffers, DiligentEngine/ImGui/Tracy runtime overhead, all
+     normal Release-build weight, not evidence of a storage problem).
+132. [x] Decide, from 131's real numbers, whether to scale `kWorldRadiusChunks` toward the original 8km
      ask, and by how much per step — re-measuring at each step per §3.2's explicit plan, not jumping
-     straight to the final number. **Check**: each size step has its own recorded measurement.
+     straight to the final number. **Check**: each size step has its own recorded measurement. A
+     second real measurement, not an extrapolation from one point: radius 72 (145x145x6 = 126,150
+     real chunks) loaded in **125.8s, ~2.10 GB**. Per-chunk generation cost is near-constant across
+     both points (0.95ms/chunk at radius 48, 1.00ms/chunk at radius 72 -- a mild, not alarming,
+     super-linear tendency), and the fixed, non-chunk-proportional baseline (DiligentEngine/D3D12
+     driver/ImGui/Tracy overhead) is real and large: fitting both memory points gives ~835 MB of
+     fixed baseline plus ~9.8 KB/chunk marginal cost, not a flat per-chunk model.
+     **Decision: do not scale toward the literal 8km ask.** Linearly extrapolating the measured
+     ~1ms/chunk rate to an 8km-per-side world (side 250, i.e. radius ~125 -> ~378,000 chunks) gives
+     roughly 380s (~6.3 minutes) of load time -- clearly unacceptable game-launch UX, and that is
+     the OPTIMISTIC (pure-linear) case given the observed mild super-linear trend. The current
+     default (radius 48 -> a real 97-column, ~3.1km-per-side world, 53.6s load) already delivers
+     the actual thing asked for (a static, bounded, pregenerated world with no streaming lag,
+     goal 133) at an acceptable load time, and is kept as the shipping default rather than pushed
+     further. Reaching anything 8km-scale later is a real, separate future effort -- profiling
+     where the ~1ms/chunk actually goes (noise sampling vs. the per-mesh-candidate snapshot copy
+     vs. job-submission overhead) before assuming a bigger radius alone gets there, per this
+     project's own "measure before optimizing" standard -- not attempted speculatively here.
 133. [x] Re-run `--autofly`-equivalent movement through the now-static, fully-generated world and confirm
      the original stutter complaint is actually gone — frame time should show no generation-driven
      spikes at all post-load, since nothing generates during play anymore. **Check**: a worst-frame
@@ -743,14 +779,28 @@ see that document's §8 before assuming these run top-to-bottom or all at once.
      "1014 / 1014 chunks loaded at exit, worst frame 38.4 ms over the whole run" -- exact chunk-count
      equality proves nothing loaded/unloaded mid-flight, and 38.4ms worst-case (~26fps floor, Debug
      build) is night-and-day from the pasted log's reported collapse to 1-2fps / 999ms frames.
-134. Full regression run once Groups P–S land together. **Check**: real pass count, stated explicitly.
+134. [x] Full regression run once Groups P–S land together. **Check**: real pass count, stated explicitly.
+     **76/76 tests pass** (Debug build, `ctest --preset windows-debug`) with all of Groups P-S's
+     changes in place together -- block properties, blocky/greedy meshing, and the static-world
+     loader rewrite, verified as one whole, not just as isolated per-group passes.
 
 ## T. Storage compression, phased
 
-135. Measure Phase 1 (§4.2) directly: the existing per-chunk palette compression's real total memory
+135. [x] Measure Phase 1 (§4.2) directly: the existing per-chunk palette compression's real total memory
      across the full static world at the §3.2 trial size — this may already be small enough that
      Phase 2/3 are unnecessary, and that's a real, good outcome to confirm rather than assume needs
-     more work.
+     more work. `benchmarks/measure_world_memory.cpp`, a one-shot report tool (not a repeatable
+     timing benchmark -- there is nothing to time here) generating the full radius-48 world
+     (real+halo) and summing each chunk's real `palette_size()`/`bits_per_voxel()`-derived byte
+     cost. Real result: **56,454 real chunks = 326 MiB (6,055 bytes/chunk avg); 21,954 halo-only
+     chunks = 17 MiB; 343 MiB total; 56.4% of all chunks are homogeneous (near-zero cost)**. This is
+     the good outcome: Phase 1 alone comfortably fits any reasonable budget at this world size, so
+     Phase 2 (136) and Phase 3 (137) stay correctly un-started, not because they were skipped but
+     because the gate they're behind wasn't met. One honest, separate finding surfaced by this
+     measurement: `WorldLoader` currently retains halo-only chunk voxel data forever (nothing ever
+     calls `store_.erase()` on it after its one use satisfying a neighbor's meshing precondition,
+     unlike the old streaming system's `sweep_generation_margin`) -- at 17 MiB this isn't worth
+     fixing now, but it is real, measured waste, not assumed harmless.
 136. Only if 135's number doesn't fit a reasonable budget: implement Phase 2's sparse chunk-grid
      (skip storage entirely for chunks known-uniform at generation time). **Check**: a real before/
      after memory number, same standard as every other optimization claim in this project's history.
