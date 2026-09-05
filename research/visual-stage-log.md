@@ -133,3 +133,43 @@ not before them.
   (CLAUDE.md's note is research documentation, not a dependency). Nothing to remove.
 - Goal 77 (unordered_dense): KEEP, harness-only -- it just earned its keep again as the
   comparison column in today's baseline re-run; benchmark-gated fetch costs normal builds nothing.
+
+## Group N — consolidation (goals 98–104, 2026-09-04)
+
+**Goal 98 (regression):** 70/70 at the pass's start → **76/76** at its end; the +6 are AO levels,
+water-depth encoding, swim settle, aim query, and two sliver guards. Count only went up.
+
+**Goals 99 + 104 (full visual review, one sitting, plus a genuinely fresh eye):** reviewed
+`groupM_shore.png` (grass/dirt/stone/sand/water/trees/fog together), `stage3_sun.png` (sky
+gradient + blooming sun disc), `banding_slope.png` (lake, ripples, steep slopes), `water_glint.png`
+(over-water depth tint), and — the fresh eye — `fresh_eye_seed42.png`, a NEVER-BEFORE-SEEN seed
+whose first frame came out as a coherent archipelago: grass-capped peaks with soil terraces, an
+unbroken sand ring, fog-graded distance, and the overlay's new breakdown/aim lines populated
+correctly (52 objects = 19+18+15; "aim: Stone @ 13,49,54" pointing at a rock face). Honest
+assessment, not a generic "looks good": the world now genuinely reads as a colorful, stylized,
+John-Lin-adjacent voxel landscape — the single flat-gray Lambert world from this morning's
+baseline is unrecognizable. Two things a fresh eye notices that a builder stops seeing: (1) the
+sun-glint field on near water is STRONG at aligned view angles (a large white sparkle patch with
+a moiré-like interference pattern from the two-wave ripple normal at grazing incidence) — striking
+but borderline overexposed; logged as a new tuning goal rather than hot-tweaked at the end of the
+pass; (2) mid-slope soil terracing reads busy/camo-like at some distances — stylized-acceptable,
+but a texture arc would smooth it. Both filed as goals below.
+
+**Goal 80 (cave/3D-density go/no-go) — written decision: NO-GO as a line item, YES as a named
+future arc.** The heightmap assumption is load-bearing in at least five places today: terrain_fill
+banding, walk/swim's analytic ground query, tree placement masks, the aim query, and the "nothing
+is meshed underwater" premise that goal 29's opaque-water decision rests on. True 3D density
+invalidates all five simultaneously — that is a generation+meshing+streaming+gameplay arc with its
+own goals group (and it would UNLOCK the real transparent-water pass and make SSAO's gate worth
+re-running). Deferred with this reasoning, not skipped.
+
+**Goal 83 (fly-feel), assessed from real flying** (dozens of autofly/interactive-capture runs this
+pass): base 40 u/s + 4x boost is right for a spectator/debug tool at this world scale — boost
+crosses the loaded radius in ~1.4 s, base speed frames terrain comfortably. No change; a real
+player-controls arc would want acceleration curves instead of a constant.
+
+**Goal 102 (marks audit):** every [x] in docs/goals.md now corresponds to a performed check
+recorded in this log, the design notes, or docs/progress.md; deliberately UNMARKED: 42–47 (behind
+goal 41's no-go gate), 64 (Linux compile-cache measurement pending a green best-effort leg), 73
+(RenderDoc vendoring — also the sliver bug's designated next tool), 80 (decision written, feature
+not built), and 101/102 complete with this entry.

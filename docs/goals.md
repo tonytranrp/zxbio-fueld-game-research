@@ -234,7 +234,7 @@ among the visual work.
 
 Gated explicitly on the outcome of goal 41 — don't build the G-buffer speculatively.
 
-41. Decide, in writing, whether Stage 4 is worth its cost right now: SSAO needs a genuinely new
+41. [x] Decide, in writing, whether Stage 4 is worth its cost right now: SSAO needs a genuinely new
     world-space normal render target (a real architecture change, not a shader tweak) plus
     satisfying `PostFXContext`'s motion-vector input (a zeroed motion buffer works for a static-ish
     camera per the research, a real cost either way). Weigh this against Stage 1–3's much cheaper
@@ -351,11 +351,11 @@ Grounded in this pass's own research into GitHub Actions gotchas for GPU-adjacen
 projects — the workflow file exists but has never actually run; this group is what makes that first
 real run land clean instead of thrashing through avoidable failures one at a time.
 
-62. Split `.github/workflows/ci.yml` into a **core, no-GPU job** (matrix: Windows/Linux ×
+62. [x] Split `.github/workflows/ci.yml` into a **core, no-GPU job** (matrix: Windows/Linux ×
     MSVC/GCC/Clang, `-DVOXEL_BUILD_RENDERER=OFF` per the flag this project already has) and a
     separate **renderer job**, rather than one job trying to build and test everything. **Check**:
     the core job runs and passes without ever fetching DiligentEngine/GLFW/Tracy.
-63. Add CPM/dependency caching via `actions/cache` keyed on `hashFiles('cmake/Dependencies.cmake')`
+63. [x] Add CPM/dependency caching via `actions/cache` keyed on `hashFiles('cmake/Dependencies.cmake')`
     (already the stated intent per `CLAUDE.md`'s dependency-additions note) with
     `-DCPM_SOURCE_CACHE=<cache-dir>` actually passed at configure time — confirm this is really wired
     into the workflow YAML, not just assumed because the intent was written down. **Check**: a second
@@ -365,40 +365,40 @@ real run land clean instead of thrashing through avoidable failures one at a tim
     complementary cache from the dependency-source cache. **Check**: a second run with only
     application-code changes (no dependency change) shows meaningfully faster compile times than a
     cold run.
-65. **Do not shallow-clone DiligentEngine.** It's pinned to a specific commit SHA (`aca2285`), not a
+65. [x] **Do not shallow-clone DiligentEngine.** It's pinned to a specific commit SHA (`aca2285`), not a
     branch tip — a shallow clone of an arbitrary SHA is a real, documented GitHub/git failure mode,
     not a hypothetical. Confirm the CPM fetch for DiligentEngine specifically does a full clone (or
     clones the branch then checks out the SHA), not `GIT_SHALLOW ON`. **Check**: the actual CPM
     package declaration for DiligentEngine is read directly and confirmed, not assumed safe.
-66. Add the renderer job's actual execution environment: **Mesa Lavapipe** (software Vulkan) on the
+66. [x] Add the renderer job's actual execution environment: **Mesa Lavapipe** (software Vulkan) on the
     Linux leg, **D3D12 WARP** on the Windows leg, since GitHub-hosted runners have no real GPU.
     **Check**: at least one renderer-job test (e.g. `voxel_app --frames 5`) runs to completion on
     both, or is explicitly marked skipped with a written reason if software rendering proves
     infeasible for a specific test.
-67. Treat software-Vulkan CI results as best-effort, not a guarantee of real-hardware parity (a real,
+67. [x] Treat software-Vulkan CI results as best-effort, not a guarantee of real-hardware parity (a real,
     documented risk per the research — Lavapipe/SwiftShader have known rough edges) — don't gate
     merges on renderer-job flakiness the same strictly as the core job. **Check**: the workflow's
     branch-protection expectations (if any) reflect this distinction explicitly.
-68. Add ASan+UBSan as one CI job (they combine safely) and **TSan as a separate job** (mutually
+68. [x] Add ASan+UBSan as one CI job (they combine safely) and **TSan as a separate job** (mutually
     exclusive with ASan/UBSan) — this project's own `CLAUDE.md` already documents TSan as locally
     unavailable on the dev machine by all three realistic paths, which makes a Linux CI TSan job the
     actual way this project ever gets TSan coverage, not an optional nice-to-have. **Check**: the
     TSan job actually runs (not just declared) and its result is reported, even if slower — budget
     for the researched 5–15× TSan slowdown rather than being surprised by CI runtime.
-69. Add clang-tidy as its own CI job using `CMAKE_EXPORT_COMPILE_COMMANDS` + `VOXEL_CLANG_TIDY`
+69. [x] Add clang-tidy as its own CI job using `CMAKE_EXPORT_COMPILE_COMMANDS` + `VOXEL_CLANG_TIDY`
     (both already exist in `CMakeLists.txt`), excluding `_deps`/third-party sources explicitly.
     **Check**: the job runs against real project sources only — confirmed by checking the actual
     file list clang-tidy processes in a run, not assumed correct because the exclusion flag is set.
-70. Keep the sanitizer and static-analysis jobs from blocking the fast core-job signal — run them in
+70. [x] Keep the sanitizer and static-analysis jobs from blocking the fast core-job signal — run them in
     parallel, not as sequential gates (this project's own reference material already states this
     convention; confirm the actual workflow YAML follows it). **Check**: the workflow graph shows
     these as parallel jobs, not a chain.
-71. Do the actual first real run on a real GitHub runner (not a local `act` simulation, which
+71. [x] Do the actual first real run on a real GitHub runner (not a local `act` simulation, which
     doesn't catch every runner-environment difference) and fix whatever breaks — expect at least one
     real surprise given this has never executed for real; that's the point of doing it now rather
     than assuming the YAML is correct because it looks right. **Check**: a real, green (or explicitly
     triaged, not silently ignored) run, linked/referenced in `docs/progress.md` once done.
-72. Once green, add a CI status badge to whatever now serves as the project's top-level readme/intro
+72. [x] Once green, add a CI status badge to whatever now serves as the project's top-level readme/intro
     (or `docs/progress.md` itself) — a cheap, standard signal that the pipeline this group hardened
     is actually being exercised going forward, not a one-time proof.
 
@@ -443,7 +443,7 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
     buoyancy-toward-surface behavior replaces the ground-clamp. **Check**: a standalone test analogous
     to the existing ground-clamp tests (dropped from above water, settles near the surface rather
     than the seabed or the sky).
-80. Decide explicitly whether cave/overhang terrain (true 3D density rather than the current 2D-
+80. [x] Decide explicitly whether cave/overhang terrain (true 3D density rather than the current 2D-
     heightmap-derived occupancy) is in scope for "completing most of the game," given it's a real,
     previously-deferred scope expansion, not a small addition — heightmap-only terrain fundamentally
     cannot represent an overhang or a cave. **Check**: a written go/no-go with reasoning; if yes, this
@@ -472,10 +472,10 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
     in this group, not just once at the end — swimming and biome changes both touch the ground-query
     path this check exercises. **Check**: `0 of N frames below ground`, re-confirmed after each
     change, not just once.
-86. Document the actual current gameplay loop honestly in `docs/progress.md` once this group's items
+86. [x] Document the actual current gameplay loop honestly in `docs/progress.md` once this group's items
     land — "fly or walk around generated, streaming, forested terrain with water" is genuinely what
     exists; resist the temptation to describe it as more feature-complete than it is.
-87. Identify, concretely, what "a game" still needs beyond what exists after this document's other
+87. [x] Identify, concretely, what "a game" still needs beyond what exists after this document's other
     groups land (an objective, a failure/win condition, any player-facing UI beyond the debug
     overlay) — a real, honest gap list, not a rhetorical question, since "complete most of the game"
     was the framing this document responds to and that framing deserves a real answer.
@@ -525,36 +525,68 @@ themselves, directly responsive to "colorful" as a materials question, not only 
     small per-material constant rather than a full PBR material system) — a real, bounded question,
     not an invitation to build a material system prematurely. **Check**: a written decision, and if
     yes, the specific materials and specific tweak, not an open-ended "make materials better."
-97. Update `docs/progress.md`'s architecture section once the palette count changes, so it stays an
+97. [x] Update `docs/progress.md`'s architecture section once the palette count changes, so it stays an
     accurate current-state summary rather than silently drifting stale (the exact failure mode that
     made the original six-brief sprawl hard to navigate).
 
 ## N. Consolidation
 
-98. Full-suite regression run across everything this document touches — confirm the count only goes
+98. [x] Full-suite regression run across everything this document touches — confirm the count only goes
     up from the last reported 70/70, with any net-new test count stated explicitly.
-99. Full visual review: view dumps covering every material, the sky, water, fog at distance, a dense
+99. [x] Full visual review: view dumps covering every material, the sky, water, fog at distance, a dense
     forest, and a steep slope, in one sitting, as the real "does this read as progress toward
     colorful/John-Lin-adjacent" check — not each piece in isolation as it was built, which is how the
     original ribbon bug survived two "verified" passes. **Check**: a written one-paragraph honest
     assessment, referencing the specific viewed images, not a generic "looks good."
-100. Update `docs/progress.md`'s "Current state" section to reflect everything this document's groups
+100. [x] Update `docs/progress.md`'s "Current state" section to reflect everything this document's groups
      actually landed — and explicitly mark anything from groups A–N that was decided *against*
      (goal 41's SSAO gate, goal 76/77's dependency removals, goal 80's cave decision) so a future
      session doesn't re-litigate a settled question from scratch.
-101. Re-open this same `docs/goals.md` file and add whatever new goals this pass's own work
+101. [x] Re-open this same `docs/goals.md` file and add whatever new goals this pass's own work
      surfaced — the standing expectation for a living backlog, not a one-shot list that goes stale
      the moment it's first executed.
-102. Confirm every "Check" across groups A–N that was actually performed is genuinely reflected as
+102. [x] Confirm every "Check" across groups A–N that was actually performed is genuinely reflected as
      done (`[x]`) — and, just as importantly, confirm nothing is marked done whose check wasn't
      actually performed, matching this document's own standing methodology note rather than treating
      it as aspirational.
-103. Write the equivalent of a "what problems does the code have now" honest note (mirroring
+103. [x] Write the equivalent of a "what problems does the code have now" honest note (mirroring
      `docs/progress.md`'s equivalent section for the pre-this-document state) — the same kind of
      direct, specific assessment this document opened by giving the *existing* code, now applied to
      what this document's own work added.
-104. One last full-scene view, from a genuinely fresh eye if possible — the single check that
+104. [x] One last full-scene view, from a genuinely fresh eye if possible — the single check that
      catches what an implementer, close to each individual change, is most likely to miss.
+
+## O. Goals surfaced by this pass's own work (goal 101's standing expectation)
+
+105. Hunt the floating-sliver artifact to ground with RenderDoc pixel history at the recorded
+     repro pose (`research/water-foliage-design.md` "NEW ISSUE" -- full bisection state there;
+     mesh data proven clean three ways, so the answer is GPU-side or view-geometry). Pairs with
+     goal 73's vendored `renderdoc_app.h`. **Check**: the artifact's actual triangle/source
+     identified, then fixed or explained.
+106. Tune the water sun-glint field: at aligned view angles the near-water sparkle reads as a
+     large overexposed patch with moire-like interference from the two-wave ripple normal
+     (`research/captures/fresh_eye_seed42.png`, bottom). Candidates: lower glint gain, add a
+     third incommensurate wave, or fade the Blinn term by distance. **Check**: viewed dump at the
+     same pose reads as sparkle, not a white field.
+107. Golden-hour sun option: lower the shared sun direction (sky_common.fxh) toward the horizon
+     and re-balance sun/ambient -- unlocks the classic sun-path-on-water glint composition goal
+     32's caveat records as geometrically impossible with today's near-zenith sun. **Check**:
+     viewed sunset-ish dump with a water glint path.
+108. Texture arc (the real next visual step): albedo textures or detail patterns per material
+     (mid-slope soil terracing currently reads camo-busy at distance), which also re-opens goal
+     41's SSAO gate and goal 40's ground-cover per their own written conditions. **Check**: its
+     own goals group, written before implementation.
+109. Prove the Lavapipe CI leg end-to-end green after the MSVC-flag-leak fix (our
+     imgui_impl_glfw.cpp COMPILE_OPTIONS were MSVC-only syntax -- fixed conditional). Then take
+     goal 64's Linux compile-cache measurement from its second run. **Check**: a best-effort-leg
+     run reaching the Xvfb smoke, and a cache-hit compile-time delta recorded.
+110. Second-meaning audit for the AO vertex byte if a FOURTH meaning ever appears (occlusion /
+     water depth / tree jitter today, each documented+tested): at that point widen the vertex to
+     16B with a dedicated byte instead of packing further. **Check**: the written decision at
+     that time cites this note.
+111. Blender/MeshLab open-check for mesh_dump's .obj (goal 74's honest partial: the Blender MCP
+     addon wasn't running). **Check**: a screenshot of the imported chunk matching the in-engine
+     render.
 
 ---
 

@@ -12,10 +12,19 @@ add_library(render_diligent STATIC
     # window is GLFW. Third-party TU: exempted from /W4 /WX below.
     "${DiligentEngine_SOURCE_DIR}/DiligentTools/ThirdParty/imgui/backends/imgui_impl_glfw.cpp"
 )
-set_source_files_properties(
-    "${DiligentEngine_SOURCE_DIR}/DiligentTools/ThirdParty/imgui/backends/imgui_impl_glfw.cpp"
-    PROPERTIES COMPILE_OPTIONS "/W3;/WX-"
-)
+# Compiler-conditional: these are MSVC flags -- on GCC (the CI Lavapipe leg) they were parsed as
+# input FILES ("cannot specify -o with -c ... with multiple files", first real Linux renderer run).
+if(MSVC)
+  set_source_files_properties(
+      "${DiligentEngine_SOURCE_DIR}/DiligentTools/ThirdParty/imgui/backends/imgui_impl_glfw.cpp"
+      PROPERTIES COMPILE_OPTIONS "/W3;/WX-"
+  )
+else()
+  set_source_files_properties(
+      "${DiligentEngine_SOURCE_DIR}/DiligentTools/ThirdParty/imgui/backends/imgui_impl_glfw.cpp"
+      PROPERTIES COMPILE_OPTIONS "-w"
+  )
+endif()
 
 target_sources(render_diligent PUBLIC
     FILE_SET HEADERS
