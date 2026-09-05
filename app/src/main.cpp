@@ -13,7 +13,6 @@
 #include <thread>
 
 #include "aim_query.hpp"
-#include "chunk_streaming.hpp"
 #include "crash_handler.hpp"
 #include "engine/core/clock.hpp"
 #include "engine/core/log.hpp"
@@ -32,7 +31,8 @@
 #include "render/interface/camera.hpp"
 #include "spectator_camera.hpp"
 #include "world/streaming/chunk_events.hpp"
-#include "world/streaming/chunk_streamer.hpp"
+#include "world/streaming/world_bounds.hpp"
+#include "world_loader.hpp"
 
 #if defined(TRACY_ENABLE)
 #include <tracy/Tracy.hpp>
@@ -48,13 +48,15 @@ using engine::core::LogLevel;
 struct AppOptions {
     render::diligent::Backend backend = render::diligent::Backend::Vulkan;
     std::uint32_t frames = 0; // 0 = run until the window is closed
-    std::int32_t radius = 3;  // meshed horizontal chunk radius around the origin
+    // Group S (Voxel Representation Redesign SS3): the world's horizontal Chebyshev half-size,
+    // pregenerated once at startup rather than streamed around the camera. Defaults to goal 127's
+    // 48-column trial size, not the original 8km ask -- see docs/goals.md goal 132.
+    std::int32_t radius = world::streaming::kDefaultWorldBounds.radius_chunks;
     int seed = 1337;
     bool verify_frame = false; // Group B smoke check: read the frame back, fail on an empty one
     bool validation = false;
-    bool autofly =
-        false; // Group D smoke check: fly +X automatically; fail if unload never bounds the loaded set
-    bool walk = false; // start in walk (gravity) mode; with --autofly, also asserts no fall-through
+    bool autofly = false; // Group D smoke check: fly +X automatically once the world has loaded
+    bool walk = false;    // start in walk (gravity) mode; with --autofly, also asserts no fall-through
     std::size_t upload_budget = 4; // mesh commits per frame; 0 = unlimited (the pre-fix stutter behavior)
     std::uint32_t dump_every = 0;  // goal 7: write a numbered frame dump every N frames (0 = off)
     // Goal 52's per-pass kill switches: isolate a visual regression to one pass without reverts.
@@ -69,10 +71,11 @@ struct AppOptions {
     std::optional<float> start_pitch_deg;
 };
 
-// How long --verify-frame keeps waiting for streaming to settle before declaring failure. At
-// debug-build meshing speeds the initial radius-3 load takes roughly 10 s of wall clock; anything
-// that far past it means the pipeline stalled, not that it is slow.
-constexpr std::uint32_t kVerifyStreamingTimeoutFrames = 3000;
+// How long --verify-frame keeps waiting for the world to finish loading before declaring failure.
+// Wall-clock, not a frame count: a loading-screen frame's cost is now dominated by WorldLoader::
+// pump() draining real generation/mesh work, which varies with --radius, so a frame-count budget
+// tuned for the old per-tick streaming system's cost has no fixed meaning here anymore.
+constexpr std::chrono::seconds kVerifyLoadTimeout{600};
 
 std::optional<AppOptions> parse_args(std::span<char*> args) {
     AppOptions options;
@@ -173,35 +176,30 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
     return options;
 }
 
-// Group L task 33's proof case: the overlay's ready-chunk count is *defined* by lifecycle events
-// (ChunkMeshReady/ChunkUnloaded pairs) instead of polling the streaming system. The unguarded
-// decrement is deliberate -- an unpaired ChunkUnloaded would wrap the count and trip the
-// event-vs-poll consistency check in the 2s stats report instead of being silently masked.
+// Goal 130: the overlay's ready-chunk count is event-sourced (ChunkMeshReady), the same discipline
+// Group L established for the old streaming system -- a static world just drops the unload half of
+// that pairing, since nothing ever unloads.
 struct ChunkEventCounters {
     std::size_t ready = 0;
     std::size_t lifetime_loaded = 0; // ChunkLoaded events seen (voxels applied); monotonic
 
     void on_loaded(const world::streaming::ChunkLoaded&) { ++lifetime_loaded; }
     void on_mesh_ready(const world::streaming::ChunkMeshReady&) { ++ready; }
-    void on_unloaded(const world::streaming::ChunkUnloaded&) { --ready; }
 
     void connect(engine::events::Dispatcher& dispatcher) {
         dispatcher.sink<world::streaming::ChunkLoaded>().connect<&ChunkEventCounters::on_loaded>(*this);
         dispatcher.sink<world::streaming::ChunkMeshReady>().connect<&ChunkEventCounters::on_mesh_ready>(
             *this);
-        dispatcher.sink<world::streaming::ChunkUnloaded>().connect<&ChunkEventCounters::on_unloaded>(*this);
     }
 };
 
-// ---- per-frame phases (goal 50: run() split into independently-readable pieces; each function
-// ---- is pure orchestration over the same state it always touched -- no behavior change) -------
+// ---- per-frame phases (goal 50: run() split into independently-readable pieces) ----------------
 
 // Input handling + camera movement + walk-mode invariant accounting. Returns the camera snapshot
 // the render pass consumes.
 render::interface::Camera update_camera_phase(engine::ecs::Registry& registry,
                                               engine::ecs::Entity cameraEntity,
-                                              engine::input::GlfwInput& input,
-                                              app::ChunkStreamingSystem& streaming,
+                                              engine::input::GlfwInput& input, app::WorldLoader& world,
                                               const engine::core::Clock& clock, const AppOptions& options,
                                               std::uint32_t& walkViolations) {
     auto [transform, lens, spectator] =
@@ -216,12 +214,14 @@ render::interface::Camera update_camera_phase(engine::ecs::Registry& registry,
         spectator.vertical_velocity = 0.0f;
         log(LogLevel::Info, "camera mode: {}", spectator.mode == app::CameraMoveMode::Walk ? "walk" : "fly");
     }
-    const float groundHeight = streaming.ground_height(transform.position.x, transform.position.z);
+    const float groundHeight = world.ground_height(transform.position.x, transform.position.z);
     app::update_spectator_camera(transform, spectator, input.state(), input.take_look_delta(),
                                  static_cast<float>(clock.delta_seconds()), groundHeight);
     if (options.autofly) {
         // Constant sideways travel (at boost speed in fly mode; ground-bound in walk mode) --
-        // exercises the full load/unload cycle with no human at the controls.
+        // goal 133's mechanical re-check: a static, fully-loaded world should show zero
+        // generation-driven frame spikes crossing it, unlike the pre-redesign log's collapse to
+        // 1-2 fps under the old per-tick streaming system.
         transform.position.x += (options.walk ? 20.0f : 160.0f) * static_cast<float>(clock.delta_seconds());
     }
     if (options.walk && spectator.mode == app::CameraMoveMode::Walk) {
@@ -247,10 +247,9 @@ struct FrameTelemetry {
     std::chrono::steady_clock::time_point lastReport = std::chrono::steady_clock::now();
     std::uint32_t framesSinceReport = 0;
     float smoothedFrameMs = 0.0f;
-    float worstFrameMs = 0.0f; // per 2s window -- the number a stutter actually is (Group T task 17)
+    float worstFrameMs = 0.0f;        // per 2s window -- the number a stutter actually is
+    float worstFrameMsOverall = 0.0f; // goal 133: worst frame across the WHOLE run, not just one window
     render::diligent::GpuMemoryBudget budget;
-    // VK_EXT_memory_budget is polled on a timer per its own documented usage pattern, never per
-    // frame (task 30).
     std::chrono::steady_clock::time_point lastBudgetPoll =
         std::chrono::steady_clock::now() - std::chrono::hours(1);
 };
@@ -258,7 +257,7 @@ struct FrameTelemetry {
 // Budget poll + overlay draw (pre-Present).
 void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock,
                    render::diligent::RenderContext& context, render::diligent::TerrainRenderer& renderer,
-                   app::ChunkStreamingSystem& streaming, render::diligent::DebugOverlay& overlay,
+                   app::WorldLoader& world, render::diligent::DebugOverlay& overlay,
                    const ChunkEventCounters& chunkCounters, const render::interface::Camera& camera) {
     if (std::chrono::steady_clock::now() - t.lastBudgetPoll >= std::chrono::seconds(2)) {
         const bool firstPoll = !t.budget.available;
@@ -271,80 +270,72 @@ void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock,
                 static_cast<double>(t.budget.device_local_usage_bytes) / (1024.0 * 1024.0));
         }
     }
-    // Group S fix (TERRAIN_FIXES_BRIEF task 12): fps and ms are BOTH derived from the same
-    // smoothed frame time, so the two displayed numbers are arithmetically consistent
-    // (fps == 1000/ms) by construction.
     const float dtMs = static_cast<float>(clock.delta_seconds()) * 1000.0f;
     t.smoothedFrameMs = t.smoothedFrameMs == 0.0f ? dtMs : t.smoothedFrameMs * 0.95f + dtMs * 0.05f;
     render::diligent::OverlayStats stats;
     stats.fps = t.smoothedFrameMs > 0.0f ? 1000.0f / t.smoothedFrameMs : 0.0f;
     stats.frame_ms = t.smoothedFrameMs;
-    stats.ready_chunks = chunkCounters.ready; // event-sourced (task 33), not polled
+    stats.ready_chunks = chunkCounters.ready; // event-sourced, not polled
     stats.visible_chunks = renderer.last_visible_count();
     stats.total_chunk_meshes = renderer.chunk_count();
-    const app::TreeEmitCounts objectCounts = streaming.object_counts();
+    const app::TreeEmitCounts objectCounts = world.object_counts();
     stats.objects = objectCounts.total();
     stats.objects_round = objectCounts.round;
     stats.objects_conifer = objectCounts.conifer;
     stats.objects_shrub = objectCounts.shrub;
     // Goal 84: what material the crosshair (view center) is aiming at -- analytic ray march.
     const glm::vec3 aimDir = camera.orientation * glm::vec3(0.0f, 0.0f, -1.0f);
-    const app::AimHit aim = app::query_aim(streaming.heightmap(), camera.position, aimDir);
+    const app::AimHit aim = app::query_aim(world.heightmap(), camera.position, aimDir);
     if (aim.hit) {
         std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f",
                       app::material_name(aim.material), static_cast<double>(aim.position.x),
                       static_cast<double>(aim.position.y), static_cast<double>(aim.position.z));
     }
-    stats.jobs_in_flight = streaming.in_flight_count();
     stats.gpu_self_bytes = renderer.gpu_memory().allocated_bytes();
     stats.gpu_self_peak_bytes = renderer.gpu_memory().peak_bytes();
     stats.budget = t.budget;
     overlay.render(stats);
 }
 
-// The 2-second stats line + event/poll consistency check (post-Present).
+// The 2-second stats line + event/poll consistency check (post-Present). Group S note: no more
+// in-flight/pending breakdown -- once the world has finished loading (the only state this phase
+// ever runs in) there is no streaming work left to report on, by construction.
 void report_phase(FrameTelemetry& t, const engine::core::Clock& clock,
-                  render::diligent::TerrainRenderer& renderer, app::ChunkStreamingSystem& streaming,
+                  render::diligent::TerrainRenderer& renderer, app::WorldLoader& world,
                   const ChunkEventCounters& chunkCounters) {
-    t.worstFrameMs = std::max(t.worstFrameMs, static_cast<float>(clock.delta_seconds()) * 1000.0f);
+    const auto frameMs = static_cast<float>(clock.delta_seconds()) * 1000.0f;
+    t.worstFrameMs = std::max(t.worstFrameMs, frameMs);
+    t.worstFrameMsOverall = std::max(t.worstFrameMsOverall, frameMs);
     const auto now = std::chrono::steady_clock::now();
     if (now - t.lastReport < std::chrono::seconds(2)) {
         return;
     }
     const double seconds = std::chrono::duration<double>(now - t.lastReport).count();
-    const auto [yLo, yHi] = streaming.loaded_y_range();
-    log(LogLevel::Info,
-        "{:.1f} fps (worst {:.1f} ms), {}/{} chunk meshes visible after culling, {} ready "
-        "(chunk-Y {}..{}) / {} in flight (pending {}, gen {}, mesh {}), {:.1f} MiB GPU",
+    log(LogLevel::Info, "{:.1f} fps (worst {:.1f} ms), {}/{} chunk meshes visible after culling, {} ready",
         t.framesSinceReport / seconds, t.worstFrameMs, renderer.last_visible_count(), renderer.chunk_count(),
-        streaming.ready_chunk_count(), yLo, yHi, streaming.in_flight_count(), streaming.pending_mesh_count(),
-        streaming.generation_in_flight_count(), streaming.mesh_in_flight_count(),
-        static_cast<double>(renderer.gpu_memory().allocated_bytes()) / (1024.0 * 1024.0));
+        world.ready_chunk_count());
     t.worstFrameMs = 0.0f;
-    // Task 33's check, mechanically: the event-derived count must always equal the polled one.
-    if (chunkCounters.ready != streaming.ready_chunk_count()) {
-        log(LogLevel::Error, "event/poll chunk-count mismatch: events say {}, streamer says {}",
-            chunkCounters.ready, streaming.ready_chunk_count());
+    if (chunkCounters.ready != world.ready_chunk_count()) {
+        log(LogLevel::Error, "event/poll chunk-count mismatch: events say {}, loader says {}",
+            chunkCounters.ready, world.ready_chunk_count());
     }
     t.lastReport = now;
     t.framesSinceReport = 0;
 }
 
-// Verification readback + frame dumps + F2 screenshots (all pre-Present readbacks).
+// Verification readback + frame dumps + F2 screenshots (all pre-Present readbacks). Only ever
+// called once the world has finished loading (verify-frame's whole premise is "does the finished
+// scene look right").
 struct CaptureState {
     bool verifyOk = false;
     bool verifyRan = false;
     std::uint32_t screenshotCounter = 0; // F2 capture numbering (goal 9)
 };
 
-// Returns false when the verify timeout fired and the loop must stop.
 bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t frame,
-                   render::diligent::RenderContext& context, app::ChunkStreamingSystem& streaming,
+                   render::diligent::RenderContext& context, std::size_t readyChunks,
                    engine::input::GlfwInput& input) {
-    // Verification waits for streaming to settle (terrain arrives asynchronously), then reads
-    // the frame back while it is still the current back buffer -- before Present.
-    if (options.verify_frame && !cap.verifyRan && frame >= 5 && streaming.settled() &&
-        streaming.ready_chunk_count() > 0) {
+    if (options.verify_frame && !cap.verifyRan && readyChunks > 0) {
         const float fraction = render::diligent::sample_non_reference_pixel_fraction(context);
         // Local-contrast metric (see frame_verify.cpp for the two prior metrics it replaced and
         // why): terrain texture measures 12.3% at this pose, sky-only 0.9%. 6% keeps the
@@ -353,11 +344,9 @@ bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t f
         cap.verifyRan = true;
         log(cap.verifyOk ? LogLevel::Info : LogLevel::Error,
             "frame verification: {:.1f}% of pixels carry terrain-scale local contrast (threshold 6%) after "
-            "{} chunks streamed in",
-            static_cast<double>(fraction) * 100.0, streaming.ready_chunk_count());
+            "{} chunks loaded",
+            static_cast<double>(fraction) * 100.0, readyChunks);
     }
-    // Goal 7 (--dump-every N) + goal 9 (F2 screenshot): captured like the verifier. Debug
-    // workflows; the staging-copy stall is the accepted cost.
     if (options.dump_every > 0 && frame % options.dump_every == 0) {
         char dumpPath[64];
         std::snprintf(dumpPath, sizeof(dumpPath), "frame_%05u.png", frame);
@@ -369,10 +358,6 @@ bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t f
         const bool shotOk = render::diligent::dump_frame(context, shotPath);
         log(shotOk ? LogLevel::Info : LogLevel::Error, "screenshot: {} ({})", shotPath,
             shotOk ? "written" : "FAILED");
-    }
-    if (options.verify_frame && !cap.verifyRan && frame >= kVerifyStreamingTimeoutFrames) {
-        log(LogLevel::Error, "frame verification: streaming never settled within {} frames", frame);
-        return false;
     }
     return true;
 }
@@ -429,6 +414,7 @@ int run(const AppOptions& options) {
             spectator.mode = app::CameraMoveMode::Walk; // starts mid-air and falls to the ground
         }
     }
+    const glm::vec3 spawnPosition = registry.get<engine::ecs::Transform>(cameraEntity).position;
 
     engine::input::GlfwInput input(window.handle());
     // After GlfwInput: the overlay's ImGui GLFW backend chain-installs on top of input's
@@ -436,26 +422,25 @@ int run(const AppOptions& options) {
     render::diligent::DebugOverlay overlay(context, window.handle());
     engine::core::Clock clock;
 
-    // Group D: terrain streams in around the camera instead of being pre-built. --radius maps to
-    // R_load; R_unload keeps the mandatory >=2 hysteresis gap on top of it. The streaming system
-    // owns its worker pool so its teardown ordering is self-contained.
-    world::streaming::StreamingConfig streamingConfig;
-    streamingConfig.load_radius = options.radius;
-    streamingConfig.unload_radius = options.radius + 2;
+    // Group S (Voxel Representation Redesign SS3): the world is static and bounded, pregenerated
+    // once at startup instead of streamed around the camera. --radius maps directly to the
+    // world's own horizontal half-size now, not a camera-relative load window.
+    const world::streaming::WorldBounds bounds{options.radius, world::streaming::kDefaultWorldBounds.y_min,
+                                               world::streaming::kDefaultWorldBounds.y_max};
     engine::events::Dispatcher dispatcher;
     ChunkEventCounters chunkCounters;
     chunkCounters.connect(dispatcher);
-    app::ChunkStreamingSystem streaming(streamingConfig, options.seed, std::jthread::hardware_concurrency(),
-                                        renderer, registry, dispatcher, options.upload_budget);
-    log(LogLevel::Info, "streaming with load radius {}, unload radius {} (+{:.0f}s delay), {} worker threads",
-        streamingConfig.load_radius, streamingConfig.unload_radius, streamingConfig.unload_delay_seconds,
-        streaming.worker_thread_count());
+    app::WorldLoader world(bounds, options.seed, std::jthread::hardware_concurrency(), renderer, registry,
+                           dispatcher, spawnPosition, options.upload_budget);
+    world.begin();
 
     CaptureState cap;
     cap.verifyOk = !options.verify_frame;
     FrameTelemetry telemetry;
     std::uint32_t frame = 0;
     std::uint32_t walkViolations = 0; // frames ending below the ground surface in walk mode
+    bool loggedReady = false;
+    const auto loadStart = std::chrono::steady_clock::now();
 
     while (!window.should_close() && (options.frames == 0 || frame < options.frames)) {
         window.poll_events();
@@ -463,10 +448,6 @@ int run(const AppOptions& options) {
             break;
         }
         clock.tick();
-
-        const render::interface::Camera camera =
-            update_camera_phase(registry, cameraEntity, input, streaming, clock, options, walkViolations);
-        streaming.update(camera.position, clock.elapsed_seconds());
 
         const auto [width, height] = window.framebuffer_size();
         if (width == 0 || height == 0) {
@@ -476,14 +457,49 @@ int run(const AppOptions& options) {
             context.resize(width, height);
         }
 
-        renderer.render(camera);
-        if (postProcess) {
-            postProcess->execute(frame);
-        }
-        overlay_phase(telemetry, clock, context, renderer, streaming, overlay, chunkCounters, camera);
+        if (!world.finished()) {
+            // Goal 128/130: one increment of the one-time generation/mesh/upload pass, then a
+            // real, moving loading-screen frame -- no interactive camera control, no capture/
+            // verify logic, none of that is meaningful before the world exists to look at.
+            world.pump();
+            renderer.render(render::interface::Camera{}); // sky-only backdrop; zero chunks uploaded yet
+            if (postProcess) {
+                postProcess->execute(frame);
+            }
+            overlay.render_loading(world.ready_chunk_count(), world.total_chunk_count());
+            // Goal 130's own check: a viewable capture of the loading screen mid-generation, using
+            // the same --dump-every/VOXEL_DUMP_FRAME machinery the interactive phase's
+            // capture_phase uses (not a second capture mechanism).
+            if (options.dump_every > 0 && frame % options.dump_every == 0) {
+                char dumpPath[64];
+                std::snprintf(dumpPath, sizeof(dumpPath), "loading_%05u.png", frame);
+                (void)render::diligent::dump_frame(context, dumpPath);
+            }
+            if (options.verify_frame && std::chrono::steady_clock::now() - loadStart > kVerifyLoadTimeout) {
+                log(LogLevel::Error, "frame verification: world never finished loading within {}s",
+                    kVerifyLoadTimeout.count());
+                break;
+            }
+        } else {
+            if (!loggedReady) {
+                const double loadSeconds =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - loadStart).count();
+                log(LogLevel::Info, "world ready: {} chunks in {:.1f}s", world.ready_chunk_count(),
+                    loadSeconds);
+                loggedReady = true;
+            }
+            const render::interface::Camera camera =
+                update_camera_phase(registry, cameraEntity, input, world, clock, options, walkViolations);
 
-        if (!capture_phase(cap, options, frame, context, streaming, input)) {
-            break; // verify timeout: streaming never settled
+            renderer.render(camera);
+            if (postProcess) {
+                postProcess->execute(frame);
+            }
+            overlay_phase(telemetry, clock, context, renderer, world, overlay, chunkCounters, camera);
+
+            capture_phase(cap, options, frame, context, world.ready_chunk_count(), input);
+
+            report_phase(telemetry, clock, renderer, world, chunkCounters);
         }
 
         context.present();
@@ -495,8 +511,6 @@ int run(const AppOptions& options) {
         if (options.verify_frame && cap.verifyRan && options.frames == 0) {
             break;
         }
-
-        report_phase(telemetry, clock, renderer, streaming, chunkCounters);
     }
 
     bool walkOk = true;
@@ -508,21 +522,16 @@ int run(const AppOptions& options) {
 
     bool autoflyOk = true;
     if (options.autofly) {
-        // Bound = the desired column block PLUS the unload-hysteresis trailing band, which is
-        // fps-INDEPENDENT because both the camera's travel and the unload delay run on sim time:
-        // trailing columns ~= speed * unload_delay / chunk_size. (The old fixed 2x-cube bound
-        // implicitly assumed stale completions were discarded; they are now applied and cleaned
-        // up by hysteresis instead -- see chunk_streaming.cpp -- so the band is real and
-        // bounded, not a leak.) +3 columns of slack for in-flight arrivals.
-        const auto span = static_cast<std::size_t>(2 * options.radius + 1);
-        const float autoflySpeed = options.walk ? 20.0f : 160.0f;
-        const auto trailingColumns = static_cast<std::size_t>(
-            autoflySpeed * static_cast<float>(streamingConfig.unload_delay_seconds) / 32.0f + 3.0f);
-        const std::size_t bound = span * span * 6 + trailingColumns * span * 6;
-        autoflyOk = streaming.ready_chunk_count() <= bound;
+        // Goal 133's real check: a static, fully-loaded world's chunk count must not change AT
+        // ALL while flying through it (the old bound-with-slack math assumed unload hysteresis
+        // trailing a moving camera; a static world has no such trailing band to bound -- the
+        // count is either exactly the loaded total, or something regressed).
+        autoflyOk = world.ready_chunk_count() == world.total_chunk_count();
         log(autoflyOk ? LogLevel::Info : LogLevel::Error,
-            "autofly: {} chunks loaded at exit (bound {}), {:.1f} MiB GPU, peak {:.1f} MiB",
-            streaming.ready_chunk_count(), bound,
+            "autofly: {} / {} chunks loaded at exit, worst frame {:.1f} ms over the whole run, {:.1f} MiB "
+            "GPU (peak {:.1f})",
+            world.ready_chunk_count(), world.total_chunk_count(),
+            static_cast<double>(telemetry.worstFrameMsOverall),
             static_cast<double>(renderer.gpu_memory().allocated_bytes()) / (1024.0 * 1024.0),
             static_cast<double>(renderer.gpu_memory().peak_bytes()) / (1024.0 * 1024.0));
     }

@@ -2,7 +2,7 @@ add_executable(voxel_app
     src/main.cpp
     src/glfw_window.cpp
     src/spectator_camera.cpp
-    src/chunk_streaming.cpp
+    src/world_loader.cpp
     src/tree_decoration.cpp
     src/aim_query.cpp
     src/crash_handler.cpp

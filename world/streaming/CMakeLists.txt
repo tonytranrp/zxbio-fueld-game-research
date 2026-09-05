@@ -1,19 +1,18 @@
-add_library(world_streaming STATIC
-    src/chunk_streamer.cpp
-)
+# Group S (Voxel Representation Redesign SS3.4): header-only now that ChunkStreamer's decision-
+# logic .cpp is gone (removed, not disabled -- the static world has no per-tick load/unload
+# decision left to make). What remains is pure world-shape (world_bounds.hpp) and lifecycle event
+# PODs (chunk_events.hpp), both templates/inline free functions with nothing to compile separately.
+add_library(world_streaming INTERFACE)
 
-target_sources(world_streaming PUBLIC
+target_sources(world_streaming INTERFACE
     FILE_SET HEADERS
     BASE_DIRS include
     FILES
-        include/world/streaming/chunk_streamer.hpp
+        include/world/streaming/world_bounds.hpp
         include/world/streaming/chunk_events.hpp
 )
 
-# Depends on world_chunk for ChunkCoord only -- a system beside the data modules, not an owner of
-# any of them (Phase 1 completion brief §3): the generate/mesh/upload pipeline it commands is
-# wired by the caller.
-target_link_libraries(world_streaming PUBLIC project_warnings world_chunk)
+target_link_libraries(world_streaming INTERFACE project_warnings world_chunk)
 
 if(BUILD_TESTING)
   add_subdirectory(tests)

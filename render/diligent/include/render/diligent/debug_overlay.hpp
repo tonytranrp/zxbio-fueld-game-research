@@ -28,7 +28,6 @@ struct OverlayStats {
     std::size_t objects_shrub = 0;
     // Goal 84: crosshair-aim readout ("Grass @ 12,34,56"); empty = no hit / not computed.
     char aim_line[64] = {};
-    std::size_t jobs_in_flight = 0;
     std::uint64_t gpu_self_bytes = 0; // §2.3 number 1: our own chunk buffers (GpuAllocationTracker)
     std::uint64_t gpu_self_peak_bytes = 0;
     GpuMemoryBudget budget; // §2.3 number 2: VK_EXT_memory_budget, machine-wide
@@ -51,6 +50,11 @@ public:
     // Builds and draws the panel into the currently bound render target -- call after the terrain
     // pass, before Present.
     void render(const OverlayStats& stats);
+
+    // Goal 130 (Voxel Representation Redesign SS5): the one-time world-load progress screen, using
+    // this same ImGui overlay infrastructure rather than a new UI system -- a real, moving bar fed
+    // by WorldLoader's own completion count, not a static "Loading..." string.
+    void render_loading(std::size_t chunksReady, std::size_t chunksTotal);
 
 private:
     struct Impl;

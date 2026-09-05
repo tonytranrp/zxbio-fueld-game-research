@@ -23,7 +23,7 @@ namespace engine::events {
 //
 //   Threading: this dispatcher is NOT thread-safe. trigger()/enqueue()/update() from the main
 //   thread only — worker threads hand results to the main thread through the existing completion
-//   queues first (app/src/chunk_streaming.hpp's threading model), and events fire during the
+//   queues first (app/src/world_loader.hpp's threading model), and events fire during the
 //   main-thread drain. That rule is what makes the alias sufficient; revisit only if an emitter
 //   genuinely can't route through a main-thread drain.
 using Dispatcher = entt::dispatcher;

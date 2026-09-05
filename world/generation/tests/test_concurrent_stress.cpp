@@ -13,10 +13,11 @@ using world::chunk::Chunk;
 using world::chunk::ChunkCoord;
 using world::generation::HeightmapGenerator;
 
-// The chunk-streaming system (app/src/chunk_streaming.cpp) runs fill_terrain on a shared
-// HeightmapGenerator from every worker thread at once. FastNoise2 documents generation as
-// thread-safe, and M1.2's determinism test covered cross-thread but *sequential* use -- this is
-// the genuinely-concurrent stress that streaming actually needs, kept as a regression test.
+// WorldLoader (app/src/world_loader.cpp) runs fill_terrain on a shared HeightmapGenerator from
+// every worker thread at once during the one-time world-generation pass. FastNoise2 documents
+// generation as thread-safe, and M1.2's determinism test covered cross-thread but *sequential*
+// use -- this is the genuinely-concurrent stress that pass actually needs, kept as a regression
+// test.
 TEST_CASE(
     "Many threads generating through one shared HeightmapGenerator concurrently is safe and deterministic",
     "[generation][stress]") {

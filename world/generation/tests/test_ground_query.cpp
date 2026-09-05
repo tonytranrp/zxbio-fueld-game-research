@@ -20,8 +20,8 @@ TEST_CASE("ground query matches the extracted mesh surface", "[generation][walk]
     // Above-sea-level columns only (probed for this seed; includes negative coordinates): an
     // UNDERWATER column's terrain surface is a stone->water transition the mesher deliberately
     // does not emit (water renders as its own top surface), so query-vs-mesh comparison is only
-    // meaningful on land. Walk mode handles water separately by clamping to the sea surface
-    // (ChunkStreamingSystem::ground_height).
+    // meaningful on land. Walk mode handles water separately via swimming/buoyancy, not a clamp
+    // (see spectator_camera.cpp; WorldLoader::ground_height is the shared analytic height query).
     const std::int32_t columns[][2] = {{16, 16}, {5, 25}, {40, 70}, {-10, 60}, {-100, 30}};
     for (const auto& column : columns) {
         const float worldX = static_cast<float>(column[0]);

@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <stdexcept>
 
 #include "render/diligent/debug_overlay.hpp"
@@ -63,7 +64,6 @@ void DebugOverlay::render(const OverlayStats& stats) {
         if (stats.aim_line[0] != '\0') {
             ImGui::Text("aim: %s", stats.aim_line);
         }
-        ImGui::Text("jobs in flight: %zu", stats.jobs_in_flight);
         ImGui::Separator();
         ImGui::Text("chunk GPU memory: %.1f MiB (peak %.1f)",
                     static_cast<double>(stats.gpu_self_bytes) / kMiB,
@@ -75,6 +75,34 @@ void DebugOverlay::render(const OverlayStats& stats) {
         } else {
             ImGui::TextDisabled("VRAM budget: unavailable on this backend");
         }
+    }
+    ImGui::End();
+
+    impl_->imgui->Render(rc.context);
+}
+
+void DebugOverlay::render_loading(std::size_t chunksReady, std::size_t chunksTotal) {
+    auto& rc = impl_->context->impl();
+    const Diligent::SwapChainDesc& scDesc = rc.swapchain->GetDesc();
+
+    ImGui_ImplGlfw_NewFrame();
+    impl_->imgui->NewFrame(scDesc.Width, scDesc.Height, scDesc.PreTransform);
+
+    const float fraction =
+        chunksTotal > 0 ? static_cast<float>(chunksReady) / static_cast<float>(chunksTotal) : 0.0f;
+    const ImVec2 windowSize(420.0f, 90.0f);
+    ImGui::SetNextWindowPos(ImVec2((static_cast<float>(scDesc.Width) - windowSize.x) * 0.5f,
+                                   (static_cast<float>(scDesc.Height) - windowSize.y) * 0.5f),
+                            ImGuiCond_Always);
+    ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.75f);
+    if (ImGui::Begin("Loading", nullptr,
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoFocusOnAppearing)) {
+        ImGui::Text("Generating world...");
+        char overlay[32];
+        std::snprintf(overlay, sizeof(overlay), "%zu / %zu chunks", chunksReady, chunksTotal);
+        ImGui::ProgressBar(fraction, ImVec2(-1.0f, 0.0f), overlay);
     }
     ImGui::End();
 

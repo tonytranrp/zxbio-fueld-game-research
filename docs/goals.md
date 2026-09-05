@@ -706,28 +706,43 @@ see that document's §8 before assuming these run top-to-bottom or all at once.
 
 ## S. Static, bounded world
 
-127. Add `kWorldRadiusChunks` (or equivalent bounds) as a real, named config constant, set to the
-     §3.2 trial size (48×48 columns) first — not 8km, not yet.
-128. Replace `ChunkStreamer`'s per-tick desired-set/hysteresis logic with the one-time parallel
+127. [x] Add `kWorldRadiusChunks` (or equivalent bounds) as a real, named config constant, set to the
+     §3.2 trial size (48×48 columns) first — not 8km, not yet. `world/streaming/world_bounds.hpp`'s
+     `kDefaultWorldBounds` (radius 48, y -3..2), also the new `--radius` flag's default.
+128. [x] Replace `ChunkStreamer`'s per-tick desired-set/hysteresis logic with the one-time parallel
      generation pass from §3.3 — enqueue every in-bounds coordinate to the `ThreadPool` at startup.
      **Check**: every chunk in bounds is generated exactly once, verified by a count, not assumed.
-129. Remove `world::streaming::ChunkStreamer`'s now-dead spatial/temporal hysteresis code path
+     `WorldLoader::begin()` requests every coordinate from `chunks_in_bounds()` (real set) plus its
+     1-chunk generation-only halo; `test_world_bounds.cpp` covers the pure shape query directly
+     (exact count, no duplicates, both extreme corners reached), and a real run logged "world load:
+     486 real chunks, 968 total (incl. halo)" at radius 4 -- matching (2*4+1)^2*6 and
+     (2*5+1)^2*8 exactly.
+129. [x] Remove `world::streaming::ChunkStreamer`'s now-dead spatial/temporal hysteresis code path
      deliberately (§3.4) — don't leave it inert and untested. **Check**: `git diff` shows real
      deletion, not a disabled-but-present code path; the removed tests are removed, not skipped.
-130. Wire the loading-screen progress feedback from §5 to the generation pass's real completion
+     `chunk_streamer.hpp/.cpp` and `test_chunk_streamer.cpp` deleted outright (git rm); `world_streaming`
+     is now a header-only INTERFACE target (world_bounds.hpp + chunk_events.hpp, `ChunkUnloaded`
+     removed too -- nothing can ever fire it in a static world).
+130. [x] Wire the loading-screen progress feedback from §5 to the generation pass's real completion
      count. **Check**: view a screenshot of the loading screen mid-generation — a real, moving
-     progress indicator, not a static "Loading..." string.
+     progress indicator, not a static "Loading..." string. `DebugOverlay::render_loading` (ImGui
+     progress bar, same overlay infra as the debug HUD); viewed two dumps of a real radius-20 load
+     seconds apart -- "1968 / 10086 chunks" then "4794 / 10086 chunks" -- genuine, moving progress,
+     not a placeholder string.
 131. Measure real wall-clock generation time and real memory footprint (Release build specifically,
      per §7's reframing) at the 48×48 trial size. **Check**: both numbers recorded in
      `docs/progress.md`, with the methodology (build config, machine) stated.
 132. Decide, from 131's real numbers, whether to scale `kWorldRadiusChunks` toward the original 8km
      ask, and by how much per step — re-measuring at each step per §3.2's explicit plan, not jumping
      straight to the final number. **Check**: each size step has its own recorded measurement.
-133. Re-run `--autofly`-equivalent movement through the now-static, fully-generated world and confirm
+133. [x] Re-run `--autofly`-equivalent movement through the now-static, fully-generated world and confirm
      the original stutter complaint is actually gone — frame time should show no generation-driven
      spikes at all post-load, since nothing generates during play anymore. **Check**: a worst-frame
      number from a full traverse of the loaded world, compared against the pre-redesign log's
-     collapse-to-1fps behavior.
+     collapse-to-1fps behavior. Real run, radius 6, `--walk --autofly --verify-frame` together:
+     "1014 / 1014 chunks loaded at exit, worst frame 38.4 ms over the whole run" -- exact chunk-count
+     equality proves nothing loaded/unloaded mid-flight, and 38.4ms worst-case (~26fps floor, Debug
+     build) is night-and-day from the pasted log's reported collapse to 1-2fps / 999ms frames.
 134. Full regression run once Groups P–S land together. **Check**: real pass count, stated explicitly.
 
 ## T. Storage compression, phased

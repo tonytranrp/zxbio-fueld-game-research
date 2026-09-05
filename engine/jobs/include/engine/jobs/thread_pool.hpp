@@ -17,7 +17,7 @@ namespace engine::jobs {
 //
 // Ordering note (Group I task 15): the old queue was global-FIFO; the new one is per-producer
 // FIFO. Verified before the swap: nothing depends on cross-producer submission order -- the only
-// production submitter is ChunkStreamingSystem's main-thread update() (single producer, so
+// production submitter is WorldLoader's main-thread begin()/pump() (single producer, so
 // per-producer FIFO degenerates to the old global FIFO anyway), and gen->mesh sequencing is
 // enforced by its explicit state machine, never by queue order.
 //
