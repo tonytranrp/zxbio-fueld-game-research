@@ -55,7 +55,11 @@ void DebugOverlay::render(const OverlayStats& stats) {
         ImGui::Separator();
         ImGui::Text("chunks ready: %zu", stats.ready_chunks);
         ImGui::Text("visible after culling: %zu / %zu", stats.visible_chunks, stats.total_chunk_meshes);
-        ImGui::Text("objects: %zu", stats.objects);
+        ImGui::Text("objects: %zu (%zu round / %zu conifer / %zu shrub)", stats.objects,
+                    stats.objects_round, stats.objects_conifer, stats.objects_shrub);
+        if (stats.aim_line[0] != '\0') {
+            ImGui::Text("aim: %s", stats.aim_line);
+        }
         ImGui::Text("jobs in flight: %zu", stats.jobs_in_flight);
         ImGui::Separator();
         ImGui::Text("chunk GPU memory: %.1f MiB (peak %.1f)", static_cast<double>(stats.gpu_self_bytes) / kMiB,

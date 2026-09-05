@@ -18,6 +18,8 @@
 #include "world/meshing/mesh_data.hpp"
 #include "world/streaming/chunk_streamer.hpp"
 
+#include "tree_decoration.hpp"
+
 namespace app {
 
 // App glue running ChunkStreamer's commands through the real pipeline (tasks 23-26):
@@ -63,18 +65,20 @@ public:
 
     // Walk mode's analytic ground query (Group V task 23) -- the same height function that
     // generates the terrain, so camera physics and the rendered surface agree by construction.
-    // Clamped to sea level: an underwater column's terrain surface is submerged (the mesher
-    // renders the WATER top there, not the stone), so v1 walking strides across the water
-    // surface rather than descending under the ocean -- no swimming yet, documented scope.
+    // Returns the REAL terrain height, submerged or not: goal 79's swimming replaced the old
+    // sea-level clamp (which made v1 stride across water) -- buoyancy in the camera update now
+    // keeps you at the surface, and the seabed is the hard floor in shallows.
     [[nodiscard]] float ground_height(float worldX, float worldZ) const {
-        return std::max(heightmap_.height_at(worldX, worldZ), 0.0f);
+        return heightmap_.height_at(worldX, worldZ);
     }
+    // Goal 84's aim query reads the same analytic height field.
+    [[nodiscard]] const world::generation::HeightmapGenerator& heightmap() const noexcept { return heightmap_; }
     [[nodiscard]] std::size_t in_flight_count() const noexcept {
         return pending_mesh_.size() + gen_in_flight_.size() + mesh_in_flight_.size();
     }
     [[nodiscard]] std::size_t worker_thread_count() const noexcept { return pool_.thread_count(); }
     [[nodiscard]] std::size_t pending_mesh_count() const noexcept { return pending_mesh_.size(); }
-    [[nodiscard]] std::size_t object_count() const noexcept { return total_tree_count_; } // Group W task 35
+    [[nodiscard]] TreeEmitCounts object_counts() const noexcept { return total_tree_count_; } // Group W task 35
     [[nodiscard]] std::size_t generation_in_flight_count() const noexcept { return gen_in_flight_.size(); }
     [[nodiscard]] std::size_t mesh_in_flight_count() const noexcept { return mesh_in_flight_.size(); }
 
@@ -86,7 +90,7 @@ private:
     struct MeshCompletion {
         world::chunk::ChunkCoord coord;
         world::meshing::MeshData mesh;
-        std::size_t tree_count = 0; // decoration objects appended to this chunk's mesh (Group W)
+        TreeEmitCounts tree_count; // decoration objects appended to this chunk's mesh (Group W)
         bool failed = false;
     };
 
@@ -103,8 +107,8 @@ private:
     world::streaming::ChunkStreamer streamer_;
     std::size_t upload_budget_per_tick_ = 4;
     int seed_ = 0; // tree placement shares the terrain seed (deterministic decoration, Group W)
-    world::chunk::CoordMap<std::size_t> tree_counts_; // per ready chunk, for the overlay count
-    std::size_t total_tree_count_ = 0;
+    world::chunk::CoordMap<TreeEmitCounts> tree_counts_; // per ready chunk, for the overlay count
+    TreeEmitCounts total_tree_count_;
     world::chunk::ChunkStore store_;
     world::generation::HeightmapGenerator heightmap_; // concurrent generate calls are safe + deterministic (stress-tested)
     render::diligent::TerrainRenderer& renderer_;

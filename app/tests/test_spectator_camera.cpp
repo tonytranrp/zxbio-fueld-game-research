@@ -162,3 +162,24 @@ TEST_CASE("Fly mode is untouched by the walk fields", "[camera][walk]") {
     update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f, 1000.0f);
     CHECK(std::abs(transform.position.y - (1.0f - state.move_speed)) < 1e-3f); // flew straight down
 }
+
+// Goal 79's check, analogous to the ground-clamp tests: dropped from above deep water, the camera
+// must settle near the SURFACE -- not sink to the seabed, not launch into the sky.
+TEST_CASE("Walk mode dropped over deep water settles floating at the surface", "[camera][swim]") {
+    engine::ecs::Transform transform;
+    transform.position = {0.0f, 30.0f, 0.0f};
+    app::SpectatorCameraState state;
+    state.mode = app::CameraMoveMode::Walk;
+    const engine::input::InputState idle;
+
+    const float seabed = -20.0f; // deep-water column: real ground far below sea level
+    for (int i = 0; i < 2000; ++i) {
+        app::update_spectator_camera(transform, state, idle, {0.0f, 0.0f}, 1.0f / 120.0f, seabed);
+        REQUIRE(transform.position.y >= seabed + app::kEyeHeight - 0.01f); // never through the seabed
+    }
+    // Equilibrium: buoyancy*depth == |gravity| at depth 0.5 -> feet ~0.5 under, eyes above water.
+    const float feetY = transform.position.y - app::kEyeHeight;
+    CHECK(feetY < app::kSeaLevelWorld);                                  // floating, feet submerged
+    CHECK(std::abs(feetY - (-app::kSwimEquilibriumDepth)) < 0.35f);      // near the surface...
+    CHECK(transform.position.y > app::kSeaLevelWorld);                   // ...eyes above water
+}

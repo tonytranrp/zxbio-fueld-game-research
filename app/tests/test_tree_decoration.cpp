@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdio>
 #include <cmath>
 #include <vector>
 
@@ -73,7 +74,7 @@ TEST_CASE("appended tree geometry stays within the owning chunk's local bounds",
         for (std::int32_t cz = -2; cz <= 2; ++cz) {
             for (std::int32_t cy = -2; cy <= 2; ++cy) {
                 world::meshing::MeshData mesh;
-                totalEmitted += app::append_tree_meshes(mesh, {cx, cy, cz}, 1337, generator);
+                totalEmitted += app::append_tree_meshes(mesh, {cx, cy, cz}, 1337, generator).total();
                 for (const auto& vertex : mesh.vertices) {
                     // Same envelope the compressed GPU format quantizes: [-1, 32] per axis.
                     CHECK(vertex.position.x >= -1.0f);
@@ -86,4 +87,43 @@ TEST_CASE("appended tree geometry stays within the owning chunk's local bounds",
         }
     }
     CHECK(totalEmitted > 5); // trees actually got emitted somewhere in the region
+}
+
+// Sliver-hunt companion (see research/water-foliage-design.md "NEW ISSUE"): the terrain-only
+// mesh scan came back clean, so if the floating brown trunk streaks are mesh-data real they must
+// come from TREE geometry. Every appended Wood vertex's world position must sit near its column's
+// analytic surface (trees may not float or stack above the tree line).
+TEST_CASE("appended tree trunks stand on the surface, never float", "[trees][sliver]") {
+    const world::generation::HeightmapGenerator generator(1337);
+    std::size_t floating = 0;
+    for (std::int32_t cz = 0; cz <= 4; ++cz) {
+        for (std::int32_t cx = 1; cx <= 5; ++cx) {
+            for (std::int32_t cy = -1; cy <= 3; ++cy) {
+                world::meshing::MeshData mesh; // trees only -- terrain scanned separately
+                (void)app::append_tree_meshes(mesh, {cx, cy, cz}, 1337, generator);
+                const float ox = static_cast<float>(cx) * 32.0f;
+                const float oy = static_cast<float>(cy) * 32.0f;
+                const float oz = static_cast<float>(cz) * 32.0f;
+                for (const auto& v : mesh.vertices) {
+                    if (v.material != world::chunk::MaterialID::Wood) {
+                        continue;
+                    }
+                    const float wy = oy + v.position.y;
+                    const float surface = generator.height_at(ox + v.position.x, oz + v.position.z);
+                    // Trunk spans surface-0.5 .. surface+trunk_height(<=9); anything further than
+                    // 12 above or 2 below its own column's surface is floating/buried.
+                    if (wy > surface + 12.0f || wy < surface - 2.0f) {
+                        if (floating < 10) {
+                            std::printf("floating wood: chunk[%d,%d,%d] world(%.1f,%.1f,%.1f) surface %.1f\n",
+                                        cx, cy, cz, static_cast<double>(ox + v.position.x), static_cast<double>(wy),
+                                        static_cast<double>(oz + v.position.z), static_cast<double>(surface));
+                        }
+                        ++floating;
+                    }
+                }
+            }
+        }
+    }
+    std::printf("floating wood vertices: %zu\n", floating);
+    CHECK(floating == 0);
 }

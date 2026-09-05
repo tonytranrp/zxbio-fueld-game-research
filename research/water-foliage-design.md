@@ -106,8 +106,17 @@ silently.
 Thin vertical unlit-stone sliver "curtains" hang in the air near chunk-corner world positions
 around (100-130, 32-64, 60-90), visible only from grazing angles (repro:
 `--pos 60,26,150 --pitch -18 --yaw -35`, dashes top-center; `research/captures/water_fixed.png`).
-Bisected mechanically: present with culling disabled, with the sky pass off, at radius 2 AND 5
-(fixed world position, not a streamed-edge effect), with previous-commit geometry (predates the
-Stage-3 mesher/tree changes), and in chunk layer y=1 alone. Color-matched to ambient-lit Stone.
-Almost certainly a mesh_extractor boundary-layer edge case -- exactly the file goal 54 already
-schedules for a deep read; the repro pose makes that review concrete.
+Hunt state after a full bisection session (all mechanical, none guessed):
+- Present with culling disabled, sky off, radius 2 AND 5, prev-commit geometry, and -- decisive --
+  in BOTH mutually-exclusive VOXEL_ONLY_CHUNK_Y=0 and =1 runs at different segments, so multiple
+  chunks each contribute dashes along one world-space diagonal.
+- NOT in the mesh data: offline extraction of the whole suspect region is clean under (a) direct
+  store extraction, (b) the runtime's exact snapshot-copy path, and (c) tree appending -- three
+  permanent guard tests now cover this (test_sliver_hunt.cpp, the trees [sliver] case).
+- Post-Group-M the dashes render soil-brown and ignore fog => geometrically CLOSE (<~150 u), but
+  close flybys of every ray-estimate position show clean terrain; a parallax depth measurement was
+  contaminated by terrain entering the frame at the offset pose.
+- Working theory: near-vertical cliff-face slivers (legal heights -- invisible to the floating-
+  geometry detectors) or a GPU-side quantization/index edge. The right next tool is RenderDoc
+  pixel history at the repro pose -- exactly goal 73's deferred in-app capture trigger; goal 54's
+  mesh_extractor deep read should follow whatever triangle RenderDoc identifies.

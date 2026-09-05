@@ -12,6 +12,7 @@
 #include <string_view>
 #include <thread>
 
+#include "aim_query.hpp"
 #include "chunk_streaming.hpp"
 #include "crash_handler.hpp"
 #include "engine/core/clock.hpp"
@@ -186,6 +187,184 @@ struct ChunkEventCounters {
     }
 };
 
+// ---- per-frame phases (goal 50: run() split into independently-readable pieces; each function
+// ---- is pure orchestration over the same state it always touched -- no behavior change) -------
+
+// Input handling + camera movement + walk-mode invariant accounting. Returns the camera snapshot
+// the render pass consumes.
+render::interface::Camera update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraEntity,
+                                              engine::input::GlfwInput& input, app::ChunkStreamingSystem& streaming,
+                                              const engine::core::Clock& clock, const AppOptions& options,
+                                              std::uint32_t& walkViolations) {
+    auto [transform, lens, spectator] =
+        registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(cameraEntity);
+    if (input.take_walk_toggle()) {
+        // Deliberate transition handling (Group V task 25): position is untouched, vertical
+        // velocity zeroed -- entering walk mid-air simply starts a clean fall; leaving it
+        // freezes wherever you are. No snap in either direction.
+        spectator.mode =
+            spectator.mode == app::CameraMoveMode::Fly ? app::CameraMoveMode::Walk : app::CameraMoveMode::Fly;
+        spectator.vertical_velocity = 0.0f;
+        log(LogLevel::Info, "camera mode: {}", spectator.mode == app::CameraMoveMode::Walk ? "walk" : "fly");
+    }
+    const float groundHeight = streaming.ground_height(transform.position.x, transform.position.z);
+    app::update_spectator_camera(transform, spectator, input.state(), input.take_look_delta(),
+                                 static_cast<float>(clock.delta_seconds()), groundHeight);
+    if (options.autofly) {
+        // Constant sideways travel (at boost speed in fly mode; ground-bound in walk mode) --
+        // exercises the full load/unload cycle with no human at the controls.
+        transform.position.x += (options.walk ? 20.0f : 160.0f) * static_cast<float>(clock.delta_seconds());
+    }
+    if (options.walk && spectator.mode == app::CameraMoveMode::Walk) {
+        // Group V task 27's mechanical check, evaluated EVERY frame of a walk run: the camera
+        // must never end an update below the ground surface (fall-through at chunk seams or
+        // steep slopes is exactly the bug class this watches for).
+        if (transform.position.y < groundHeight + app::kEyeHeight - 0.01f) {
+            ++walkViolations;
+        }
+    }
+
+    render::interface::Camera camera;
+    camera.position = transform.position;
+    camera.orientation = transform.orientation;
+    camera.fov_y_radians = lens.fov_y_radians;
+    camera.near_plane = lens.near_plane;
+    camera.far_plane = lens.far_plane;
+    return camera;
+}
+
+// Loop-carried telemetry for the overlay and the 2-second stats report.
+struct FrameTelemetry {
+    std::chrono::steady_clock::time_point lastReport = std::chrono::steady_clock::now();
+    std::uint32_t framesSinceReport = 0;
+    float smoothedFrameMs = 0.0f;
+    float worstFrameMs = 0.0f; // per 2s window -- the number a stutter actually is (Group T task 17)
+    render::diligent::GpuMemoryBudget budget;
+    // VK_EXT_memory_budget is polled on a timer per its own documented usage pattern, never per
+    // frame (task 30).
+    std::chrono::steady_clock::time_point lastBudgetPoll = std::chrono::steady_clock::now() - std::chrono::hours(1);
+};
+
+// Budget poll + overlay draw (pre-Present).
+void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock, render::diligent::RenderContext& context,
+                   render::diligent::TerrainRenderer& renderer, app::ChunkStreamingSystem& streaming,
+                   render::diligent::DebugOverlay& overlay, const ChunkEventCounters& chunkCounters,
+                   const render::interface::Camera& camera) {
+    if (std::chrono::steady_clock::now() - t.lastBudgetPoll >= std::chrono::seconds(2)) {
+        const bool firstPoll = !t.budget.available;
+        t.budget = render::diligent::query_gpu_memory_budget(context);
+        t.lastBudgetPoll = std::chrono::steady_clock::now();
+        if (firstPoll && t.budget.available) {
+            log(LogLevel::Info, "VK_EXT_memory_budget: {:.0f} MiB device-local budget, {:.0f} MiB in use machine-wide",
+                static_cast<double>(t.budget.device_local_budget_bytes) / (1024.0 * 1024.0),
+                static_cast<double>(t.budget.device_local_usage_bytes) / (1024.0 * 1024.0));
+        }
+    }
+    // Group S fix (TERRAIN_FIXES_BRIEF task 12): fps and ms are BOTH derived from the same
+    // smoothed frame time, so the two displayed numbers are arithmetically consistent
+    // (fps == 1000/ms) by construction.
+    const float dtMs = static_cast<float>(clock.delta_seconds()) * 1000.0f;
+    t.smoothedFrameMs = t.smoothedFrameMs == 0.0f ? dtMs : t.smoothedFrameMs * 0.95f + dtMs * 0.05f;
+    render::diligent::OverlayStats stats;
+    stats.fps = t.smoothedFrameMs > 0.0f ? 1000.0f / t.smoothedFrameMs : 0.0f;
+    stats.frame_ms = t.smoothedFrameMs;
+    stats.ready_chunks = chunkCounters.ready; // event-sourced (task 33), not polled
+    stats.visible_chunks = renderer.last_visible_count();
+    stats.total_chunk_meshes = renderer.chunk_count();
+    const app::TreeEmitCounts objectCounts = streaming.object_counts();
+    stats.objects = objectCounts.total();
+    stats.objects_round = objectCounts.round;
+    stats.objects_conifer = objectCounts.conifer;
+    stats.objects_shrub = objectCounts.shrub;
+    // Goal 84: what material the crosshair (view center) is aiming at -- analytic ray march.
+    const glm::vec3 aimDir = camera.orientation * glm::vec3(0.0f, 0.0f, -1.0f);
+    const app::AimHit aim = app::query_aim(streaming.heightmap(), camera.position, aimDir);
+    if (aim.hit) {
+        std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f",
+                      app::material_name(aim.material), static_cast<double>(aim.position.x),
+                      static_cast<double>(aim.position.y), static_cast<double>(aim.position.z));
+    }
+    stats.jobs_in_flight = streaming.in_flight_count();
+    stats.gpu_self_bytes = renderer.gpu_memory().allocated_bytes();
+    stats.gpu_self_peak_bytes = renderer.gpu_memory().peak_bytes();
+    stats.budget = t.budget;
+    overlay.render(stats);
+}
+
+// The 2-second stats line + event/poll consistency check (post-Present).
+void report_phase(FrameTelemetry& t, const engine::core::Clock& clock, render::diligent::TerrainRenderer& renderer,
+                  app::ChunkStreamingSystem& streaming, const ChunkEventCounters& chunkCounters) {
+    t.worstFrameMs = std::max(t.worstFrameMs, static_cast<float>(clock.delta_seconds()) * 1000.0f);
+    const auto now = std::chrono::steady_clock::now();
+    if (now - t.lastReport < std::chrono::seconds(2)) {
+        return;
+    }
+    const double seconds = std::chrono::duration<double>(now - t.lastReport).count();
+    const auto [yLo, yHi] = streaming.loaded_y_range();
+    log(LogLevel::Info,
+        "{:.1f} fps (worst {:.1f} ms), {}/{} chunk meshes visible after culling, {} ready "
+        "(chunk-Y {}..{}) / {} in flight (pending {}, gen {}, mesh {}), {:.1f} MiB GPU",
+        t.framesSinceReport / seconds, t.worstFrameMs, renderer.last_visible_count(), renderer.chunk_count(),
+        streaming.ready_chunk_count(), yLo, yHi, streaming.in_flight_count(), streaming.pending_mesh_count(),
+        streaming.generation_in_flight_count(), streaming.mesh_in_flight_count(),
+        static_cast<double>(renderer.gpu_memory().allocated_bytes()) / (1024.0 * 1024.0));
+    t.worstFrameMs = 0.0f;
+    // Task 33's check, mechanically: the event-derived count must always equal the polled one.
+    if (chunkCounters.ready != streaming.ready_chunk_count()) {
+        log(LogLevel::Error, "event/poll chunk-count mismatch: events say {}, streamer says {}", chunkCounters.ready,
+            streaming.ready_chunk_count());
+    }
+    t.lastReport = now;
+    t.framesSinceReport = 0;
+}
+
+// Verification readback + frame dumps + F2 screenshots (all pre-Present readbacks).
+struct CaptureState {
+    bool verifyOk = false;
+    bool verifyRan = false;
+    std::uint32_t screenshotCounter = 0; // F2 capture numbering (goal 9)
+};
+
+// Returns false when the verify timeout fired and the loop must stop.
+bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t frame,
+                   render::diligent::RenderContext& context, app::ChunkStreamingSystem& streaming,
+                   engine::input::GlfwInput& input) {
+    // Verification waits for streaming to settle (terrain arrives asynchronously), then reads
+    // the frame back while it is still the current back buffer -- before Present.
+    if (options.verify_frame && !cap.verifyRan && frame >= 5 && streaming.settled() &&
+        streaming.ready_chunk_count() > 0) {
+        const float fraction = render::diligent::sample_non_reference_pixel_fraction(context);
+        // Local-contrast metric (see frame_verify.cpp for the two prior metrics it replaced and
+        // why): terrain texture measures 12.3% at this pose, sky-only 0.9%. 6% keeps the
+        // winding-bug lesson's discrimination -- sliver-band frames fail hard.
+        cap.verifyOk = fraction >= 0.06f;
+        cap.verifyRan = true;
+        log(cap.verifyOk ? LogLevel::Info : LogLevel::Error,
+            "frame verification: {:.1f}% of pixels carry terrain-scale local contrast (threshold 6%) after "
+            "{} chunks streamed in",
+            static_cast<double>(fraction) * 100.0, streaming.ready_chunk_count());
+    }
+    // Goal 7 (--dump-every N) + goal 9 (F2 screenshot): captured like the verifier. Debug
+    // workflows; the staging-copy stall is the accepted cost.
+    if (options.dump_every > 0 && frame % options.dump_every == 0) {
+        char dumpPath[64];
+        std::snprintf(dumpPath, sizeof(dumpPath), "frame_%05u.png", frame);
+        (void)render::diligent::dump_frame(context, dumpPath);
+    }
+    if (input.take_screenshot()) {
+        char shotPath[64];
+        std::snprintf(shotPath, sizeof(shotPath), "screenshot_%03u.png", cap.screenshotCounter++);
+        const bool shotOk = render::diligent::dump_frame(context, shotPath);
+        log(shotOk ? LogLevel::Info : LogLevel::Error, "screenshot: {} ({})", shotPath,
+            shotOk ? "written" : "FAILED");
+    }
+    if (options.verify_frame && !cap.verifyRan && frame >= kVerifyStreamingTimeoutFrames) {
+        log(LogLevel::Error, "frame verification: streaming never settled within {} frames", frame);
+        return false;
+    }
+    return true;
+}
+
 int run(const AppOptions& options) {
     app::GlfwWindow window(1280, 720, "voxel_app");
 
@@ -260,20 +439,11 @@ int run(const AppOptions& options) {
         streamingConfig.load_radius, streamingConfig.unload_radius, streamingConfig.unload_delay_seconds,
         streaming.worker_thread_count());
 
-    bool verifyOk = !options.verify_frame;
-    bool verifyRan = false;
+    CaptureState cap;
+    cap.verifyOk = !options.verify_frame;
+    FrameTelemetry telemetry;
     std::uint32_t frame = 0;
-    auto lastReport = std::chrono::steady_clock::now();
-    std::uint32_t framesSinceReport = 0;
-    float smoothedFrameMs = 0.0f;
-    float worstFrameMs = 0.0f; // per 2s window -- the number a stutter actually is (Group T task 17)
     std::uint32_t walkViolations = 0; // frames ending below the ground surface in walk mode
-    std::uint32_t screenshotCounter = 0; // F2 capture numbering (goal 9)
-
-    // VK_EXT_memory_budget is polled on a timer per its own documented usage pattern, never per
-    // frame (task 30).
-    render::diligent::GpuMemoryBudget budget;
-    auto lastBudgetPoll = std::chrono::steady_clock::now() - std::chrono::hours(1);
 
     while (!window.should_close() && (options.frames == 0 || frame < options.frames)) {
         window.poll_events();
@@ -282,42 +452,9 @@ int run(const AppOptions& options) {
         }
         clock.tick();
 
-        auto [transform, lens, spectator] =
-            registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(cameraEntity);
-        if (input.take_walk_toggle()) {
-            // Deliberate transition handling (Group V task 25): position is untouched, vertical
-            // velocity zeroed -- entering walk mid-air simply starts a clean fall; leaving it
-            // freezes wherever you are. No snap in either direction.
-            spectator.mode = spectator.mode == app::CameraMoveMode::Fly ? app::CameraMoveMode::Walk
-                                                                        : app::CameraMoveMode::Fly;
-            spectator.vertical_velocity = 0.0f;
-            log(LogLevel::Info, "camera mode: {}", spectator.mode == app::CameraMoveMode::Walk ? "walk" : "fly");
-        }
-        const float groundHeight = streaming.ground_height(transform.position.x, transform.position.z);
-        app::update_spectator_camera(transform, spectator, input.state(), input.take_look_delta(),
-                                     static_cast<float>(clock.delta_seconds()), groundHeight);
-        if (options.autofly) {
-            // Constant sideways travel (at boost speed in fly mode; ground-bound in walk mode) --
-            // exercises the full load/unload cycle with no human at the controls.
-            transform.position.x += (options.walk ? 20.0f : 160.0f) * static_cast<float>(clock.delta_seconds());
-        }
-        if (options.walk && spectator.mode == app::CameraMoveMode::Walk) {
-            // Group V task 27's mechanical check, evaluated EVERY frame of a walk run: the camera
-            // must never end an update below the ground surface (fall-through at chunk seams or
-            // steep slopes is exactly the bug class this watches for).
-            if (transform.position.y < groundHeight + app::kEyeHeight - 0.01f) {
-                ++walkViolations;
-            }
-        }
-
-        streaming.update(transform.position, clock.elapsed_seconds());
-
-        render::interface::Camera camera;
-        camera.position = transform.position;
-        camera.orientation = transform.orientation;
-        camera.fov_y_radians = lens.fov_y_radians;
-        camera.near_plane = lens.near_plane;
-        camera.far_plane = lens.far_plane;
+        const render::interface::Camera camera =
+            update_camera_phase(registry, cameraEntity, input, streaming, clock, options, walkViolations);
+        streaming.update(camera.position, clock.elapsed_seconds());
 
         const auto [width, height] = window.framebuffer_size();
         if (width == 0 || height == 0) {
@@ -331,107 +468,23 @@ int run(const AppOptions& options) {
         if (postProcess) {
             postProcess->execute(frame);
         }
+        overlay_phase(telemetry, clock, context, renderer, streaming, overlay, chunkCounters, camera);
 
-        if (std::chrono::steady_clock::now() - lastBudgetPoll >= std::chrono::seconds(2)) {
-            const bool firstPoll = !budget.available;
-            budget = render::diligent::query_gpu_memory_budget(context);
-            lastBudgetPoll = std::chrono::steady_clock::now();
-            if (firstPoll && budget.available) {
-                log(LogLevel::Info, "VK_EXT_memory_budget: {:.0f} MiB device-local budget, {:.0f} MiB in use machine-wide",
-                    static_cast<double>(budget.device_local_budget_bytes) / (1024.0 * 1024.0),
-                    static_cast<double>(budget.device_local_usage_bytes) / (1024.0 * 1024.0));
-            }
-        }
-        {
-            // Group S fix (TERRAIN_FIXES_BRIEF task 12): fps and ms are BOTH derived from the
-            // same smoothed frame time, so the two displayed numbers are arithmetically
-            // consistent (fps == 1000/ms) by construction. The old code paired a slow-EMA fps
-            // with the INSTANTANEOUS dt -- during any hiccup the pair disagreed wildly (the
-            // screenshots' 275 fps next to 31.14 ms).
-            const float dtMs = static_cast<float>(clock.delta_seconds()) * 1000.0f;
-            smoothedFrameMs = smoothedFrameMs == 0.0f ? dtMs : smoothedFrameMs * 0.95f + dtMs * 0.05f;
-            render::diligent::OverlayStats stats;
-            stats.fps = smoothedFrameMs > 0.0f ? 1000.0f / smoothedFrameMs : 0.0f;
-            stats.frame_ms = smoothedFrameMs;
-            stats.ready_chunks = chunkCounters.ready; // event-sourced (task 33), not polled
-            stats.visible_chunks = renderer.last_visible_count();
-            stats.total_chunk_meshes = renderer.chunk_count();
-            stats.objects = streaming.object_count();
-            stats.jobs_in_flight = streaming.in_flight_count();
-            stats.gpu_self_bytes = renderer.gpu_memory().allocated_bytes();
-            stats.gpu_self_peak_bytes = renderer.gpu_memory().peak_bytes();
-            stats.budget = budget;
-            overlay.render(stats);
-        }
-
-        // Verification waits for streaming to settle (terrain arrives asynchronously now), then
-        // reads the frame back while it is still the current back buffer -- before Present.
-        if (options.verify_frame && !verifyRan && frame >= 5 && streaming.settled() &&
-            streaming.ready_chunk_count() > 0) {
-            const float fraction = render::diligent::sample_non_reference_pixel_fraction(context);
-            // Local-contrast metric (see frame_verify.cpp for the two prior metrics it replaced
-            // and why): terrain texture measures 12.3% at this pose, sky-only 0.9%. 6% keeps the
-            // winding-bug lesson's discrimination -- sliver-band frames fail hard.
-            verifyOk = fraction >= 0.06f;
-            verifyRan = true;
-            log(verifyOk ? LogLevel::Info : LogLevel::Error,
-                "frame verification: {:.1f}% of pixels carry terrain-scale local contrast (threshold 6%) after "
-                "{} chunks streamed in",
-                static_cast<double>(fraction) * 100.0, streaming.ready_chunk_count());
-        }
-        // Goal 7 (--dump-every N) + goal 9 (F2 screenshot): captured like the verifier -- before
-        // Present, while this is still the current back buffer. Debug workflows; the staging-copy
-        // stall is the accepted cost.
-        if (options.dump_every > 0 && frame % options.dump_every == 0) {
-            char dumpPath[64];
-            std::snprintf(dumpPath, sizeof(dumpPath), "frame_%05u.png", frame);
-            (void)render::diligent::dump_frame(context, dumpPath);
-        }
-        if (input.take_screenshot()) {
-            char shotPath[64];
-            std::snprintf(shotPath, sizeof(shotPath), "screenshot_%03u.png", screenshotCounter++);
-            const bool shotOk = render::diligent::dump_frame(context, shotPath);
-            log(shotOk ? LogLevel::Info : LogLevel::Error, "screenshot: {} ({})", shotPath,
-                shotOk ? "written" : "FAILED");
-        }
-
-        if (options.verify_frame && !verifyRan && frame >= kVerifyStreamingTimeoutFrames) {
-            log(LogLevel::Error, "frame verification: streaming never settled within {} frames", frame);
-            break;
+        if (!capture_phase(cap, options, frame, context, streaming, input)) {
+            break; // verify timeout: streaming never settled
         }
 
         context.present();
         FrameMark;
         ++frame;
-        ++framesSinceReport;
+        ++telemetry.framesSinceReport;
 
         // A verify-only run (no explicit frame budget) has done its job once the readback ran.
-        if (options.verify_frame && verifyRan && options.frames == 0) {
+        if (options.verify_frame && cap.verifyRan && options.frames == 0) {
             break;
         }
 
-        worstFrameMs = std::max(worstFrameMs, static_cast<float>(clock.delta_seconds()) * 1000.0f);
-        const auto now = std::chrono::steady_clock::now();
-        if (now - lastReport >= std::chrono::seconds(2)) {
-            const double seconds = std::chrono::duration<double>(now - lastReport).count();
-            const auto [yLo, yHi] = streaming.loaded_y_range();
-            log(LogLevel::Info,
-                "{:.1f} fps (worst {:.1f} ms), {}/{} chunk meshes visible after culling, {} ready "
-                "(chunk-Y {}..{}) / {} in flight (pending {}, gen {}, mesh {}), {:.1f} MiB GPU",
-                framesSinceReport / seconds, worstFrameMs, renderer.last_visible_count(), renderer.chunk_count(),
-                streaming.ready_chunk_count(), yLo, yHi, streaming.in_flight_count(), streaming.pending_mesh_count(),
-                streaming.generation_in_flight_count(), streaming.mesh_in_flight_count(),
-                static_cast<double>(renderer.gpu_memory().allocated_bytes()) / (1024.0 * 1024.0));
-            worstFrameMs = 0.0f;
-            // Task 33's check, mechanically: the event-derived count must always equal the polled
-            // one. A divergence means a lifecycle event is missing or double-fired.
-            if (chunkCounters.ready != streaming.ready_chunk_count()) {
-                log(LogLevel::Error, "event/poll chunk-count mismatch: events say {}, streamer says {}",
-                    chunkCounters.ready, streaming.ready_chunk_count());
-            }
-            lastReport = now;
-            framesSinceReport = 0;
-        }
+        report_phase(telemetry, clock, renderer, streaming, chunkCounters);
     }
 
     bool walkOk = true;
@@ -463,7 +516,7 @@ int run(const AppOptions& options) {
     }
 
     log(LogLevel::Info, "exiting after {} frames on {}", frame, render::diligent::to_string(context.backend()));
-    return verifyOk && autoflyOk && walkOk ? EXIT_SUCCESS : EXIT_FAILURE;
+    return cap.verifyOk && autoflyOk && walkOk ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 } // namespace

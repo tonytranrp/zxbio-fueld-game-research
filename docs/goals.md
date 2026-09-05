@@ -270,28 +270,28 @@ Gated explicitly on the outcome of goal 41 — don't build the G-buffer speculat
 
 ## G. Render architecture
 
-48. Write down the actual multi-pass pipeline shape now that Stage 2–4 add real passes beyond the
+48. [x] Write down the actual multi-pass pipeline shape now that Stage 2–4 add real passes beyond the
     original single terrain PSO (opaque terrain+trees → transparent water → Bloom → tone map →
     optionally SSAO feeding back into the lighting) — a real architecture diagram or ordered list,
     not passes accreted ad hoc in whatever order they were implemented. **Check**: this document
     exists (in `docs/` or `research/`) before goal 49's refactor starts.
-49. Refactor `TerrainRenderer` (currently one PSO, one draw path per the code read) into whatever
+49. [x] Refactor `TerrainRenderer` (currently one PSO, one draw path per the code read) into whatever
     structure goal 48 specifies, keeping `render/interface`'s no-DiligentCore-types boundary intact
     throughout. **Check**: `render/interface` headers still contain zero DiligentCore includes after
     the refactor — a grep, not an assumption.
-50. `main.cpp`'s `run()` function is a single large function handling window/device setup, the whole
+50. [x] `main.cpp`'s `run()` function is a single large function handling window/device setup, the whole
     per-frame update+render+overlay+report loop, and both exit-condition checks — genuinely
     functional and well-commented as read, but worth splitting into named phases (setup / per-frame
     update / per-frame render / shutdown-checks) as more systems (Stage 1–4's passes, gameplay
     goals) continue to land in it, before it grows further. **Check**: `run()`'s line count is
     reduced and each extracted phase is independently readable, with no behavior change (same test
     suite passes, same `--verify-frame`/`--autofly` results).
-51. Confirm the extracted structure from goal 50 doesn't regress the careful member-declaration-
+51. [x] Confirm the extracted structure from goal 50 doesn't regress the careful member-declaration-
     order discipline this project has twice had to learn the hard way (`docs/progress.md`'s hardening
     section) — any newly-introduced thread-owning member gets the same last-declared treatment.
     **Check**: an explicit review comment or test confirming destruction order, not assumed correct
     by inspection alone.
-52. Add a debug/dev toggle (compile-time or a CLI flag) to disable Stage 2–4's post-processing passes
+52. [x] Add a debug/dev toggle (compile-time or a CLI flag) to disable Stage 2–4's post-processing passes
     individually — useful for isolating which pass causes a regression during the visual-verification
     workflow goal 8/20/27 established, without needing to revert code. **Check**: each pass can be
     independently disabled and the frame dump reflects exactly that pass's absence.
@@ -437,7 +437,7 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
 
 ## K. Gameplay completeness
 
-79. Swimming: walk mode currently clamps to sea level (you stride on water, no swimming, per
+79. [x] Swimming: walk mode currently clamps to sea level (you stride on water, no swimming, per
     `CLAUDE.md`) — a deliberate v1 cut, worth revisiting now that water rendering (goal 30) is
     getting real attention anyway. Design: below sea level, gravity reduces/reverses and a simple
     buoyancy-toward-surface behavior replaces the ground-clamp. **Check**: a standalone test analogous
@@ -454,7 +454,7 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
     `HeightmapGenerator::height_at` the same way tree placement already does) — a concrete, bounded
     first step rather than a full biome system. **Check**: view a dump of a shoreline; a visibly
     distinct material band between water and grass/stone.
-82. Object count and variety in the debug overlay (currently a single "objects" number per
+82. [x] Object count and variety in the debug overlay (currently a single "objects" number per
     `PHASE_1_COMPLETION_BRIEF.md`'s Group W legacy) — break it down by type once goal 36–37 adds
     real shape variety, so the overlay stays useful for understanding what's actually loaded.
     **Check**: overlay shows a per-shape-type breakdown, sums to the existing total.
@@ -463,12 +463,12 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
     feel question worth a deliberate look rather than leaving untouched by default. **Check**: a
     stated before/after assessment from actually flying through the changed terrain, not assumed
     unaffected by visual changes.
-84. Consider a minimal "look at a chunk's material composition" debug query (e.g. a crosshair-raycast
+84. [x] Consider a minimal "look at a chunk's material composition" debug query (e.g. a crosshair-raycast
     reporting what material/chunk is under the camera's aim) — cheap, useful for the ongoing visual-
     verification workflow (confirming *which* material is producing an unexpected color, for
     instance) and for future gameplay (any interaction system would need this primitive anyway).
     **Check**: a standalone test against a known chunk's known material layout.
-85. Re-run `--autofly --walk` (the existing mechanical fall-through check) after every gameplay goal
+85. [x] Re-run `--autofly --walk` (the existing mechanical fall-through check) after every gameplay goal
     in this group, not just once at the end — swimming and biome changes both touch the ground-query
     path this check exercises. **Check**: `0 of N frames below ground`, re-confirmed after each
     change, not just once.

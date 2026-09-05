@@ -142,10 +142,10 @@ std::vector<TreePlacement> compute_tree_placements(std::int32_t chunkX, std::int
     return placements;
 }
 
-std::size_t append_tree_meshes(MeshData& mesh, world::chunk::ChunkCoord chunk, int seed,
-                               const world::generation::HeightmapGenerator& heightmap) {
+TreeEmitCounts append_tree_meshes(MeshData& mesh, world::chunk::ChunkCoord chunk, int seed,
+                                  const world::generation::HeightmapGenerator& heightmap) {
     const float chunkBaseY = static_cast<float>(chunk.y * kChunkSize);
-    std::size_t emitted = 0;
+    TreeEmitCounts emitted;
     for (const TreePlacement& tree : compute_tree_placements(chunk.x, chunk.z, seed, heightmap)) {
         // Owned by the chunk whose Y range contains the base surface; skipped if the tree would
         // poke through this chunk's local ceiling (v1 simplification, deterministic).
@@ -196,7 +196,11 @@ std::size_t append_tree_meshes(MeshData& mesh, world::chunk::ChunkCoord chunk, i
         for (std::size_t i = treeVertexStart; i < mesh.vertices.size(); ++i) {
             mesh.vertices[i].ao = tree.color_jitter;
         }
-        ++emitted;
+        switch (tree.shape) {
+        case TreeShape::Round: ++emitted.round; break;
+        case TreeShape::Conifer: ++emitted.conifer; break;
+        case TreeShape::Shrub: ++emitted.shrub; break;
+        }
     }
     return emitted;
 }

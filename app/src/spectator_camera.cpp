@@ -61,9 +61,24 @@ void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraS
         transform.position += wish / wishLength * speed * dtSeconds;
     }
 
-    state.vertical_velocity += kGravityAcceleration * dtSeconds;
+    // Swimming (goal 79): when the feet are below the water surface over a genuinely submerged
+    // column, buoyancy opposes gravity -- proportional to submersion up to one voxel, so the
+    // equilibrium floats the feet kSwimEquilibriumDepth under the surface (eyes above water) --
+    // and drag damps the bob. On land (or once ground rises above sea level) this term is zero
+    // and walk physics is exactly what it always was.
+    const float feetY = transform.position.y - kEyeHeight;
+    const bool inWater = feetY < kSeaLevelWorld && groundHeightWorld < kSeaLevelWorld;
+    if (inWater) {
+        const float submersion = std::min(kSeaLevelWorld - feetY, 1.0f);
+        state.vertical_velocity += (kGravityAcceleration + kBuoyancyAcceleration * submersion) * dtSeconds;
+        state.vertical_velocity *= std::exp(-kWaterDrag * dtSeconds);
+    } else {
+        state.vertical_velocity += kGravityAcceleration * dtSeconds;
+    }
     transform.position.y += state.vertical_velocity * dtSeconds;
 
+    // The hard floor is the REAL ground (the seabed under water, now that ground_height no longer
+    // clamps to sea level) -- swimming floats you above it, but you can still stand in shallows.
     const float standingEyeY = groundHeightWorld + kEyeHeight;
     if (transform.position.y <= standingEyeY) {
         transform.position.y = standingEyeY; // grounded: clamp to the surface...

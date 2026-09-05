@@ -31,6 +31,13 @@ struct SpectatorCameraState {
 
 inline constexpr float kSpectatorBoostFactor = 4.0f;
 inline constexpr float kWalkSpeedFactor = 0.25f;       // walking is deliberately slower than flying
+// Swimming (goal 79): passive buoyancy replaces the old walk-on-water sea clamp. Fully submerged
+// feet get double-gravity upthrust, so the equilibrium (upthrust*depth == gravity) floats the
+// feet kSwimEquilibriumDepth under the surface with the eyes above water; drag damps the bob.
+inline constexpr float kSeaLevelWorld = 0.0f;
+inline constexpr float kBuoyancyAcceleration = 64.0f; // upthrust at >=1 voxel submersion (2x gravity)
+inline constexpr float kWaterDrag = 2.5f;             // exponential vertical damping in water
+inline constexpr float kSwimEquilibriumDepth = 0.5f;  // feet rest this far under the surface
 inline constexpr float kGravityAcceleration = -32.0f;  // world units/s^2 (voxel-scale gravity)
 inline constexpr float kEyeHeight = 1.7f;              // camera above the ground surface when standing
 

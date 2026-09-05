@@ -55,11 +55,31 @@ inline constexpr float kTreeMaxHeight = 45.0f;  // tree line
 [[nodiscard]] std::vector<TreePlacement> compute_tree_placements(
     std::int32_t chunkX, std::int32_t chunkZ, int seed, const world::generation::HeightmapGenerator& heightmap);
 
+// Per-shape emission tally (goal 82: the overlay breaks "objects" down by silhouette).
+struct TreeEmitCounts {
+    std::size_t round = 0;
+    std::size_t conifer = 0;
+    std::size_t shrub = 0;
+    [[nodiscard]] std::size_t total() const noexcept { return round + conifer + shrub; }
+    TreeEmitCounts& operator+=(const TreeEmitCounts& o) noexcept {
+        round += o.round;
+        conifer += o.conifer;
+        shrub += o.shrub;
+        return *this;
+    }
+    TreeEmitCounts& operator-=(const TreeEmitCounts& o) noexcept {
+        round -= o.round;
+        conifer -= o.conifer;
+        shrub -= o.shrub;
+        return *this;
+    }
+};
+
 // Appends tree geometry for every placement whose base surface lies inside THIS chunk's Y range
 // and whose full height fits under the chunk's local ceiling (trees straddling a chunk top are
 // skipped -- documented v1 simplification; the boundary layer keeps the skip deterministic).
-// Returns the number of trees emitted.
-std::size_t append_tree_meshes(world::meshing::MeshData& mesh, world::chunk::ChunkCoord chunk, int seed,
-                               const world::generation::HeightmapGenerator& heightmap);
+// Returns the per-shape emission counts.
+TreeEmitCounts append_tree_meshes(world::meshing::MeshData& mesh, world::chunk::ChunkCoord chunk, int seed,
+                                  const world::generation::HeightmapGenerator& heightmap);
 
 } // namespace app

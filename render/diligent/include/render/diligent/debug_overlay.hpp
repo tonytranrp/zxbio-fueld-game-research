@@ -22,6 +22,12 @@ struct OverlayStats {
     std::size_t visible_chunks = 0;
     std::size_t total_chunk_meshes = 0;
     std::size_t objects = 0; // decoration objects (trees) in ready chunks
+    // Goal 82: per-silhouette breakdown (sums to `objects`).
+    std::size_t objects_round = 0;
+    std::size_t objects_conifer = 0;
+    std::size_t objects_shrub = 0;
+    // Goal 84: crosshair-aim readout ("Grass @ 12,34,56"); empty = no hit / not computed.
+    char aim_line[64] = {};
     std::size_t jobs_in_flight = 0;
     std::uint64_t gpu_self_bytes = 0;      // §2.3 number 1: our own chunk buffers (GpuAllocationTracker)
     std::uint64_t gpu_self_peak_bytes = 0;
