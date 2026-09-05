@@ -243,3 +243,40 @@ check), `--radius`, `--seed`, `--validation`. Headless CI subset: configure with
 `-DVOXEL_CLANG_TIDY_EXE="C:/Program Files/LLVM/bin/clang-tidy.exe"`). Known deferred: in-app
 RenderDoc trigger (no vendored `renderdoc_app.h`; launch through RenderDoc UI instead),
 `tools/mesh_dump` .obj export, first GitHub-runner execution of `.github/workflows/ci.yml`.
+
+## Visual/gameplay/CI pass (2026-09-04, after the terrain-fixes pass) — what changed operationally
+
+Full record: `research/visual-stage-log.md` (+ `docs/render-pipeline.md`, `docs/progress.md`).
+Machine-relevant deltas ONLY (read those files for the why):
+
+- **`--verify-frame` metric REPLACED** (twice — bloom then the gradient sky broke every
+  reference-pixel scheme): it now counts LOCAL-CONTRAST pixels (neighbor delta >4/255); terrain
+  measures 12–14%, sky-only 0.9%, threshold 6%. The old "25%" numbers in the section above are
+  historical.
+- **8 materials** now (Sand=6, Grass=7 appended after the decoration IDs); both frozen palette
+  counts moved 6→8 together. Every solid used to be Stone — surface banding lives in
+  `terrain_fill.cpp` (seam-exact 34×34 margin grid).
+- New flags: `--pos x,y,z --yaw D --pitch D` (debug camera), `--dump-every N`, `--no-post`,
+  `--no-bloom`, `--no-tonemap`, `--no-sky`; F2 = in-app screenshot; `VOXEL_DUMP_FRAME` writes
+  PNG now (`.ppm` extension still honored). `tools/mesh_dump [cx cy cz] [seed] [out.obj]` exports
+  real .obj.
+- The 12B vertex's 4th byte is CONTEXT-DEPENDENT: baked AO on land, water-column depth on water,
+  per-tree brightness jitter on trees — all documented at the pack sites and tested; widen to 16B
+  rather than pack a fourth meaning (goals.md goal 110).
+- PostProcessor must be constructed BEFORE TerrainRenderer (scene-target format flows into the
+  terrain/sky PSOs), and DiligentFX Bloom needs its one warm-up PostFXContext::Execute — see
+  post_process.cpp before touching either.
+- **76/76 tests**; walk mode now SWIMS over deep water (buoyancy; ground_height no longer
+  sea-clamps — the old "stride on water" note above is historical).
+- CI is REAL and green (run 33941021916: cores ×3, ASan/UBSan, TSan w/ .tsan-suppressions,
+  clang-tidy, Windows renderer + WARP smoke). The workflow MUST NOT get a `branches:` filter
+  containing `C++-voxel` — `+` is a glob quantifier and kills every run at startup with zero jobs.
+- `.clang-format` exists now (calibrated; tree-wide pass applied). clang-tidy green including new
+  code.
+- **RTK/Bash heredoc gotcha (this machine)**: the command hook collapses `\` → `\` inside
+  heredocs — a `'\0'` written via bash became a literal NUL byte in the file (invisible in most
+  displays, C2137 from MSVC). For escape-sensitive edits use the Edit tool, or build bytes from
+  char codes (`bytes([0x5C, 0x30])`).
+- One OPEN visual defect: floating sliver curtains at rare grazing angles — full repro + hunt
+  state in `research/water-foliage-design.md`; next tool is RenderDoc (goals 73/105). Mesh data
+  proven clean three ways; don't re-run the offline hunts, they're now permanent tests.
