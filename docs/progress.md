@@ -19,7 +19,7 @@ water) chosen to evoke the *feeling* of that aesthetic. Since the Voxel Represen
 (`research/voxel-representation-redesign.md`), the terrain mesh itself is genuinely blocky —
 per-voxel-face, greedy-merged cubes — rather than a smooth iso-surface merely *lit* to look chunky.
 
-## Current state (2026-09-04, after the Voxel Representation Redesign)
+## Current state (2026-09-05, after the chunk-generation optimization pass)
 
 `voxel_app` opens on Vulkan or D3D12, pregenerates a **static, bounded world** once at startup
 (a real ImGui loading-progress bar while it does), then drops into a **colorful, lit, blocky
@@ -39,14 +39,37 @@ the static-world loader) verified landed together, not just per-group. `--verify
 local-contrast metric now reads noticeably HIGHER on blocky terrain than the old smooth mesher's
 12–14% — 23–30% observed across several real runs, consistent with sharp cube edges carrying more
 local contrast than a rounded surface (still comfortably clear of the 6% threshold; the metric
-itself is unchanged). Real, Release-build, two-point-measured world-load timing: **56,454 chunks
-(the shipping default, a ~3.1km-per-side world) in 53.6s at ~1.41 GB**; **126,150 chunks (a larger
-trial) in 125.8s at ~2.10 GB** — roughly 1ms/chunk, near-linear. `extract_mesh` itself got real,
-honest, ~2× more expensive from the redesign (5.4–6.8ms vs. the pre-redesign 3.07ms Release
-baseline) — the added per-face-corner AO sampling cost, accepted because extraction runs on
-background worker threads and never blocks a frame. Interactive frame rate once loaded is high
-(136–151fps observed at small test-radius worlds) with zero per-frame streaming overhead by
-construction — there is no per-frame streaming code path left to cost anything.
+itself is unchanged). Real, Release-build, two-point-measured world-load timing (redesign-pass
+baseline): **56,454 chunks (the shipping default, a ~3.1km-per-side world) in 53.6s at ~1.41 GB**;
+**126,150 chunks (a larger trial) in 125.8s at ~2.10 GB** — roughly 1ms/chunk, near-linear.
+`extract_mesh` itself got real, honest, ~2× more expensive from the redesign (5.4–6.8ms vs. the
+pre-redesign 3.07ms Release baseline) — the added per-face-corner AO sampling cost. Interactive
+frame rate once loaded is high (136–151fps observed at small test-radius worlds) with zero
+per-frame streaming overhead by construction — there is no per-frame streaming code path left to
+cost anything.
+
+**Chunk-generation optimization pass (2026-09-05, `research/chunk-generation-optimization-log.md`)**:
+the 53.6s number above was real but left real waste on the table, surfaced by an actual user
+launching via Visual Studio (Debug config) and hitting a far worse load time than that baseline —
+exactly the profiling work goal 132 had flagged as undone. Two real fixes, both measured before
+and after at the identical radius-48/56,454-chunk world: eliminating `consider_mesh_candidate`'s
+per-chunk deep-copy `ChunkStore` snapshot (carried over unchanged from the old per-tick streaming
+system, where it was genuinely necessary; provably unnecessary once chunk voxel data is frozen
+write-once, which it already was) and fixing `ChunkVoxels`' incremental palette-promotion
+thrashing during fill (pre-widening the index buffer once instead of re-packing the whole chunk
+from scratch at every bit-width boundary crossed). **Real result: 53.6s → 29.9s, a 44% reduction**,
+memory cost negligible (343 → 347.85 MiB, +1.4%). New per-phase instrumentation
+(`WorldLoader::log_timings()`) answered goal 132's own question for the first time: generation is
+54.22s CPU-time/78,408 chunks (0.692ms/chunk) but meshing is 422.83s CPU-time/56,454 chunks
+(7.490ms/chunk) — meshing, not generation, is now the dominant cost by ~7.8x, a genuinely new
+finding (goal 147). A `windows-relwithdebinfo` CMake preset was also added so Visual Studio's own
+configuration dropdown has a fast option — Debug's `_ITERATOR_DEBUG_LEVEL=2` was independently
+re-confirmed (via this project's own prior measurement, cited in `mesh_extractor.cpp`) to cost
+~80x for concurrent hash-map-heavy code, which is very likely what made the original complaint's
+Debug-launch experience so much worse than the Release numbers ever suggested. Measured directly,
+isolating the build-config effect alone (both configs already carrying the two algorithmic fixes,
+identical radius-10/2,646-chunk world for both): **Debug 32.1s → RelWithDebInfo 9.4s, a 3.4x
+reduction** — the direct fix for "launching via the app is slow."
 
 **CI is real and green**: after fixing the invalid-branch-pattern startup failure (`C++-voxel`'s
 `+` is a glob quantifier), Windows/Linux×MSVC/GCC/Clang cores, ASan+UBSan, TSan, clang-tidy, and
@@ -192,6 +215,46 @@ tools/mesh_dump (.obj export), benchmarks/ (Google Benchmark + dated baselines +
   ground objects are optional visual polish, not one of the four originally reported complaints,
   so implementation waited for Group S to close out properly first).
 
+### The chunk-generation optimization pass's own additions (2026-09-05)
+
+- **A Release-only measurement can hide a real, much worse Debug-config experience** — the
+  redesign pass's own 53.6s/125.8s numbers were real, but a user launching via Visual Studio's own
+  F5 (defaulting to the `windows-debug` preset) hit something far worse, because this project had
+  already independently measured `_ITERATOR_DEBUG_LEVEL=2`'s cost for concurrent hash-map-heavy
+  code at ~80x — a fact documented in a code comment (`mesh_extractor.cpp`) but never connected to
+  "what does launching via the IDE actually feel like" until a real user hit it. Lesson: a
+  benchmark methodology that only ever measures the shipping config can be blind to the config
+  most contributors actually run day to day.
+- **A safety mechanism correct for one architecture can become pure overhead in the next one, and
+  the redesign's own explicit "carried over unchanged, not the problem being solved" note about
+  `consider_mesh_candidate`'s snapshot copy turned out to be wrong** — not because the redesign was
+  careless, but because a one-time pregeneration pass has a strictly stronger invariant (voxel data
+  frozen forever, immediately) than the per-tick streaming system the copy was designed to protect
+  against (a live store under continuous mutation). The lesson isn't "always re-derive every
+  carried-over mechanism" (that doesn't scale); it's that a change which strengthens an invariant
+  is worth explicitly re-checking every mechanism that invariant makes unnecessary, not just the
+  ones the change was aimed at.
+- **A palette-compression scheme's own incremental-growth cost is a real, standard, accepted
+  trade-off in mainstream prior art (Minecraft's own format, Glowstone, oxidized-chunks all do the
+  same thing) — but "standard" doesn't mean "unavoidable for this codebase specifically."**
+  Research confirmed no fundamentally different general-purpose algorithm exists; what made a
+  pre-widen viable here anyway is that this project's fill happens once, during generation, from a
+  small, fully-enumerable, known-in-advance material set — a strictly easier problem than the
+  arbitrary-future-edit case Minecraft's format actually has to solve. Worth checking whether a
+  "found everywhere" cost is fundamental to the problem or just to a harder version of the problem
+  nobody here actually has.
+- **A `web-researcher` pass run to sanity-check an already-designed fix is worth doing even when
+  confident** — it didn't change either of the two implemented fixes, but it turned "I think
+  RelWithDebInfo will keep `_ITERATOR_DEBUG_LEVEL` at 0" into "confirmed against MSVC's own
+  documented default-value rule and CMake's own documented flag string," and surfaced a real,
+  specific trap (`/fp:fast` risking this project's own already-hard-won FastNoise2 SIMD-determinism
+  guarantee) that wouldn't have been found by only reading this codebase's own files.
+- Decided to defer, in writing, rather than chase every finding in one pass: **per-column heightmap
+  caching** (goal 146 — a real, standard pattern confirmed by research, but generation was already
+  the smaller of the two load-time costs by ~7.8x) and **optimizing meshing/AO-sampling itself**
+  (goal 147 — now the dominant cost, but a bigger, riskier change than this pass's two fixes,
+  deserving its own dedicated profiling pass rather than a rushed addition here).
+
 ## Honest "what problems does the code have now" (goal 103, re-examined after the redesign)
 
 - **The pre-redesign sliver-curtain defect's status is genuinely unknown, not silently carried
@@ -219,9 +282,19 @@ tools/mesh_dump (.obj export), benchmarks/ (Google Benchmark + dated baselines +
   documented and tested, and now genuinely EXACT per corner rather than a Surface-Nets
   approximation, but still the kind of packing a future reader can trip over; goal 110's own note
   stands (widen to 16B if a fourth meaning ever appears).
-- `extract_mesh` is a real, honest ~2x more expensive since the redesign (added AO sampling) —
-  accepted because it's background-threaded and never blocks a frame, but worth knowing if any
-  future change makes meshing throughput itself the bottleneck rather than upload/GPU work.
+- `extract_mesh` is a real, honest ~2x more expensive since the redesign (added AO sampling), and
+  the chunk-generation optimization pass (2026-09-05) found that meshing throughput HAS become a
+  real bottleneck, just not the one this note originally anticipated: "background-threaded, never
+  blocks a frame" is true for per-frame streaming, but during bulk upfront loading the aggregate
+  meshing cost across every worker thread directly gates how long the loading screen lasts. Real
+  numbers: meshing is now ~7.8x generation's total CPU-time (422.83s vs. 54.22s at the radius-48
+  world). Goal 147 names this as open, deliberately not attempted in that pass (a bigger, riskier
+  change than eliminating the snapshot-copy/palette-thrashing waste that pass did fix).
+- Per-column heightmap data is recomputed independently for every chunk stacked at the same (x,z)
+  column across the world's Y-range (up to 8x redundant) — a real, standard pattern elsewhere
+  (Veloren's `SimChunk`, Cuberite's `cHeiGenCache`) that goal 146 names as open. Not implemented in
+  the 2026-09-05 pass because generation (the phase this would improve) was already the smaller of
+  the two costs by ~7.8x — a real, evidenced deprioritization, not an oversight.
 - The Lavapipe CI leg has never completed (our MSVC-flag leak fixed but unproven, unrelated to
   this redesign); goal 66's Linux half and goal 64's Linux-cache measurement are pending a green
   best-effort run.
@@ -237,9 +310,11 @@ tools/mesh_dump (.obj export), benchmarks/ (Google Benchmark + dated baselines +
 
 ## Sources this file compresses
 
-`research/voxel-representation-redesign.md` (this pass's own full design record — meshing,
-world topology, storage, block properties, sequencing, and citations) and
-`research/micro-voxel-object-design.md` (Group R's design). From the prior visual/gameplay/CI
+`research/chunk-generation-optimization-log.md` (this pass's own full record — root causes, the
+research cross-check, and every before/after number). `research/voxel-representation-redesign.md`
+(the prior pass's own full design record — meshing, world topology, storage, block properties,
+sequencing, and citations) and `research/micro-voxel-object-design.md` (Group R's design). From
+the earlier visual/gameplay/CI
 pass: `research/visual-stage-log.md` (the entire visual arc, stage by stage, with viewed-capture
 records), `research/baked-ao-design.md`, `research/water-foliage-design.md`,
 `research/terrain-fixes-log.md`, `research/engine-hardening-log.md`, `docs/render-pipeline.md`,

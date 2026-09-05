@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <vector>
 
@@ -68,6 +70,12 @@ public:
     [[nodiscard]] std::size_t total_chunk_count() const noexcept { return real_total_; }
     [[nodiscard]] TreeEmitCounts object_counts() const noexcept { return total_tree_count_; }
 
+    // Real per-phase generation-cost attribution (chunk-generation profiling pass, 2026-09-05):
+    // logs a breakdown once the caller notices finished() has become true. Summed across every
+    // worker thread, so these are CPU-time-ish totals, not wall-clock -- with N workers running
+    // concurrently this can (and normally does) exceed the load's own wall-clock duration.
+    void log_timings() const;
+
     // Walk mode's analytic ground query (Group V task 23) -- the same height function that
     // generates the terrain, so camera physics and the rendered surface agree by construction.
     [[nodiscard]] float ground_height(float worldX, float worldZ) const {
@@ -125,6 +133,9 @@ private:
     std::vector<GenCompletion> gen_completions_;
     mutable std::mutex mesh_mutex_;
     std::vector<MeshCompletion> mesh_completions_;
+
+    std::atomic<std::int64_t> generation_ns_{0};
+    std::atomic<std::int64_t> mesh_ns_{0};
 
     // Declaration order is load-bearing (the same lesson chunk_streaming.hpp's own history
     // documents): pool_ is declared LAST so it is destroyed FIRST, joining every worker while the

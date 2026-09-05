@@ -11,13 +11,29 @@ machine, learned the hard way during Phase 0. Read it before running `cmake` on 
 **Use the `CMakePresets.json` at the repo root** — this is now the primary, recommended way to
 build, and it's what makes Visual Studio's/VS Code's own "Open Folder" CMake integration work
 without any manual setup: opening this repo's folder in either one auto-detects the
-`windows-debug`/`windows-release` presets and Just Works. From a command line (after sourcing a
-real MSVC environment — see below), the equivalent is:
+`windows-debug`/`windows-release`/`windows-relwithdebinfo` presets and Just Works. From a command
+line (after sourcing a real MSVC environment — see below), the equivalent is:
 
 ```
 cmake --preset windows-debug
 cmake --build --preset windows-debug
 ctest --preset windows-debug
+```
+
+**Prefer `windows-relwithdebinfo` over `windows-debug` for interactive runs from Visual Studio**
+(chunk-generation profiling pass, 2026-09-05): `windows-debug` links the MSVC debug CRT, which
+defaults `_ITERATOR_DEBUG_LEVEL=2` — measured on this exact codebase at ~80x slower for
+concurrent hash-map-heavy code (`mesh_extractor.cpp`'s `NeighborCache` comment), and confirmed
+again end-to-end (`research/chunk-generation-optimization-log.md`): the SAME small world loaded
+in 32.1s under `windows-debug` vs. 9.4s under `windows-relwithdebinfo` — a 3.4x difference from
+the build config alone, nothing to do with world size. `windows-release` remains the
+near-zero-compromise choice when raw speed matters most; `windows-relwithdebinfo` exists
+specifically for "I want to run/debug this interactively from the IDE without paying Debug's
+tax." Switch to it via Visual Studio's own configuration dropdown, or:
+
+```
+cmake --preset windows-relwithdebinfo
+cmake --build --preset windows-relwithdebinfo
 ```
 
 The preset builds to `C:/b/<preset-name>` (e.g. `C:/b/windows-debug`), **not** `out/build/...`

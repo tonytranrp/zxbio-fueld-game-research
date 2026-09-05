@@ -33,9 +33,35 @@ public:
     // heightmap's own min/max already proves the whole chunk is above or below the surface.
     void fill_uniform(MaterialID material);
 
+    // Widens storage to at least `bits` bits/voxel up front, in one O(voxel count) repack from the
+    // cheap bits_==0 starting state -- a no-op if already >= bits (never narrows). A caller who
+    // already knows (from domain knowledge, not the palette's own growth) that several distinct
+    // materials are about to be set() should call this once before its fill loop: without it,
+    // promote() re-packs the ENTIRE index buffer from scratch at every bit-width boundary the
+    // palette crosses (0->1, 1->2, 2->4), so a chunk that discovers e.g. Stone/Dirt/Sand/Grass/
+    // Water in scattered order during a fill loop pays that O(voxel count) cost up to three times
+    // redundantly instead of once (goal: real chunk-generation profiling pass, 2026-09-05).
+    void reserve_bits(std::uint8_t bits);
+
     [[nodiscard]] std::size_t palette_size() const noexcept { return palette_.size(); }
     [[nodiscard]] bool is_homogeneous() const noexcept { return palette_.size() == 1; }
     [[nodiscard]] std::uint8_t bits_per_voxel() const noexcept { return bits_; }
+
+    // The palette-size -> bit-width table (§1.2): always a power of two so a voxel's index never
+    // straddles a byte boundary. Public and static so callers (e.g. reserve_bits's own call sites)
+    // can compute a target bit width from a known upper bound on distinct materials without
+    // duplicating this table.
+    [[nodiscard]] static constexpr std::uint8_t bits_for_palette_size(std::size_t paletteSize) noexcept {
+        if (paletteSize <= 1)
+            return 0;
+        if (paletteSize <= 2)
+            return 1;
+        if (paletteSize <= 4)
+            return 2;
+        if (paletteSize <= 16)
+            return 4;
+        return 8; // <= 256
+    }
 
 private:
     [[nodiscard]] std::size_t palette_index_of(MaterialID material) const;

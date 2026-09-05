@@ -486,6 +486,7 @@ int run(const AppOptions& options) {
                     std::chrono::duration<double>(std::chrono::steady_clock::now() - loadStart).count();
                 log(LogLevel::Info, "world ready: {} chunks in {:.1f}s", world.ready_chunk_count(),
                     loadSeconds);
+                world.log_timings();
                 loggedReady = true;
             }
             const render::interface::Camera camera =

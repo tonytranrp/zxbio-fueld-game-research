@@ -4,22 +4,6 @@ namespace world::chunk {
 
 namespace {
 
-// Rounds a palette size up to the next bit width in {0,1,2,4,8} (M1.2 brief §1.2's table) --
-// always a power of two so a voxel's index never straddles a byte boundary, at the cost of a
-// looser bound than a tight ceil(log2(n)) would give (e.g. 5 distinct materials costs 4
-// bits/voxel here, not 3) in exchange for trivially simple, branch-light packing.
-std::uint8_t bits_for_palette_size(std::size_t paletteSize) {
-    if (paletteSize <= 1)
-        return 0;
-    if (paletteSize <= 2)
-        return 1;
-    if (paletteSize <= 4)
-        return 2;
-    if (paletteSize <= 16)
-        return 4;
-    return 8; // <= 256
-}
-
 std::uint8_t read_index(const std::pmr::vector<std::byte>& indices, std::size_t localIndex,
                         std::uint8_t bits) {
     if (bits == 0) {
@@ -102,7 +86,7 @@ void ChunkVoxels::set(std::size_t localIndex, MaterialID material) {
     std::size_t paletteIdx = palette_index_of(material);
     if (paletteIdx == palette_.size()) {
         palette_.push_back(material);
-        const std::uint8_t newBits = bits_for_palette_size(palette_.size());
+        const std::uint8_t newBits = ChunkVoxels::bits_for_palette_size(palette_.size());
         if (newBits != bits_) {
             promote(newBits); // re-packs every EXISTING voxel's index at the new width -- §1.3
         }
@@ -121,6 +105,12 @@ void ChunkVoxels::fill_uniform(MaterialID material) {
     palette_.push_back(material);
     indices_.clear();
     bits_ = 0;
+}
+
+void ChunkVoxels::reserve_bits(std::uint8_t bits) {
+    if (bits > bits_) {
+        promote(bits);
+    }
 }
 
 } // namespace world::chunk

@@ -36,7 +36,8 @@ Table of contents: [A. Documentation migration](#a-documentation-migration) ·
 [R. Micro-voxel decorative objects](#r-micro-voxel-decorative-objects) ·
 [S. Static, bounded world](#s-static-bounded-world) ·
 [T. Storage compression, phased](#t-storage-compression-phased) ·
-[U. Redesign consolidation](#u-redesign-consolidation)
+[U. Redesign consolidation](#u-redesign-consolidation) ·
+[V. Chunk-generation load-time optimization](#v-chunk-generation-load-time-optimization)
 
 ---
 
@@ -837,6 +838,75 @@ see that document's §8 before assuming these run top-to-bottom or all at once.
      cases; a design doc's own claims about existing code still need grep-verification), plus a
      "start here if picking this up cold" pointer to progress.md -> this doc -> goals.md groups P-U.
 
+## V. Chunk-generation load-time optimization
+
+Real users hit a real problem the redesign pass's own Release-only measurements never surfaced:
+launching `voxel_app` via Visual Studio's F5/debugger (the `windows-debug` preset — the only
+"run it interactively" option that existed) made the loading screen take a very long time, far
+beyond the documented 53.6s Release baseline. This is exactly the profiling work goal 132
+flagged as undone ("where does ~1ms/chunk actually go"). Full methodology, root-cause detail,
+and every real number: `research/chunk-generation-optimization-log.md`.
+
+141. [x] Add real per-phase timing instrumentation to `WorldLoader` (generation vs. meshing
+     CPU-time, summed across every worker thread), logged the moment loading finishes. **Check**:
+     a real number, not a guess — directly answers goal 132's own flagged question. Landed as
+     `WorldLoader::log_timings()`, called from `main.cpp` right after the existing "world ready"
+     log line.
+142. [x] Eliminate `consider_mesh_candidate`'s per-chunk deep-copy `ChunkStore` snapshot (carried
+     over unchanged from the old per-tick streaming system, where it was a real, necessary safety
+     measure against a live store under concurrent mutation) — provably unnecessary once a chunk's
+     voxel data is frozen write-once, which it already is by the time this function runs.
+     **Check**: real before/after end-to-end load time at the same radius-48 world, not a
+     microbenchmark alone. Landed as `world::meshing::NeighborCache` moving from a private
+     `mesh_extractor.cpp` implementation detail to a public header type with a
+     `resolve(store, coord)` static helper `WorldLoader` calls once, on the main thread, handing
+     the resulting 27-pointer array to the worker job by value.
+143. [x] Fix `ChunkVoxels` palette-promotion thrashing during `fill_terrain`'s per-voxel loop
+     (every bit-width boundary crossed during a fill re-packs the entire 32,768-voxel index
+     buffer from scratch, up to three times redundantly for a chunk that introduces several
+     materials in scattered order). **Check**: real before/after memory measurement
+     (`measure_world_memory`), not just "should be fine" — a pre-widen trades memory for fewer
+     repacks, and the trade needs a real number. Landed as `ChunkVoxels::reserve_bits(bits)`,
+     called once from `fill_terrain` with `bits_for_palette_size(kMaterialCount)`.
+144. [x] Add a `windows-relwithdebinfo` CMake preset so Visual Studio's own configuration dropdown
+     has a fast option, not just Debug (measured ~80x slower for concurrent hash-map-heavy code,
+     `_ITERATOR_DEBUG_LEVEL=2`) or Release (optimized, but not what VS defaults to). **Check**:
+     verified against MSVC's own documented IDL-default rule and CMake's own documented
+     RelWithDebInfo flags, not assumed safe — confirmed `/MD`+`/DNDEBUG` keeps IDL at 0. Explicitly
+     bumped to `/Ob2` (CMake's own RelWithDebInfo default is the more conservative `/Ob1`) since
+     this preset's whole purpose is speed, matching real precedent (OBS Studio's own
+     RelWithDebInfo hardening did the same). Deliberately did NOT add `/fp:fast` despite it being
+     Microsoft's own general games-optimization advice — this project's already-pinned
+     `FastSIMD::FeatureSet` determinism guarantee (CLAUDE.md) would be put at risk by it.
+145. [x] Real before/after measurement at the same radius-48/56,454-chunk world used throughout
+     the redesign pass, on the same machine, Release build. **Check**: an actual run, not an
+     estimate. **Real result: 53.6s -> 29.9s, a 44% reduction.** New breakdown: generation
+     54.22s CPU-time/78,408 chunks (0.692ms/chunk), meshing 422.83s CPU-time/56,454 chunks
+     (7.490ms/chunk) — meshing is now ~7.8x generation's cost, a genuinely new finding (see
+     goal 147). A second real measurement, isolating goal 144's build-config fix specifically
+     (both configs already carrying goals 142/143's fixes, same small radius-10/2,646-chunk world
+     for both): **Debug 32.1s -> RelWithDebInfo 9.4s, a 3.4x reduction** — the direct answer to
+     "launching via the app is slow." Generation improved ~13.7x per-chunk, meshing only ~3.3x —
+     consistent with generation's hot path touching `std::pmr::vector` element access repeatedly
+     (exactly what `_ITERATOR_DEBUG_LEVEL=2` taxes hardest) while meshing's `NeighborCache` already
+     uses raw array indexing from an earlier pass.
+146. Deferred, named explicitly, not implemented this pass: per-column heightmap redundancy —
+     `generate_column_heights()` recomputes an identical 2D result for every chunk stacked at the
+     same (x,z) column across the world's Y-range (up to 8x redundant). Real, standard pattern
+     elsewhere (Veloren's `WorldSim`/`SimChunk`, Cuberite's `cHeiGenCache`) confirmed by research,
+     but generation is already the smaller of the two phases by ~7.8x (goal 145's own numbers) —
+     a smaller win than what's already landed. **Check** (for whoever picks this up): a real
+     before/after generation-phase-only CPU-time number, using `log_timings()`'s already-landed
+     instrumentation.
+147. Deferred, named explicitly, not implemented this pass: meshing (including tree decoration) is
+     now the dominant remaining cost at 7.490ms/chunk average. `docs/progress.md`'s existing
+     "`extract_mesh` is ~2x more expensive, accepted because it's background-threaded and never
+     blocks a frame" reasoning is true for per-frame streaming but was never evaluated for bulk
+     upfront loading specifically, where the aggregate cost across every worker thread directly
+     gates load time. A bigger, riskier change (the actual per-voxel-face AO-sampling hot loop)
+     than this pass's scope. **Check**: its own dedicated profiling pass, isolating AO-sampling
+     cost from base face-emission cost before proposing a fix — not a guess.
+
 ---
 
 ## Sources
@@ -850,3 +920,8 @@ exponential/height fog formulas; CI caching, shallow-clone, software-Vulkan, and
 combination guidance) — see that report for full citations rather than repeating them per-goal here.
 Groups H and J trace to this session's own direct reading of the real repository (unzipped and read
 file-by-file, not inferred from status reports) — `docs/progress.md` names the specific files read.
+Group V traces to this session's own direct reading of `WorldLoader`/`ChunkVoxels`/`mesh_extractor`
+(the three inefficiencies were found, not guessed) plus a `web-researcher` cross-check against
+production voxel-engine prior art (Veloren, Sodium, Cuberite, Vercidium) and MSVC's own documented
+`_ITERATOR_DEBUG_LEVEL`/RelWithDebInfo default-flag behavior — full citations in
+`research/chunk-generation-optimization-log.md`.

@@ -21,57 +21,28 @@ using world::chunk::MaterialID;
 using world::chunk::properties_of;
 using world::chunk::world_to_local;
 
-namespace {
-
 // Padded local-space sampling: lx/ly/lz may range one voxel past this chunk's own 0..31 bounds in
-// any direction, so the owning chunk per axis is a plain sign/range test into a 3x3x3 pointer
-// cache resolved ONCE per extraction. The per-axis mask (world_to_local on the padded coordinate
-// directly: -1 & 31 == 31, 32 & 31 == 0) is the same cross-chunk math as before -- face-, edge-,
-// and corner-adjacent neighbors all resolve with no per-direction special-casing.
-//
-// The cache replaced a ChunkStore::find per sample for a measured reason, not style: ~295k hash
-// finds per extraction each construct/destroy an unordered_map iterator, and MSVC's debug-
-// iterator bookkeeping (_ITERATOR_DEBUG_LEVEL=2) routes every one through a single global lock --
-// 16 concurrent mesh jobs ran ~80x slower than one, live-stalling chunk streaming's initial load.
-// An array index per sample is also simply cheaper than a hash find in release builds. Unchanged
-// by the Group Q blocky-meshing rewrite -- still exactly the sampling primitive both the old
-// Surface-Nets algorithm and the new per-face algorithm need.
-class NeighborCache {
-public:
-    NeighborCache(const ChunkStore& store, ChunkCoord base) {
-        for (std::int32_t dz = -1; dz <= 1; ++dz) {
-            for (std::int32_t dy = -1; dy <= 1; ++dy) {
-                for (std::int32_t dx = -1; dx <= 1; ++dx) {
-                    chunks_[slot(dx, dy, dz)] = store.find(ChunkCoord{base.x + dx, base.y + dy, base.z + dz});
-                }
-            }
-        }
+// any direction, so the owning chunk per axis is a plain sign/range test into the already-resolved
+// 3x3x3 pointer cache (NeighborCache, mesh_extractor.hpp). The per-axis mask (world_to_local on
+// the padded coordinate directly: -1 & 31 == 31, 32 & 31 == 0) is the same cross-chunk math as
+// before -- face-, edge-, and corner-adjacent neighbors all resolve with no per-direction
+// special-casing. Unchanged by the Group Q blocky-meshing rewrite -- still exactly the sampling
+// primitive both the old Surface-Nets algorithm and the new per-face algorithm need.
+MaterialID NeighborCache::sample(std::int32_t lx, std::int32_t ly, std::int32_t lz) const {
+    const std::int32_t dx = lx < 0 ? -1 : (lx >= kChunkSize ? 1 : 0);
+    const std::int32_t dy = ly < 0 ? -1 : (ly >= kChunkSize ? 1 : 0);
+    const std::int32_t dz = lz < 0 ? -1 : (lz >= kChunkSize ? 1 : 0);
+    const Chunk* chunk = chunks_[slot(dx, dy, dz)];
+    if (chunk == nullptr) {
+        // The caller is responsible for ensuring all 26 neighbors are generated first (see the
+        // header's precondition note) -- this is a safety net against a crash, not the mechanism
+        // that guarantees seamless geometry.
+        return MaterialID::Air;
     }
+    return chunk->voxels().at(local_index(world_to_local(lx), world_to_local(ly), world_to_local(lz)));
+}
 
-    [[nodiscard]] MaterialID sample(std::int32_t lx, std::int32_t ly, std::int32_t lz) const {
-        const std::int32_t dx = lx < 0 ? -1 : (lx >= kChunkSize ? 1 : 0);
-        const std::int32_t dy = ly < 0 ? -1 : (ly >= kChunkSize ? 1 : 0);
-        const std::int32_t dz = lz < 0 ? -1 : (lz >= kChunkSize ? 1 : 0);
-        const Chunk* chunk = chunks_[slot(dx, dy, dz)];
-        if (chunk == nullptr) {
-            // The caller is responsible for ensuring all 26 neighbors are generated first (see
-            // the header's precondition note) -- this is a safety net against a crash, not the
-            // mechanism that guarantees seamless geometry.
-            return MaterialID::Air;
-        }
-        return chunk->voxels().at(local_index(world_to_local(lx), world_to_local(ly), world_to_local(lz)));
-    }
-
-    [[nodiscard]] MaterialID sample(glm::ivec3 p) const { return sample(p.x, p.y, p.z); }
-
-private:
-    [[nodiscard]] static std::size_t slot(std::int32_t dx, std::int32_t dy, std::int32_t dz) {
-        return static_cast<std::size_t>(dx + 1) + static_cast<std::size_t>(dy + 1) * 3 +
-               static_cast<std::size_t>(dz + 1) * 9;
-    }
-
-    std::array<const Chunk*, 27> chunks_{};
-};
+namespace {
 
 // Group Q (research/voxel-representation-redesign.md SS2): per-voxel-face emission with greedy
 // merging, replacing Naive Surface Nets. A voxel is unambiguously owned by exactly one chunk (its
@@ -284,14 +255,17 @@ void sweep_axis_direction(int axis, int dir, const NeighborCache& neighbors, Mes
 
 } // namespace
 
-MeshData extract_mesh(const ChunkStore& store, ChunkCoord coord) {
+MeshData extract_mesh(const NeighborCache& neighbors) {
     MeshData mesh;
-    const NeighborCache neighbors(store, coord);
     for (int axis = 0; axis < 3; ++axis) {
         sweep_axis_direction(axis, +1, neighbors, mesh);
         sweep_axis_direction(axis, -1, neighbors, mesh);
     }
     return mesh;
+}
+
+MeshData extract_mesh(const ChunkStore& store, ChunkCoord coord) {
+    return extract_mesh(NeighborCache(store, coord));
 }
 
 } // namespace world::meshing

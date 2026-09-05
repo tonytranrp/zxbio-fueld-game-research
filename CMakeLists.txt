@@ -37,6 +37,25 @@ if(MSVC)
   string(APPEND CMAKE_CXX_FLAGS_RELEASE " /Zi")
   string(APPEND CMAKE_EXE_LINKER_FLAGS_RELEASE " /DEBUG /OPT:REF /OPT:ICF")
   string(APPEND CMAKE_SHARED_LINKER_FLAGS_RELEASE " /DEBUG /OPT:REF /OPT:ICF")
+
+  # RelWithDebInfo preset (chunk-generation profiling pass, 2026-09-05): added so launching via
+  # Visual Studio's own F5/debugger has a fast option, instead of only Debug (which links the
+  # debug CRT, defaulting _ITERATOR_DEBUG_LEVEL=2 -- MSVC's own documented behavior, confirmed
+  # against this project's own already-measured cost of that specific flag: 16 concurrent mesh
+  # jobs ran ~80x slower than one, see mesh_extractor.cpp's NeighborCache comment). CMake's own
+  # RelWithDebInfo default (/MD /Zi /O2 /Ob1 /DNDEBUG) already lands on the release CRT + NDEBUG
+  # side of the IDL default rule, so this does NOT reintroduce the Debug-CRT slowdown -- verified
+  # against MSVC's own documented IDL-default table, not assumed. CMake's default DOES leave one
+  # real gap versus Release, though: /Ob1 (inlines only explicitly-marked-inline functions) instead
+  # of /Ob2 (the compiler's own inlining judgment, what Release gets via /O2 alone) -- real-world
+  # precedent (OBS Studio's own RelWithDebInfo hardening) found this a measurable, not
+  # theoretical, gap. Since this preset exists specifically so a VS user gets fast chunk generation
+  # without hunting for a config-dropdown change, bump it to /Ob2 deliberately -- the honest cost
+  # is a debugger step occasionally jumping through an inlined call, acceptable for a preset whose
+  # whole purpose is speed.
+  string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " /Ob2")
+  string(APPEND CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO " /OPT:REF /OPT:ICF")
+  string(APPEND CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO " /OPT:REF /OPT:ICF")
 endif()
 
 include(CTest)

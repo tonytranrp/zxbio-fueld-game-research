@@ -9,7 +9,9 @@
 namespace world::generation {
 
 using world::chunk::ChunkCoord;
+using world::chunk::ChunkVoxels;
 using world::chunk::kChunkSize;
+using world::chunk::kMaterialCount;
 using world::chunk::local_index;
 using world::chunk::MaterialID;
 
@@ -62,7 +64,15 @@ void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightma
     }
 
     // Straddles the surface/soil band and/or sea level for at least one column: real per-voxel
-    // fill. Only non-Air voxels are ever set() -- Air is already every voxel's default.
+    // fill, which can introduce several distinct materials (Stone/Dirt/Sand/Grass/Water) in
+    // whatever order the column loop happens to hit them. Widen the index buffer to this
+    // project's real max palette size ONCE, up front, instead of letting set() discover the need
+    // incrementally -- without this, ChunkVoxels::promote() re-packs the ENTIRE index buffer from
+    // scratch at every bit-width boundary crossed (0->1, 1->2, 2->4), so a "busy" chunk could pay
+    // that O(voxel count) repack cost up to three times redundantly. kMaterialCount is this
+    // project's own self-updating total (Air included), so this stays correct if a material is
+    // ever added. Only non-Air voxels are ever set() -- Air is already every voxel's default.
+    chunk.voxels().reserve_bits(ChunkVoxels::bits_for_palette_size(kMaterialCount));
     for (std::int32_t lz = 0; lz < kChunkSize; ++lz) {
         for (std::int32_t lx = 0; lx < kChunkSize; ++lx) {
             const float surfaceHeightF = heightAt(lx, lz);

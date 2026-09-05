@@ -19,6 +19,15 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "windows-relwithdebinfo",
+      "displayName": "Windows RelWithDebInfo (Ninja, short build dir, fast + debuggable)",
+      "description": "Optimized build with debug symbols -- the config to pick from Visual Studio's own configuration dropdown when you want to run/debug interactively without paying Debug's _ITERATOR_DEBUG_LEVEL=2 tax (this project measured that tax at ~80x for concurrent hash-map-heavy code; see mesh_extractor.cpp's NeighborCache comment and CLAUDE.md). Release remains the near-zero-compromise choice when raw speed matters most.",
+      "inherits": "windows-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
     }
   ],
   "buildPresets": [
@@ -29,6 +38,10 @@
     {
       "name": "windows-release",
       "configurePreset": "windows-release"
+    },
+    {
+      "name": "windows-relwithdebinfo",
+      "configurePreset": "windows-relwithdebinfo"
     }
   ],
   "testPresets": [
@@ -41,6 +54,12 @@
     {
       "name": "windows-release",
       "configurePreset": "windows-release",
+      "output": { "outputOnFailure": true },
+      "execution": { "timeout": 60 }
+    },
+    {
+      "name": "windows-relwithdebinfo",
+      "configurePreset": "windows-relwithdebinfo",
       "output": { "outputOnFailure": true },
       "execution": { "timeout": 60 }
     }
