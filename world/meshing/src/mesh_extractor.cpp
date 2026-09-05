@@ -7,23 +7,23 @@
 #include <limits>
 #include <vector>
 
+#include "world/chunk/block_type.hpp"
+
 namespace world::meshing {
 
 using world::chunk::Chunk;
 using world::chunk::ChunkCoord;
 using world::chunk::ChunkStore;
+using world::chunk::is_occupied;
 using world::chunk::kChunkSize;
 using world::chunk::local_index;
 using world::chunk::MaterialID;
+using world::chunk::properties_of;
 using world::chunk::world_to_local;
 
 namespace {
 
 constexpr std::uint32_t kNoVertex = std::numeric_limits<std::uint32_t>::max();
-
-bool is_solid(MaterialID m) {
-    return m != MaterialID::Air;
-}
 
 // Padded local-space sampling: lx/ly/lz may range one voxel past this chunk's own 0..31 bounds in
 // any direction, so the owning chunk per axis is a plain sign/range test into a 3x3x3 pointer
@@ -114,7 +114,7 @@ struct CellSample {
             corners[i] =
                 neighbors.sample(cx + static_cast<std::int32_t>(off.x), cy + static_cast<std::int32_t>(off.y),
                                  cz + static_cast<std::int32_t>(off.z));
-            solidCorners += is_solid(corners[i]) ? 1 : 0;
+            solidCorners += is_occupied(corners[i]) ? 1 : 0;
         }
 
         CellSample cell;
@@ -130,7 +130,7 @@ struct CellSample {
         for (const auto& edge : kEdges) {
             const MaterialID a = corners[static_cast<std::size_t>(edge[0])];
             const MaterialID b = corners[static_cast<std::size_t>(edge[1])];
-            if (is_solid(a) != is_solid(b)) {
+            if (is_occupied(a) != is_occupied(b)) {
                 sum += (kCornerOffsets[static_cast<std::size_t>(edge[0])] +
                         kCornerOffsets[static_cast<std::size_t>(edge[1])]) *
                        0.5f;
@@ -140,12 +140,12 @@ struct CellSample {
                 // surface materials this makes every surface cell read its actual TOP material
                 // (grass skin, sand shore) instead of whichever soil corner edge-iteration
                 // happened to visit first; the water tiebreak keeps shoreline edges land-colored.
-                const std::size_t solidIdx = static_cast<std::size_t>(is_solid(a) ? edge[0] : edge[1]);
-                const MaterialID solidMat = is_solid(a) ? a : b;
+                const std::size_t solidIdx = static_cast<std::size_t>(is_occupied(a) ? edge[0] : edge[1]);
+                const MaterialID solidMat = is_occupied(a) ? a : b;
                 const float cornerY = kCornerOffsets[solidIdx].y;
-                const bool better =
-                    cornerY > bestCornerY || (cornerY == bestCornerY && cell.material == MaterialID::Water &&
-                                              solidMat != MaterialID::Water);
+                const bool better = cornerY > bestCornerY ||
+                                    (cornerY == bestCornerY && properties_of(cell.material).is_liquid &&
+                                     !properties_of(solidMat).is_liquid);
                 if (cell.material == MaterialID::Air || better) {
                     cell.material = solidMat;
                     bestCornerY = cornerY;
@@ -268,8 +268,8 @@ void emit_quads_along_axis(Axis axis, const NeighborCache& neighbors,
                     hi = neighbors.sample(vx, vy, vz + 1);
                     break;
                 }
-                const bool loSolid = is_solid(lo);
-                if (loSolid == is_solid(hi)) {
+                const bool loSolid = is_occupied(lo);
+                if (loSolid == is_occupied(hi)) {
                     continue; // not a crossing edge
                 }
 
@@ -361,7 +361,7 @@ MeshData extract_mesh(const ChunkStore& store, ChunkCoord coord) {
                     continue;
                 }
                 float ao = cell.ao;
-                if (cell.material == MaterialID::Water) {
+                if (properties_of(cell.material).is_liquid) {
                     // Water repurposes the AO attribute as WATER-COLUMN DEPTH (see
                     // research/water-foliage-design.md goal 28): concavity-AO is meaningless on a
                     // flat open surface, and the shader's water path wants depth for its
@@ -369,7 +369,7 @@ MeshData extract_mesh(const ChunkStore& store, ChunkCoord coord) {
                     // at 8 (also the honest limit of the one-chunk neighbor halo).
                     // Counts from the anchor voxel itself (part of the column) downward.
                     int depth = 0;
-                    while (depth < 8 && neighbors.sample(cx, cy - depth, cz) == MaterialID::Water) {
+                    while (depth < 8 && properties_of(neighbors.sample(cx, cy - depth, cz)).is_liquid) {
                         ++depth;
                     }
                     ao = static_cast<float>(depth) / 8.0f;

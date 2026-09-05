@@ -1,8 +1,10 @@
+#include <array>
 #include <cstddef>
 #include <stdexcept>
 
 #include "detail/terrain_renderer_impl.hpp"
 
+#include "world/chunk/block_type.hpp"
 #include "world/chunk/material.hpp"
 
 #include "Graphics/GraphicsEngine/interface/Shader.h"
@@ -13,26 +15,26 @@ namespace {
 
 using namespace Diligent;
 
-// The material palette cbuffer (float4 per MaterialID) is sized to the actual material count from
-// world/chunk -- adding a material means updating this array AND g_MaterialColors[] in
-// terrain.psh.hlsl together (task 12).
-constexpr std::size_t kMaterialCount = static_cast<std::size_t>(world::chunk::MaterialID::Grass) + 1;
+using world::chunk::kBlockTable;
+using world::chunk::kMaterialCount;
 static_assert(kMaterialCount == 8, "terrain.psh.hlsl declares g_MaterialColors[8] -- update both together");
 
-// Linear-space albedo per MaterialID; index 0 (Air) is never sampled by a real fragment but keeps
-// indexing direct. Goal 19's pass: richer/more saturated than the original deliberately-muted
-// placeholders, judged against viewed before/after dumps (not picked blind); Group M (goal 94)
-// extended it with the sand/grass surface bands.
-constexpr float kMaterialColors[kMaterialCount][4] = {
-    {0.0f, 0.0f, 0.0f, 1.0f},    // Air (unused)
-    {0.52f, 0.49f, 0.44f, 1.0f}, // Stone (warm gray, not blue-gray)
-    {0.44f, 0.28f, 0.14f, 1.0f}, // Dirt (richer brown)
-    {0.09f, 0.33f, 0.58f, 1.0f}, // Water (deeper ocean blue)
-    {0.36f, 0.22f, 0.09f, 1.0f}, // Wood (tree trunks)
-    {0.20f, 0.50f, 0.12f, 1.0f}, // Leaves (livelier canopy green)
-    {0.78f, 0.70f, 0.46f, 1.0f}, // Sand (shoreline band)
-    {0.23f, 0.48f, 0.13f, 1.0f}, // Grass (surface skin on gentle land)
-};
+// The material palette cbuffer (float4 per MaterialID), generated FROM world::chunk::kBlockTable
+// (Group P, research/voxel-representation-redesign.md §6) instead of a hand-duplicated array --
+// changing a color in kBlockTable changes the rendered result with no second edit here. Alpha is
+// always 1 (unused by the shader, kept for float4 cbuffer packing). Goal 19's pass tuned these
+// richer/more saturated than the original deliberately-muted placeholders, judged against viewed
+// before/after dumps; Group M (goal 94) extended it with the sand/grass surface bands -- both
+// still true, just sourced from one table now instead of two.
+constexpr std::array<std::array<float, 4>, kMaterialCount> make_material_colors() {
+    std::array<std::array<float, 4>, kMaterialCount> out{};
+    for (std::size_t i = 0; i < kMaterialCount; ++i) {
+        const auto& c = kBlockTable[i].color;
+        out[i] = {c[0], c[1], c[2], 1.0f};
+    }
+    return out;
+}
+constexpr std::array<std::array<float, 4>, kMaterialCount> kMaterialColors = make_material_colors();
 
 // The GPU input layout is a byte-for-byte contract with detail::GpuVertexCompressed (built at
 // upload time from world::meshing::Vertex) -- freeze it here so a layout change breaks the build
@@ -184,7 +186,7 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
         desc.Size = sizeof(kMaterialColors);
         desc.Usage = USAGE_IMMUTABLE;
         desc.BindFlags = BIND_UNIFORM_BUFFER;
-        BufferData initial{kMaterialColors, sizeof(kMaterialColors)};
+        BufferData initial{kMaterialColors.data(), sizeof(kMaterialColors)};
         impl.context->impl().device->CreateBuffer(desc, &initial, &impl.materialPalette);
         if (!impl.materialPalette) {
             throw std::runtime_error("material palette buffer creation failed");

@@ -59,6 +59,11 @@ void main(in VSInput VSIn, out PSInput PSIn)
 
     // Goal 39: wind sway on tree CANOPIES only -- material 5 is Leaves; trunks (Wood) and
     // terrain get zero offset, so trunks visibly stay still while canopies move.
+    // Group P (research/voxel-representation-redesign.md §6): this stays a raw material-ID
+    // literal deliberately -- world::chunk::kBlockTable is a C++ constexpr table HLSL cannot
+    // consume, so the CPU/GPU boundary is where the "single source of truth" migration stops.
+    // Only the material -> color mapping was moved into the table (pso_terrain.cpp); which
+    // *behavior* applies per material is still real, honest per-shader dispatch.
     if (VSIn.Material == 5u)
     {
         const float t = g_TimeAndPad.x;

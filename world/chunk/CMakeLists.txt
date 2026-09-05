@@ -8,6 +8,7 @@ target_sources(world_chunk PUBLIC
     BASE_DIRS include
     FILES
         include/world/chunk/material.hpp
+        include/world/chunk/block_type.hpp
         include/world/chunk/chunk_voxels.hpp
         include/world/chunk/chunk_coord.hpp
         include/world/chunk/coord_containers.hpp

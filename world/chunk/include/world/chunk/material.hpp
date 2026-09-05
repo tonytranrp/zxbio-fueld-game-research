@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace world::chunk {
@@ -18,5 +19,11 @@ enum class MaterialID : std::uint8_t {
     Sand = 6,  // shoreline band around sea level
     Grass = 7, // surface skin on gentle above-sea terrain
 };
+
+// The one place this count is computed -- block_type.hpp's kBlockTable and pso_terrain.cpp's GPU
+// palette buffer both size themselves from this instead of each hand-tracking the enum's high
+// value (Group P, voxel-representation-redesign.md §6). Appending a material only means adding an
+// enum value here and a kBlockTable row in block_type.hpp; this updates itself.
+inline constexpr std::size_t kMaterialCount = static_cast<std::size_t>(MaterialID::Grass) + 1;
 
 } // namespace world::chunk

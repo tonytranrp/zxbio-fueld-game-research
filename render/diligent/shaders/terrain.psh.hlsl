@@ -110,7 +110,10 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     // convention the reference scheme also uses).
     float3 lit = albedo * (ambient + sunColor * diffuse) * PSIn.AO;
 
-    // Material 3 is Water: full replacement path (fresnel/ripple/depth-tint/glint).
+    // Material 3 is Water: full replacement path (fresnel/ripple/depth-tint/glint). Same
+    // CPU/GPU-boundary note as terrain.vsh.hlsl's material==5 branch: kBlockTable.is_liquid
+    // drives CPU-side logic (mesh_extractor.cpp, block_type.hpp), this literal drives the
+    // shader-side one -- two honest dispatches either side of a boundary HLSL can't cross.
     if (PSIn.Material == 3u)
     {
         const float3 viewDir = normalize(g_CameraPosWorld.xyz - PSIn.WorldPos);

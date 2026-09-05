@@ -3,6 +3,7 @@ set(CMAKE_CXX_CLANG_TIDY "")
 add_executable(world_chunk_tests
     test_chunk_voxels.cpp
     test_chunk_coord.cpp
+    test_block_type.cpp
 )
 target_link_libraries(world_chunk_tests PRIVATE world_chunk Catch2::Catch2WithMain project_warnings)
 
