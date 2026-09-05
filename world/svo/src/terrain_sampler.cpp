@@ -291,7 +291,7 @@ void TerrainSampler::fill_brick(const glm::vec3& origin, float voxelEdge, Brick&
     } else {
         g_gridHits.fetch_add(1, std::memory_order_relaxed);
     }
-    const std::array<float, N * N>& h = cached.h;
+    const std::array<float, kBrickVoxels / kBrickEdge>& h = cached.h; // 64 column heights
     const world::generation::HeightmapMinMax hRange = cached.range;
     const float brickTop = origin.y + static_cast<float>(N - 1) * voxelEdge; // highest voxel bottom
     // The builder's box classification is deliberately conservative, so many bricks it asks for

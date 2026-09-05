@@ -19,7 +19,27 @@ water) chosen to evoke the *feeling* of that aesthetic. Since the Voxel Represen
 (`research/voxel-representation-redesign.md`), the terrain mesh itself is genuinely blocky —
 per-voxel-face, greedy-merged cubes — rather than a smooth iso-surface merely *lit* to look chunky.
 
-## Current state (2026-09-05, after the chunk-generation optimization pass)
+## Current state (2026-09-05, after the micro-voxel pivot)
+
+**The world is now sub-centimeter.** `voxel_app`'s default path (`--renderer svo`,
+`research/micro-voxel-pivot-log.md`) builds a **sparse-brick octree** around the camera — 8³
+bricks of **7.8 mm voxels** within 4 m, halving in resolution per doubling of distance out to a
+512 m region — on a background thread in **0.56 s**, uploads it (~200–400 MB depending on how much
+surface is in range) and **ray-marches it on the GPU** in one fullscreen pass: 155–159 fps at
+1280x720 (vsync-capped) panoramic, 76 fps ground-level with a traced sun-shadow ray and 4-ray AO
+per pixel. The same generator, banding rules and trees as before (proven byte-identical to
+`fill_terrain` at 1 m), so this is the same world at 128x the resolution, not a new one: islands,
+grass caps, conifers, sun-glinting water, fog, all composed through the unchanged bloom/tonemap
+chain. The camera moving 2 m triggers a whole-tree rebuild (0.6–1.3 s, background, swapped in
+with a 30–60 ms upload). Mesh-world everything below stays available behind `--renderer mesh`.
+
+Numbers: **101/101 tests** (24 new `world/svo` tests including a 7,000-ray brute-force traversal
+oracle, plus a CPU-rendered smoke frame in the GPU-less CI jobs); `--verify-frame` reads **48%**
+local contrast on both Vulkan and D3D12 (identical dumps, viewed). Open: sub-pixel voxel shimmer
+2–8 m out (goal 159, needs TAA), whole-rebuild cost on movement (goal 158), material compression
+(goal 157), editing (goal 160).
+
+### The mesh path (still shipped behind `--renderer mesh`, unchanged)
 
 `voxel_app` opens on Vulkan or D3D12, pregenerates a **static, bounded world** once at startup
 (a real ImGui loading-progress bar while it does), then drops into a **colorful, lit, blocky
@@ -120,15 +140,21 @@ not yet**, and that gap is named, not glossed over.
 engine/{core,ecs,jobs,input,events}   -- core loop/log/config, EnTT wrapper, ThreadPool (moodycamel-
                                           backed), GLFW input (+G walk toggle, F2 screenshot),
                                           entt::dispatcher event bus
-world/{chunk,generation,meshing,streaming}
+world/{chunk,generation,meshing,streaming,svo}
+  svo/         -- MICRO-VOXEL PIVOT (2026-09-05): sparse-brick octree -- 8^3 bricks (material
+                  bytes + occupancy mask) under an SVDAG-layout node array with distance LOD built
+                  in; TerrainSampler (the generator generalized to meters + implicit trees);
+                  HeightField (sound min/max pyramid); parallel build_tree; trace_ray, the CPU
+                  reference the HLSL marcher mirrors. README.md states the folder's rules.
   chunk/       -- paletted voxel storage; CoordMap/CoordSet over boost::unordered_flat_map;
                   8 materials (Air,Stone,Dirt,Water,Wood,Leaves,Sand,Grass); block_type.hpp's
                   kBlockTable is the single source of truth for every material's real properties
                   (color, is_solid, is_liquid, supports_growth, hardness) -- a constexpr table, not
                   a runtime registry, since the material set is small and compile-time-known
   generation/  -- FastNoise2 heightfield; banded surface materials from (height, depth, slope)
-                  with a seam-exact 34x34 margin grid; height_at() analytic query -- UNCHANGED by
-                  the redesign, the mesher consuming its output is what changed
+                  with a seam-exact 34x34 margin grid; height_at() analytic query; the spaced-grid
+                  variant the svo sampler uses; tree_placement (moved here from app/ so the mesh
+                  emitter and the voxelizer share one implicit-shape definition)
   meshing/     -- per-voxel-face emission + greedy merging (replaced Naive Surface Nets): 6
                   axis+direction sweeps, each a 2D exposure mask per layer merged into maximal
                   quads; real per-face-corner baked AO (0fps.net's actual scheme); 12B compressed
@@ -140,16 +166,20 @@ world/{chunk,generation,meshing,streaming}
 render/{interface,diligent}  -- interface stays Diligent-free (grep-verified); diligent owns
                   device/PSOs/sky pass/fog constants/post chain (PostProcessor: RGBA16F scene
                   target + DiligentFX Bloom + soft-knee composite)/frame verify+PNG dumps/overlay
-                  (DebugOverlay::render_loading is the new one-time load progress bar)
-app/          -- main.cpp's run() loop branches on WorldLoader::finished() -- a loading-screen
+                  (DebugOverlay::render_loading is the new one-time load progress bar); SvoRenderer
+                  + shaders/svo_march.psh.hlsl (the fullscreen GPU ray march writing SV_Depth)
+app/          -- main.cpp: Session (shared setup) + run_svo (SvoWorld background rebuilds ->
+                  SvoRenderer) / run_mesh (the loop below); svo_world.{hpp,cpp};
+                  the mesh loop branches on WorldLoader::finished() -- a loading-screen
                   phase, then the interactive phase with NO per-frame streaming call at all;
                   world_loader.{hpp,cpp} (replaced chunk_streaming.*) does one-time parallel
                   generate->mesh->upload, budgeted (with a hard per-call ceiling, not just the old
                   proportional floor -- needed at this scale) the same way the old streaming
                   system paced GPU uploads; spectator camera (fly/walk/swim), tree_decoration
                   (3 shapes), aim_query, crash_handler
-tools/mesh_dump (.obj export), benchmarks/ (Google Benchmark + dated baselines +
-                  measure_world_memory's one-shot storage report)
+tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the octree world to PNG,
+                  a ctest), benchmarks/ (Google Benchmark + dated baselines + measure_world_memory's
+                  one-shot storage report)
 ```
 
 ## Decisions that survived contact with evidence (this pass's additions)
@@ -255,7 +285,42 @@ tools/mesh_dump (.obj export), benchmarks/ (Google Benchmark + dated baselines +
   (goal 147 — now the dominant cost, but a bigger, riskier change than this pass's two fixes,
   deserving its own dedicated profiling pass rather than a rushed addition here).
 
+### The micro-voxel pivot's own additions (2026-09-05, `research/micro-voxel-pivot-log.md`)
+
+- **Write the CPU reference and its oracle before the shader, then use them to debug the GPU.**
+  The traversal was proven against a brute-force voxel DDA over 7,000 random rays before one line
+  of HLSL existed; when the first GPU frame came out sky-only, `tools/svo_render` at the same pose
+  showed terrain in seconds, which said "the data binding, not the algorithm" — and it was
+  (Diligent's MUTABLE SRB variables bind once; the tree buffers are replaced on every rebuild).
+- **Measure the oversampling per level before optimizing anything.** Three plausible build-time
+  culprits (noise calls, trees, cache misses) were each measured and found irrelevant; a per-level
+  sampled-vs-kept histogram found the real one in one run — 800K of 1.04M finest-level bricks were
+  homogeneous *dirt*, because the classifier could only prove "stone" 3 m down. A sound
+  classification rule for the soil band halved the build; no micro-optimization came close.
+- **A research brief for a different stack is still worth the read, as long as the stack mismatch
+  is named first.** Every technique in the pasted micro-voxel brief transferred (bricked SVO, SVDAG
+  node layout, brick size, LOD criterion, the DAG-dedup-vs-editability tension); every library
+  recommendation did not. Treating "keep VoxelHex" as a technique instead of a dependency is what
+  made it usable.
+- **Keep the equivalence with the shipped world as a test, not a hope.** `TerrainSampler` at 1 m is
+  byte-identical to `fill_terrain` over 117,600 voxels, which is why the sub-cm world is the SAME
+  world; the one column class it skips (negative surface heights) exposed a real pre-existing
+  truncation quirk in `fill_terrain` (goal 161) instead of being papered over with a tolerance.
+- Decided against, in writing: HashDAG (no editing exists to make it pay yet, goal 160), hardware
+  ray queries (portable traversal is already vsync-bound), 4-bit materials (fits the card; goal
+  157 with a number), TAA (real shimmer, real goal 159, not this pass).
+
 ## Honest "what problems does the code have now" (goal 103, re-examined after the redesign)
+
+- **The svo path rebuilds the whole tree and re-uploads 200–400 MB whenever the camera moves 2 m**
+  (0.6–1.3 s in the background, a 30–60 ms upload hitch when it lands — measured as the 45–61 ms
+  worst frames in every run). Correct and playable, but the far rings barely change between
+  rebuilds; goal 158's incremental reuse is the real fix, deliberately deferred until measured.
+- **Sub-pixel voxels shimmer** 2–8 m from the camera (visible moiré in every capture): the marcher's
+  LOD early-out stops at nodes, not at the 8 mm voxels inside the finest bricks. TAA/supersampling
+  is goal 159; the mesh path never had this problem because it never had sub-pixel geometry.
+- **The svo world cannot be edited** — it is rebuilt from the analytic sampler; there is no
+  mutable structure (goal 160).
 
 - **The pre-redesign sliver-curtain defect's status is genuinely unknown, not silently carried
   forward or silently declared fixed**: it was root-caused (as far as three offline
@@ -310,7 +375,9 @@ tools/mesh_dump (.obj export), benchmarks/ (Google Benchmark + dated baselines +
 
 ## Sources this file compresses
 
-`research/chunk-generation-optimization-log.md` (this pass's own full record — root causes, the
+`research/micro-voxel-pivot-log.md` (the sub-cm pivot: every design decision, the build-time
+optimization table, and the real numbers).
+`research/chunk-generation-optimization-log.md` (the prior pass's own full record — root causes, the
 research cross-check, and every before/after number). `research/voxel-representation-redesign.md`
 (the prior pass's own full design record — meshing, world topology, storage, block properties,
 sequencing, and citations) and `research/micro-voxel-object-design.md` (Group R's design). From

@@ -228,7 +228,10 @@ private:
 
     std::uint32_t splice_job(glm::ivec3 cell, SubtreeOutput& out, std::vector<SubtreeOutput>& jobs) const {
         const int n = 1 << params_.parallel_split_level;
-        const auto index = static_cast<std::size_t>((cell.z * n + cell.y) * n + cell.x);
+        const auto un = static_cast<std::size_t>(n);
+        const std::size_t index =
+            (static_cast<std::size_t>(cell.z) * un + static_cast<std::size_t>(cell.y)) * un +
+            static_cast<std::size_t>(cell.x);
         SubtreeOutput& job = jobs[index];
         out.stats.boxes_classified += job.stats.boxes_classified;
         out.stats.bricks_sampled += job.stats.bricks_sampled;
@@ -284,7 +287,10 @@ BrickTree build_tree(const S& sampler, const TreeGeometry& geometry, const Build
         for (int z = 0; z < n; ++z) {
             for (int y = 0; y < n; ++y) {
                 for (int x = 0; x < n; ++x) {
-                    const auto index = static_cast<std::size_t>((z * n + y) * n + x);
+                    const auto un = static_cast<std::size_t>(n);
+                    const std::size_t index =
+                        (static_cast<std::size_t>(z) * un + static_cast<std::size_t>(y)) * un +
+                        static_cast<std::size_t>(x);
                     futures.push_back(pool->submit([&builder, &jobs, index, split, x, y, z] {
                         detail::SubtreeOutput& job = jobs[index];
                         job.root = builder.build_node(split, glm::ivec3{x, y, z}, job, nullptr, nullptr);

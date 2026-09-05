@@ -37,7 +37,10 @@ Table of contents: [A. Documentation migration](#a-documentation-migration) ·
 [S. Static, bounded world](#s-static-bounded-world) ·
 [T. Storage compression, phased](#t-storage-compression-phased) ·
 [U. Redesign consolidation](#u-redesign-consolidation) ·
-[V. Chunk-generation load-time optimization](#v-chunk-generation-load-time-optimization)
+[V. Chunk-generation load-time optimization](#v-chunk-generation-load-time-optimization) ·
+[W. Sparse-brick octree core](#w-sparse-brick-octree-core-micro-voxel-pivot) ·
+[X. GPU ray-marched renderer](#x-gpu-ray-marched-renderer) ·
+[Y. Micro-voxel measurements & follow-ups](#y-micro-voxel-measurements--follow-ups)
 
 ---
 
@@ -909,6 +912,89 @@ and every real number: `research/chunk-generation-optimization-log.md`.
 
 ---
 
+## Micro-voxel pivot (groups W–Y)
+
+The request after Group V: "John Lin style sub-cm instead of blocks". The shipping 1 m greedy-mesh
+world cannot get there (mesh size scales with the square of resolution — sub-cm is ~16,000x the
+triangles), so the world representation and the renderer both changed: a sparse-brick octree with
+distance LOD built in, rebuilt around the camera on a background thread, ray-marched on the GPU in
+one fullscreen pass. The mesh path stays intact behind `--renderer mesh`. Full decision log and
+every real number: `research/micro-voxel-pivot-log.md`. The research brief that prompted this was
+written against the deprecated Rust/VoxelHex track; its techniques transfer, its library picks do
+not (the brief's §2.2 "bricked SVO" was built here directly, in `world/svo`).
+
+## W. Sparse-brick octree core (micro-voxel pivot)
+
+148. [x] `world/svo` module: 8³ bricks (material bytes + 512-bit occupancy mask) under an
+     SVDAG-layout octree (header word + one pointer per set child bit; kind + representative
+     material in the header's spare bits), homogeneous boxes as single-word solid leaves, air
+     absent. **Check**: layout round-trip tests; the flat `nodes`/`bricks` arrays ARE the GPU
+     format (goal 151 uploads them verbatim).
+149. [x] `TerrainSampler`: the existing `HeightmapGenerator` + `fill_terrain` banding generalized
+     to meters, trees as implicit shapes shared with the mesh emitter (placement moved to
+     `world/generation/tree_placement`). **Check**: byte-identical to `fill_terrain` at 1 m over
+     117,600 voxels (`test_terrain_sampler.cpp`); box classification sound against dense sampling
+     (6,000 boxes, with and without trees); trees voxelized at their placements.
+150. [x] `build_tree`: parallel (32K subtree jobs merged deterministically — byte-identical to a
+     serial build, tested), distance-LOD (full resolution within `lod_radius`, halving per
+     doubling of distance; tested never coarser than the rule asks), with a sound height-field
+     pyramid for empty-space/solid-interior skipping. **Check**: uniform-LOD tree equals the
+     sampler at every voxel of a 64³ sphere; real terrain at 7.8 mm near the camera builds at full
+     depth underfoot. **Real build cost, 256 m root at 7.8 mm, 16 threads: 12.4 s -> 1.5 s** over
+     the pass (per-cell margins, tiered focus fields, slope from the field, the solid soil-band
+     rule, deeper split — each measured, `research/micro-voxel-pivot-log.md` §2.4).
+151. [x] `trace_ray`: the CPU reference marcher (integer-cell stepping, brick DDA, Laine-Karras
+     LOD early-out) plus a brute-force finest-voxel oracle. **Check**: 0 mismatches over 7,000
+     random rays on uniform and mixed-LOD trees (origins inside/outside, axis-aligned rays).
+152. [x] `tools/svo_render`: whole frames with the reference marcher to PNG (dependency-free
+     encoder), the same pose flags as the app, `--verify` applying the app's local-contrast metric.
+     **Check**: a ctest (`svo_render_smoke`) in the GPU-less CI jobs; the first sub-cm image of
+     this world was viewed from it before any GPU code existed.
+
+## X. GPU ray-marched renderer
+
+153. [x] `svo_march.psh.hlsl`: `trace_ray` ported statement for statement; fullscreen pass writing
+     `SV_Depth` so bloom/tonemap/overlay compose unchanged; sky on miss; shading = the terrain
+     pass's model + a traced sun-shadow ray + 4-ray short hemisphere AO (`--no-shadows`,
+     `--no-ao`, `--no-lod-march`, `--lod-quality`). **Check**: `--verify-frame` **48.0%** on Vulkan
+     AND D3D12 (FXC needed masked vector writes — X3500), dumps viewed and identical. First GPU
+     frame was sky-only: the CPU reference at the same pose isolated it to Diligent's MUTABLE-once
+     SRB rule (fixed with DYNAMIC variables).
+154. [x] `SvoRenderer` (buffers, PSO, upload with deferred release of the previous tree) and
+     `SvoWorld` (background rebuild on a dedicated thread whenever the camera leaves the inner
+     half of the finest ring). **Check**: `--walk --autofly --frames 600`: 0 ground violations, 3
+     rebuilds during the run (0.57–0.68 s each, 28–42 ms uploads).
+155. [x] `--renderer svo|mesh` (svo is the default now), svo flags (`--voxel-log2`,
+     `--region-log2`, `--lod-radius`, `--no-trees`), overlay lines (voxel size, bricks/MB/nodes,
+     build/upload times, rebuilding flag), loading screen, CI WARP smoke for the svo path.
+     **Check**: world ready in **0.56 s** at the default (mesh path: 29.9 s); 155–159 fps at
+     1280x720 panoramic (vsync-capped), 76 fps ground-level with shadows+AO.
+
+## Y. Micro-voxel measurements & follow-ups
+
+156. [x] Real numbers table (`research/micro-voxel-pivot-log.md` §4): bricks per LOD level, MB,
+     build/upload times, fps by pose and feature. **Check**: every number from an actual run.
+157. Per-brick palette / 4-bit materials (brief §3.2's "cheap first" step): 2–4x on the ~350–400 MB
+     the surface bricks take at the shipping default. **Check**: before/after tree bytes at the
+     same pose, and no `--verify-frame`/oracle regression.
+158. Incremental rebuild: reuse unchanged subtrees (far rings) and a persistent brick pool with
+     partial uploads, instead of the whole-tree rebuild + 200–400 MB upload on every move.
+     **Check**: rebuild wall-clock and upload bytes per camera step, before/after.
+159. Temporal AA (or supersampling) for the sub-pixel voxel shimmer 2–8 m out — visible moiré in
+     every capture, the same reason John Lin's renderer needs TAA. **Check**: viewed capture pair.
+160. Editing: the tree is rebuilt from an analytic sampler and never mutated; digging/placing needs
+     a mutable structure (HashDAG is the researched shape, brief §2.2). Not started.
+161. `fill_terrain` truncates the surface height toward zero (`static_cast<int32_t>`) instead of
+     flooring, so underwater terrain sits one voxel higher than the geometric rule the sampler
+     uses — a pre-existing quirk found by the equivalence test (which skips negative-height
+     columns). **Check**: switch to `floor`, then the equivalence test covers every column.
+162. Build-time profile is now ~60% `fill_brick` (2.9 µs per sampled brick, ~2x sampled per kept)
+     with the column grid cache hitting only ~9%: the remaining oversampling is horizontal, not the
+     vertical stacks the cache was written for. **Check**: Tracy capture of one build before the
+     next optimization, not another guess.
+163. DAG deduplication as a measurement (brief §5.3, hash-interning): expected small on noise
+     terrain; the brief's 16-identical-tiles test is the unit check.
+
 ## Sources
 
 Every technical detail in groups C–F, I, and L traces to the extended research task completed this
@@ -924,4 +1010,8 @@ Group V traces to this session's own direct reading of `WorldLoader`/`ChunkVoxel
 (the three inefficiencies were found, not guessed) plus a `web-researcher` cross-check against
 production voxel-engine prior art (Veloren, Sodium, Cuberite, Vercidium) and MSVC's own documented
 `_ITERATOR_DEBUG_LEVEL`/RelWithDebInfo default-flag behavior — full citations in
-`research/chunk-generation-optimization-log.md`.
+`research/chunk-generation-optimization-log.md`. Groups W–Y trace to the pasted micro-voxel research
+brief (Laine & Karras 2010; Kämpe, Sintorn & Assarsson 2013; Careil et al. 2020 HashDAG; Crassin et
+al. 2009 GigaVoxels; Dolonius et al. 2017) and to this session's own direct reading of every module
+it touched — the brief's stack (Rust/VoxelHex) did not match this repository's, so its techniques
+were re-implemented, not adopted; `research/micro-voxel-pivot-log.md` has the decisions and numbers.

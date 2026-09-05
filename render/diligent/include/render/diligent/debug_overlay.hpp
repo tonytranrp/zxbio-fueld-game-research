@@ -31,6 +31,23 @@ struct OverlayStats {
     std::uint64_t gpu_self_bytes = 0; // §2.3 number 1: our own chunk buffers (GpuAllocationTracker)
     std::uint64_t gpu_self_peak_bytes = 0;
     GpuMemoryBudget budget; // §2.3 number 2: VK_EXT_memory_budget, machine-wide
+
+    // Micro-voxel path (docs/goals.md Group X): the sparse-brick octree's own numbers, shown
+    // instead of the chunk lines when `active`.
+    struct Svo {
+        bool active = false;
+        bool building = false;
+        std::size_t bricks = 0;
+        std::size_t internal_nodes = 0;
+        std::size_t solid_leaves = 0;
+        std::size_t memory_bytes = 0;
+        std::size_t trees = 0;
+        std::size_t uploads = 0;
+        double build_seconds = 0.0;
+        double upload_ms = 0.0;
+        double voxel_mm = 0.0;
+        int levels = 0;
+    } svo;
 };
 
 // Dear ImGui debug overlay: Diligent's vendored ImGui renderer (DiligentTools) + the vendored
@@ -55,6 +72,10 @@ public:
     // this same ImGui overlay infrastructure rather than a new UI system -- a real, moving bar fed
     // by WorldLoader's own completion count, not a static "Loading..." string.
     void render_loading(std::size_t chunksReady, std::size_t chunksTotal);
+
+    // Indeterminate variant for the svo path (a single tree build has no chunk-count progress):
+    // the message plus elapsed seconds.
+    void render_loading_message(const char* message, double elapsedSeconds);
 
 private:
     struct Impl;

@@ -3,6 +3,7 @@ add_executable(voxel_app
     src/glfw_window.cpp
     src/spectator_camera.cpp
     src/world_loader.cpp
+    src/svo_world.cpp
     src/tree_decoration.cpp
     src/aim_query.cpp
     src/crash_handler.cpp
@@ -20,6 +21,7 @@ target_link_libraries(voxel_app PRIVATE
     world_generation
     world_meshing
     world_streaming
+    world_svo
     render_interface
     render_diligent
     glfw

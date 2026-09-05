@@ -57,15 +57,25 @@ void DebugOverlay::render(const OverlayStats& stats) {
         ImGui::Text("%.1f fps (%.2f ms)", static_cast<double>(stats.fps),
                     static_cast<double>(stats.frame_ms));
         ImGui::Separator();
-        ImGui::Text("chunks ready: %zu", stats.ready_chunks);
-        ImGui::Text("visible after culling: %zu / %zu", stats.visible_chunks, stats.total_chunk_meshes);
-        ImGui::Text("objects: %zu (%zu round / %zu conifer / %zu shrub)", stats.objects, stats.objects_round,
-                    stats.objects_conifer, stats.objects_shrub);
+        if (stats.svo.active) {
+            ImGui::Text("svo: %.3g mm voxels, %d levels%s", stats.svo.voxel_mm, stats.svo.levels,
+                        stats.svo.building ? "  [rebuilding]" : "");
+            ImGui::Text("bricks: %zu (%.1f MB), %zu internal, %zu solid", stats.svo.bricks,
+                        static_cast<double>(stats.svo.memory_bytes) / 1.0e6, stats.svo.internal_nodes,
+                        stats.svo.solid_leaves);
+            ImGui::Text("build %.2f s, upload %.1f ms, %zu uploads, %zu trees", stats.svo.build_seconds,
+                        stats.svo.upload_ms, stats.svo.uploads, stats.svo.trees);
+        } else {
+            ImGui::Text("chunks ready: %zu", stats.ready_chunks);
+            ImGui::Text("visible after culling: %zu / %zu", stats.visible_chunks, stats.total_chunk_meshes);
+            ImGui::Text("objects: %zu (%zu round / %zu conifer / %zu shrub)", stats.objects,
+                        stats.objects_round, stats.objects_conifer, stats.objects_shrub);
+        }
         if (stats.aim_line[0] != '\0') {
             ImGui::Text("aim: %s", stats.aim_line);
         }
         ImGui::Separator();
-        ImGui::Text("chunk GPU memory: %.1f MiB (peak %.1f)",
+        ImGui::Text("%s GPU memory: %.1f MiB (peak %.1f)", stats.svo.active ? "tree" : "chunk",
                     static_cast<double>(stats.gpu_self_bytes) / kMiB,
                     static_cast<double>(stats.gpu_self_peak_bytes) / kMiB);
         if (stats.budget.available) {
@@ -75,6 +85,30 @@ void DebugOverlay::render(const OverlayStats& stats) {
         } else {
             ImGui::TextDisabled("VRAM budget: unavailable on this backend");
         }
+    }
+    ImGui::End();
+
+    impl_->imgui->Render(rc.context);
+}
+
+void DebugOverlay::render_loading_message(const char* message, double elapsedSeconds) {
+    auto& rc = impl_->context->impl();
+    const Diligent::SwapChainDesc& scDesc = rc.swapchain->GetDesc();
+
+    ImGui_ImplGlfw_NewFrame();
+    impl_->imgui->NewFrame(scDesc.Width, scDesc.Height, scDesc.PreTransform);
+
+    const ImVec2 windowSize(420.0f, 70.0f);
+    ImGui::SetNextWindowPos(ImVec2((static_cast<float>(scDesc.Width) - windowSize.x) * 0.5f,
+                                   (static_cast<float>(scDesc.Height) - windowSize.y) * 0.5f),
+                            ImGuiCond_Always);
+    ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.75f);
+    if (ImGui::Begin("Loading", nullptr,
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoFocusOnAppearing)) {
+        ImGui::Text("%s", message);
+        ImGui::Text("%.1f s", elapsedSeconds);
     }
     ImGui::End();
 

@@ -241,6 +241,30 @@ Leaves materials 4/5; overlay "objects" count). `--verify-frame` writes a review
 env `VOXEL_DUMP_FRAME=<path>` is set. `--autofly --walk` asserts no ground fall-through per
 frame. The 2s stats line now prints worst-frame ms and the loaded chunk-Y range.
 
+## Micro-voxel pivot (2026-09-05) — operational deltas
+
+Full record: `research/micro-voxel-pivot-log.md`; backlog Groups W–Y in `docs/goals.md`.
+Machine-relevant deltas ONLY:
+
+- **`voxel_app` defaults to `--renderer svo`** (the sparse-brick octree at 7.8 mm voxels near the
+  camera, GPU ray-marched). The old chunk/mesh world is `--renderer mesh`. World-ready time on the
+  svo path is ~0.6 s — the whole "loading takes forever" complaint no longer applies there.
+- svo flags: `--voxel-log2 N` (finest voxel = 2^N m, default -7), `--region-log2 N` (root edge =
+  2^N m, default 9), `--lod-radius M` (full resolution within M meters, default 4), `--no-trees`,
+  `--no-shadows`, `--no-ao`, `--no-lod-march`, `--lod-quality Q`. `--pos/--yaw/--pitch`,
+  `--verify-frame`, `VOXEL_DUMP_FRAME`, `--dump-every`, `--walk`, `--autofly` all work unchanged.
+- `tools/svo_render` renders the same world on the CPU to a PNG (`--xz x,z` auto eye height,
+  `--pos/--yaw/--pitch` like the app, `--root-log2`, `--voxel-log2`, `--size WxH`, `--verify`).
+  It prints a per-level sampled/kept brick histogram and the camera column probe — the first tool
+  to reach for when a GPU frame looks wrong (it found the MUTABLE-SRB bug in minutes).
+- **HLSL for D3D12 (FXC) forbids writing a runtime-indexed vector component** (X3500) — Vulkan's
+  compiler accepts it, so a shader can pass on `--mode vk` and fail on `--mode d3d12`. Use masked
+  vector writes (`svo_march.psh.hlsl`'s `AxisMask`/`Comp` helpers). Test both backends.
+- **Diligent MUTABLE SRB variables bind exactly once per SRB**; a second `Set` is silently ignored
+  in Release. Resources replaced at runtime (the tree buffers) must be DYNAMIC variables.
+- The 165 Hz panel caps fps readings at ~155–159 (FIFO_RELAXED); a "GPU headroom" question needs
+  a Tracy GPU zone or a heavier pose (ground level at a hilltop measured 76 fps), not the fps line.
+
 ## Phase status
 
 **Phase 0 (repo scaffold + dependency fetch/build smoke test): DONE.** Clean configure+build

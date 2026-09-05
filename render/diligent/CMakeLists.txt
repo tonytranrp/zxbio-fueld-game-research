@@ -7,6 +7,7 @@ add_library(render_diligent STATIC
     src/post_process.cpp
     src/vulkan_tools.cpp
     src/debug_overlay.cpp
+    src/svo_renderer.cpp
     # The vendored ImGui GLFW platform backend (renderer half comes from Diligent-Imgui). Compiled
     # here because DiligentTools only builds its own Win32/etc. platform impls, and this app's
     # window is GLFW. Third-party TU: exempted from /W4 /WX below.
@@ -38,6 +39,7 @@ target_sources(render_diligent PUBLIC
         include/render/diligent/post_process.hpp
         include/render/diligent/gpu_tools.hpp
         include/render/diligent/debug_overlay.hpp
+        include/render/diligent/svo_renderer.hpp
 )
 
 # detail/ headers (the PIMPL innards holding real Diligent types) are includable by this module's
@@ -53,7 +55,7 @@ target_include_directories(render_diligent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
 # Group B) -- the bundled libpng was already in the dependency tree, so PNG output costs zero new
 # dependencies. DiligentFX carries the Bloom/PostFXContext post-process modules (Group D).
 target_link_libraries(render_diligent
-    PUBLIC project_warnings engine_core world_chunk world_meshing render_interface
+    PUBLIC project_warnings engine_core world_chunk world_meshing world_svo render_interface
     PRIVATE Diligent-GraphicsEngineVk-static Diligent-Imgui Diligent-TextureLoader DiligentFX glfw
     PRIVATE Tracy::TracyClient
 )

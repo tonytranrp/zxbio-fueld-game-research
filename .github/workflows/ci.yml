@@ -123,12 +123,20 @@ jobs:
         run: ctest --test-dir C:/b --output-on-failure --timeout 300
       # Software-rasterized smoke (goal 66): no GPU on hosted runners; D3D12 should fall back to
       # the WARP adapter. Best-effort per goal 67 -- failure here is reported, not merge-gating.
-      - name: WARP smoke run
+      - name: WARP smoke run (mesh renderer)
         continue-on-error: true
         shell: pwsh
         run: |
-          & C:/b/app/voxel_app.exe --mode d3d12 --frames 5
+          & C:/b/app/voxel_app.exe --mode d3d12 --renderer mesh --frames 5
           if ($LASTEXITCODE -ne 0) { Write-Host "::warning::WARP smoke run exited $LASTEXITCODE (best-effort, non-gating)"; exit $LASTEXITCODE }
+      # The micro-voxel path (docs/goals.md Group X): a small region so WARP's software march of a
+      # 1280x720 fullscreen pass over the sparse-brick octree stays within reason. Best-effort too.
+      - name: WARP smoke run (svo renderer)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & C:/b/app/voxel_app.exe --mode d3d12 --renderer svo --region-log2 7 --no-ao --frames 3
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::WARP svo smoke run exited $LASTEXITCODE (best-effort, non-gating)"; exit $LASTEXITCODE }
 
   renderer-linux:
     name: renderer (Linux, GCC, full tree + Lavapipe smoke, best-effort)
@@ -162,7 +170,7 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure --timeout 300
       - name: Lavapipe smoke run (Xvfb)
-        run: xvfb-run -a ./build/app/voxel_app --mode vk --frames 5
+        run: xvfb-run -a ./build/app/voxel_app --mode vk --renderer mesh --frames 5
 
   asan-ubsan-linux:
     name: ASan + UBSan (Linux, Clang, no-GPU subset)
