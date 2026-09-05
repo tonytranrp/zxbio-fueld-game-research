@@ -26,7 +26,7 @@ public:
     void poll_events();
     [[nodiscard]] bool should_close() const;
     [[nodiscard]] std::pair<std::uint32_t, std::uint32_t> framebuffer_size() const;
-    [[nodiscard]] void* native_handle() const; // Win32 HWND, for RenderContextCreateInfo
+    [[nodiscard]] void* native_handle() const;                      // Win32 HWND, for RenderContextCreateInfo
     [[nodiscard]] GLFWwindow* handle() noexcept { return window_; } // for engine/input's callbacks (M1.5)
 
 private:

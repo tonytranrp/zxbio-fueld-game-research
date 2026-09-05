@@ -75,21 +75,22 @@ struct HeightmapGenerator::Impl {
     int seed;
 };
 
-HeightmapGenerator::HeightmapGenerator(int seed) : impl_(std::make_unique<Impl>(Impl{build_terrain_noise(), seed})) {}
+HeightmapGenerator::HeightmapGenerator(int seed)
+    : impl_(std::make_unique<Impl>(Impl{build_terrain_noise(), seed})) {}
 
 HeightmapGenerator::~HeightmapGenerator() = default;
 HeightmapGenerator::HeightmapGenerator(HeightmapGenerator&&) noexcept = default;
 HeightmapGenerator& HeightmapGenerator::operator=(HeightmapGenerator&&) noexcept = default;
 
-HeightmapMinMax HeightmapGenerator::generate_column_heights(std::int32_t worldXOffset, std::int32_t worldZOffset,
-                                                              std::int32_t width, std::int32_t depth,
-                                                              float* outHeights) const {
+HeightmapMinMax HeightmapGenerator::generate_column_heights(std::int32_t worldXOffset,
+                                                            std::int32_t worldZOffset, std::int32_t width,
+                                                            std::int32_t depth, float* outHeights) const {
     // FastNoise2's 2D grid has no notion of "X/Z" -- its own two axes are used here to carry our
     // world's horizontal plane (X, Z), Y being height. Output layout is row-major, X innermost:
     // out[y * xCount + x] (confirmed directly from Generator.h's own doc comment).
-    const FastNoise::OutputMinMax minMax =
-        impl_->root->GenUniformGrid2D(outHeights, static_cast<float>(worldXOffset), static_cast<float>(worldZOffset),
-                                       width, depth, 1.0f, 1.0f, impl_->seed);
+    const FastNoise::OutputMinMax minMax = impl_->root->GenUniformGrid2D(
+        outHeights, static_cast<float>(worldXOffset), static_cast<float>(worldZOffset), width, depth, 1.0f,
+        1.0f, impl_->seed);
     return HeightmapMinMax{minMax.min, minMax.max};
 }
 

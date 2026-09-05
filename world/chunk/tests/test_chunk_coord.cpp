@@ -42,5 +42,6 @@ TEST_CASE("local_index is X-innermost, matching FastNoise2's own grid output con
     REQUIRE(local_index(0, 0, 0) == 0);
     REQUIRE(local_index(1, 0, 0) == 1);
     REQUIRE(local_index(0, 1, 0) == static_cast<std::size_t>(kChunkSize));
-    REQUIRE(local_index(0, 0, 1) == static_cast<std::size_t>(kChunkSize) * static_cast<std::size_t>(kChunkSize));
+    REQUIRE(local_index(0, 0, 1) ==
+            static_cast<std::size_t>(kChunkSize) * static_cast<std::size_t>(kChunkSize));
 }

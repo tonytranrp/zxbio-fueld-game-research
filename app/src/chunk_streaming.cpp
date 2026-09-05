@@ -11,9 +11,9 @@
 #include "engine/core/log.hpp"
 #include "tree_decoration.hpp"
 #include "world/chunk/chunk_load_state.hpp"
-#include "world/streaming/chunk_events.hpp"
 #include "world/generation/terrain_fill.hpp"
 #include "world/meshing/mesh_extractor.hpp"
+#include "world/streaming/chunk_events.hpp"
 
 // Task 27: zones on every job-system task (generate, mesh, upload) plus the per-frame pump --
 // liberal instrumentation is justified by Tracy's measured ~15ns/zone (§2.4), and with
@@ -48,7 +48,8 @@ ChunkStreamingSystem::ChunkStreamingSystem(world::streaming::StreamingConfig con
                                            std::size_t workerThreads,
                                            render::diligent::TerrainRenderer& renderer,
                                            engine::ecs::Registry& registry,
-                                           engine::events::Dispatcher& dispatcher, std::size_t uploadBudgetPerTick)
+                                           engine::events::Dispatcher& dispatcher,
+                                           std::size_t uploadBudgetPerTick)
     : streamer_(config), upload_budget_per_tick_(uploadBudgetPerTick), seed_(seed), heightmap_(seed),
       renderer_(renderer), registry_(registry), dispatcher_(dispatcher), pool_(workerThreads) {}
 
@@ -70,7 +71,8 @@ void ChunkStreamingSystem::update(const glm::vec3& cameraWorldPosition, double n
     }
 
     const auto& config = streamer_.config();
-    const ChunkCoord anchor{cameraChunk.x, std::clamp(cameraChunk.y, config.y_min, config.y_max), cameraChunk.z};
+    const ChunkCoord anchor{cameraChunk.x, std::clamp(cameraChunk.y, config.y_min, config.y_max),
+                            cameraChunk.z};
 
     drain_generation_completions();
     submit_ready_mesh_jobs(anchor);
@@ -100,7 +102,8 @@ void ChunkStreamingSystem::request_generation(ChunkCoord coord) {
         try {
             world::generation::fill_terrain(completion.chunk, heightmap_);
         } catch (const std::exception& e) {
-            log(LogLevel::Error, "chunk generation failed at [{},{},{}]: {}", coord.x, coord.y, coord.z, e.what());
+            log(LogLevel::Error, "chunk generation failed at [{},{},{}]: {}", coord.x, coord.y, coord.z,
+                e.what());
             completion.failed = true;
         }
         const std::lock_guard guard(gen_mutex_);
@@ -128,7 +131,8 @@ void ChunkStreamingSystem::drain_generation_completions() {
         if (const auto it = chunk_entities_.find(coord); it != chunk_entities_.end()) {
             auto& state = registry_.get<ChunkPipelineState>(it->second);
             state.state = ChunkLoadState::Generated;
-            state.chunk = store_.find(coord); // stable: unordered_map of unique_ptr, no reallocation of the Chunk
+            state.chunk =
+                store_.find(coord); // stable: unordered_map of unique_ptr, no reallocation of the Chunk
             // Entity-gated on purpose: halo-only neighbors (generated for meshing, never streamed
             // themselves) have no entity and no lifecycle -- they don't fire events either.
             dispatcher_.trigger(world::streaming::ChunkLoaded{coord});
@@ -257,12 +261,13 @@ void ChunkStreamingSystem::drain_mesh_completions() {
         // backlog keeps bursts geometrically decaying instead of unbounded, while small backlogs
         // still spread across frames.
         const std::size_t floorTake = mesh_completions_.size() / 4;
-        const std::size_t take = upload_budget_per_tick_ == 0
-                                     ? mesh_completions_.size()
-                                     : std::min(std::max(upload_budget_per_tick_, floorTake),
-                                                mesh_completions_.size());
-        drained.assign(std::make_move_iterator(mesh_completions_.begin()),
-                       std::make_move_iterator(mesh_completions_.begin() + static_cast<std::ptrdiff_t>(take)));
+        const std::size_t take =
+            upload_budget_per_tick_ == 0
+                ? mesh_completions_.size()
+                : std::min(std::max(upload_budget_per_tick_, floorTake), mesh_completions_.size());
+        drained.assign(
+            std::make_move_iterator(mesh_completions_.begin()),
+            std::make_move_iterator(mesh_completions_.begin() + static_cast<std::ptrdiff_t>(take)));
         mesh_completions_.erase(mesh_completions_.begin(),
                                 mesh_completions_.begin() + static_cast<std::ptrdiff_t>(take));
     }
@@ -281,14 +286,16 @@ void ChunkStreamingSystem::drain_mesh_completions() {
         // rate, and lower fps made MORE completions stale -- 0 chunks ever became ready at
         // ~1.4fps. Applying finished work is strictly cheaper than redoing it; a no-longer-
         // desired chunk simply unloads through the standard R_unload+delay path moments later.
-        renderer_.upload_chunk_mesh(completion.coord, completion.mesh); // empty mesh -> no GPU entry, still "loaded"
+        renderer_.upload_chunk_mesh(completion.coord,
+                                    completion.mesh); // empty mesh -> no GPU entry, still "loaded"
         total_tree_count_ += completion.tree_count;
         tree_counts_.insert_or_assign(completion.coord, completion.tree_count);
         streamer_.mark_loaded(completion.coord);
         if (const auto it = chunk_entities_.find(completion.coord); it != chunk_entities_.end()) {
             registry_.get<ChunkPipelineState>(it->second).state = ChunkLoadState::Ready;
         }
-        dispatcher_.trigger(world::streaming::ChunkMeshReady{completion.coord, completion.mesh.vertices.size()});
+        dispatcher_.trigger(
+            world::streaming::ChunkMeshReady{completion.coord, completion.mesh.vertices.size()});
     }
 }
 
@@ -323,10 +330,10 @@ void ChunkStreamingSystem::release_gpu_meshes_budgeted() {
     // starves when frames are slow -- here that starvation showed up as 34k undestroyed meshes
     // and 1.1 GiB of GPU buffers by the end of a low-fps autofly run.
     const std::size_t releaseFloor = gpu_release_queue_.size() / 4;
-    const std::size_t budget = upload_budget_per_tick_ == 0
-                                   ? gpu_release_queue_.size()
-                                   : std::min(std::max(upload_budget_per_tick_, releaseFloor),
-                                              gpu_release_queue_.size());
+    const std::size_t budget =
+        upload_budget_per_tick_ == 0
+            ? gpu_release_queue_.size()
+            : std::min(std::max(upload_budget_per_tick_, releaseFloor), gpu_release_queue_.size());
     for (std::size_t i = 0; i < budget; ++i) {
         const ChunkCoord coord = gpu_release_queue_[i];
         if (!streamer_.is_desired(coord)) {

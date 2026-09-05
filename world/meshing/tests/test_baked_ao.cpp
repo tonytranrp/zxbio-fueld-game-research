@@ -101,3 +101,37 @@ TEST_CASE("baked AO maps enclosure to the design table's levels", "[meshing][ao]
     const Vertex& ridge = nearest_vertex(mesh, {20.0f, 15.0f, 20.0f});
     CHECK(ridge.ao == 1.0f);
 }
+
+// Goal 59's boundary coverage for the water-depth encoding (the AO byte's second meaning):
+// hand-built pools of known depth must produce exactly depth/8, capped at 8 voxels.
+TEST_CASE("water surface vertices carry column depth in the AO attribute", "[meshing][ao][water]") {
+    ChunkStore store;
+    create_halo(store, {0, 0, 0});
+    Chunk& chunk = store.get_or_create({0, 0, 0});
+
+    // Floor everywhere at y <= 2; a DEEP pool (water y 3..10, 8 deep) on one side and a SHALLOW
+    // pool (water y 9..10, 2 deep on a raised shelf y <= 8) on the other, both surfacing at y=10.
+    for (std::int32_t z = 0; z < kChunkSize; ++z) {
+        for (std::int32_t x = 0; x < kChunkSize; ++x) {
+            const bool shallowSide = x >= 16;
+            const std::int32_t floorTop = shallowSide ? 8 : 2;
+            for (std::int32_t y = 0; y <= floorTop; ++y) {
+                set_solid(chunk, x, y, z);
+            }
+            for (std::int32_t y = floorTop + 1; y <= 10; ++y) {
+                chunk.voxels().set(local_index(x, y, z), MaterialID::Water);
+            }
+        }
+    }
+
+    const MeshData mesh = extract_mesh(store, {0, 0, 0});
+    REQUIRE(!mesh.vertices.empty());
+
+    const Vertex& deep = nearest_vertex(mesh, {8.0f, 11.0f, 16.0f});
+    REQUIRE(deep.material == MaterialID::Water);
+    CHECK(deep.ao == 1.0f); // 8+ voxels of water below: capped full depth
+
+    const Vertex& shallow = nearest_vertex(mesh, {24.0f, 11.0f, 16.0f});
+    REQUIRE(shallow.material == MaterialID::Water);
+    CHECK(std::abs(shallow.ao - 2.0f / 8.0f) < 1e-5f); // exactly two voxels deep
+}

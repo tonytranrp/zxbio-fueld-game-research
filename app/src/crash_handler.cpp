@@ -65,7 +65,8 @@ void walk_and_print(const CONTEXT& contextIn) {
         IMAGEHLP_LINE64 line{};
         line.SizeOfStruct = sizeof(line);
         DWORD lineDisplacement = 0;
-        const bool haveLine = SymGetLineFromAddr64(process, frame.AddrPC.Offset, &lineDisplacement, &line) != FALSE;
+        const bool haveLine =
+            SymGetLineFromAddr64(process, frame.AddrPC.Offset, &lineDisplacement, &line) != FALSE;
 
         if (SymFromAddr(process, frame.AddrPC.Offset, &displacement, symbol) != FALSE) {
             std::fprintf(stderr, "  #%02d %s + 0x%llx [%s]%s%s:%lu\n", depth, symbol->Name,
@@ -93,9 +94,9 @@ LONG WINAPI unhandled_filter(EXCEPTION_POINTERS* info) {
                  info->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
     if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2) {
         std::fprintf(stderr, "access violation: %s address %p\n",
-                     info->ExceptionRecord->ExceptionInformation[0] == 0 ? "reading"
+                     info->ExceptionRecord->ExceptionInformation[0] == 0   ? "reading"
                      : info->ExceptionRecord->ExceptionInformation[0] == 1 ? "writing"
-                                                                          : "executing",
+                                                                           : "executing",
                      reinterpret_cast<void*>(info->ExceptionRecord->ExceptionInformation[1]));
     }
     walk_and_print(*info->ContextRecord);

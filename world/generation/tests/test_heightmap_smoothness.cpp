@@ -28,7 +28,8 @@ TEST_CASE("Raw heightmap varies at the intended feature scale, not per-voxel", "
     float minH = heights[0];
     float maxH = heights[0];
     for (int i = 1; i < kSamples; ++i) {
-        const float step = std::abs(heights[static_cast<std::size_t>(i)] - heights[static_cast<std::size_t>(i - 1)]);
+        const float step =
+            std::abs(heights[static_cast<std::size_t>(i)] - heights[static_cast<std::size_t>(i - 1)]);
         maxStep = std::max(maxStep, step);
         sumAbsStep += step;
         minH = std::min(minH, heights[static_cast<std::size_t>(i)]);

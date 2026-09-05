@@ -25,8 +25,10 @@ constexpr std::uint32_t kNumContexts = 1;
 
 const char* to_string(Backend backend) noexcept {
     switch (backend) {
-    case Backend::Vulkan: return "Vulkan";
-    case Backend::D3D12: return "D3D12";
+    case Backend::Vulkan:
+        return "Vulkan";
+    case Backend::D3D12:
+        return "D3D12";
     }
     return "unknown";
 }
@@ -61,8 +63,9 @@ RenderContext::RenderContext(const RenderContextCreateInfo& info) : impl_(std::m
         factory->CreateDeviceAndContextsVk(engineCI, &impl_->device, contexts);
         impl_->memoryBudgetExtensionEnabled = impl_->device != nullptr;
         if (!impl_->device) {
-            engine::core::log(engine::core::LogLevel::Warn,
-                              "Vulkan device creation with VK_EXT_memory_budget failed -- retrying without it");
+            engine::core::log(
+                engine::core::LogLevel::Warn,
+                "Vulkan device creation with VK_EXT_memory_budget failed -- retrying without it");
             engineCI.DeviceExtensionCount = 0;
             engineCI.ppDeviceExtensionNames = nullptr;
             factory->CreateDeviceAndContextsVk(engineCI, &impl_->device, contexts);

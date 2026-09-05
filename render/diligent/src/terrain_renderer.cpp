@@ -51,7 +51,8 @@ TerrainRenderer::~TerrainRenderer() = default;
 TerrainRenderer::TerrainRenderer(TerrainRenderer&&) noexcept = default;
 TerrainRenderer& TerrainRenderer::operator=(TerrainRenderer&&) noexcept = default;
 
-void TerrainRenderer::upload_chunk_mesh(world::chunk::ChunkCoord coord, const world::meshing::MeshData& mesh) {
+void TerrainRenderer::upload_chunk_mesh(world::chunk::ChunkCoord coord,
+                                        const world::meshing::MeshData& mesh) {
     ZoneScopedN("chunk upload");
     remove_chunk_mesh(coord);
     if (mesh.vertices.empty() || mesh.indices.empty()) {
@@ -116,8 +117,8 @@ void TerrainRenderer::upload_chunk_mesh(world::chunk::ChunkCoord coord, const wo
         device->CreateBuffer(desc, &initial, &gpu.indexBuffer);
     }
     if (!gpu.vertexBuffer || !gpu.indexBuffer) {
-        throw std::runtime_error(std::format("chunk mesh buffer creation failed at [{},{},{}]", coord.x, coord.y,
-                                             coord.z));
+        throw std::runtime_error(
+            std::format("chunk mesh buffer creation failed at [{},{},{}]", coord.x, coord.y, coord.z));
     }
 
     // Tight world-space AABB from the actual vertices (chunk-local positions span [-1, 32] -- the
@@ -129,7 +130,8 @@ void TerrainRenderer::upload_chunk_mesh(world::chunk::ChunkCoord coord, const wo
         localMin = glm::min(localMin, v.position);
         localMax = glm::max(localMax, v.position);
     }
-    const glm::vec3 origin{static_cast<float>(coord.x) * kChunkSizeF, static_cast<float>(coord.y) * kChunkSizeF,
+    const glm::vec3 origin{static_cast<float>(coord.x) * kChunkSizeF,
+                           static_cast<float>(coord.y) * kChunkSizeF,
                            static_cast<float>(coord.z) * kChunkSizeF};
     gpu.aabbMin = origin + localMin;
     gpu.aabbMax = origin + localMax;
@@ -161,7 +163,8 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
     tracy::VkCtx* tracyCtx = static_cast<tracy::VkCtx*>(rc.tracyVkCtx);
     RefCntAutoPtr<IDeviceContextVk> ctxVk;
     if (tracyCtx != nullptr) {
-        ctx->QueryInterface(IID_DeviceContextVk, reinterpret_cast<IObject**>(static_cast<IDeviceContextVk**>(&ctxVk)));
+        ctx->QueryInterface(IID_DeviceContextVk,
+                            reinterpret_cast<IObject**>(static_cast<IDeviceContextVk**>(&ctxVk)));
     }
 #endif
 
@@ -236,7 +239,8 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
 #if defined(TRACY_ENABLE)
     std::optional<tracy::VkCtxScope> gpuZone;
     if (tracyCtx != nullptr && ctxVk) {
-        static constexpr tracy::SourceLocationData kDrawLoc{"terrain draw", TracyFunction, TracyFile, __LINE__, 0};
+        static constexpr tracy::SourceLocationData kDrawLoc{"terrain draw", TracyFunction, TracyFile,
+                                                            __LINE__, 0};
         gpuZone.emplace(tracyCtx, &kDrawLoc, ctxVk->GetVkCommandBuffer(), true);
     }
 #endif
@@ -270,9 +274,9 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
         }
         const bool culled = !intersects(frustum, Aabb{mesh.aabbMin, mesh.aabbMax});
         if (dumpThisFrame) {
-            std::fprintf(stderr, "draw chunk(%d,%d,%d) idx=%u aabbY=[%.1f,%.1f]%s\n", coord.x, coord.y, coord.z,
-                         mesh.indexCount, static_cast<double>(mesh.aabbMin.y), static_cast<double>(mesh.aabbMax.y),
-                         culled ? " CULLED" : "");
+            std::fprintf(stderr, "draw chunk(%d,%d,%d) idx=%u aabbY=[%.1f,%.1f]%s\n", coord.x, coord.y,
+                         coord.z, mesh.indexCount, static_cast<double>(mesh.aabbMin.y),
+                         static_cast<double>(mesh.aabbMax.y), culled ? " CULLED" : "");
         }
         if (!kDisableCulling && culled) {
             continue; // task 14: skip the draw call entirely
@@ -280,7 +284,8 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
         ++visible;
 
         {
-            MapHelper<detail::ChunkConstantsCpu> chunk(ctx, impl_->chunkConstants, MAP_WRITE, MAP_FLAG_DISCARD);
+            MapHelper<detail::ChunkConstantsCpu> chunk(ctx, impl_->chunkConstants, MAP_WRITE,
+                                                       MAP_FLAG_DISCARD);
             chunk->chunkOriginWorld = glm::vec4(static_cast<float>(coord.x) * kChunkSizeF,
                                                 static_cast<float>(coord.y) * kChunkSizeF,
                                                 static_cast<float>(coord.z) * kChunkSizeF, 0.0f);

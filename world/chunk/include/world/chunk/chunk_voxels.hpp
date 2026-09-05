@@ -10,8 +10,9 @@
 namespace world::chunk {
 
 inline constexpr std::int32_t kChunkSize = 32;
-inline constexpr std::size_t kVoxelsPerChunk =
-    static_cast<std::size_t>(kChunkSize) * static_cast<std::size_t>(kChunkSize) * static_cast<std::size_t>(kChunkSize);
+inline constexpr std::size_t kVoxelsPerChunk = static_cast<std::size_t>(kChunkSize) *
+                                               static_cast<std::size_t>(kChunkSize) *
+                                               static_cast<std::size_t>(kChunkSize);
 
 // Paletted voxel storage for one chunk (M1.2 brief §1): a small palette of the distinct
 // materials actually present, plus a bit-packed index per voxel at the minimum width the current

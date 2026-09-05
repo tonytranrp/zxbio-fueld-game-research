@@ -10,15 +10,15 @@ namespace engine::input {
 // and consumers stay testable with hand-built snapshots and portable to any future input source.
 // No GLFW types anywhere in this header.
 struct InputState {
-    bool move_forward = false;  // W
-    bool move_back = false;     // S
-    bool move_left = false;     // A
-    bool move_right = false;    // D
-    bool move_up = false;       // Space
-    bool move_down = false;     // Left Ctrl
-    bool speed_boost = false;   // Left Shift
-    bool look_active = false;   // right mouse button held (cursor captured while true)
-    bool quit_requested = false; // Escape -- reported here; whether to actually quit is app policy
+    bool move_forward = false;        // W
+    bool move_back = false;           // S
+    bool move_left = false;           // A
+    bool move_right = false;          // D
+    bool move_up = false;             // Space
+    bool move_down = false;           // Left Ctrl
+    bool speed_boost = false;         // Left Shift
+    bool look_active = false;         // right mouse button held (cursor captured while true)
+    bool quit_requested = false;      // Escape -- reported here; whether to actually quit is app policy
     bool pending_walk_toggle = false; // G pressed since last take_walk_toggle() (edge, not level)
     bool pending_screenshot = false;  // F2 pressed since last take_screenshot() (edge, not level)
 

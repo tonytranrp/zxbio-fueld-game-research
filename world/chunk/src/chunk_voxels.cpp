@@ -9,14 +9,19 @@ namespace {
 // looser bound than a tight ceil(log2(n)) would give (e.g. 5 distinct materials costs 4
 // bits/voxel here, not 3) in exchange for trivially simple, branch-light packing.
 std::uint8_t bits_for_palette_size(std::size_t paletteSize) {
-    if (paletteSize <= 1) return 0;
-    if (paletteSize <= 2) return 1;
-    if (paletteSize <= 4) return 2;
-    if (paletteSize <= 16) return 4;
+    if (paletteSize <= 1)
+        return 0;
+    if (paletteSize <= 2)
+        return 1;
+    if (paletteSize <= 4)
+        return 2;
+    if (paletteSize <= 16)
+        return 4;
     return 8; // <= 256
 }
 
-std::uint8_t read_index(const std::pmr::vector<std::byte>& indices, std::size_t localIndex, std::uint8_t bits) {
+std::uint8_t read_index(const std::pmr::vector<std::byte>& indices, std::size_t localIndex,
+                        std::uint8_t bits) {
     if (bits == 0) {
         return 0; // homogeneous: every voxel is implicitly palette index 0 (see packed_byte_count)
     }
@@ -27,7 +32,8 @@ std::uint8_t read_index(const std::pmr::vector<std::byte>& indices, std::size_t 
     return static_cast<std::uint8_t>((std::to_integer<std::uint8_t>(indices[byteIndex]) >> bitOffset) & mask);
 }
 
-void write_index(std::pmr::vector<std::byte>& indices, std::size_t localIndex, std::uint8_t bits, std::uint8_t value) {
+void write_index(std::pmr::vector<std::byte>& indices, std::size_t localIndex, std::uint8_t bits,
+                 std::uint8_t value) {
     if (bits == 0) {
         return; // homogeneous: no index buffer exists to write into (see packed_byte_count)
     }

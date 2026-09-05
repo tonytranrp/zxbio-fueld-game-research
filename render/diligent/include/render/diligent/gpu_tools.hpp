@@ -10,7 +10,7 @@ namespace render::diligent {
 // much is in use, other processes included") that complements the self-tracked
 // GpuAllocationTracker ("how much are our own chunk buffers using") -- two numbers, two questions.
 struct GpuMemoryBudget {
-    bool available = false; // false: not Vulkan, extension absent, or the query failed
+    bool available = false;                      // false: not Vulkan, extension absent, or the query failed
     std::uint64_t device_local_budget_bytes = 0; // sum over DEVICE_LOCAL heaps
     std::uint64_t device_local_usage_bytes = 0;
 };

@@ -34,8 +34,10 @@ inline std::int32_t world_to_local(std::int32_t worldVoxelCoord) noexcept {
 // convention (out[(z*yCount+y)*xCount+x]), kept consistent for whenever a full 3D density grid
 // is generated directly into chunk-local storage.
 inline std::size_t local_index(std::int32_t lx, std::int32_t ly, std::int32_t lz) noexcept {
-    return static_cast<std::size_t>(lx) + static_cast<std::size_t>(ly) * static_cast<std::size_t>(kChunkSize) +
-           static_cast<std::size_t>(lz) * static_cast<std::size_t>(kChunkSize) * static_cast<std::size_t>(kChunkSize);
+    return static_cast<std::size_t>(lx) +
+           static_cast<std::size_t>(ly) * static_cast<std::size_t>(kChunkSize) +
+           static_cast<std::size_t>(lz) * static_cast<std::size_t>(kChunkSize) *
+               static_cast<std::size_t>(kChunkSize);
 }
 
 } // namespace world::chunk

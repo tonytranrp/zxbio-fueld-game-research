@@ -33,9 +33,9 @@ using namespace Diligent;
 PFN_vkGetInstanceProcAddr load_instance_proc_addr() {
     static PFN_vkGetInstanceProcAddr addr = [] {
         const HMODULE loader = LoadLibraryA("vulkan-1.dll");
-        return loader != nullptr
-                   ? reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(loader, "vkGetInstanceProcAddr"))
-                   : nullptr;
+        return loader != nullptr ? reinterpret_cast<PFN_vkGetInstanceProcAddr>(
+                                       GetProcAddress(loader, "vkGetInstanceProcAddr"))
+                                 : nullptr;
     }();
     return addr;
 }
@@ -59,7 +59,8 @@ bool query_vk_handles(RenderContext::Impl& rc, VkHandles& out) {
     out.instance = out.deviceVk->GetVkInstance();
     out.physicalDevice = out.deviceVk->GetVkPhysicalDevice();
     out.device = out.deviceVk->GetVkDevice();
-    return out.instance != VK_NULL_HANDLE && out.physicalDevice != VK_NULL_HANDLE && out.device != VK_NULL_HANDLE;
+    return out.instance != VK_NULL_HANDLE && out.physicalDevice != VK_NULL_HANDLE &&
+           out.device != VK_NULL_HANDLE;
 }
 
 } // namespace
@@ -179,7 +180,9 @@ GpuMemoryBudget query_gpu_memory_budget(RenderContext& context) {
 namespace render::diligent {
 void attach_gpu_profiler(RenderContext&) {}
 void detach_gpu_profiler(RenderContext&) noexcept {}
-GpuMemoryBudget query_gpu_memory_budget(RenderContext&) { return {}; }
+GpuMemoryBudget query_gpu_memory_budget(RenderContext&) {
+    return {};
+}
 } // namespace render::diligent
 
 #endif

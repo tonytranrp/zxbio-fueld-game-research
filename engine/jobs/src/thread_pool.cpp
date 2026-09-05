@@ -75,13 +75,17 @@ ThreadPool::~ThreadPool() {
     }
 }
 
-std::size_t ThreadPool::thread_count() const noexcept { return impl_->workers.size(); }
+std::size_t ThreadPool::thread_count() const noexcept {
+    return impl_->workers.size();
+}
 
 std::size_t ThreadPool::default_thread_count() noexcept {
     const unsigned int n = std::jthread::hardware_concurrency();
     return n == 0 ? 1 : n;
 }
 
-void ThreadPool::enqueue_task(std::function<void()> task) { impl_->queue.enqueue(std::move(task)); }
+void ThreadPool::enqueue_task(std::function<void()> task) {
+    impl_->queue.enqueue(std::move(task));
+}
 
 } // namespace engine::jobs

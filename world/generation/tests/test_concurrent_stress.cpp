@@ -17,8 +17,9 @@ using world::generation::HeightmapGenerator;
 // HeightmapGenerator from every worker thread at once. FastNoise2 documents generation as
 // thread-safe, and M1.2's determinism test covered cross-thread but *sequential* use -- this is
 // the genuinely-concurrent stress that streaming actually needs, kept as a regression test.
-TEST_CASE("Many threads generating through one shared HeightmapGenerator concurrently is safe and deterministic",
-          "[generation][stress]") {
+TEST_CASE(
+    "Many threads generating through one shared HeightmapGenerator concurrently is safe and deterministic",
+    "[generation][stress]") {
     const HeightmapGenerator heightmap(1337);
 
     // Reference fills, single-threaded.

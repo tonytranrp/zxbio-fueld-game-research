@@ -56,7 +56,8 @@ TEST_CASE("A single solid voxel surrounded by air produces exactly 6 outward-fac
     REQUIRE(signed_volume_x6(mesh) > 0.0f);
 }
 
-TEST_CASE("Adjacent chunks produce identical world-space vertex positions along their shared face", "[meshing]") {
+TEST_CASE("Adjacent chunks produce identical world-space vertex positions along their shared face",
+          "[meshing]") {
     // Two solid voxels straddling the X=31/X=32 world boundary between chunk (0,0,0) and (1,0,0):
     // world (31,16,16) and (32,16,16), everything else air. The cell anchored at world-cell (31,
     // 16,16) is computed independently by BOTH chunks -- as chunk0's own owned cell at local
@@ -96,8 +97,10 @@ TEST_CASE("Adjacent chunks produce identical world-space vertex positions along 
     REQUIRE(boundary0 != nullptr);
     REQUIRE(boundary1 != nullptr);
 
-    const glm::vec3 world0 = glm::vec3(coord0.x, coord0.y, coord0.z) * static_cast<float>(kChunkSize) + boundary0->position;
-    const glm::vec3 world1 = glm::vec3(coord1.x, coord1.y, coord1.z) * static_cast<float>(kChunkSize) + boundary1->position;
+    const glm::vec3 world0 =
+        glm::vec3(coord0.x, coord0.y, coord0.z) * static_cast<float>(kChunkSize) + boundary0->position;
+    const glm::vec3 world1 =
+        glm::vec3(coord1.x, coord1.y, coord1.z) * static_cast<float>(kChunkSize) + boundary1->position;
 
     constexpr float kEps = 1e-5f;
     REQUIRE(std::abs(world0.x - world1.x) < kEps);
@@ -116,8 +119,9 @@ TEST_CASE("A chunk with no registered neighbors that is entirely air produces an
     REQUIRE(mesh.indices.empty());
 }
 
-TEST_CASE("A solid chunk surrounded entirely by solid neighbors produces an empty mesh (no false void surface)",
-          "[meshing]") {
+TEST_CASE(
+    "A solid chunk surrounded entirely by solid neighbors produces an empty mesh (no false void surface)",
+    "[meshing]") {
     // Fill the center chunk and all 26 neighbors solid, so there is no actual air/solid interface
     // anywhere near the center chunk's own cells or padding -- isolating "uniform interior produces
     // no surface" from the (separately correct, not a bug) case of a lone solid chunk floating in
@@ -127,7 +131,9 @@ TEST_CASE("A solid chunk surrounded entirely by solid neighbors produces an empt
     for (std::int32_t dz = -1; dz <= 1; ++dz) {
         for (std::int32_t dy = -1; dy <= 1; ++dy) {
             for (std::int32_t dx = -1; dx <= 1; ++dx) {
-                store.get_or_create(ChunkCoord{center.x + dx, center.y + dy, center.z + dz}).voxels().fill_uniform(MaterialID::Stone);
+                store.get_or_create(ChunkCoord{center.x + dx, center.y + dy, center.z + dz})
+                    .voxels()
+                    .fill_uniform(MaterialID::Stone);
             }
         }
     }

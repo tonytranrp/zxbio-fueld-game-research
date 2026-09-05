@@ -29,9 +29,9 @@ struct OverlayStats {
     // Goal 84: crosshair-aim readout ("Grass @ 12,34,56"); empty = no hit / not computed.
     char aim_line[64] = {};
     std::size_t jobs_in_flight = 0;
-    std::uint64_t gpu_self_bytes = 0;      // §2.3 number 1: our own chunk buffers (GpuAllocationTracker)
+    std::uint64_t gpu_self_bytes = 0; // §2.3 number 1: our own chunk buffers (GpuAllocationTracker)
     std::uint64_t gpu_self_peak_bytes = 0;
-    GpuMemoryBudget budget;                // §2.3 number 2: VK_EXT_memory_budget, machine-wide
+    GpuMemoryBudget budget; // §2.3 number 2: VK_EXT_memory_budget, machine-wide
 };
 
 // Dear ImGui debug overlay: Diligent's vendored ImGui renderer (DiligentTools) + the vendored

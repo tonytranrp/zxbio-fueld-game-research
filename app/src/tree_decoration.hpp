@@ -42,18 +42,19 @@ struct TreePlacement {
     float color_jitter = 1.0f;
 };
 
-inline constexpr float kTreeMinSpacing = 4.0f;  // guaranteed by grid cell 8 + jitter range [2,6]
+inline constexpr float kTreeMinSpacing = 4.0f; // guaranteed by grid cell 8 + jitter range [2,6]
 // Calibrated against the real generator, not guessed: this terrain's MEAN per-voxel slope is
 // ~1.34 (heightmap smoothness test's own measurement), so a "gentle ground only" 0.8 threshold
 // rejected almost every column. 2.0 keeps trees off genuine cliff faces while accepting typical
 // hillsides.
-inline constexpr float kTreeMaxSlope = 2.0f;    // per-axis central-difference height slope
-inline constexpr float kTreeMinHeight = 1.5f;   // above sea level (0): no beach/water trees
-inline constexpr float kTreeMaxHeight = 45.0f;  // tree line
+inline constexpr float kTreeMaxSlope = 2.0f;   // per-axis central-difference height slope
+inline constexpr float kTreeMinHeight = 1.5f;  // above sea level (0): no beach/water trees
+inline constexpr float kTreeMaxHeight = 45.0f; // tree line
 
 // All candidate trees for one chunk COLUMN (y ignored), after masking. Deterministic.
-[[nodiscard]] std::vector<TreePlacement> compute_tree_placements(
-    std::int32_t chunkX, std::int32_t chunkZ, int seed, const world::generation::HeightmapGenerator& heightmap);
+[[nodiscard]] std::vector<TreePlacement>
+compute_tree_placements(std::int32_t chunkX, std::int32_t chunkZ, int seed,
+                        const world::generation::HeightmapGenerator& heightmap);
 
 // Per-shape emission tally (goal 82: the overlay breaks "objects" down by silhouette).
 struct TreeEmitCounts {

@@ -17,6 +17,7 @@ struct TerrainFillParams {
 // fill only for chunks that actually straddle the generated surface or sea level. Deliberately no
 // stored density -- occupancy is read directly off material identity (material != Air); see §4
 // for why.
-void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightmap, const TerrainFillParams& params = {});
+void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightmap,
+                  const TerrainFillParams& params = {});
 
 } // namespace world::generation

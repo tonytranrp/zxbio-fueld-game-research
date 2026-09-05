@@ -91,3 +91,45 @@ Water already has the one genuinely different path (fresnel/ripple/glint); sand/
 under shared Lambert+AO+hemisphere read correctly at this art style, and a per-material
 roughness constant would be a real material system's first slice — that belongs with textures,
 not before them.
+
+## Groups H + J — code-quality audits & deferred-item cleanup (2026-09-04)
+
+- Goal 53/78 benchmarks, re-run Release core-only, new baseline
+  `benchmarks/baselines/2026-09-04-visual-pass.json`: extract_mesh 3.07 ms (vs 3.97 ms in the
+  hardening baseline -- no regression from AO + water-depth + material-pick; single-run numbers,
+  the compare.py U-test convention applies to any future regression CLAIM). Map suite unchanged
+  in shape: boost_flat still wins build (16.4 µs) and stays competitive on find; unordered_dense
+  still loses lookups.
+- Goal 54 (mesh_extractor deep read): read in full three times this pass (AO, water depth,
+  material pick); the padded-sampling pass now serves FOUR concerns, each with its own boundary
+  test ([ao], [water], coverage, continuity). The floating-sliver issue is documented with full
+  repro for a RenderDoc session (goal 73's tool) -- see water-foliage-design.md.
+- Goal 55 (throw audit): 32 `throw std::runtime_error` sites, all creation/contract failures that
+  flow to main()'s single catch -- consistent by design; each message names its subsystem, which
+  is what a faster diagnosis actually needs. No change warranted.
+- Goal 56 (generation-time re-check): extract_mesh 3.07 ms Release includes trees+AO+depth; the
+  debug streaming smoke (verify settle ~10 s, autofly bounds green) matches pre-Stage tuning.
+- Goal 57 (CoordMap consistency): grep found ZERO raw std::unordered_map/std::map in engine/world/
+  render/app/tools outside the alias's own comment. New code (tree_counts_) uses CoordMap.
+- Goal 58 (dispatcher convention): no new cross-system notifications were introduced by this
+  pass -- post-process and aim query are direct in-frame calls, which is the correct shape for
+  synchronous per-frame work; nothing bypassed the event bus.
+- Goal 59 (new-code boundary tests): AO levels [ao], water-depth encoding [water] (found a real
+  off-by-one -- the scan skipped the anchor voxel), swim settle [swim], aim query 3 sections
+  [aim], sliver guards [sliver] x2. 76/76 total.
+- Goal 60 (.clang-format): did not exist; added one CALIBRATED to the codebase (4-space, 110-col,
+  left pointers). 51/99 files drifted from mechanical formatting; applied the one-time tree-wide
+  pass (whitespace-only) -- post-pass drift 0, tests 76/76. Enforced going forward.
+- Goal 61 (clang-tidy): real headless run (VOXEL_CLANG_TIDY=ON, LLVM 22.1.4) -- caught 2 REAL
+  findings in the new mesh_dump (exception-escape from main, atoi), both fixed; re-run clean.
+  Test-dir exclusions still correct (Catch2 macro noise, not product code).
+- Goal 74 (mesh_dump .obj): implemented (terrain by material groups, v//vn); validated
+  structurally (869 verts matching the in-engine chunk, 0 bad face refs) -- honest partial on the
+  external-viewer check: Blender's MCP addon wasn't running; the file is standard .obj.
+- Goal 75 (RG16 normals): viewed `captures/banding_slope.png` -- slope striping is geometric
+  terracing + material banding; smooth grass shades continuously with NO quantization banding
+  under the new lighting. Answer: no; the A/B stays unrun per the goal's own conditional.
+- Goal 76 (backward-cpp): the premise was false -- it was never declared in Dependencies.cmake
+  (CLAUDE.md's note is research documentation, not a dependency). Nothing to remove.
+- Goal 77 (unordered_dense): KEEP, harness-only -- it just earned its keep again as the
+  comparison column in today's baseline re-run; benchmark-gated fetch costs normal builds nothing.

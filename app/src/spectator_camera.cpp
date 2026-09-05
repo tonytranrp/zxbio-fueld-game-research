@@ -27,12 +27,18 @@ void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraS
         const glm::vec3 right = transform.orientation * glm::vec3(1.0f, 0.0f, 0.0f);
 
         glm::vec3 wish{0.0f};
-        if (input.move_forward) wish += forward;
-        if (input.move_back) wish -= forward;
-        if (input.move_right) wish += right;
-        if (input.move_left) wish -= right;
-        if (input.move_up) wish += kWorldUp;
-        if (input.move_down) wish -= kWorldUp;
+        if (input.move_forward)
+            wish += forward;
+        if (input.move_back)
+            wish -= forward;
+        if (input.move_right)
+            wish += right;
+        if (input.move_left)
+            wish -= right;
+        if (input.move_up)
+            wish += kWorldUp;
+        if (input.move_down)
+            wish -= kWorldUp;
 
         const float wishLength = glm::length(wish);
         if (wishLength > 0.0f) {
@@ -50,10 +56,14 @@ void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraS
     const glm::vec3 walkRight{std::cos(state.yaw_radians), 0.0f, -std::sin(state.yaw_radians)};
 
     glm::vec3 wish{0.0f};
-    if (input.move_forward) wish += walkForward;
-    if (input.move_back) wish -= walkForward;
-    if (input.move_right) wish += walkRight;
-    if (input.move_left) wish -= walkRight;
+    if (input.move_forward)
+        wish += walkForward;
+    if (input.move_back)
+        wish -= walkForward;
+    if (input.move_right)
+        wish += walkRight;
+    if (input.move_left)
+        wish -= walkRight;
     const float wishLength = glm::length(wish);
     if (wishLength > 0.0f) {
         const float speed =

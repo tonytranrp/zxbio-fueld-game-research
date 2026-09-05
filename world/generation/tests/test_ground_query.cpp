@@ -38,7 +38,8 @@ TEST_CASE("ground query matches the extracted mesh surface", "[generation][walk]
         for (std::int32_t dz = -1; dz <= 1; ++dz) {
             for (std::int32_t dy = -2; dy <= 2; ++dy) {
                 for (std::int32_t dx = -1; dx <= 1; ++dx) {
-                    world::generation::fill_terrain(store.get_or_create({cx + dx, cy + dy, cz + dz}), generator);
+                    world::generation::fill_terrain(store.get_or_create({cx + dx, cy + dy, cz + dz}),
+                                                    generator);
                 }
             }
         }

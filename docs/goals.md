@@ -295,51 +295,51 @@ Gated explicitly on the outcome of goal 41 — don't build the G-buffer speculat
     individually — useful for isolating which pass causes a regression during the visual-verification
     workflow goal 8/20/27 established, without needing to revert code. **Check**: each pass can be
     independently disabled and the frame dump reflects exactly that pass's absence.
-53. Re-run the full `benchmarks/` suite against the post-refactor render path and compare to the
+53. [x] Re-run the full `benchmarks/` suite against the post-refactor render path and compare to the
     saved baselines in `benchmarks/baselines/` (the project's own established convention). **Check**:
     a new dated baseline file, compared via Benchmark's own `tools/compare.py`, not eyeballed.
 
 ## H. Code quality
 
-54. Full read-through of `world/meshing/src/mesh_extractor.cpp` specifically (the file that's had the
+54. [x] Full read-through of `world/meshing/src/mesh_extractor.cpp` specifically (the file that's had the
     most real bugs found in it historically — the boundary-vertex gap, the `NeighborCache`
     throughput fix) for anything else worth hardening now that AO (goal 12) is adding a second real
     piece of logic to the same padded-sampling pass — two independent concerns sharing one pass is
     worth a deliberate look, not assumed fine because each individually has tests. **Check**: a
     written note of what was reviewed and what (if anything) changed.
-55. Audit every `throw std::runtime_error` / defensive check added across this project's history
+55. [x] Audit every `throw std::runtime_error` / defensive check added across this project's history
     (there are several, per direct reading — missing SRB variables, failed buffer/shader creation)
     for consistency: do they all get caught somewhere sensible (currently `main()`'s single
     `catch (const std::exception&)`), or would a more specific error path help diagnose a real
     failure faster. **Check**: a written assessment, changed only if a concrete improvement is found,
     not refactored for its own sake.
-56. Review `chunk_streaming.cpp`/`chunk_streamer.cpp` for the same "does this scale sensibly" question
+56. [x] Review `chunk_streaming.cpp`/`chunk_streamer.cpp` for the same "does this scale sensibly" question
     Group T's stutter work already asked of the upload path — now that Stage 1–4 add real per-vertex
     work (AO, color jitter, wind animation) to every chunk's mesh generation, re-confirm the
     generation-side job-time budget assumptions the streaming system's timing (unload delay, in-
     flight limits) were originally tuned against. **Check**: a real before/after generation-time
     number with Stage 1–3's additions included, not assumed unchanged from the original tuning.
-57. Check whether `world/chunk`'s `CoordMap`/`CoordSet` boost-backed aliases are used consistently
+57. [x] Check whether `world/chunk`'s `CoordMap`/`CoordSet` boost-backed aliases are used consistently
     everywhere a chunk/streaming coordinate gets stored, or whether any newer code (trees, the
     upcoming G-buffer/pass bookkeeping) introduced a fresh `std::unordered_map`/`std::map` instance
     that should go through the same hardened alias instead. **Check**: a grep for raw
     `std::unordered_map`/`std::map` outside the alias definition itself and outside genuinely
     unrelated uses, each one justified or migrated.
-58. Confirm `engine/events`' `entt::dispatcher` usage (chunk lifecycle events, the debug overlay's
+58. [x] Confirm `engine/events`' `entt::dispatcher` usage (chunk lifecycle events, the debug overlay's
     event-vs-poll consistency check) is the pattern reused for any new cross-system notification
     Stage 1–4 or the gameplay goals introduce, rather than a fresh ad hoc callback/polling mechanism
     reappearing. **Check**: any new cross-system notification added by this document's other goals
     goes through `engine::events::Dispatcher`, or a written reason why it doesn't.
-59. Review test coverage for gaps specifically in the NEW code this document adds (AO, water,
+59. [x] Review test coverage for gaps specifically in the NEW code this document adds (AO, water,
     fog, foliage variety, any G-buffer work) against the standard the rest of the codebase already
     sets (boundary cases, not just the convenient common case, per `docs/progress.md`'s own
     assessment of the existing suite). **Check**: each new subsystem has at least one test exercising
     a real boundary case, not only a happy-path smoke test.
-60. Confirm `.clang-format` (if one exists — check directly rather than assuming) is applied
+60. [x] Confirm `.clang-format` (if one exists — check directly rather than assuming) is applied
     consistently across all newly-added files from this document's work; add one now if it doesn't
     exist yet, given the codebase's otherwise-consistent style is worth protecting as more people/
     sessions touch it. **Check**: a formatting pass runs clean (no diff) across the whole tree.
-61. Revisit whether `VOXEL_CLANG_TIDY`'s existing exclusions (test directories, per the root
+61. [x] Revisit whether `VOXEL_CLANG_TIDY`'s existing exclusions (test directories, per the root
     `CMakeLists.txt`'s own comment) still make sense given the new test surface from goal 59, and
     whether the `/EHsc` restatement workaround documented there is still needed on the current
     toolchain. **Check**: a real clang-tidy run against the current tree, findings triaged (fixed or
@@ -409,27 +409,27 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
 73. In-app RenderDoc capture trigger: vendor `renderdoc_app.h` (the missing piece per `CLAUDE.md`)
     and wire the in-application capture-trigger API. **Check**: a hotkey during a live run produces a
     RenderDoc capture file, openable in the standalone RenderDoc UI.
-74. `tools/mesh_dump`'s `.obj` export (named as deferred from the very first phase of this project) —
+74. [x] `tools/mesh_dump`'s `.obj` export (named as deferred from the very first phase of this project) —
     implement it now that the mesh format has stabilized through Stage 1's AO-data addition, so it's
     built against the current vertex shape rather than needing a second pass later. **Check**: a
     dumped `.obj` opens correctly in a separate viewer (Blender/MeshLab), matching the in-engine
     render of the same chunk.
-75. Revisit the RG16-normal-format A/B named in `CLAUDE.md` as "if slope banding ever bothers" — now
+75. [x] Revisit the RG16-normal-format A/B named in `CLAUDE.md` as "if slope banding ever bothers" — now
     that Stage 1's warmer lighting and hemisphere ambient (goal 14) make normal-quality issues more
     visually apparent than flat ambient did, actually check whether banding is now visible rather than
     leaving the question open indefinitely. **Check**: a viewed dump of a smooth slope under the new
     lighting, a specific yes/no on visible banding, and the A/B only actually run if the answer is
     yes.
-76. Confirm whether `backward-cpp` (researched, pinned, but not wired in per `CLAUDE.md`'s crash-
+76. [x] Confirm whether `backward-cpp` (researched, pinned, but not wired in per `CLAUDE.md`'s crash-
     handler section) is worth removing from `Dependencies.cmake` entirely now that the custom
     handler covers its use case, versus keeping it pinned as a documented fallback — a dependency
     that's fetched but unused either earns its keep with a clear reason or should go. **Check**: an
     explicit decision, written down, either way.
-77. Check whether `unordered_dense` (kept, per `CLAUDE.md`, "ONLY for the comparison harness" after
+77. [x] Check whether `unordered_dense` (kept, per `CLAUDE.md`, "ONLY for the comparison harness" after
     losing the hash-map benchmark) is still needed now that the decision is made and documented in
     `docs/progress.md` — a losing candidate kept only for a comparison that already happened is a
     candidate for removal, not permanent residency. **Check**: same standard as goal 76.
-78. Re-run the full benchmark suite (`benchmarks/`) now that Stage 1–4's shader/mesh changes exist,
+78. [x] Re-run the full benchmark suite (`benchmarks/`) now that Stage 1–4's shader/mesh changes exist,
     and refresh `benchmarks/baselines/` with a new dated file per the project's own established
     convention — the existing baselines predate this document's work and comparing new numbers
     against them would be comparing against a stale baseline. **Check**: a new baseline file exists
@@ -458,7 +458,7 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
     `PHASE_1_COMPLETION_BRIEF.md`'s Group W legacy) — break it down by type once goal 36–37 adds
     real shape variety, so the overlay stays useful for understanding what's actually loaded.
     **Check**: overlay shows a per-shape-type breakdown, sums to the existing total.
-83. Review whether the spectator camera's fly-mode speed/boost values still feel right once terrain
+83. [x] Review whether the spectator camera's fly-mode speed/boost values still feel right once terrain
     reads richer/slower-to-take-in visually (Stage 1–3's changes) — a subjective, but real, gameplay-
     feel question worth a deliberate look rather than leaving untouched by default. **Check**: a
     stated before/after assessment from actually flying through the changed terrain, not assumed

@@ -40,13 +40,27 @@ void GlfwInput::key_callback(GLFWwindow* window, int key, int /*scancode*/, int 
     const bool down = action == GLFW_PRESS;
     InputState& state = input->state_;
     switch (key) {
-    case GLFW_KEY_W: state.move_forward = down; break;
-    case GLFW_KEY_S: state.move_back = down; break;
-    case GLFW_KEY_A: state.move_left = down; break;
-    case GLFW_KEY_D: state.move_right = down; break;
-    case GLFW_KEY_SPACE: state.move_up = down; break;
-    case GLFW_KEY_LEFT_CONTROL: state.move_down = down; break;
-    case GLFW_KEY_LEFT_SHIFT: state.speed_boost = down; break;
+    case GLFW_KEY_W:
+        state.move_forward = down;
+        break;
+    case GLFW_KEY_S:
+        state.move_back = down;
+        break;
+    case GLFW_KEY_A:
+        state.move_left = down;
+        break;
+    case GLFW_KEY_D:
+        state.move_right = down;
+        break;
+    case GLFW_KEY_SPACE:
+        state.move_up = down;
+        break;
+    case GLFW_KEY_LEFT_CONTROL:
+        state.move_down = down;
+        break;
+    case GLFW_KEY_LEFT_SHIFT:
+        state.speed_boost = down;
+        break;
     case GLFW_KEY_G:
         if (down) {
             state.pending_walk_toggle = true; // edge: consumed by take_walk_toggle()
@@ -62,7 +76,8 @@ void GlfwInput::key_callback(GLFWwindow* window, int key, int /*scancode*/, int 
             state.quit_requested = true;
         }
         break;
-    default: break;
+    default:
+        break;
     }
 }
 
@@ -86,7 +101,7 @@ void GlfwInput::cursor_pos_callback(GLFWwindow* window, double x, double y) {
     }
     if (input->have_last_cursor_ && input->state_.look_active) {
         input->state_.pending_look_delta += glm::vec2(static_cast<float>(x - input->last_cursor_x_),
-                                                     static_cast<float>(y - input->last_cursor_y_));
+                                                      static_cast<float>(y - input->last_cursor_y_));
     }
     input->last_cursor_x_ = x;
     input->last_cursor_y_ = y;

@@ -26,7 +26,8 @@ GlfwWindow::GlfwWindow(std::uint32_t width, std::uint32_t height, const char* ti
         const char* description = nullptr;
         glfwGetError(&description);
         glfwTerminate();
-        throw std::runtime_error(std::string("glfwCreateWindow failed: ") + (description ? description : "unknown"));
+        throw std::runtime_error(std::string("glfwCreateWindow failed: ") +
+                                 (description ? description : "unknown"));
     }
 }
 
@@ -47,7 +48,8 @@ std::pair<std::uint32_t, std::uint32_t> GlfwWindow::framebuffer_size() const {
     int width = 0;
     int height = 0;
     glfwGetFramebufferSize(window_, &width, &height);
-    return {static_cast<std::uint32_t>(width < 0 ? 0 : width), static_cast<std::uint32_t>(height < 0 ? 0 : height)};
+    return {static_cast<std::uint32_t>(width < 0 ? 0 : width),
+            static_cast<std::uint32_t>(height < 0 ? 0 : height)};
 }
 
 void* GlfwWindow::native_handle() const {

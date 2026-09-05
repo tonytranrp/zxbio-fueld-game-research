@@ -66,8 +66,8 @@ void read_back_buffer(RenderContext::Impl& rc, BackbufferReadback& out) {
     // DO_NOT_WAIT is required, not an optimization: Diligent's Vulkan backend warns that mapping
     // a staging texture for read never GPU-waits by itself -- the WaitForIdle above is the
     // synchronization, and this flag states that explicitly.
-    rc.context->MapTextureSubresource(out.staging, 0, 0, Diligent::MAP_READ,
-                                      Diligent::MAP_FLAG_DO_NOT_WAIT, nullptr, out.mapped);
+    rc.context->MapTextureSubresource(out.staging, 0, 0, Diligent::MAP_READ, Diligent::MAP_FLAG_DO_NOT_WAIT,
+                                      nullptr, out.mapped);
     if (out.mapped.pData == nullptr) {
         out.staging.Release(); // nothing to unmap
         throw std::runtime_error("frame readback: staging map failed");
@@ -131,9 +131,8 @@ bool write_capture(const BackbufferReadback& frame, const char* path) {
     // encoder is already in the dependency tree -- no new dependency at all). The bare `2` is
     // libpng's PNG_COLOR_TYPE_RGB; png.h itself is deliberately not on this module's include path.
     auto pngBits = Diligent::DataBlobImpl::Create();
-    const auto encoded = Diligent::EncodePng(rgb.data(), frame.width, frame.height,
-                                             frame.width * 3u, /*PNG_COLOR_TYPE_RGB*/ 2,
-                                             pngBits.RawPtr());
+    const auto encoded = Diligent::EncodePng(rgb.data(), frame.width, frame.height, frame.width * 3u,
+                                             /*PNG_COLOR_TYPE_RGB*/ 2, pngBits.RawPtr());
     if (encoded != Diligent::ENCODE_PNG_RESULT_OK) {
         return false;
     }
@@ -186,7 +185,8 @@ float sample_non_reference_pixel_fraction(RenderContext& context) {
     char dumpPathBuffer[512] = {};
     std::size_t dumpPathLen = 0;
     const char* dumpPath =
-        getenv_s(&dumpPathLen, dumpPathBuffer, sizeof(dumpPathBuffer), "VOXEL_DUMP_FRAME") == 0 && dumpPathLen > 0
+        getenv_s(&dumpPathLen, dumpPathBuffer, sizeof(dumpPathBuffer), "VOXEL_DUMP_FRAME") == 0 &&
+                dumpPathLen > 0
             ? dumpPathBuffer
             : nullptr; // getenv itself is C4996 under /W4 /WX
 #else

@@ -7,8 +7,8 @@ namespace engine::core {
 
 void Application::run(std::size_t max_ticks) {
     using Duration = std::chrono::steady_clock::duration;
-    const auto target_frame_time =
-        std::chrono::duration_cast<Duration>(std::chrono::duration<double>(1.0 / config_.target_tick_rate_hz));
+    const auto target_frame_time = std::chrono::duration_cast<Duration>(
+        std::chrono::duration<double>(1.0 / config_.target_tick_rate_hz));
 
     std::size_t tick_count = 0;
     while (true) {

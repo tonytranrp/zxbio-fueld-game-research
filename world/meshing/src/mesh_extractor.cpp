@@ -21,7 +21,9 @@ namespace {
 
 constexpr std::uint32_t kNoVertex = std::numeric_limits<std::uint32_t>::max();
 
-bool is_solid(MaterialID m) { return m != MaterialID::Air; }
+bool is_solid(MaterialID m) {
+    return m != MaterialID::Air;
+}
 
 // Padded local-space sampling: lx/ly/lz may range one voxel past this chunk's own 0..31 bounds in
 // any direction, so the owning chunk per axis is a plain sign/range test into a 3x3x3 pointer
@@ -71,14 +73,30 @@ private:
 
 // The 8 corners of a cell: bit0=dx, bit1=dy, bit2=dz.
 constexpr std::array<glm::vec3, 8> kCornerOffsets = {{
-    {0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {1, 1, 0}, {0, 0, 1}, {1, 0, 1}, {0, 1, 1}, {1, 1, 1},
+    {0, 0, 0},
+    {1, 0, 0},
+    {0, 1, 0},
+    {1, 1, 0},
+    {0, 0, 1},
+    {1, 0, 1},
+    {0, 1, 1},
+    {1, 1, 1},
 }};
 
 // The 12 edges of a cell as corner-index pairs.
 constexpr std::array<std::array<int, 2>, 12> kEdges = {{
-    {0, 1}, {2, 3}, {4, 5}, {6, 7}, // X-direction edges
-    {0, 2}, {1, 3}, {4, 6}, {5, 7}, // Y-direction edges
-    {0, 4}, {1, 5}, {2, 6}, {3, 7}, // Z-direction edges
+    {0, 1},
+    {2, 3},
+    {4, 5},
+    {6, 7}, // X-direction edges
+    {0, 2},
+    {1, 3},
+    {4, 6},
+    {5, 7}, // Y-direction edges
+    {0, 4},
+    {1, 5},
+    {2, 6},
+    {3, 7}, // Z-direction edges
 }};
 
 struct CellSample {
@@ -87,13 +105,15 @@ struct CellSample {
     MaterialID material = MaterialID::Air; // valid only if active
     float ao = 1.0f;                       // baked concavity AO (research/baked-ao-design.md)
 
-    static CellSample compute(const NeighborCache& neighbors, std::int32_t cx, std::int32_t cy, std::int32_t cz) {
+    static CellSample compute(const NeighborCache& neighbors, std::int32_t cx, std::int32_t cy,
+                              std::int32_t cz) {
         std::array<MaterialID, 8> corners{};
         int solidCorners = 0;
         for (std::size_t i = 0; i < 8; ++i) {
             const glm::vec3& off = kCornerOffsets[i];
-            corners[i] = neighbors.sample(cx + static_cast<std::int32_t>(off.x), cy + static_cast<std::int32_t>(off.y),
-                                          cz + static_cast<std::int32_t>(off.z));
+            corners[i] =
+                neighbors.sample(cx + static_cast<std::int32_t>(off.x), cy + static_cast<std::int32_t>(off.y),
+                                 cz + static_cast<std::int32_t>(off.z));
             solidCorners += is_solid(corners[i]) ? 1 : 0;
         }
 
@@ -111,7 +131,9 @@ struct CellSample {
             const MaterialID a = corners[static_cast<std::size_t>(edge[0])];
             const MaterialID b = corners[static_cast<std::size_t>(edge[1])];
             if (is_solid(a) != is_solid(b)) {
-                sum += (kCornerOffsets[static_cast<std::size_t>(edge[0])] + kCornerOffsets[static_cast<std::size_t>(edge[1])]) * 0.5f;
+                sum += (kCornerOffsets[static_cast<std::size_t>(edge[0])] +
+                        kCornerOffsets[static_cast<std::size_t>(edge[1])]) *
+                       0.5f;
                 ++crossingCount;
                 // Material pick (Group M refinement of the old "first solid corner wins"): the
                 // HIGHEST crossing solid corner wins, ties broken toward non-water. With banded
@@ -121,9 +143,9 @@ struct CellSample {
                 const std::size_t solidIdx = static_cast<std::size_t>(is_solid(a) ? edge[0] : edge[1]);
                 const MaterialID solidMat = is_solid(a) ? a : b;
                 const float cornerY = kCornerOffsets[solidIdx].y;
-                const bool better = cornerY > bestCornerY ||
-                                    (cornerY == bestCornerY && cell.material == MaterialID::Water &&
-                                     solidMat != MaterialID::Water);
+                const bool better =
+                    cornerY > bestCornerY || (cornerY == bestCornerY && cell.material == MaterialID::Water &&
+                                              solidMat != MaterialID::Water);
                 if (cell.material == MaterialID::Air || better) {
                     cell.material = solidMat;
                     bestCornerY = cornerY;
@@ -133,8 +155,9 @@ struct CellSample {
 
         cell.active = crossingCount > 0;
         if (cell.active) {
-            cell.vertexPos = glm::vec3(static_cast<float>(cx), static_cast<float>(cy), static_cast<float>(cz)) +
-                              sum / static_cast<float>(crossingCount);
+            cell.vertexPos =
+                glm::vec3(static_cast<float>(cx), static_cast<float>(cy), static_cast<float>(cz)) +
+                sum / static_cast<float>(crossingCount);
         }
         return cell;
     }
@@ -166,12 +189,24 @@ enum class Axis { X, Y, Z };
 // to (Y,Z) for X-edges, (X,Z) for Y-edges, (X,Y) for Z-edges.
 constexpr std::array<std::array<int, 2>, 4> kSharingCellDeltas = {{{-1, -1}, {0, -1}, {0, 0}, {-1, 0}}};
 
-void anchor_for_delta(Axis axis, std::int32_t vx, std::int32_t vy, std::int32_t vz, int d0, int d1, std::int32_t& cx,
-                       std::int32_t& cy, std::int32_t& cz) {
+void anchor_for_delta(Axis axis, std::int32_t vx, std::int32_t vy, std::int32_t vz, int d0, int d1,
+                      std::int32_t& cx, std::int32_t& cy, std::int32_t& cz) {
     switch (axis) {
-        case Axis::X: cx = vx; cy = vy + d0; cz = vz + d1; break;
-        case Axis::Y: cx = vx + d0; cy = vy; cz = vz + d1; break;
-        case Axis::Z: cx = vx + d0; cy = vy + d1; cz = vz; break;
+    case Axis::X:
+        cx = vx;
+        cy = vy + d0;
+        cz = vz + d1;
+        break;
+    case Axis::Y:
+        cx = vx + d0;
+        cy = vy;
+        cz = vz + d1;
+        break;
+    case Axis::Z:
+        cx = vx + d0;
+        cy = vy + d1;
+        cz = vz;
+        break;
     }
 }
 
@@ -188,8 +223,9 @@ void anchor_for_delta(Axis axis, std::int32_t vx, std::int32_t vy, std::int32_t 
 // concrete asymmetry from how the right-hand-rule cross product interacts with which two axes are
 // held fixed per direction. Flip the order when the actual crossing doesn't match that axis's
 // natural case, or every other quad on non-X/Z axes comes out facing inward.
-void emit_quads_along_axis(Axis axis, const NeighborCache& neighbors, const std::vector<std::uint32_t>& vertexIndex,
-                            MeshData& mesh, std::vector<glm::vec3>& normalAccum) {
+void emit_quads_along_axis(Axis axis, const NeighborCache& neighbors,
+                           const std::vector<std::uint32_t>& vertexIndex, MeshData& mesh,
+                           std::vector<glm::vec3>& normalAccum) {
     const bool naturalIsLowSolid = (axis != Axis::Y);
 
     for (std::int32_t a = 0; a < kChunkSize; ++a) {
@@ -199,26 +235,38 @@ void emit_quads_along_axis(Axis axis, const NeighborCache& neighbors, const std:
                 std::int32_t vy = 0;
                 std::int32_t vz = 0;
                 switch (axis) {
-                    case Axis::X: vx = a; vy = b; vz = c; break;
-                    case Axis::Y: vx = b; vy = a; vz = c; break;
-                    case Axis::Z: vx = b; vy = c; vz = a; break;
+                case Axis::X:
+                    vx = a;
+                    vy = b;
+                    vz = c;
+                    break;
+                case Axis::Y:
+                    vx = b;
+                    vy = a;
+                    vz = c;
+                    break;
+                case Axis::Z:
+                    vx = b;
+                    vy = c;
+                    vz = a;
+                    break;
                 }
 
                 MaterialID lo{};
                 MaterialID hi{};
                 switch (axis) {
-                    case Axis::X:
-                        lo = neighbors.sample(vx, vy, vz);
-                        hi = neighbors.sample(vx + 1, vy, vz);
-                        break;
-                    case Axis::Y:
-                        lo = neighbors.sample(vx, vy, vz);
-                        hi = neighbors.sample(vx, vy + 1, vz);
-                        break;
-                    case Axis::Z:
-                        lo = neighbors.sample(vx, vy, vz);
-                        hi = neighbors.sample(vx, vy, vz + 1);
-                        break;
+                case Axis::X:
+                    lo = neighbors.sample(vx, vy, vz);
+                    hi = neighbors.sample(vx + 1, vy, vz);
+                    break;
+                case Axis::Y:
+                    lo = neighbors.sample(vx, vy, vz);
+                    hi = neighbors.sample(vx, vy + 1, vz);
+                    break;
+                case Axis::Z:
+                    lo = neighbors.sample(vx, vy, vz);
+                    hi = neighbors.sample(vx, vy, vz + 1);
+                    break;
                 }
                 const bool loSolid = is_solid(lo);
                 if (loSolid == is_solid(hi)) {
@@ -231,7 +279,8 @@ void emit_quads_along_axis(Axis axis, const NeighborCache& neighbors, const std:
                     std::int32_t cx = 0;
                     std::int32_t cy = 0;
                     std::int32_t cz = 0;
-                    anchor_for_delta(axis, vx, vy, vz, kSharingCellDeltas[i][0], kSharingCellDeltas[i][1], cx, cy, cz);
+                    anchor_for_delta(axis, vx, vy, vz, kSharingCellDeltas[i][0], kSharingCellDeltas[i][1], cx,
+                                     cy, cz);
                     const std::uint32_t vIdx = vertexIndex[cell_array_index(cx, cy, cz)];
                     if (vIdx == kNoVertex) {
                         // Should not happen: every cell sharing a genuine crossing edge is active
@@ -249,7 +298,9 @@ void emit_quads_along_axis(Axis axis, const NeighborCache& neighbors, const std:
 
                 const bool useNaturalOrder = (loSolid == naturalIsLowSolid);
                 const std::array<std::uint32_t, 4> ordered =
-                    useNaturalOrder ? quadVerts : std::array<std::uint32_t, 4>{quadVerts[0], quadVerts[3], quadVerts[2], quadVerts[1]};
+                    useNaturalOrder ? quadVerts
+                                    : std::array<std::uint32_t, 4>{quadVerts[0], quadVerts[3], quadVerts[2],
+                                                                   quadVerts[1]};
 
                 mesh.indices.push_back(ordered[0]);
                 mesh.indices.push_back(ordered[1]);
@@ -283,8 +334,9 @@ MeshData extract_mesh(const ChunkStore& store, ChunkCoord coord) {
     // Precompute every needed cell's activity/vertex/material once, up front -- both the vertex-
     // emission pass and the quad-connection pass need arbitrary lookups (including the -1-anchored
     // boundary layer), so compute-then-index is simpler than trying to interleave the two passes.
-    std::vector<CellSample> cells(static_cast<std::size_t>(kCellRange) * static_cast<std::size_t>(kCellRange) *
-                                   static_cast<std::size_t>(kCellRange));
+    std::vector<CellSample> cells(static_cast<std::size_t>(kCellRange) *
+                                  static_cast<std::size_t>(kCellRange) *
+                                  static_cast<std::size_t>(kCellRange));
     for (std::int32_t cz = kCellMin; cz < kChunkSize; ++cz) {
         for (std::int32_t cy = kCellMin; cy < kChunkSize; ++cy) {
             for (std::int32_t cx = kCellMin; cx < kChunkSize; ++cx) {
@@ -315,8 +367,9 @@ MeshData extract_mesh(const ChunkStore& store, ChunkCoord coord) {
                     // flat open surface, and the shader's water path wants depth for its
                     // shallow-to-deep tint. Scan down through water voxels until ground, capped
                     // at 8 (also the honest limit of the one-chunk neighbor halo).
+                    // Counts from the anchor voxel itself (part of the column) downward.
                     int depth = 0;
-                    while (depth < 8 && neighbors.sample(cx, cy - 1 - depth, cz) == MaterialID::Water) {
+                    while (depth < 8 && neighbors.sample(cx, cy - depth, cz) == MaterialID::Water) {
                         ++depth;
                     }
                     ao = static_cast<float>(depth) / 8.0f;

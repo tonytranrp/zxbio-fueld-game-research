@@ -20,7 +20,8 @@ struct Camera {
 
 [[nodiscard]] inline glm::mat4 view_matrix(const Camera& camera) noexcept {
     // view = inverse(world-from-view) = conjugate(rotation) * translate(-position).
-    return glm::mat4_cast(glm::conjugate(camera.orientation)) * glm::translate(glm::mat4(1.0f), -camera.position);
+    return glm::mat4_cast(glm::conjugate(camera.orientation)) *
+           glm::translate(glm::mat4(1.0f), -camera.position);
 }
 
 // Produces a [0,1]-NDC-depth matrix (Diligent's normalized convention across every backend) --

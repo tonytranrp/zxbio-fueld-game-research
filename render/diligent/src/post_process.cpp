@@ -17,8 +17,8 @@
 #include "PostProcess/Common/interface/PostFXContext.hpp"
 
 namespace Diligent::HLSL {
-#include "Shaders/Common/public/ShaderDefinitions.fxh"
 #include "Shaders/Common/public/BasicStructures.fxh"
+#include "Shaders/Common/public/ShaderDefinitions.fxh"
 #include "Shaders/PostProcess/Bloom/public/BloomStructures.fxh"
 } // namespace Diligent::HLSL
 
@@ -251,8 +251,9 @@ PostProcessor::PostProcessor(RenderContext& context) : impl_(std::make_unique<Im
         warmup.pPrevCamera = &cameraPrev;
         impl_->postfx->Execute(warmup);
         if (!impl_->postfx->IsPSOsReady()) {
-            engine::core::log(engine::core::LogLevel::Warn,
-                              "post-process: PostFXContext PSOs still not ready after warm-up -- bloom will stay off");
+            engine::core::log(
+                engine::core::LogLevel::Warn,
+                "post-process: PostFXContext PSOs still not ready after warm-up -- bloom will stay off");
         }
     }
 }
@@ -265,8 +266,12 @@ PostProcessor::~PostProcessor() {
     }
 }
 
-void PostProcessor::set_bloom_enabled(bool enabled) noexcept { impl_->bloomEnabled = enabled; }
-void PostProcessor::set_tonemap_enabled(bool enabled) noexcept { impl_->tonemapEnabled = enabled; }
+void PostProcessor::set_bloom_enabled(bool enabled) noexcept {
+    impl_->bloomEnabled = enabled;
+}
+void PostProcessor::set_tonemap_enabled(bool enabled) noexcept {
+    impl_->tonemapEnabled = enabled;
+}
 
 void PostProcessor::execute(std::uint32_t frameIndex) {
     auto& rc = impl_->context->impl();

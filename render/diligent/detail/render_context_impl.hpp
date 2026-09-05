@@ -27,7 +27,8 @@ struct RenderContext::Impl {
     // actually include TracyVulkan.hpp (vulkan_tools.cpp, terrain_renderer.cpp) see Tracy/Vulkan
     // types; destroyed via detach_gpu_profiler() from ~RenderContext, before the device dies.
     void* tracyVkCtx = nullptr;
-    bool memoryBudgetExtensionEnabled = false; // VK_EXT_memory_budget was requested AND the device came up with it
+    bool memoryBudgetExtensionEnabled =
+        false; // VK_EXT_memory_budget was requested AND the device came up with it
 
     // Post-process scene target (goals.md Group D): when PostProcessor is live, this is the
     // offscreen HDR color texture the scene pass renders into (TerrainRenderer checks it each

@@ -23,7 +23,6 @@
 #include "engine/input/glfw_input.hpp"
 #include "engine/jobs/thread_pool.hpp"
 #include "glfw_window.hpp"
-#include "spectator_camera.hpp"
 #include "render/diligent/debug_overlay.hpp"
 #include "render/diligent/frame_verify.hpp"
 #include "render/diligent/gpu_tools.hpp"
@@ -31,6 +30,7 @@
 #include "render/diligent/render_context.hpp"
 #include "render/diligent/terrain_renderer.hpp"
 #include "render/interface/camera.hpp"
+#include "spectator_camera.hpp"
 #include "world/streaming/chunk_events.hpp"
 #include "world/streaming/chunk_streamer.hpp"
 
@@ -47,13 +47,14 @@ using engine::core::LogLevel;
 
 struct AppOptions {
     render::diligent::Backend backend = render::diligent::Backend::Vulkan;
-    std::uint32_t frames = 0;   // 0 = run until the window is closed
-    std::int32_t radius = 3;    // meshed horizontal chunk radius around the origin
+    std::uint32_t frames = 0; // 0 = run until the window is closed
+    std::int32_t radius = 3;  // meshed horizontal chunk radius around the origin
     int seed = 1337;
-    bool verify_frame = false;  // Group B smoke check: read the frame back, fail on an empty one
+    bool verify_frame = false; // Group B smoke check: read the frame back, fail on an empty one
     bool validation = false;
-    bool autofly = false; // Group D smoke check: fly +X automatically; fail if unload never bounds the loaded set
-    bool walk = false;    // start in walk (gravity) mode; with --autofly, also asserts no fall-through
+    bool autofly =
+        false; // Group D smoke check: fly +X automatically; fail if unload never bounds the loaded set
+    bool walk = false; // start in walk (gravity) mode; with --autofly, also asserts no fall-through
     std::size_t upload_budget = 4; // mesh commits per frame; 0 = unlimited (the pre-fix stutter behavior)
     std::uint32_t dump_every = 0;  // goal 7: write a numbered frame dump every N frames (0 = off)
     // Goal 52's per-pass kill switches: isolate a visual regression to one pass without reverts.
@@ -94,7 +95,8 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             options.frames = value ? static_cast<std::uint32_t>(std::strtoul(value, nullptr, 10)) : 0;
         } else if (arg == "--radius") {
             const char* value = next_value();
-            options.radius = value ? static_cast<std::int32_t>(std::strtol(value, nullptr, 10)) : options.radius;
+            options.radius =
+                value ? static_cast<std::int32_t>(std::strtol(value, nullptr, 10)) : options.radius;
         } else if (arg == "--seed") {
             const char* value = next_value();
             options.seed = value ? static_cast<int>(std::strtol(value, nullptr, 10)) : options.seed;
@@ -161,7 +163,10 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             return std::nullopt;
 #endif
         } else {
-            log(LogLevel::Error, "unknown argument \"{}\" (known: --mode vk|d3d12, --frames N, --radius N, --seed N, --verify-frame, --validation, --autofly, --walk, --upload-budget N, --dump-every N)", arg);
+            log(LogLevel::Error,
+                "unknown argument \"{}\" (known: --mode vk|d3d12, --frames N, --radius N, --seed N, "
+                "--verify-frame, --validation, --autofly, --walk, --upload-budget N, --dump-every N)",
+                arg);
             return std::nullopt;
         }
     }
@@ -182,7 +187,8 @@ struct ChunkEventCounters {
 
     void connect(engine::events::Dispatcher& dispatcher) {
         dispatcher.sink<world::streaming::ChunkLoaded>().connect<&ChunkEventCounters::on_loaded>(*this);
-        dispatcher.sink<world::streaming::ChunkMeshReady>().connect<&ChunkEventCounters::on_mesh_ready>(*this);
+        dispatcher.sink<world::streaming::ChunkMeshReady>().connect<&ChunkEventCounters::on_mesh_ready>(
+            *this);
         dispatcher.sink<world::streaming::ChunkUnloaded>().connect<&ChunkEventCounters::on_unloaded>(*this);
     }
 };
@@ -192,12 +198,15 @@ struct ChunkEventCounters {
 
 // Input handling + camera movement + walk-mode invariant accounting. Returns the camera snapshot
 // the render pass consumes.
-render::interface::Camera update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraEntity,
-                                              engine::input::GlfwInput& input, app::ChunkStreamingSystem& streaming,
+render::interface::Camera update_camera_phase(engine::ecs::Registry& registry,
+                                              engine::ecs::Entity cameraEntity,
+                                              engine::input::GlfwInput& input,
+                                              app::ChunkStreamingSystem& streaming,
                                               const engine::core::Clock& clock, const AppOptions& options,
                                               std::uint32_t& walkViolations) {
     auto [transform, lens, spectator] =
-        registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(cameraEntity);
+        registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(
+            cameraEntity);
     if (input.take_walk_toggle()) {
         // Deliberate transition handling (Group V task 25): position is untouched, vertical
         // velocity zeroed -- entering walk mid-air simply starts a clean fall; leaving it
@@ -242,20 +251,22 @@ struct FrameTelemetry {
     render::diligent::GpuMemoryBudget budget;
     // VK_EXT_memory_budget is polled on a timer per its own documented usage pattern, never per
     // frame (task 30).
-    std::chrono::steady_clock::time_point lastBudgetPoll = std::chrono::steady_clock::now() - std::chrono::hours(1);
+    std::chrono::steady_clock::time_point lastBudgetPoll =
+        std::chrono::steady_clock::now() - std::chrono::hours(1);
 };
 
 // Budget poll + overlay draw (pre-Present).
-void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock, render::diligent::RenderContext& context,
-                   render::diligent::TerrainRenderer& renderer, app::ChunkStreamingSystem& streaming,
-                   render::diligent::DebugOverlay& overlay, const ChunkEventCounters& chunkCounters,
-                   const render::interface::Camera& camera) {
+void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock,
+                   render::diligent::RenderContext& context, render::diligent::TerrainRenderer& renderer,
+                   app::ChunkStreamingSystem& streaming, render::diligent::DebugOverlay& overlay,
+                   const ChunkEventCounters& chunkCounters, const render::interface::Camera& camera) {
     if (std::chrono::steady_clock::now() - t.lastBudgetPoll >= std::chrono::seconds(2)) {
         const bool firstPoll = !t.budget.available;
         t.budget = render::diligent::query_gpu_memory_budget(context);
         t.lastBudgetPoll = std::chrono::steady_clock::now();
         if (firstPoll && t.budget.available) {
-            log(LogLevel::Info, "VK_EXT_memory_budget: {:.0f} MiB device-local budget, {:.0f} MiB in use machine-wide",
+            log(LogLevel::Info,
+                "VK_EXT_memory_budget: {:.0f} MiB device-local budget, {:.0f} MiB in use machine-wide",
                 static_cast<double>(t.budget.device_local_budget_bytes) / (1024.0 * 1024.0),
                 static_cast<double>(t.budget.device_local_usage_bytes) / (1024.0 * 1024.0));
         }
@@ -292,8 +303,9 @@ void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock, render::
 }
 
 // The 2-second stats line + event/poll consistency check (post-Present).
-void report_phase(FrameTelemetry& t, const engine::core::Clock& clock, render::diligent::TerrainRenderer& renderer,
-                  app::ChunkStreamingSystem& streaming, const ChunkEventCounters& chunkCounters) {
+void report_phase(FrameTelemetry& t, const engine::core::Clock& clock,
+                  render::diligent::TerrainRenderer& renderer, app::ChunkStreamingSystem& streaming,
+                  const ChunkEventCounters& chunkCounters) {
     t.worstFrameMs = std::max(t.worstFrameMs, static_cast<float>(clock.delta_seconds()) * 1000.0f);
     const auto now = std::chrono::steady_clock::now();
     if (now - t.lastReport < std::chrono::seconds(2)) {
@@ -311,8 +323,8 @@ void report_phase(FrameTelemetry& t, const engine::core::Clock& clock, render::d
     t.worstFrameMs = 0.0f;
     // Task 33's check, mechanically: the event-derived count must always equal the polled one.
     if (chunkCounters.ready != streaming.ready_chunk_count()) {
-        log(LogLevel::Error, "event/poll chunk-count mismatch: events say {}, streamer says {}", chunkCounters.ready,
-            streaming.ready_chunk_count());
+        log(LogLevel::Error, "event/poll chunk-count mismatch: events say {}, streamer says {}",
+            chunkCounters.ready, streaming.ready_chunk_count());
     }
     t.lastReport = now;
     t.framesSinceReport = 0;
@@ -515,7 +527,8 @@ int run(const AppOptions& options) {
             static_cast<double>(renderer.gpu_memory().peak_bytes()) / (1024.0 * 1024.0));
     }
 
-    log(LogLevel::Info, "exiting after {} frames on {}", frame, render::diligent::to_string(context.backend()));
+    log(LogLevel::Info, "exiting after {} frames on {}", frame,
+        render::diligent::to_string(context.backend()));
     return cap.verifyOk && autoflyOk && walkOk ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

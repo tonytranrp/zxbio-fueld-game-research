@@ -1,0 +1,18 @@
+# Calibrated to this codebase's established style (goal 60), not a preset adopted blind:
+# 4-space indent, ~110-col lines, left-attached pointers, same-line braces, no single-line
+# collapsing beyond short inline accessors.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 110
+PointerAlignment: Left
+DerivePointerAlignment: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+BreakBeforeBraces: Attach
+AlwaysBreakTemplateDeclarations: Yes
+AccessModifierOffset: -4
+NamespaceIndentation: None
+FixNamespaceComments: true
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive

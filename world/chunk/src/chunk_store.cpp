@@ -16,6 +16,8 @@ Chunk* ChunkStore::find(ChunkCoord coord) const {
     return it != chunks_.end() ? it->second.get() : nullptr;
 }
 
-void ChunkStore::erase(ChunkCoord coord) { chunks_.erase(coord); }
+void ChunkStore::erase(ChunkCoord coord) {
+    chunks_.erase(coord);
+}
 
 } // namespace world::chunk

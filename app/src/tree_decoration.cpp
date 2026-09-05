@@ -22,8 +22,10 @@ std::uint64_t mix(std::uint64_t x) {
 
 std::uint64_t placement_key(int seed, std::int32_t cx, std::int32_t cz, std::int32_t gx, std::int32_t gz) {
     std::uint64_t k = static_cast<std::uint32_t>(seed);
-    k = mix(k ^ (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cx)) << 32 | static_cast<std::uint32_t>(cz)));
-    k = mix(k ^ (static_cast<std::uint64_t>(static_cast<std::uint32_t>(gx)) << 32 | static_cast<std::uint32_t>(gz)));
+    k = mix(k ^ (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cx)) << 32 |
+                 static_cast<std::uint32_t>(cz)));
+    k = mix(k ^ (static_cast<std::uint64_t>(static_cast<std::uint32_t>(gx)) << 32 |
+                 static_cast<std::uint32_t>(gz)));
     return k;
 }
 
@@ -106,12 +108,12 @@ std::vector<TreePlacement> compute_tree_placements(std::int32_t chunkX, std::int
             if (h < kTreeMinHeight || h > kTreeMaxHeight) {
                 continue; // no water/beach trees, no trees above the tree line
             }
-            const float slopeX =
-                std::abs(heightmap.height_at(worldX + 1.0f, worldZ) - heightmap.height_at(worldX - 1.0f, worldZ)) *
-                0.5f;
-            const float slopeZ =
-                std::abs(heightmap.height_at(worldX, worldZ + 1.0f) - heightmap.height_at(worldX, worldZ - 1.0f)) *
-                0.5f;
+            const float slopeX = std::abs(heightmap.height_at(worldX + 1.0f, worldZ) -
+                                          heightmap.height_at(worldX - 1.0f, worldZ)) *
+                                 0.5f;
+            const float slopeZ = std::abs(heightmap.height_at(worldX, worldZ + 1.0f) -
+                                          heightmap.height_at(worldX, worldZ - 1.0f)) *
+                                 0.5f;
             if (std::max(slopeX, slopeZ) > kTreeMaxSlope) {
                 continue; // too steep
             }
@@ -120,18 +122,18 @@ std::vector<TreePlacement> compute_tree_placements(std::int32_t chunkX, std::int
             tree.world_x = worldX;
             tree.world_z = worldZ;
             tree.base_height = h;
-            tree.trunk_height = 4.0f + static_cast<float>((key >> 24) & 0x3u); // 4..7
+            tree.trunk_height = 4.0f + static_cast<float>((key >> 24) & 0x3u);  // 4..7
             tree.canopy_radius = 2.0f + static_cast<float>((key >> 26) & 0x1u); // 2..3
             // Goal 36: silhouette selector from spare key bits (~3/8 round, ~3/8 conifer,
             // ~1/4 shrub); goal 38: brightness jitter in [0.80, 1.0] from another byte.
             const std::uint64_t shapeSel = (key >> 32) & 0xFFu;
-            tree.shape = shapeSel < 96u ? TreeShape::Round
+            tree.shape = shapeSel < 96u    ? TreeShape::Round
                          : shapeSel < 192u ? TreeShape::Conifer
                                            : TreeShape::Shrub;
             tree.color_jitter = 0.80f + 0.20f * static_cast<float>((key >> 40) & 0xFFu) / 255.0f;
             if (tree.shape == TreeShape::Conifer) {
-                tree.trunk_height += 2.0f;   // taller...
-                tree.canopy_radius = 2.0f;   // ...and consistently narrow
+                tree.trunk_height += 2.0f; // taller...
+                tree.canopy_radius = 2.0f; // ...and consistently narrow
             } else if (tree.shape == TreeShape::Shrub) {
                 tree.trunk_height = 0.0f;
                 tree.canopy_radius = 1.5f;
@@ -152,8 +154,8 @@ TreeEmitCounts append_tree_meshes(MeshData& mesh, world::chunk::ChunkCoord chunk
         const float localBaseY = tree.base_height - chunkBaseY;
         // Ceiling check uses each shape's REAL top extent (the conifer's stacked canopy reaches
         // 2.55x its radius above the trunk -- a plain 2x formula would let it clip the chunk top).
-        const float canopyRise = tree.shape == TreeShape::Conifer ? 2.55f * tree.canopy_radius
-                                                                  : 2.0f * tree.canopy_radius;
+        const float canopyRise =
+            tree.shape == TreeShape::Conifer ? 2.55f * tree.canopy_radius : 2.0f * tree.canopy_radius;
         const float topY = localBaseY + tree.trunk_height + canopyRise;
         if (localBaseY < 0.0f || localBaseY >= static_cast<float>(kChunkSize) ||
             topY > static_cast<float>(kChunkSize)) {
@@ -170,8 +172,8 @@ TreeEmitCounts append_tree_meshes(MeshData& mesh, world::chunk::ChunkCoord chunk
         switch (tree.shape) {
         case TreeShape::Round:
             push_trunk(mesh, lx, lz, y0, y1, kTrunkHalfWidth);
-            push_octahedron(mesh, {lx, y1 + tree.canopy_radius, lz}, tree.canopy_radius,
-                            tree.canopy_radius, world::chunk::MaterialID::Leaves);
+            push_octahedron(mesh, {lx, y1 + tree.canopy_radius, lz}, tree.canopy_radius, tree.canopy_radius,
+                            world::chunk::MaterialID::Leaves);
             break;
         case TreeShape::Conifer: {
             // Thinner trunk, three stacked shrinking octahedra overlapping into a fir silhouette.
@@ -197,9 +199,15 @@ TreeEmitCounts append_tree_meshes(MeshData& mesh, world::chunk::ChunkCoord chunk
             mesh.vertices[i].ao = tree.color_jitter;
         }
         switch (tree.shape) {
-        case TreeShape::Round: ++emitted.round; break;
-        case TreeShape::Conifer: ++emitted.conifer; break;
-        case TreeShape::Shrub: ++emitted.shrub; break;
+        case TreeShape::Round:
+            ++emitted.round;
+            break;
+        case TreeShape::Conifer:
+            ++emitted.conifer;
+            break;
+        case TreeShape::Shrub:
+            ++emitted.shrub;
+            break;
         }
     }
     return emitted;

@@ -27,8 +27,9 @@ TEST_CASE("fill_uniform sets every voxel to one material in O(1) state", "[chunk
     REQUIRE(voxels.at(kVoxelsPerChunk - 1) == MaterialID::Stone);
 }
 
-TEST_CASE("Setting a second distinct material promotes to 1 bit/voxel and preserves prior values", "[chunk]") {
-    ChunkVoxels voxels; // starts as [Air]
+TEST_CASE("Setting a second distinct material promotes to 1 bit/voxel and preserves prior values",
+          "[chunk]") {
+    ChunkVoxels voxels;               // starts as [Air]
     voxels.set(0, MaterialID::Stone); // introduces the 2nd distinct material -> promotion to 1 bit
     REQUIRE(voxels.palette_size() == 2);
     REQUIRE(voxels.bits_per_voxel() == 1);
@@ -60,7 +61,7 @@ TEST_CASE("Every palette-promotion boundary preserves previously-set voxel value
         setVoxels.emplace_back(localIndex, material);
 
         INFO("after introducing distinct material index " << distinctIndex << " (palette size "
-                                                            << voxels.palette_size() << ")");
+                                                          << voxels.palette_size() << ")");
         for (const auto& [idx, mat] : setVoxels) {
             REQUIRE(voxels.at(idx) == mat);
         }

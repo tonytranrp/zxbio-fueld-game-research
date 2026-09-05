@@ -46,8 +46,8 @@ TEST_CASE("First tick requests full-band columns within the horizontal radius", 
     CHECK(commands.unload.empty());
     CHECK(streamer.in_flight_count() == 54);
     CHECK(contains(commands.start_loading, {1, 1, 1}));
-    CHECK(contains(commands.start_loading, {0, -3, 0})); // band bottom loads even at camera y=0
-    CHECK(contains(commands.start_loading, {0, 2, 0}));  // band top too
+    CHECK(contains(commands.start_loading, {0, -3, 0}));      // band bottom loads even at camera y=0
+    CHECK(contains(commands.start_loading, {0, 2, 0}));       // band top too
     CHECK_FALSE(contains(commands.start_loading, {2, 0, 0})); // outside the horizontal radius
 
     // Same camera, nothing completed: no duplicate requests while in flight.

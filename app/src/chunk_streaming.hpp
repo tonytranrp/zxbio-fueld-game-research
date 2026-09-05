@@ -72,13 +72,17 @@ public:
         return heightmap_.height_at(worldX, worldZ);
     }
     // Goal 84's aim query reads the same analytic height field.
-    [[nodiscard]] const world::generation::HeightmapGenerator& heightmap() const noexcept { return heightmap_; }
+    [[nodiscard]] const world::generation::HeightmapGenerator& heightmap() const noexcept {
+        return heightmap_;
+    }
     [[nodiscard]] std::size_t in_flight_count() const noexcept {
         return pending_mesh_.size() + gen_in_flight_.size() + mesh_in_flight_.size();
     }
     [[nodiscard]] std::size_t worker_thread_count() const noexcept { return pool_.thread_count(); }
     [[nodiscard]] std::size_t pending_mesh_count() const noexcept { return pending_mesh_.size(); }
-    [[nodiscard]] TreeEmitCounts object_counts() const noexcept { return total_tree_count_; } // Group W task 35
+    [[nodiscard]] TreeEmitCounts object_counts() const noexcept {
+        return total_tree_count_;
+    } // Group W task 35
     [[nodiscard]] std::size_t generation_in_flight_count() const noexcept { return gen_in_flight_.size(); }
     [[nodiscard]] std::size_t mesh_in_flight_count() const noexcept { return mesh_in_flight_.size(); }
 
@@ -110,7 +114,8 @@ private:
     world::chunk::CoordMap<TreeEmitCounts> tree_counts_; // per ready chunk, for the overlay count
     TreeEmitCounts total_tree_count_;
     world::chunk::ChunkStore store_;
-    world::generation::HeightmapGenerator heightmap_; // concurrent generate calls are safe + deterministic (stress-tested)
+    world::generation::HeightmapGenerator
+        heightmap_; // concurrent generate calls are safe + deterministic (stress-tested)
     render::diligent::TerrainRenderer& renderer_;
     engine::ecs::Registry& registry_;
     // Group L: chunk lifecycle events (world/streaming/chunk_events.hpp) fire through here,

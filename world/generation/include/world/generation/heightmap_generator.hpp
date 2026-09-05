@@ -28,7 +28,7 @@ public:
     // height sample per (worldX, worldZ) column and returns the min/max sampled (§2.4) -- callers
     // use this to short-circuit the per-voxel fill loop before it starts.
     HeightmapMinMax generate_column_heights(std::int32_t worldXOffset, std::int32_t worldZOffset,
-                                             std::int32_t width, std::int32_t depth, float* outHeights) const;
+                                            std::int32_t width, std::int32_t depth, float* outHeights) const;
 
     // Single-column surface height at an arbitrary world (x,z) -- the analytic ground query
     // behind walk mode (TERRAIN_FIXES_BRIEF Group V task 23). Same node tree and seed as

@@ -54,7 +54,8 @@ public:
     void set_sky_enabled(bool enabled) noexcept;
 
     [[nodiscard]] std::size_t chunk_count() const noexcept;
-    [[nodiscard]] std::size_t last_visible_count() const noexcept; // culling stat from the most recent render()
+    [[nodiscard]] std::size_t
+    last_visible_count() const noexcept; // culling stat from the most recent render()
     [[nodiscard]] const GpuAllocationTracker& gpu_memory() const noexcept;
 
     // Opaque outside this module (complete only in detail/terrain_renderer_impl.hpp) -- public so

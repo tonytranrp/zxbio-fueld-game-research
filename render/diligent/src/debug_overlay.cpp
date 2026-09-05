@@ -14,7 +14,8 @@ namespace render::diligent {
 
 struct DebugOverlay::Impl {
     RenderContext* context = nullptr;
-    std::unique_ptr<Diligent::ImGuiImplDiligent> imgui; // owns the ImGui context; created first, destroyed last
+    std::unique_ptr<Diligent::ImGuiImplDiligent>
+        imgui; // owns the ImGui context; created first, destroyed last
     bool glfwBackendInitialized = false;
 };
 
@@ -50,19 +51,22 @@ void DebugOverlay::render(const OverlayStats& stats) {
     constexpr double kMiB = 1024.0 * 1024.0;
     ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowBgAlpha(0.6f);
-    if (ImGui::Begin("voxel_app", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing)) {
-        ImGui::Text("%.1f fps (%.2f ms)", static_cast<double>(stats.fps), static_cast<double>(stats.frame_ms));
+    if (ImGui::Begin("voxel_app", nullptr,
+                     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing)) {
+        ImGui::Text("%.1f fps (%.2f ms)", static_cast<double>(stats.fps),
+                    static_cast<double>(stats.frame_ms));
         ImGui::Separator();
         ImGui::Text("chunks ready: %zu", stats.ready_chunks);
         ImGui::Text("visible after culling: %zu / %zu", stats.visible_chunks, stats.total_chunk_meshes);
-        ImGui::Text("objects: %zu (%zu round / %zu conifer / %zu shrub)", stats.objects,
-                    stats.objects_round, stats.objects_conifer, stats.objects_shrub);
+        ImGui::Text("objects: %zu (%zu round / %zu conifer / %zu shrub)", stats.objects, stats.objects_round,
+                    stats.objects_conifer, stats.objects_shrub);
         if (stats.aim_line[0] != '\0') {
             ImGui::Text("aim: %s", stats.aim_line);
         }
         ImGui::Text("jobs in flight: %zu", stats.jobs_in_flight);
         ImGui::Separator();
-        ImGui::Text("chunk GPU memory: %.1f MiB (peak %.1f)", static_cast<double>(stats.gpu_self_bytes) / kMiB,
+        ImGui::Text("chunk GPU memory: %.1f MiB (peak %.1f)",
+                    static_cast<double>(stats.gpu_self_bytes) / kMiB,
                     static_cast<double>(stats.gpu_self_peak_bytes) / kMiB);
         if (stats.budget.available) {
             ImGui::Text("VRAM (VK_EXT_memory_budget): %.0f / %.0f MiB",

@@ -44,8 +44,9 @@ static_assert(offsetof(GpuVertexCompressed, octU) == 8);
 static_assert(offsetof(GpuVertexCompressed, material) == 10);
 static_assert(offsetof(GpuVertexCompressed, ao) == 11);
 
-RefCntAutoPtr<IShader> create_shader(TerrainRenderer::Impl& impl, IShaderSourceInputStreamFactory* streamFactory,
-                                     SHADER_TYPE type, const char* file, const char* name) {
+RefCntAutoPtr<IShader> create_shader(TerrainRenderer::Impl& impl,
+                                     IShaderSourceInputStreamFactory* streamFactory, SHADER_TYPE type,
+                                     const char* file, const char* name) {
     ShaderCreateInfo shaderCI;
     shaderCI.pShaderSourceStreamFactory = streamFactory;
     shaderCI.FilePath = file;
@@ -92,11 +93,14 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
     RefCntAutoPtr<IShaderSourceInputStreamFactory> streamFactory;
     rc.factory->CreateDefaultShaderSourceStreamFactory(VOXEL_TERRAIN_SHADER_DIR, &streamFactory);
     if (!streamFactory) {
-        throw std::runtime_error("failed to create shader source stream factory for " VOXEL_TERRAIN_SHADER_DIR);
+        throw std::runtime_error(
+            "failed to create shader source stream factory for " VOXEL_TERRAIN_SHADER_DIR);
     }
 
-    RefCntAutoPtr<IShader> vs = create_shader(impl, streamFactory, SHADER_TYPE_VERTEX, "terrain.vsh.hlsl", "Terrain VS");
-    RefCntAutoPtr<IShader> ps = create_shader(impl, streamFactory, SHADER_TYPE_PIXEL, "terrain.psh.hlsl", "Terrain PS");
+    RefCntAutoPtr<IShader> vs =
+        create_shader(impl, streamFactory, SHADER_TYPE_VERTEX, "terrain.vsh.hlsl", "Terrain VS");
+    RefCntAutoPtr<IShader> ps =
+        create_shader(impl, streamFactory, SHADER_TYPE_PIXEL, "terrain.psh.hlsl", "Terrain PS");
 
     GraphicsPipelineStateCreateInfo psoCI;
     psoCI.PSODesc.Name = "Terrain PSO";
@@ -232,8 +236,10 @@ void create_sky_pipeline(TerrainRenderer::Impl& impl) {
         throw std::runtime_error("failed to create shader source stream factory for sky");
     }
 
-    RefCntAutoPtr<IShader> vs = create_shader(impl, streamFactory, SHADER_TYPE_VERTEX, "sky.vsh.hlsl", "Sky VS");
-    RefCntAutoPtr<IShader> ps = create_shader(impl, streamFactory, SHADER_TYPE_PIXEL, "sky.psh.hlsl", "Sky PS");
+    RefCntAutoPtr<IShader> vs =
+        create_shader(impl, streamFactory, SHADER_TYPE_VERTEX, "sky.vsh.hlsl", "Sky VS");
+    RefCntAutoPtr<IShader> ps =
+        create_shader(impl, streamFactory, SHADER_TYPE_PIXEL, "sky.psh.hlsl", "Sky PS");
 
     GraphicsPipelineStateCreateInfo psoCI;
     psoCI.PSODesc.Name = "Sky PSO";
@@ -271,7 +277,8 @@ void create_sky_pipeline(TerrainRenderer::Impl& impl) {
     if (!impl.skyConstants) {
         throw std::runtime_error("sky constants buffer creation failed");
     }
-    if (IShaderResourceVariable* var = impl.skyPso->GetStaticVariableByName(SHADER_TYPE_PIXEL, "SkyConstants")) {
+    if (IShaderResourceVariable* var =
+            impl.skyPso->GetStaticVariableByName(SHADER_TYPE_PIXEL, "SkyConstants")) {
         var->Set(impl.skyConstants);
     } else {
         throw std::runtime_error("sky shader variable not found: SkyConstants");

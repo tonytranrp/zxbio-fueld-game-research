@@ -27,7 +27,8 @@ struct FrameConstantsCpu {
 static_assert(sizeof(FrameConstantsCpu) == 80, "must match the 80-byte HLSL cbuffer exactly");
 
 struct ChunkConstantsCpu {
-    glm::vec4 chunkOriginWorld; // matches: cbuffer ChunkConstants { float4 g_ChunkOriginWorld; } -- xyz used, w padding
+    glm::vec4 chunkOriginWorld; // matches: cbuffer ChunkConstants { float4 g_ChunkOriginWorld; } -- xyz used,
+                                // w padding
 };
 static_assert(sizeof(ChunkConstantsCpu) == 16, "must match the 16-byte HLSL cbuffer exactly");
 
@@ -77,10 +78,10 @@ struct TerrainRenderer::Impl {
     GpuAllocationTracker tracker;
     Diligent::RefCntAutoPtr<Diligent::IPipelineState> pso;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srb;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer> frameConstants; // dynamic, mapped once per frame
-    Diligent::RefCntAutoPtr<Diligent::IBuffer> chunkConstants; // dynamic, mapped once per visible chunk draw
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> frameConstants;  // dynamic, mapped once per frame
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> chunkConstants;  // dynamic, mapped once per visible chunk draw
     Diligent::RefCntAutoPtr<Diligent::IBuffer> materialPalette; // immutable
-    Diligent::RefCntAutoPtr<Diligent::IBuffer> fogConstants; // dynamic, camera pos for distance fog
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> fogConstants;    // dynamic, camera pos for distance fog
     // Analytic sky pass (Group L): fullscreen triangle at far depth, drawn AFTER terrain so
     // LESS_EQUAL testing shades only sky pixels.
     Diligent::RefCntAutoPtr<Diligent::IPipelineState> skyPso;

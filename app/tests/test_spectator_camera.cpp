@@ -47,7 +47,7 @@ TEST_CASE("Yaw turns the movement basis; 180 degrees of cursor-right reverses fo
     SpectatorCameraState state;
     state.look_sensitivity = glm::radians(1.0f); // 1 degree per pixel: pixel counts become degrees
     update_spectator_camera(transform, state, input, {180.0f, 0.0f}, 0.0f); // look only, no time
-    update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f);  // then move
+    update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f);   // then move
 
     CHECK(approx(transform.position, {0.0f, 0.0f, +state.move_speed})); // now flying +Z
 }
@@ -179,7 +179,7 @@ TEST_CASE("Walk mode dropped over deep water settles floating at the surface", "
     }
     // Equilibrium: buoyancy*depth == |gravity| at depth 0.5 -> feet ~0.5 under, eyes above water.
     const float feetY = transform.position.y - app::kEyeHeight;
-    CHECK(feetY < app::kSeaLevelWorld);                                  // floating, feet submerged
-    CHECK(std::abs(feetY - (-app::kSwimEquilibriumDepth)) < 0.35f);      // near the surface...
-    CHECK(transform.position.y > app::kSeaLevelWorld);                   // ...eyes above water
+    CHECK(feetY < app::kSeaLevelWorld);                             // floating, feet submerged
+    CHECK(std::abs(feetY - (-app::kSwimEquilibriumDepth)) < 0.35f); // near the surface...
+    CHECK(transform.position.y > app::kSeaLevelWorld);              // ...eyes above water
 }

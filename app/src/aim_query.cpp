@@ -13,8 +13,8 @@ constexpr float kBeachBand = 1.75f;
 constexpr float kGrassMaxSlope = 1.9f;
 constexpr float kSeaLevel = 0.0f;
 
-world::chunk::MaterialID surface_material(const world::generation::HeightmapGenerator& heightmap, float x, float z,
-                                          float surface) {
+world::chunk::MaterialID surface_material(const world::generation::HeightmapGenerator& heightmap, float x,
+                                          float z, float surface) {
     if (surface <= kSeaLevel + kBeachBand) {
         return world::chunk::MaterialID::Sand;
     }
@@ -26,8 +26,8 @@ world::chunk::MaterialID surface_material(const world::generation::HeightmapGene
 
 } // namespace
 
-AimHit query_aim(const world::generation::HeightmapGenerator& heightmap, glm::vec3 origin, glm::vec3 direction,
-                 float maxDistance) {
+AimHit query_aim(const world::generation::HeightmapGenerator& heightmap, glm::vec3 origin,
+                 glm::vec3 direction, float maxDistance) {
     AimHit result;
     const float dirLength = glm::length(direction);
     if (dirLength <= 0.0f) {
@@ -69,14 +69,22 @@ AimHit query_aim(const world::generation::HeightmapGenerator& heightmap, glm::ve
 
 const char* material_name(world::chunk::MaterialID material) noexcept {
     switch (material) {
-    case world::chunk::MaterialID::Air: return "Air";
-    case world::chunk::MaterialID::Stone: return "Stone";
-    case world::chunk::MaterialID::Dirt: return "Dirt";
-    case world::chunk::MaterialID::Water: return "Water";
-    case world::chunk::MaterialID::Wood: return "Wood";
-    case world::chunk::MaterialID::Leaves: return "Leaves";
-    case world::chunk::MaterialID::Sand: return "Sand";
-    case world::chunk::MaterialID::Grass: return "Grass";
+    case world::chunk::MaterialID::Air:
+        return "Air";
+    case world::chunk::MaterialID::Stone:
+        return "Stone";
+    case world::chunk::MaterialID::Dirt:
+        return "Dirt";
+    case world::chunk::MaterialID::Water:
+        return "Water";
+    case world::chunk::MaterialID::Wood:
+        return "Wood";
+    case world::chunk::MaterialID::Leaves:
+        return "Leaves";
+    case world::chunk::MaterialID::Sand:
+        return "Sand";
+    case world::chunk::MaterialID::Grass:
+        return "Grass";
     }
     return "?";
 }

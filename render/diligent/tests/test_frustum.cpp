@@ -44,7 +44,8 @@ TEST_CASE("Boxes beyond the far plane and inside the near plane are culled", "[f
     CHECK_FALSE(intersects(frustum, Aabb{{-0.01f, -0.01f, -0.05f}, {0.01f, 0.01f, -0.02f}}));
 }
 
-TEST_CASE("Boxes outside the side planes are culled; the 90-degree FOV makes the boundary exact", "[frustum]") {
+TEST_CASE("Boxes outside the side planes are culled; the 90-degree FOV makes the boundary exact",
+          "[frustum]") {
     Camera camera;
     const Frustum frustum = reference_frustum(camera);
 

@@ -21,16 +21,16 @@ namespace app {
 enum class CameraMoveMode { Fly, Walk };
 
 struct SpectatorCameraState {
-    float yaw_radians = 0.0f;   // 0 looks down world -Z; positive turns left (right-handed about +Y)
-    float pitch_radians = 0.0f; // positive looks up; clamped to just short of ±90°
-    float move_speed = 40.0f;   // voxels/second; kBoostFactor while speed_boost is held
+    float yaw_radians = 0.0f;         // 0 looks down world -Z; positive turns left (right-handed about +Y)
+    float pitch_radians = 0.0f;       // positive looks up; clamped to just short of ±90°
+    float move_speed = 40.0f;         // voxels/second; kBoostFactor while speed_boost is held
     float look_sensitivity = 0.0025f; // radians per cursor pixel
     CameraMoveMode mode = CameraMoveMode::Fly;
     float vertical_velocity = 0.0f; // walk mode only; world units/second, negative = falling
 };
 
 inline constexpr float kSpectatorBoostFactor = 4.0f;
-inline constexpr float kWalkSpeedFactor = 0.25f;       // walking is deliberately slower than flying
+inline constexpr float kWalkSpeedFactor = 0.25f; // walking is deliberately slower than flying
 // Swimming (goal 79): passive buoyancy replaces the old walk-on-water sea clamp. Fully submerged
 // feet get double-gravity upthrust, so the equilibrium (upthrust*depth == gravity) floats the
 // feet kSwimEquilibriumDepth under the surface with the eyes above water; drag damps the bob.
@@ -38,8 +38,8 @@ inline constexpr float kSeaLevelWorld = 0.0f;
 inline constexpr float kBuoyancyAcceleration = 64.0f; // upthrust at >=1 voxel submersion (2x gravity)
 inline constexpr float kWaterDrag = 2.5f;             // exponential vertical damping in water
 inline constexpr float kSwimEquilibriumDepth = 0.5f;  // feet rest this far under the surface
-inline constexpr float kGravityAcceleration = -32.0f;  // world units/s^2 (voxel-scale gravity)
-inline constexpr float kEyeHeight = 1.7f;              // camera above the ground surface when standing
+inline constexpr float kGravityAcceleration = -32.0f; // world units/s^2 (voxel-scale gravity)
+inline constexpr float kEyeHeight = 1.7f;             // camera above the ground surface when standing
 
 // Delta-time-integrated update (Phase 1 brief §6: speed must not couple to framerate). Pure
 // function of plain data -- unit-testable without GLFW or a window; the app's frame loop is just

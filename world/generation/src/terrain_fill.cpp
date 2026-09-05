@@ -24,7 +24,8 @@ constexpr float kGrassMaxSlope = 1.9f; // steeper columns read as exposed rock (
 
 } // namespace
 
-void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightmap, const TerrainFillParams& params) {
+void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightmap,
+                  const TerrainFillParams& params) {
     const ChunkCoord& coord = chunk.coord();
     const std::int32_t worldXOffset = coord.x * kChunkSize;
     const std::int32_t worldZOffset = coord.z * kChunkSize;
@@ -36,8 +37,8 @@ void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightma
     // make grass-vs-rock decisions differ across a chunk seam.
     constexpr std::int32_t kGrid = kChunkSize + 2;
     std::array<float, static_cast<std::size_t>(kGrid) * static_cast<std::size_t>(kGrid)> columnHeights{};
-    const HeightmapMinMax minMax = heightmap.generate_column_heights(worldXOffset - 1, worldZOffset - 1, kGrid, kGrid,
-                                                                     columnHeights.data());
+    const HeightmapMinMax minMax = heightmap.generate_column_heights(worldXOffset - 1, worldZOffset - 1,
+                                                                     kGrid, kGrid, columnHeights.data());
     const auto heightAt = [&](std::int32_t lx, std::int32_t lz) {
         return columnHeights[static_cast<std::size_t>(lz + 1) * static_cast<std::size_t>(kGrid) +
                              static_cast<std::size_t>(lx + 1)];
@@ -81,7 +82,8 @@ void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightma
                 if (worldY <= surfaceHeight) {
                     const std::int32_t depth = surfaceHeight - worldY;
                     if (depth == 0) {
-                        material = beach ? MaterialID::Sand : (grassy ? MaterialID::Grass : MaterialID::Stone);
+                        material =
+                            beach ? MaterialID::Sand : (grassy ? MaterialID::Grass : MaterialID::Stone);
                     } else if (depth <= kSoilDepth) {
                         material = beach ? MaterialID::Sand : MaterialID::Dirt;
                     } else {

@@ -14,13 +14,13 @@ namespace world::streaming {
 // delay, not one radius: a single boundary thrashes load/unload for a camera hovering near it --
 // the real, shipped fix (PaperMC's delayed-unload patch) is hysteresis in both space and time.
 struct StreamingConfig {
-    std::int32_t load_radius = 3;   // R_load: desired columns within this HORIZONTAL Chebyshev
-                                    // distance (X/Z only -- Y is never distance-tested; see below)
-    std::int32_t unload_radius = 5; // R_unload: only columns beyond this are unload candidates.
-                                    // Keep >= load_radius + 2: the gap guarantees an unloaded
-                                    // chunk is never inside the 1-chunk meshing halo of any
-                                    // still-desired chunk, which is what makes dropping its
-                                    // voxel data on unload safe by construction.
+    std::int32_t load_radius = 3;      // R_load: desired columns within this HORIZONTAL Chebyshev
+                                       // distance (X/Z only -- Y is never distance-tested; see below)
+    std::int32_t unload_radius = 5;    // R_unload: only columns beyond this are unload candidates.
+                                       // Keep >= load_radius + 2: the gap guarantees an unloaded
+                                       // chunk is never inside the 1-chunk meshing halo of any
+                                       // still-desired chunk, which is what makes dropping its
+                                       // voxel data on unload safe by construction.
     double unload_delay_seconds = 2.0; // continuously outside R_unload for this long before unload
     // The world's generated vertical extent in chunk-Y: every desired column loads this FULL
     // band regardless of camera altitude (the ribbon-bug fix, TERRAIN_FIXES_BRIEF Group Q --
@@ -50,8 +50,9 @@ public:
     explicit ChunkStreamer(StreamingConfig config);
 
     struct TickCommands {
-        std::vector<world::chunk::ChunkCoord> start_loading; // newly desired: begin generate->mesh->upload for each
-        std::vector<world::chunk::ChunkCoord> unload;        // hysteresis expired: tear down store/ECS/GPU for each
+        std::vector<world::chunk::ChunkCoord>
+            start_loading;                            // newly desired: begin generate->mesh->upload for each
+        std::vector<world::chunk::ChunkCoord> unload; // hysteresis expired: tear down store/ECS/GPU for each
     };
 
     // Recomputes the desired set around the camera's chunk coordinate and diffs it against what

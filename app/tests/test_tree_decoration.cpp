@@ -1,6 +1,6 @@
 #include <algorithm>
-#include <cstdio>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -115,8 +115,9 @@ TEST_CASE("appended tree trunks stand on the surface, never float", "[trees][sli
                     if (wy > surface + 12.0f || wy < surface - 2.0f) {
                         if (floating < 10) {
                             std::printf("floating wood: chunk[%d,%d,%d] world(%.1f,%.1f,%.1f) surface %.1f\n",
-                                        cx, cy, cz, static_cast<double>(ox + v.position.x), static_cast<double>(wy),
-                                        static_cast<double>(oz + v.position.z), static_cast<double>(surface));
+                                        cx, cy, cz, static_cast<double>(ox + v.position.x),
+                                        static_cast<double>(wy), static_cast<double>(oz + v.position.z),
+                                        static_cast<double>(surface));
                         }
                         ++floating;
                     }
