@@ -94,6 +94,14 @@ HeightmapMinMax HeightmapGenerator::generate_column_heights(std::int32_t worldXO
     return HeightmapMinMax{minMax.min, minMax.max};
 }
 
+HeightmapMinMax HeightmapGenerator::generate_column_heights_spaced(float xStart, float zStart,
+                                                                   std::int32_t width, std::int32_t depth,
+                                                                   float step, float* outHeights) const {
+    const FastNoise::OutputMinMax minMax =
+        impl_->root->GenUniformGrid2D(outHeights, xStart, zStart, width, depth, step, step, impl_->seed);
+    return HeightmapMinMax{minMax.min, minMax.max};
+}
+
 float HeightmapGenerator::height_at(float worldX, float worldZ) const {
     return impl_->root->GenSingle2D(worldX, worldZ, impl_->seed);
 }

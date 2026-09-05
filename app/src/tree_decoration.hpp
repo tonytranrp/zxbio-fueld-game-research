@@ -6,6 +6,7 @@
 
 #include "world/chunk/chunk_coord.hpp"
 #include "world/generation/heightmap_generator.hpp"
+#include "world/generation/tree_placement.hpp"
 #include "world/meshing/mesh_data.hpp"
 
 namespace app {
@@ -16,45 +17,17 @@ namespace app {
 // written decision: same compressed vertex format, same PSO, same per-chunk buffers, so culling,
 // upload budgeting, and streaming lifecycle all apply for free).
 //
-// Determinism (task 30): placement is a pure function of (seed, chunk column, heightfield) --
-// a jittered 8-voxel grid keyed by a splitmix-style hash, masked by the same analytic height
-// query walk mode uses (no water, no steep slopes, no high altitude). Evaluated at mesh time,
-// but generation-DERIVED: the same seed + coordinate reproduces identical trees on every run,
-// which is the property the determinism standard actually cares about.
-
-// Silhouette variants (goal 36, research/water-foliage-design.md): selected deterministically
-// from the placement key -- shape variety, not a new placement or rendering system.
-enum class TreeShape : std::uint8_t {
-    Round,   // box trunk + single octahedron canopy (the original)
-    Conifer, // taller/thinner trunk + 3 stacked shrinking octahedra
-    Shrub,   // no trunk; one squashed octahedron on the ground
-};
-
-struct TreePlacement {
-    float world_x = 0.0f;
-    float world_z = 0.0f;
-    float base_height = 0.0f;   // terrain surface world-Y at the tree's column
-    float trunk_height = 0.0f;  // world units above base
-    float canopy_radius = 0.0f; // octahedron half-extent
-    TreeShape shape = TreeShape::Round;
-    // Goal 38: per-tree brightness jitter in [0.80, 1.0], carried through the vertex AO
-    // attribute (tree geometry is unoccluded by construction, so the byte is free).
-    float color_jitter = 1.0f;
-};
-
-inline constexpr float kTreeMinSpacing = 4.0f; // guaranteed by grid cell 8 + jitter range [2,6]
-// Calibrated against the real generator, not guessed: this terrain's MEAN per-voxel slope is
-// ~1.34 (heightmap smoothness test's own measurement), so a "gentle ground only" 0.8 threshold
-// rejected almost every column. 2.0 keeps trees off genuine cliff faces while accepting typical
-// hillsides.
-inline constexpr float kTreeMaxSlope = 2.0f;   // per-axis central-difference height slope
-inline constexpr float kTreeMinHeight = 1.5f;  // above sea level (0): no beach/water trees
-inline constexpr float kTreeMaxHeight = 45.0f; // tree line
-
-// All candidate trees for one chunk COLUMN (y ignored), after masking. Deterministic.
-[[nodiscard]] std::vector<TreePlacement>
-compute_tree_placements(std::int32_t chunkX, std::int32_t chunkZ, int seed,
-                        const world::generation::HeightmapGenerator& heightmap);
+// Micro-voxel pivot (docs/goals.md Group W): placement + implicit shape moved to
+// world/generation/tree_placement.hpp so the sparse-brick-octree voxelizer shares the exact same
+// deterministic trees. The names below are re-exported unchanged for this app's own callers and
+// tests; only the MESH emission stays here.
+using world::generation::compute_tree_placements;
+using world::generation::kTreeMaxHeight;
+using world::generation::kTreeMaxSlope;
+using world::generation::kTreeMinHeight;
+using world::generation::kTreeMinSpacing;
+using world::generation::TreePlacement;
+using world::generation::TreeShape;
 
 // Per-shape emission tally (goal 82: the overlay breaks "objects" down by silhouette).
 struct TreeEmitCounts {
