@@ -50,10 +50,14 @@ criterion the Laine-Karras marcher applies at traversal time. Because a box's di
 nearest point, no box is ever coarser than any point inside it would ask for (tested).
 
 The tree is **immutable and rebuilt whole** on a background thread whenever the camera leaves the
-inner half of the finest ring (`SvoWorld`), then swapped in (new immutable GPU buffers; Diligent
-defers the old ones' destruction). Whole-rebuild was chosen over incremental subtree reuse
-deliberately: measure first. Measured rebuild cost at the shipping default (512 m region,
-7.8 mm): **0.6-1.3 s on 16 threads, 28-60 ms upload** (§4). Incremental reuse is goal 158.
+inner half of the finest ring (`SvoWorld`), then **staged** onto the GPU at 32 MB per frame into
+pre-sized buffers and swapped in the frame the last slice lands (the previous tree keeps drawing
+until then; Diligent defers the old buffers' destruction). The first version created the new
+buffers with initial data in one call -- a 200-400 MB synchronous copy that showed up as the
+45-80 ms worst frame in every run; staging brought the walk run's worst frame to 38 ms.
+Whole-rebuild was chosen over incremental subtree reuse deliberately: measure first. Measured
+rebuild cost at the shipping default (512 m region, 7.8 mm): **0.6-1.3 s on 16 threads, 40-57 ms
+of staged upload over 7-8 frames** (§4). Incremental reuse is goal 158.
 
 ### 2.3 The sampler is the existing generator, generalized to meters
 
@@ -139,19 +143,19 @@ upload silently kept the 1-word placeholder buffers. DYNAMIC fixed it.
 - `--verify-frame` on the svo path: **48.0%** local contrast on Vulkan AND D3D12 (mesh path:
   23-30%); dumps viewed, identical between backends.
 - `--walk --autofly --frames 600`: 0 ground violations, 3 background rebuilds in flight during
-  the run, worst frame 61 ms (the upload hitch).
+  the run, worst frame 61-80 ms with the synchronous upload, **38 ms** with the staged one.
 
 ## 4. Real numbers (RTX 4070 Laptop, 1280x720, Release)
 
 | measurement | value |
 |---|---|
 | world ready (svo default: 512 m, 7.8 mm, trees) | **0.56 s** (mesh path: 29.9 s) |
-| tree at the default spawn pose | 338,602 bricks, 203 MB, upload 35 ms |
-| tree at a hilltop pose (more surface in range) | 657,034 bricks, 395 MB, build 1.30 s, upload 61 ms |
+| tree at the default spawn pose | 338,602 bricks, 203 MB, staged upload 42-53 ms over 7 frames |
+| tree at a hilltop pose (more surface in range) | 657,034 bricks, 395 MB, build 1.30 s, upload 61 ms (synchronous, pre-staging) |
 | bricks per level, 256 m root (CPU tool) | L7 0.25 m: 44K; L8: 180K; L9: 125K; L10: 110K; L11: 147K; L12 7.8 mm: 143K |
 | fps, panoramic pose, shadows+AO | 155-159 (165 Hz vsync cap) |
 | fps, ground level on a hilltop, shadows+AO | 76 |
-| background rebuild (walk) | 0.57-0.68 s, 28-42 ms upload |
+| background rebuild (walk) | 0.60-0.70 s, 42-57 ms staged upload over 7-8 frames, worst frame 38 ms |
 | CPU reference render (tool), 1280x720, 16 threads | 3.1 Mrays/s with shadow rays |
 
 Memory model check against the brief's §7.1 worksheet: ~600K bricks x 576 B ~= 350 MB + ~20 MB of

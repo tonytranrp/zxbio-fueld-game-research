@@ -1,8 +1,11 @@
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "render/diligent/svo_renderer.hpp"
 
@@ -76,24 +79,36 @@ RefCntAutoPtr<IShader> create_shader(RenderContext::Impl& rc, IShaderSourceInput
     return shader;
 }
 
-RefCntAutoPtr<IBuffer> create_word_buffer(IRenderDevice* device, const char* name, const std::uint32_t* words,
-                                          std::size_t count) {
-    // A tree with nothing in it still needs bindable buffers: one zero word.
-    static constexpr std::uint32_t kZero = 0u;
+// A structured uint buffer sized for `count` words (at least one), filled later by UpdateBuffer in
+// slices -- USAGE_DEFAULT, no initial data, so creating a 400 MB buffer costs no CPU copy.
+RefCntAutoPtr<IBuffer> create_word_buffer(IRenderDevice* device, const char* name, std::size_t count) {
     BufferDesc desc;
     desc.Name = name;
     desc.Size = static_cast<Uint64>(count == 0 ? 1 : count) * sizeof(std::uint32_t);
-    desc.Usage = USAGE_IMMUTABLE;
+    desc.Usage = USAGE_DEFAULT;
     desc.BindFlags = BIND_SHADER_RESOURCE;
     desc.Mode = BUFFER_MODE_STRUCTURED;
     desc.ElementByteStride = sizeof(std::uint32_t);
-    BufferData initial{count == 0 ? &kZero : words, desc.Size};
     RefCntAutoPtr<IBuffer> buffer;
-    device->CreateBuffer(desc, &initial, &buffer);
+    device->CreateBuffer(desc, nullptr, &buffer);
     if (!buffer) {
         throw std::runtime_error(std::string("svo buffer creation failed: ") + name);
     }
     return buffer;
+}
+
+// Copies up to `budgetBytes` of `words` (from word offset `done`) into `buffer`; advances `done`.
+std::size_t upload_slice(IDeviceContext* ctx, IBuffer* buffer, const std::vector<std::uint32_t>& words,
+                         std::size_t& done, std::size_t budgetBytes) {
+    if (done >= words.size() || budgetBytes < sizeof(std::uint32_t)) {
+        return 0;
+    }
+    const std::size_t count = std::min(words.size() - done, budgetBytes / sizeof(std::uint32_t));
+    ctx->UpdateBuffer(buffer, static_cast<Uint64>(done) * sizeof(std::uint32_t),
+                      static_cast<Uint64>(count) * sizeof(std::uint32_t), words.data() + done,
+                      RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    done += count;
+    return count * sizeof(std::uint32_t);
 }
 
 } // namespace
@@ -110,6 +125,20 @@ struct SvoRenderer::Impl {
     RefCntAutoPtr<IBuffer> bricks;
     std::uint64_t treeBytes = 0;
     bool hasTree = false;
+
+    // A tree being staged onto the GPU across frames (begin_upload / pump_upload).
+    struct Pending {
+        world::svo::BrickTree tree; // kept alive until every slice has been copied
+        RefCntAutoPtr<IBuffer> nodes;
+        RefCntAutoPtr<IBuffer> bricks;
+        std::size_t nodesDone = 0;
+        std::size_t bricksDone = 0;
+        std::chrono::steady_clock::time_point start;
+    };
+    std::unique_ptr<Pending> pending;
+    double lastUploadMs = 0.0;
+    std::uint32_t lastUploadFrames = 0;
+    std::uint32_t pendingFrames = 0;
 
     world::svo::TreeGeometry geometry;
     std::uint32_t rootOffset = 0;
@@ -186,9 +215,12 @@ void SvoRenderer::Impl::create_pipeline() {
         throw std::runtime_error("svo SRB creation failed");
     }
 
-    // Bindable placeholders until the first upload.
-    nodes = create_word_buffer(rc.device, "SVO nodes (empty)", nullptr, 0);
-    bricks = create_word_buffer(rc.device, "SVO bricks (empty)", nullptr, 0);
+    // Bindable placeholders until the first upload (one zero word each: an empty root).
+    nodes = create_word_buffer(rc.device, "SVO nodes (empty)", 0);
+    bricks = create_word_buffer(rc.device, "SVO bricks (empty)", 0);
+    const std::uint32_t zero = 0u;
+    rc.context->UpdateBuffer(nodes, 0, sizeof(zero), &zero, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    rc.context->UpdateBuffer(bricks, 0, sizeof(zero), &zero, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     bind_tree_buffers();
 }
 
@@ -209,28 +241,65 @@ SvoRenderer::SvoRenderer(RenderContext& context) : impl_(std::make_unique<Impl>(
 
 SvoRenderer::~SvoRenderer() = default;
 
-double SvoRenderer::upload(const world::svo::BrickTree& tree) {
-    ZoneScopedN("svo upload");
-    const auto start = std::chrono::steady_clock::now();
+void SvoRenderer::begin_upload(world::svo::BrickTree tree) {
+    ZoneScopedN("svo begin upload");
     auto& rc = impl_->context->impl();
-    // New buffers first, then release the old: Diligent keeps the previous ones alive until the
-    // frames referencing them retire, so an in-flight frame never sees a freed buffer.
-    RefCntAutoPtr<IBuffer> newNodes =
-        create_word_buffer(rc.device, "SVO nodes", tree.nodes.data(), tree.nodes.size());
-    RefCntAutoPtr<IBuffer> newBricks =
-        create_word_buffer(rc.device, "SVO bricks", tree.bricks.data(), tree.bricks.size());
+    auto pending = std::make_unique<Impl::Pending>();
+    pending->start = std::chrono::steady_clock::now();
+    // Sized now, filled by pump_upload in slices: the previous buffers stay bound and drawn until
+    // the whole tree has landed, so a rebuild never shows a half-uploaded world.
+    pending->nodes = create_word_buffer(rc.device, "SVO nodes", tree.nodes.size());
+    pending->bricks = create_word_buffer(rc.device, "SVO bricks", tree.bricks.size());
+    pending->tree = std::move(tree);
+    impl_->pending = std::move(pending); // a still-pending older tree is simply dropped
+    impl_->pendingFrames = 0;
+}
+
+bool SvoRenderer::pump_upload() {
+    if (!impl_->pending) {
+        return false;
+    }
+    ZoneScopedN("svo upload slice");
+    Impl::Pending& p = *impl_->pending;
+    IDeviceContext* ctx = impl_->context->impl().context;
+    std::size_t budget = impl_->settings.upload_bytes_per_frame;
+    budget -= upload_slice(ctx, p.nodes, p.tree.nodes, p.nodesDone, budget);
+    (void)upload_slice(ctx, p.bricks, p.tree.bricks, p.bricksDone, budget);
+    ++impl_->pendingFrames;
+    if (p.nodesDone < p.tree.nodes.size() || p.bricksDone < p.tree.bricks.size()) {
+        return false;
+    }
+
+    // Complete: swap in. Diligent keeps the previous buffers alive until the frames referencing
+    // them retire, so an in-flight frame never sees a freed buffer.
     if (impl_->treeBytes > 0) {
         impl_->tracker.on_free(impl_->treeBytes);
     }
-    impl_->nodes = newNodes;
-    impl_->bricks = newBricks;
-    impl_->treeBytes = static_cast<std::uint64_t>(tree.memory_bytes());
+    impl_->nodes = p.nodes;
+    impl_->bricks = p.bricks;
+    impl_->treeBytes = static_cast<std::uint64_t>(p.tree.memory_bytes());
     impl_->tracker.on_allocate(impl_->treeBytes);
-    impl_->geometry = tree.geometry;
-    impl_->rootOffset = tree.root;
-    impl_->hasTree = !tree.empty();
+    impl_->geometry = p.tree.geometry;
+    impl_->rootOffset = p.tree.root;
+    impl_->hasTree = !p.tree.empty();
     impl_->bind_tree_buffers();
-    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    impl_->lastUploadMs =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - p.start).count();
+    impl_->lastUploadFrames = impl_->pendingFrames;
+    impl_->pending.reset();
+    return true;
+}
+
+bool SvoRenderer::upload_pending() const noexcept {
+    return impl_->pending != nullptr;
+}
+
+double SvoRenderer::last_upload_ms() const noexcept {
+    return impl_->lastUploadMs;
+}
+
+std::uint32_t SvoRenderer::last_upload_frames() const noexcept {
+    return impl_->lastUploadFrames;
 }
 
 void SvoRenderer::set_settings(const Settings& settings) noexcept {

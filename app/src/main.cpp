@@ -650,22 +650,25 @@ int run_svo(Session& s, const AppOptions& options) {
         geometry.max_brick_level() + 1, options.svo.lod_radius, options.svo.trees ? "on" : "off");
     world.request_build(s.spawnPosition);
 
-    // Drains a finished build into the renderer; returns true when one was uploaded.
+    // Hands a finished build to the renderer's staged upload, and pumps that upload one slice per
+    // frame; logs the tree the frame it lands.
     const auto adopt_finished = [&]() {
-        std::optional<world::svo::BrickTree> tree = world.take_finished();
-        if (!tree) {
+        if (std::optional<world::svo::BrickTree> tree = world.take_finished()) {
+            renderer.begin_upload(std::move(*tree));
+        }
+        if (!renderer.pump_upload()) {
             return false;
         }
-        lastUploadMs = renderer.upload(*tree);
+        lastUploadMs = renderer.last_upload_ms();
         ++uploads;
         const app::SvoWorld::LastBuild last = world.last_build();
         log(LogLevel::Info,
             "svo tree #{}: {} bricks, {} internal, {} solid leaves, {:.1f} MB, build {:.2f}s (sampler "
-            "{:.2f}s, "
-            "{} classified, {} bricks sampled), upload {:.1f} ms, {} trees",
+            "{:.2f}s, {} classified, {} bricks sampled), staged upload {:.1f} ms over {} frames, {} trees",
             uploads, last.bricks, last.tree.internal_nodes, last.tree.solid_leaves,
             static_cast<double>(last.memory_bytes) / 1.0e6, last.stats.seconds, last.sampler_seconds,
-            last.stats.boxes_classified, last.stats.bricks_sampled, lastUploadMs, last.trees);
+            last.stats.boxes_classified, last.stats.bricks_sampled, lastUploadMs,
+            renderer.last_upload_frames(), last.trees);
         return true;
     };
 

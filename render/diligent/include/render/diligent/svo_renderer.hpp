@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
@@ -26,6 +27,9 @@ public:
         float lod_quality = 1.0f;    // 1 = stop at one pixel; <1 finer, >1 coarser
         float shadow_lod = 4.0f;     // shadow rays tolerate this much coarser LOD
         float ao_ray_length = 0.75f; // meters
+        // Staged upload budget per frame. A whole tree is 200-400 MB at the shipping default;
+        // one synchronous CreateBuffer of that size was the 45-61 ms worst frame in every run.
+        std::size_t upload_bytes_per_frame = std::size_t{32} * 1024 * 1024;
     };
 
     // Throws std::runtime_error on shader/PSO failure. `context` must outlive the renderer.
@@ -35,10 +39,16 @@ public:
     SvoRenderer(const SvoRenderer&) = delete;
     SvoRenderer& operator=(const SvoRenderer&) = delete;
 
-    // Replaces the GPU tree wholesale (new immutable buffers; the previous ones are released once
-    // the GPU is done with them -- Diligent defers the destruction). Returns the upload's wall-clock
-    // milliseconds. An empty tree renders sky only.
-    double upload(const world::svo::BrickTree& tree);
+    // Staged replacement of the GPU tree: begin_upload sizes new buffers and takes ownership of the
+    // CPU tree; pump_upload (call once per frame) copies up to Settings::upload_bytes_per_frame and
+    // returns true on the frame the whole tree has landed and been swapped in -- the previous tree
+    // keeps rendering until then, and its buffers are released only once the GPU is done with them
+    // (Diligent defers the destruction). An empty tree renders sky only.
+    void begin_upload(world::svo::BrickTree tree);
+    bool pump_upload();
+    [[nodiscard]] bool upload_pending() const noexcept;
+    [[nodiscard]] double last_upload_ms() const noexcept;            // wall-clock from begin to swap
+    [[nodiscard]] std::uint32_t last_upload_frames() const noexcept; // frames the staging took
 
     void set_settings(const Settings& settings) noexcept;
     [[nodiscard]] const Settings& settings() const noexcept;

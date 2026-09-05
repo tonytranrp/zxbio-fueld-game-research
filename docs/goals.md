@@ -960,10 +960,12 @@ not (the brief's §2.2 "bricked SVO" was built here directly, in `world/svo`).
      AND D3D12 (FXC needed masked vector writes — X3500), dumps viewed and identical. First GPU
      frame was sky-only: the CPU reference at the same pose isolated it to Diligent's MUTABLE-once
      SRB rule (fixed with DYNAMIC variables).
-154. [x] `SvoRenderer` (buffers, PSO, upload with deferred release of the previous tree) and
-     `SvoWorld` (background rebuild on a dedicated thread whenever the camera leaves the inner
-     half of the finest ring). **Check**: `--walk --autofly --frames 600`: 0 ground violations, 3
-     rebuilds during the run (0.57–0.68 s each, 28–42 ms uploads).
+154. [x] `SvoRenderer` (buffers, PSO, a STAGED upload — 32 MB per frame into pre-sized buffers,
+     swapped in the frame the last slice lands, the previous tree released only once the GPU is
+     done with it) and `SvoWorld` (background rebuild on a dedicated thread whenever the camera
+     leaves the inner half of the finest ring). **Check**: `--walk --autofly --frames 600`: 0
+     ground violations, 3 rebuilds during the run (0.60–0.70 s each, 42–57 ms staged uploads over
+     7–8 frames); worst frame 61–80 ms with the first, synchronous upload → **38 ms** staged.
 155. [x] `--renderer svo|mesh` (svo is the default now), svo flags (`--voxel-log2`,
      `--region-log2`, `--lod-radius`, `--no-trees`), overlay lines (voxel size, bricks/MB/nodes,
      build/upload times, rebuilding flag), loading screen, CI WARP smoke for the svo path.

@@ -30,8 +30,9 @@ surface is in range) and **ray-marches it on the GPU** in one fullscreen pass: 1
 per pixel. The same generator, banding rules and trees as before (proven byte-identical to
 `fill_terrain` at 1 m), so this is the same world at 128x the resolution, not a new one: islands,
 grass caps, conifers, sun-glinting water, fog, all composed through the unchanged bloom/tonemap
-chain. The camera moving 2 m triggers a whole-tree rebuild (0.6–1.3 s, background, swapped in
-with a 30–60 ms upload). Mesh-world everything below stays available behind `--renderer mesh`.
+chain. The camera moving 2 m triggers a whole-tree rebuild (0.6–1.3 s, background, staged onto
+the GPU over ~7 frames and swapped in whole). Mesh-world everything below stays available behind
+`--renderer mesh`.
 
 Numbers: **101/101 tests** (24 new `world/svo` tests including a 7,000-ray brute-force traversal
 oracle, plus a CPU-rendered smoke frame in the GPU-less CI jobs); `--verify-frame` reads **48%**
@@ -313,9 +314,10 @@ tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the oct
 ## Honest "what problems does the code have now" (goal 103, re-examined after the redesign)
 
 - **The svo path rebuilds the whole tree and re-uploads 200–400 MB whenever the camera moves 2 m**
-  (0.6–1.3 s in the background, a 30–60 ms upload hitch when it lands — measured as the 45–61 ms
-  worst frames in every run). Correct and playable, but the far rings barely change between
-  rebuilds; goal 158's incremental reuse is the real fix, deliberately deferred until measured.
+  (0.6–1.3 s in the background, staged onto the GPU at 32 MB/frame — the synchronous first
+  version's 45–80 ms worst frames became 38 ms). Correct and playable, but the far rings barely
+  change between rebuilds and the finest ring lags a fast-moving camera; goal 158's incremental
+  reuse is the real fix, deliberately deferred until measured.
 - **Sub-pixel voxels shimmer** 2–8 m from the camera (visible moiré in every capture): the marcher's
   LOD early-out stops at nodes, not at the 8 mm voxels inside the finest bricks. TAA/supersampling
   is goal 159; the mesh path never had this problem because it never had sub-pixel geometry.
