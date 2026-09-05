@@ -627,32 +627,68 @@ see that document's §8 before assuming these run top-to-bottom or all at once.
 
 ## Q. Blocky/greedy meshing
 
-117. Rewrite `world/meshing/mesh_extractor.cpp`'s core algorithm from Naive Surface Nets to
+117. [x] Rewrite `world/meshing/mesh_extractor.cpp`'s core algorithm from Naive Surface Nets to
      per-voxel-face emission (naive visible-face culling first — simpler, and a real, valid
      stopping point on its own per the research). **Check**: a hand-constructed single-solid-voxel
      case produces exactly 6 correctly-wound outward faces (the same kind of golden-value test
-     Group A's original meshing work used).
-118. Add greedy face-merging on top of 117 (per `block_mesh`'s documented approach: expand a face in
+     Group A's original meshing work used). Verified two ways: the golden-value test checks each
+     face's cross-product-implied normal against its stored normal, not just vertex/index counts;
+     `signed_volume_x6` (algorithm-independent) confirms the whole cube is consistently outward.
+118. [x] Add greedy face-merging on top of 117 (per `block_mesh`'s documented approach: expand a face in
      each valid direction while neighbors share material and remain exposed). **Check**: a flat,
      uniform-material region of N×N voxels produces measurably fewer quads than the naive version —
-     a real quad-count number, not assumed reduced.
-119. Rebuild `test_surface_coverage.cpp`/`test_normal_continuity.cpp`/`test_sliver_hunt.cpp` against
+     a real quad-count number, not assumed reduced. Measured on a real terrain chunk
+     (`benchmarks/bench_mesh_extract.cpp`'s new counters): 802 merged quads vs. 6,144 naive exposed
+     faces (interior-only) — an ~87% reduction. Merge key is (material, 4 corner AO/depth values)
+     exactly, not material alone — see goal 123.
+119. [x] Rebuild `test_surface_coverage.cpp`/`test_normal_continuity.cpp`/`test_sliver_hunt.cpp` against
      blocky meshing's actual correctness properties (exact face normals, no averaging question) —
      don't keep smooth-meshing-era tests that no longer test anything meaningful for this algorithm.
-120. Re-verify the padded cross-chunk sampling / chunk-boundary logic (`docs/progress.md`'s own
+     All three rebuilt: coverage now checks column containment in a top-face's 2D footprint rather
+     than vertex proximity (greedy merging leaves large flat runs with NO interior vertices at all,
+     by design); normal-continuity now asserts every normal is an exact cardinal direction instead
+     of "adjacent angles stay small" (blocky terrain SHOULD jump 90° at a real edge); sliver-hunt's
+     own height check was corrected to sample the solid side of a boundary, not the boundary's own
+     (possibly-short-neighbor's) coordinate — see goal 120's finding below.
+120. [x] Re-verify the padded cross-chunk sampling / chunk-boundary logic (`docs/progress.md`'s own
      account of this being "the actual hard part" historically) still produces seamless boundaries
      under face-based meshing — the boundary-ownership rules differ from Surface Nets' dual-cell
      scheme and need re-deriving, not assumed to carry over. **Check**: the cross-chunk seam test
-     from goal 119's rebuild, specifically exercised at a chunk boundary.
-121. View a dumped frame of the new blocky terrain directly (the standing methodology from the last
+     from goal 119's rebuild, specifically exercised at a chunk boundary. New test: two solid voxels
+     facing each other across a chunk boundary correctly block only their shared face (5 of 6 faces
+     each, verified by normal, not just count). A real, non-bug finding surfaced along the way: the
+     sliver-hunt test initially reported 1,396 "floating" triangles on real seed-1337 terrain —
+     traced to the test itself, not the mesher: a riser's vertices sit exactly on a column boundary,
+     and checking analytic height at that exact boundary coordinate can read the SHORT neighbor's
+     height (58.49) instead of the TALL source column's (61.24, confirmed by sampling one step
+     toward the solid interior) — a real ~3-voxel step in this terrain's fBm noise that Surface Nets
+     never exposed this starkly since it never places a vertex cleanly on one side of a boundary.
+121. [x] View a dumped frame of the new blocky terrain directly (the standing methodology from the last
      pass) — confirm it actually reads as "made of voxels" per the original complaint, not just that
      it compiles and renders something. **Check**: a viewed image, compared side by side with image 1
-     from this conversation, with a one-sentence honest assessment.
-122. Benchmark meshing throughput before/after (Google Benchmark, the existing `bench_mesh_extract`
+     from this conversation, with a one-sentence honest assessment. Viewed
+     `research/captures/blocky_default.png` at the default seed-1337 spawn: the terrain now reads
+     unambiguously as discrete stacked cubes — terraced mountain slopes, sharp step edges, angular
+     cliffs — a real, striking departure from image 1's smooth rounded hills and a direct match for
+     image 2's blocky aesthetic; no visible seams, cracks, or floating geometry in the capture.
+122. [x] Benchmark meshing throughput before/after (Google Benchmark, the existing `bench_mesh_extract`
      harness) — face-based meshing has a different cost profile than Surface Nets' padded-sampling
-     approach, worth a real number rather than assumed faster or slower.
-123. Re-tune baked AO (§2.2) for the blocky context specifically — confirm the existing 4th-vertex-
+     approach, worth a real number rather than assumed faster or slower. Real, honest result: ~5.4–
+     6.8ms per extraction (run-to-run range) vs. the pre-Group-Q baseline's 3.07ms — roughly 2× more
+     expensive, from the added per-face-corner AO sampling and the mask-based sweep's larger total
+     sample count. Not optimized speculatively: extraction still runs on background worker threads
+     (never blocks a frame), and Group S's goal 131 will re-measure real total generation time at
+     world scale, where this cost actually matters and any optimization would be evidence-driven.
+123. [x] Re-tune baked AO (§2.2) for the blocky context specifically — confirm the existing 4th-vertex-
      byte scheme still reads correctly per-face rather than assumed unaffected by the meshing change.
+     Not a re-tune of an old approximation but the real thing: implemented the true per-face-corner
+     0fps.net scheme goal 10 originally researched (each of a face's 4 corners gets its own 3-
+     neighbor occlusion check), which Surface Nets could only approximate because it shared one
+     vertex across several quads. `test_baked_ao.cpp` rebuilt against merge-aware bounding-region
+     checks (a flat run's interior has no vertices at all once merged, so "nearest vertex to point
+     P" no longer works) and confirms the same four design levels (0.55/0.70/0.85/1.0) still appear,
+     darkest at the real concave corner. Water's depth-as-AO convention carries over unchanged
+     (verified exact at the two pools' shared boundary, where the discontinuity is unsmoothed).
 
 ## R. Micro-voxel decorative objects
 

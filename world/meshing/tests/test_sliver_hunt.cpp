@@ -18,6 +18,20 @@ using namespace world::meshing;
 // near (100-130, 32-64, 60-90) at seed 1337. If the slivers are mesh-data real (not a runtime
 // upload/draw artifact), extraction of the real-seed chunks must contain triangles floating well
 // above the analytic surface. This test localizes them and fails loudly with coordinates.
+//
+// Group Q correction (research/voxel-representation-redesign.md SS2): a blocky SIDE (riser) face
+// sits its vertices EXACTLY on the boundary plane between its own occupied voxel and the exposed
+// air beyond it -- checking height_at() at that boundary's own (x,z) can land on whichever
+// neighboring column's height happens to be smaller, not the column that actually produced the
+// solid geometry. A real repro from this exact test, seed 1337: a +Z riser at world (48,61,13)
+// read height_at(48,13)=58.49 (the SHORT neighbor one step past the boundary) while
+// height_at(48,12)=61.24 (the TALL source column the voxel is actually part of) -- a perfectly
+// legitimate ~3-voxel step in this terrain's fBm noise, not a bug. Surface Nets never exposed this
+// ambiguity because it pulls a shared vertex toward the crossing corner instead of placing it
+// cleanly on the boundary. The fix: check height at a point stepped one unit along -normal (back
+// into the solid interior) instead of at the vertex's own coordinate -- for a TOP face (normal is
+// vertical, no horizontal component) this is the exact same point, so the fix changes nothing for
+// the top-face case the tolerance was originally tuned against.
 TEST_CASE("no mesh triangle floats far above the analytic surface", "[meshing][sliver]") {
     const world::generation::HeightmapGenerator generator(1337);
     ChunkStore store;
@@ -60,18 +74,23 @@ TEST_CASE("no mesh triangle floats far above the analytic surface", "[meshing][s
                         const float wx = ox + v.position.x;
                         const float wy = oy + v.position.y;
                         const float wz = oz + v.position.z;
-                        const float surface = generator.height_at(wx, wz);
-                        // 2.5 voxels of tolerance: surface-nets placement + banding never puts a
-                        // legitimate SURFACE vertex that far above its own column's height.
+                        // Step back along -normal into the solid interior before sampling height --
+                        // see the class comment above for why the vertex's own (boundary) position
+                        // is the wrong column to check for a side face.
+                        const float surface = generator.height_at(wx - v.normal.x, wz - v.normal.z);
+                        // 2.5 voxels of tolerance: neither banding nor a single legitimate riser
+                        // puts a real surface vertex that far above its own SOURCE column's height.
                         allFloat = wy > surface + 2.5f && wy > 2.5f; // (and not a water surface)
                     }
                     if (allFloat) {
-                        if (floating < 12) {
+                        if (floating < 8) {
                             const Vertex& v = mesh.vertices[mesh.indices[i]];
-                            std::printf("floating tri in chunk[%d,%d,%d] at local (%.1f,%.1f,%.1f) mat=%d\n",
+                            std::printf("floating tri in chunk[%d,%d,%d] at local (%.1f,%.1f,%.1f) mat=%d "
+                                        "normal(%.0f,%.0f,%.0f)\n",
                                         coord.x, coord.y, coord.z, static_cast<double>(v.position.x),
                                         static_cast<double>(v.position.y), static_cast<double>(v.position.z),
-                                        static_cast<int>(v.material));
+                                        static_cast<int>(v.material), static_cast<double>(v.normal.x),
+                                        static_cast<double>(v.normal.y), static_cast<double>(v.normal.z));
                         }
                         ++floating;
                     }

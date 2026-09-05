@@ -1,5 +1,8 @@
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -14,11 +17,8 @@ using namespace world::meshing;
 namespace {
 // Signed volume x6 of a closed triangle mesh (divergence theorem: sum of a·(b x c) over every
 // triangle, relative to any common origin). Positive iff the mesh is a consistently outward-
-// oriented closed surface -- robust to exactly where Naive Surface Nets actually places each
-// vertex (which is pulled toward the crossing corner within a cell, not its geometric center, so
-// a per-quad "is this quad's center on the expected side of the voxel" heuristic is NOT reliable
-// -- confirmed by hand: it produces false failures on this exact test case even when the winding
-// is correct). This is the standard, position-independent way to check mesh orientation.
+// oriented closed surface -- algorithm-independent, so this carries over unchanged from Naive
+// Surface Nets to Group Q's blocky meshing as a real cross-check on the winding derivation.
 float signed_volume_x6(const MeshData& mesh) {
     float total = 0.0f;
     for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
@@ -28,6 +28,17 @@ float signed_volume_x6(const MeshData& mesh) {
         total += glm::dot(a, glm::cross(b, c));
     }
     return total;
+}
+
+// Blocky meshing (Group Q) gives every face its own 4 unshared vertices, always appended as one
+// contiguous group of 4 sharing one flat normal -- unlike Surface Nets, which shared vertices
+// across quads and needed normal averaging. Grouping by 4 lets tests reason per-face directly.
+std::vector<glm::vec3> face_normals(const MeshData& mesh) {
+    std::vector<glm::vec3> normals;
+    for (std::size_t i = 0; i + 3 < mesh.vertices.size(); i += 4) {
+        normals.push_back(mesh.vertices[i].normal);
+    }
+    return normals;
 }
 } // namespace
 
@@ -39,30 +50,55 @@ TEST_CASE("A single solid voxel surrounded by air produces exactly 6 outward-fac
 
     const MeshData mesh = extract_mesh(store, coord);
 
-    // 8 cells touch the solid voxel as one of their 8 corners; each of those 8 is active (exactly
-    // one differing corner among its own 8). 6 grid edges actually cross (voxel-to-solid-voxel to
-    // each of its 6 air face-neighbors); each crossing edge emits exactly one quad.
-    REQUIRE(mesh.vertices.size() == 8);
-    REQUIRE(mesh.indices.size() == 6 * 6); // 6 quads * 2 triangles * 3 indices
+    // Blocky meshing gives every face its own 4 fresh vertices -- no sharing even between two
+    // faces of the SAME voxel (that is what makes the normal exact per face instead of averaged;
+    // see mesh_extractor.cpp's emit_quad comment). 6 faces * 4 = 24 vertices, 6 * 2 tris * 3 = 36
+    // indices (the index count happens to match the old Surface-Nets count for this exact case;
+    // the vertex count does not, and that difference is the point of the rewrite, not a bug).
+    REQUIRE(mesh.vertices.size() == 24);
+    REQUIRE(mesh.indices.size() == 36);
 
-    // Every vertex must lie strictly inside the solid voxel's own [16,17]^3 cell (Naive Surface
-    // Nets places each vertex within the cell it belongs to) -- a real, if loose, sanity check on
-    // vertex placement independent of the orientation check below.
+    // Every face sits exactly on the solid voxel's own [16,17]^3 boundary -- blocky faces are
+    // placed at exact voxel boundaries, not pulled toward a crossing corner like Surface Nets, so
+    // this can be an EXACT check now rather than a loose bound.
     for (const auto& v : mesh.vertices) {
-        REQUIRE(v.position.x >= 15.0f);
-        REQUIRE(v.position.x <= 17.0f);
+        CHECK((v.position.x == 16.0f || v.position.x == 17.0f));
+        CHECK((v.position.y == 16.0f || v.position.y == 17.0f));
+        CHECK((v.position.z == 16.0f || v.position.z == 17.0f));
     }
 
+    // Goal 117's real check: exactly the 6 cardinal directions appear, each exactly once, and each
+    // face's STORED normal agrees with the normal actually implied by its own emitted positions
+    // (cross product of two real edges) -- not just assumed consistent because the mesh compiles.
+    const auto normals = face_normals(mesh);
+    REQUIRE(normals.size() == 6);
+    for (const glm::vec3 expected : {glm::vec3{1, 0, 0}, glm::vec3{-1, 0, 0}, glm::vec3{0, 1, 0},
+                                     glm::vec3{0, -1, 0}, glm::vec3{0, 0, 1}, glm::vec3{0, 0, -1}}) {
+        CHECK(std::count(normals.begin(), normals.end(), expected) == 1);
+    }
+    for (std::size_t f = 0; f + 3 < mesh.vertices.size(); f += 4) {
+        const glm::vec3& p0 = mesh.vertices[f].position;
+        const glm::vec3& p1 = mesh.vertices[f + 1].position;
+        const glm::vec3& p2 = mesh.vertices[f + 2].position;
+        const glm::vec3 impliedNormal = glm::normalize(glm::cross(p1 - p0, p2 - p0));
+        CHECK(glm::length(impliedNormal - mesh.vertices[f].normal) < 1e-5f);
+    }
+
+    // Whole-mesh cross-check: a real closed, consistently outward-oriented cube has positive
+    // signed volume regardless of which specific algorithm produced it.
     REQUIRE(signed_volume_x6(mesh) > 0.0f);
 }
 
-TEST_CASE("Adjacent chunks produce identical world-space vertex positions along their shared face",
+TEST_CASE("Two solid voxels facing each other across a chunk boundary block each other's shared face",
           "[meshing]") {
-    // Two solid voxels straddling the X=31/X=32 world boundary between chunk (0,0,0) and (1,0,0):
-    // world (31,16,16) and (32,16,16), everything else air. The cell anchored at world-cell (31,
-    // 16,16) is computed independently by BOTH chunks -- as chunk0's own owned cell at local
-    // cx=31, and as chunk1's boundary-layer cell at local cx=-1 -- and must resolve to the exact
-    // same world position in both meshes for the seam to be crack-free.
+    // Two solid voxels straddling the X=31/X=32 world boundary between chunk (0,0,0) and (1,0,0),
+    // everything else air. Under blocky meshing a voxel is owned by exactly the one chunk storing
+    // it (no shared dual vertex ever computed by two chunks the way Surface Nets needed), so the
+    // real cross-chunk correctness property is different from the old "positions must match" test:
+    // the two occupied voxels mutually block each other's shared +X/-X face, and NEITHER chunk
+    // should emit it -- not both (a z-fighting double face) and not neither's OTHER 5 real faces
+    // (a hole). An isolated voxel emits 6 faces (previous test); exactly 5 here is exactly that one
+    // shared face missing and nothing else disturbed.
     ChunkStore store;
     const ChunkCoord coord0{0, 0, 0};
     const ChunkCoord coord1{1, 0, 0};
@@ -72,40 +108,15 @@ TEST_CASE("Adjacent chunks produce identical world-space vertex positions along 
     const MeshData mesh0 = extract_mesh(store, coord0);
     const MeshData mesh1 = extract_mesh(store, coord1);
 
-    REQUIRE_FALSE(mesh0.vertices.empty());
-    REQUIRE_FALSE(mesh1.vertices.empty());
+    CHECK(mesh0.vertices.size() == 5 * 4);
+    CHECK(mesh0.indices.size() == 5 * 6);
+    CHECK(mesh1.vertices.size() == 5 * 4);
+    CHECK(mesh1.indices.size() == 5 * 6);
 
-    // Find chunk0's vertex closest to its own high-X boundary (local x near 31) and chunk1's
-    // vertex closest to its own low-X boundary (local x near -1); both convert to world X near 31.
-    const Vertex* boundary0 = nullptr;
-    for (const auto& v : mesh0.vertices) {
-        if (v.position.x > 30.5f && (boundary0 == nullptr || v.position.x > boundary0->position.x)) {
-            boundary0 = &v;
-        }
-    }
-    const Vertex* boundary1 = nullptr;
-    for (const auto& v : mesh1.vertices) {
-        // Any negative local X is unambiguously in chunk1's -1 boundary layer -- the exact
-        // fractional offset within that cell depends on which of its edges cross (not just the
-        // X-direction one), so this must not assume the offset lands past any particular point
-        // short of the cell's own [-1, 0) span.
-        if (v.position.x < 0.0f && (boundary1 == nullptr || v.position.x < boundary1->position.x)) {
-            boundary1 = &v;
-        }
-    }
-
-    REQUIRE(boundary0 != nullptr);
-    REQUIRE(boundary1 != nullptr);
-
-    const glm::vec3 world0 =
-        glm::vec3(coord0.x, coord0.y, coord0.z) * static_cast<float>(kChunkSize) + boundary0->position;
-    const glm::vec3 world1 =
-        glm::vec3(coord1.x, coord1.y, coord1.z) * static_cast<float>(kChunkSize) + boundary1->position;
-
-    constexpr float kEps = 1e-5f;
-    REQUIRE(std::abs(world0.x - world1.x) < kEps);
-    REQUIRE(std::abs(world0.y - world1.y) < kEps);
-    REQUIRE(std::abs(world0.z - world1.z) < kEps);
+    const auto normals0 = face_normals(mesh0);
+    const auto normals1 = face_normals(mesh1);
+    CHECK(std::find(normals0.begin(), normals0.end(), glm::vec3{1, 0, 0}) == normals0.end());
+    CHECK(std::find(normals1.begin(), normals1.end(), glm::vec3{-1, 0, 0}) == normals1.end());
 }
 
 TEST_CASE("A chunk with no registered neighbors that is entirely air produces an empty mesh", "[meshing]") {
