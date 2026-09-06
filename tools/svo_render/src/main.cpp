@@ -8,12 +8,15 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <future>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -32,7 +35,6 @@
 
 namespace {
 
-using world::chunk::MaterialID;
 using namespace world::svo;
 
 struct Options {
@@ -72,18 +74,62 @@ struct Options {
     unsigned threads = std::max(1u, std::thread::hardware_concurrency());
 };
 
+// atoi/atof silently return 0 on a malformed string, and are UB on nullptr -- next() returns
+// nullptr when a flag is the last argument. A bad number should fail the parse (parse()'s existing
+// convention for every other malformed option), not silently become 0.
+bool parse_int(const char* s, int& out) {
+    if (s == nullptr) {
+        return false;
+    }
+    char* end = nullptr;
+    errno = 0;
+    const long v = std::strtol(s, &end, 10);
+    if (end == s || *end != '\0' || errno == ERANGE || v < std::numeric_limits<int>::min() ||
+        v > std::numeric_limits<int>::max()) {
+        return false;
+    }
+    out = static_cast<int>(v);
+    return true;
+}
+
+bool parse_float(const char* s, float& out) {
+    if (s == nullptr) {
+        return false;
+    }
+    char* end = nullptr;
+    errno = 0;
+    const double v = std::strtod(s, &end);
+    if (end == s || *end != '\0' || errno == ERANGE) {
+        return false;
+    }
+    out = static_cast<float>(v);
+    return true;
+}
+
 bool parse(int argc, char** argv, Options& o) {
     for (int i = 1; i < argc; ++i) {
         const std::string_view a = argv[i];
         auto next = [&]() -> const char* { return i + 1 < argc ? argv[++i] : nullptr; };
         if (a == "--seed") {
-            o.seed = std::atoi(next());
+            if (!parse_int(next(), o.seed)) {
+                std::fprintf(stderr, "--seed expects an integer\n");
+                return false;
+            }
         } else if (a == "--voxel-log2") {
-            o.voxel_log2 = std::atoi(next());
+            if (!parse_int(next(), o.voxel_log2)) {
+                std::fprintf(stderr, "--voxel-log2 expects an integer\n");
+                return false;
+            }
         } else if (a == "--root-log2") {
-            o.root_log2 = std::atoi(next());
+            if (!parse_int(next(), o.root_log2)) {
+                std::fprintf(stderr, "--root-log2 expects an integer\n");
+                return false;
+            }
         } else if (a == "--lod-radius") {
-            o.lod_radius = static_cast<float>(std::atof(next()));
+            if (!parse_float(next(), o.lod_radius)) {
+                std::fprintf(stderr, "--lod-radius expects a number\n");
+                return false;
+            }
         } else if (a == "--pos") {
             const char* v = next();
 #if defined(_MSC_VER)
@@ -107,9 +153,15 @@ bool parse(int argc, char** argv, Options& o) {
             }
             o.pos_set = false;
         } else if (a == "--yaw") {
-            o.yaw_deg = static_cast<float>(std::atof(next()));
+            if (!parse_float(next(), o.yaw_deg)) {
+                std::fprintf(stderr, "--yaw expects a number\n");
+                return false;
+            }
         } else if (a == "--pitch") {
-            o.pitch_deg = static_cast<float>(std::atof(next()));
+            if (!parse_float(next(), o.pitch_deg)) {
+                std::fprintf(stderr, "--pitch expects a number\n");
+                return false;
+            }
         } else if (a == "--size") {
             const char* v = next();
 #if defined(_MSC_VER)
@@ -121,7 +173,10 @@ bool parse(int argc, char** argv, Options& o) {
                 return false;
             }
         } else if (a == "--fov") {
-            o.fov_deg = static_cast<float>(std::atof(next()));
+            if (!parse_float(next(), o.fov_deg)) {
+                std::fprintf(stderr, "--fov expects a number\n");
+                return false;
+            }
         } else if (a == "--no-trees") {
             o.trees = false;
         } else if (a == "--no-shadows") {
@@ -133,13 +188,25 @@ bool parse(int argc, char** argv, Options& o) {
         } else if (a == "--no-lod-march") {
             o.lod_march = false;
         } else if (a == "--smooth-pixels") {
-            o.smooth_pixels = static_cast<float>(std::atof(next()));
+            if (!parse_float(next(), o.smooth_pixels)) {
+                std::fprintf(stderr, "--smooth-pixels expects a number\n");
+                return false;
+            }
         } else if (a == "--grain") {
-            o.grain_amplitude = static_cast<float>(std::atof(next()));
+            if (!parse_float(next(), o.grain_amplitude)) {
+                std::fprintf(stderr, "--grain expects a number\n");
+                return false;
+            }
         } else if (a == "--ao-radius") {
-            o.ao_radius_px = static_cast<float>(std::atof(next()));
+            if (!parse_float(next(), o.ao_radius_px)) {
+                std::fprintf(stderr, "--ao-radius expects a number\n");
+                return false;
+            }
         } else if (a == "--shadow-lod") {
-            o.shadow_lod = static_cast<float>(std::atof(next()));
+            if (!parse_float(next(), o.shadow_lod)) {
+                std::fprintf(stderr, "--shadow-lod expects a number\n");
+                return false;
+            }
         } else if (a == "--lod-center") {
             const char* v = next();
 #if defined(_MSC_VER)
@@ -160,7 +227,12 @@ bool parse(int argc, char** argv, Options& o) {
         } else if (a == "--out") {
             o.out = next();
         } else if (a == "--threads") {
-            o.threads = static_cast<unsigned>(std::max(1, std::atoi(next())));
+            int threads = 0;
+            if (!parse_int(next(), threads)) {
+                std::fprintf(stderr, "--threads expects an integer\n");
+                return false;
+            }
+            o.threads = static_cast<unsigned>(std::max(1, threads));
         } else {
             std::fprintf(
                 stderr,
@@ -178,13 +250,17 @@ bool parse(int argc, char** argv, Options& o) {
 }
 
 // ---- shading: the same palette as render/diligent/shaders/sky_common.fxh + terrain.psh.hlsl ----
-const glm::vec3 kSunDirection = glm::normalize(glm::vec3{0.4f, -1.0f, 0.25f}); // toward surfaces
-const glm::vec3 kSunColor{1.05f, 0.95f, 0.78f};
-const glm::vec3 kSkyZenith{0.30f, 0.52f, 0.80f};
-const glm::vec3 kSkyHorizon{0.78f, 0.83f, 0.88f};
-const glm::vec3 kSkyBelowHorizon{0.50f, 0.56f, 0.63f};
-const glm::vec3 kSkyAmbient{0.34f, 0.33f, 0.30f};
-const glm::vec3 kGroundAmbient{0.14f, 0.15f, 0.19f};
+// glm::normalize isn't constexpr (unlike the literal-only vec3s below), so this can't be one; GLM's
+// vector math is pure arithmetic on PODs and never actually throws, so the static-init-may-throw
+// concern below doesn't apply in practice, just unprovably so.
+const glm::vec3 kSunDirection = // NOLINT(cert-err58-cpp,bugprone-throwing-static-initialization)
+    glm::normalize(glm::vec3{0.4f, -1.0f, 0.25f}); // toward surfaces
+constexpr glm::vec3 kSunColor{1.05f, 0.95f, 0.78f};
+constexpr glm::vec3 kSkyZenith{0.30f, 0.52f, 0.80f};
+constexpr glm::vec3 kSkyHorizon{0.78f, 0.83f, 0.88f};
+constexpr glm::vec3 kSkyBelowHorizon{0.50f, 0.56f, 0.63f};
+constexpr glm::vec3 kSkyAmbient{0.34f, 0.33f, 0.30f};
+constexpr glm::vec3 kGroundAmbient{0.14f, 0.15f, 0.19f};
 
 glm::vec3 sky_gradient(const glm::vec3& dir) {
     const float t = std::pow(std::clamp(dir.y, 0.0f, 1.0f), 0.45f);
@@ -241,7 +317,7 @@ std::uint8_t to_srgb8(float linear) {
 
 } // namespace
 
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
     Options o;
     if (!parse(argc, argv, o)) {
         return EXIT_FAILURE;
@@ -608,4 +684,16 @@ int main(int argc, char** argv) {
         return ok ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
+}
+
+int main(int argc, char** argv) {
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "svo_render: %s\n", e.what());
+        return EXIT_FAILURE;
+    } catch (...) {
+        std::fprintf(stderr, "svo_render: unknown exception\n");
+        return EXIT_FAILURE;
+    }
 }
