@@ -29,7 +29,8 @@ glm::ivec3 Brick::exposed_face_sum() const noexcept {
     // Occupancy row (y, z) = the 8 x-bits of that row: voxel index x + 8y + 64z lives in mask
     // word (y >> 2) + 2z at bit x + 8 * (y & 3).
     const auto row = [&](int y, int z) -> std::uint32_t {
-        return (words_[static_cast<std::size_t>((y >> 2) + 2 * z)] >> (8 * (y & 3))) & 0xFFu;
+        return (words_[static_cast<std::size_t>(y >> 2) + static_cast<std::size_t>(z) * 2] >> (8 * (y & 3))) &
+               0xFFu;
     };
     glm::ivec3 sum{0, 0, 0};
     for (int z = 0; z < kBrickEdge; ++z) {

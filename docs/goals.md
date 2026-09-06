@@ -591,10 +591,22 @@ themselves, directly responsive to "colorful" as a materials question, not only 
      (mid-slope soil terracing currently reads camo-busy at distance), which also re-opens goal
      41's SSAO gate and goal 40's ground-cover per their own written conditions. **Check**: its
      own goals group, written before implementation.
-109. Prove the Lavapipe CI leg end-to-end green after the MSVC-flag-leak fix (our
-     imgui_impl_glfw.cpp COMPILE_OPTIONS were MSVC-only syntax -- fixed conditional). Then take
-     goal 64's Linux compile-cache measurement from its second run. **Check**: a best-effort-leg
-     run reaching the Xvfb smoke, and a cache-hit compile-time delta recorded.
+109. Prove the Lavapipe CI leg end-to-end green -- the MSVC-flag-leak fix (imgui_impl_glfw.cpp's
+     COMPILE_OPTIONS) was necessary but not sufficient. Two real blockers found 2026-09-06 (CI run
+     34059398741, after the Lin-look pass landed, unrelated to materials-as-components): (1)
+     `device_init.cpp`'s Vulkan swapchain creation hardcodes `Win32NativeWindow` instead of the
+     portable `Diligent::NativeWindow` typedef -- a real regression from that pass, fails to
+     compile on GCC/Linux (`'Win32NativeWindow' does not name a type`); (2) deeper and pre-existing,
+     unrelated to any recent pass: `crash_handler.cpp` unconditionally includes
+     `<windows.h>`/`<dbghelp.h>` with no platform guard, and `app/CMakeLists.txt` unconditionally
+     links `dbghelp` -- `voxel_app` has never actually been buildable on Linux. Fixing (1) alone
+     would only trade this compile error for a link error at `dbghelp`; a real green run needs a
+     Linux-native crash handler (signal handlers + backtrace -- CLAUDE.md's already-researched
+     `backward-cpp` fallback is the candidate) before (1)'s fix is worth making. Deliberately not
+     attempted in the same pass that found it: real feature work, unverifiable without a Linux
+     machine, and this leg is `continue-on-error` by goal 67's own design (non-gating). **Check**:
+     unchanged -- a best-effort-leg run reaching the Xvfb smoke, and goal 64's Linux compile-cache
+     measurement from its second run.
 110. Second-meaning audit for the AO vertex byte if a FOURTH meaning ever appears (occlusion /
      water depth / tree jitter today, each documented+tested): at that point widen the vertex to
      16B with a dedicated byte instead of packing further. **Check**: the written decision at
