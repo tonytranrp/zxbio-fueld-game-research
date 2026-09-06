@@ -73,7 +73,8 @@ TEST_CASE("brick set/get round-trips every voxel and keeps the occupancy mask in
     for (int z = 0; z < 8; ++z) {
         for (int y = 0; y < 8; ++y) {
             for (int x = 0; x < 8; ++x) {
-                const auto m = static_cast<MaterialID>((x + 3 * y + 5 * z) % 8);
+                const auto m = static_cast<MaterialID>((x + 3 * y + 5 * z) %
+                                                       static_cast<int>(world::chunk::kMaterialCount));
                 brick.set(x, y, z, m);
             }
         }
@@ -82,7 +83,8 @@ TEST_CASE("brick set/get round-trips every voxel and keeps the occupancy mask in
     for (int z = 0; z < 8; ++z) {
         for (int y = 0; y < 8; ++y) {
             for (int x = 0; x < 8; ++x) {
-                const auto m = static_cast<MaterialID>((x + 3 * y + 5 * z) % 8);
+                const auto m = static_cast<MaterialID>((x + 3 * y + 5 * z) %
+                                                       static_cast<int>(world::chunk::kMaterialCount));
                 CHECK(brick.at(x, y, z) == m);
                 CHECK(brick.occupied(x, y, z) == (m != MaterialID::Air));
                 // Raw-word accessors (what the traversal uses) agree with the object accessors.

@@ -1,21 +1,33 @@
-// Terrain pixel stage: material-palette lookup + one warm directional sun + two-color hemisphere
+// Terrain pixel stage: material-record lookup + one warm directional sun + two-color hemisphere
 // ambient + baked per-vertex AO + low-frequency albedo variation (goals.md Stage 1, goals 13-16)
 // + exponential-squared distance fog with height falloff tied to the shared sky palette
 // (goals 33/34/91). No textures -- the palette is the slot a texture array upgrades into later.
-// g_MaterialColors is sized/ordered by world::chunk::MaterialID and mirrored by kMaterialColors
-// in render/diligent/src/pso_terrain.cpp -- update both together.
+// g_Materials is generated from the material registry (world/materials) by pso_terrain.cpp, and
+// MATERIAL_COUNT / MAT_SHADING_* are macros passed at shader creation from the same registry
+// (render/diligent/detail/material_macros.hpp): this shader carries no material literal.
 
 #include "sky_common.fxh"
 
+// One record per material (detail::material_record): rgb = linear albedo, w = shading model.
 cbuffer MaterialPalette
 {
-    float4 g_MaterialColors[8];
+    float4 g_Materials[MATERIAL_COUNT];
 };
 
 cbuffer FogConstants
 {
     float4 g_CameraPosWorld; // xyz camera position; w = elapsed seconds (water ripple phase)
 };
+
+float3 MaterialAlbedo(uint material)
+{
+    return g_Materials[min(material, MATERIAL_COUNT - 1u)].rgb;
+}
+
+uint MaterialShading(uint material)
+{
+    return uint(g_Materials[min(material, MATERIAL_COUNT - 1u)].w + 0.5);
+}
 
 struct PSInput
 {
@@ -56,6 +68,8 @@ float ValueNoise(float2 p)
 // against -- the goal-29 decision), Schlick fresnel against the shared sky model (sun glints fall
 // out of the reflection vector for free), a two-wave scrolling ripple normal, and an HDR Blinn
 // glint that feeds Stage 2's bloom. PSIn.AO carries water-column depth here, not occlusion.
+// The body colors are this renderer's own (tuned by viewed captures) -- the material says WHICH
+// shading model applies, the shader owns HOW it looks (world/materials/README.md).
 float3 ShadeWater(PSInput PSIn, float3 viewDir, float timeSeconds)
 {
     const float2 p = PSIn.WorldPos.xz;
@@ -104,17 +118,17 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const float n2 = ValueNoise(PSIn.WorldPos.xz * (1.0 / 7.0) + 17.31);
     const float mottle = 0.90 + 0.20 * (0.65 * n1 + 0.35 * n2);
 
-    const float3 albedo = g_MaterialColors[min(PSIn.Material, 7u)].rgb * mottle;
+    const float3 albedo = MaterialAlbedo(PSIn.Material) * mottle;
 
     // Goal 13: AO multiplies the final lit color (both ambient and direct -- the cheap-pipeline
     // convention the reference scheme also uses).
     float3 lit = albedo * (ambient + sunColor * diffuse) * PSIn.AO;
 
-    // Material 3 is Water: full replacement path (fresnel/ripple/depth-tint/glint). Same
-    // CPU/GPU-boundary note as terrain.vsh.hlsl's material==5 branch: kBlockTable.is_liquid
-    // drives CPU-side logic (mesh_extractor.cpp, block_type.hpp), this literal drives the
-    // shader-side one -- two honest dispatches either side of a boundary HLSL can't cross.
-    if (PSIn.Material == 3u)
+    // The material's record says it is shaded as water: full replacement path
+    // (fresnel/ripple/depth-tint/glint). Group AC: the same registry that drives the CPU side
+    // (Phase::Liquid for the mesher's depth scan) drives this test through the record's shading
+    // model -- one source on both sides of the CPU/GPU boundary, no literal id.
+    if (MaterialShading(PSIn.Material) == MAT_SHADING_WATER)
     {
         const float3 viewDir = normalize(g_CameraPosWorld.xyz - PSIn.WorldPos);
         lit = ShadeWater(PSIn, viewDir, g_CameraPosWorld.w);

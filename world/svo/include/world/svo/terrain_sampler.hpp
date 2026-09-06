@@ -10,6 +10,7 @@
 #include "world/chunk/material.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/generation/tree_placement.hpp"
+#include "world/materials/terrain_query.hpp"
 #include "world/svo/brick.hpp"
 #include "world/svo/height_field.hpp"
 #include "world/svo/sampler.hpp"
@@ -68,9 +69,12 @@ public:
     static std::uint64_t debug_grid_calls() noexcept;
     static std::uint64_t debug_grid_cache_hits() noexcept;
 
-    static constexpr float kBeachBand = 1.75f;    // fill_terrain's kBeachBand
-    static constexpr float kSoilDepth = 3.0f;     // fill_terrain's kSoilDepth, in meters
-    static constexpr float kGrassMaxSlope = 1.9f; // fill_terrain's kGrassMaxSlope
+    // The band constants are the materials' own (world/materials/terrain_query.hpp, Group AC) --
+    // one copy, shared with fill_terrain and the aim query. These names stay for classify()'s
+    // fast paths, which reason about the soil band and the beach directly.
+    static constexpr float kBeachBand = world::materials::TerrainBands::beach_band;
+    static constexpr float kSoilDepth = world::materials::TerrainBands::soil_depth;
+    static constexpr float kGrassMaxSlope = world::materials::TerrainBands::grass_max_slope;
 
 private:
     struct TreeEntry {

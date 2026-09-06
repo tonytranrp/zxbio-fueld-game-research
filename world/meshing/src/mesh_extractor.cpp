@@ -7,19 +7,19 @@
 #include <limits>
 #include <vector>
 
-#include "world/chunk/block_type.hpp"
+#include "world/materials/materials.hpp"
 
 namespace world::meshing {
 
 using world::chunk::Chunk;
 using world::chunk::ChunkCoord;
 using world::chunk::ChunkStore;
-using world::chunk::is_occupied;
 using world::chunk::kChunkSize;
 using world::chunk::local_index;
 using world::chunk::MaterialID;
-using world::chunk::properties_of;
 using world::chunk::world_to_local;
+using world::materials::is_occupied;
+using world::materials::properties_of;
 
 // Padded local-space sampling: lx/ly/lz may range one voxel past this chunk's own 0..31 bounds in
 // any direction, so the owning chunk per axis is a plain sign/range test into the already-resolved
@@ -106,7 +106,7 @@ constexpr std::array<std::array<int, 2>, 4> kCornerSigns = {{{-1, -1}, {1, -1}, 
 // downward, capped at 8 (the honest limit of the one-chunk neighbor halo).
 float water_depth_ao(const NeighborCache& neighbors, glm::ivec3 voxel) {
     int depth = 0;
-    while (depth < 8 && properties_of(neighbors.sample({voxel.x, voxel.y - depth, voxel.z})).is_liquid) {
+    while (depth < 8 && properties_of(neighbors.sample({voxel.x, voxel.y - depth, voxel.z})).is_liquid()) {
         ++depth;
     }
     return static_cast<float>(depth) / 8.0f;
@@ -191,7 +191,7 @@ void sweep_axis_direction(int axis, int dir, const NeighborCache& neighbors, Mes
 
                 MaskCell cell;
                 cell.material = here;
-                if (properties_of(here).is_liquid) {
+                if (properties_of(here).is_liquid()) {
                     const float depth = water_depth_ao(neighbors, voxel);
                     cell.corner = {depth, depth, depth, depth};
                 } else {

@@ -6,6 +6,10 @@
 // normalized fetch delivers Pos/OctNormal as floats in [0,1], so the decode below is pure
 // arithmetic -- deliberately no bit-manipulation intrinsics, which do not translate reliably
 // across every Diligent shader-conversion path (engine-hardening brief Group K task 26).
+//
+// MATERIAL_COUNT and MAT_SHADING_* are macros the C++ side passes at shader creation from the
+// material registry (world/materials, render/diligent/detail/material_macros.hpp): this shader
+// carries no material literal.
 
 cbuffer FrameConstants
 {
@@ -17,6 +21,17 @@ cbuffer ChunkConstants
 {
     float4 g_ChunkOriginWorld; // xyz: chunk origin in world voxel units; w unused padding
 };
+
+// One record per material (detail::material_record): rgb = albedo, w = shading model.
+cbuffer MaterialPalette
+{
+    float4 g_Materials[MATERIAL_COUNT];
+};
+
+uint MaterialShading(uint material)
+{
+    return uint(g_Materials[min(material, MATERIAL_COUNT - 1u)].w + 0.5);
+}
 
 struct VSInput
 {
@@ -57,14 +72,11 @@ void main(in VSInput VSIn, out PSInput PSIn)
     const float3 localPos = VSIn.Pos.xyz * (65535.0 / 1024.0) - 1.0;
     float3 worldPos = localPos + g_ChunkOriginWorld.xyz;
 
-    // Goal 39: wind sway on tree CANOPIES only -- material 5 is Leaves; trunks (Wood) and
-    // terrain get zero offset, so trunks visibly stay still while canopies move.
-    // Group P (research/voxel-representation-redesign.md §6): this stays a raw material-ID
-    // literal deliberately -- world::chunk::kBlockTable is a C++ constexpr table HLSL cannot
-    // consume, so the CPU/GPU boundary is where the "single source of truth" migration stops.
-    // Only the material -> color mapping was moved into the table (pso_terrain.cpp); which
-    // *behavior* applies per material is still real, honest per-shader dispatch.
-    if (VSIn.Material == 5u)
+    // Goal 39: wind sway on tree CANOPIES only -- whatever material the registry shades as
+    // foliage; trunks (Wood) and terrain get zero offset, so trunks visibly stay still while
+    // canopies move. Group AC: the material record carries the shading model, so the old
+    // "material 5 is Leaves" literal is gone -- the CPU/GPU boundary is crossed by the record.
+    if (MaterialShading(VSIn.Material) == MAT_SHADING_FOLIAGE)
     {
         const float t = g_TimeAndPad.x;
         worldPos.x += 0.15 * sin(t * 1.4 + worldPos.x * 0.37 + worldPos.z * 0.21);

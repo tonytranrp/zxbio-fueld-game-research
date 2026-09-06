@@ -15,6 +15,7 @@
 #include "world/chunk/chunk_store.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/generation/terrain_fill.hpp"
+#include "world/materials/materials.hpp"
 #include "world/meshing/mesh_extractor.hpp"
 
 using world::chunk::ChunkCoord;
@@ -22,26 +23,10 @@ using world::chunk::MaterialID;
 
 namespace {
 
+// The .obj group name is the material's display name from the registry (Group AC) -- this used to
+// be a second switch over the same strings app/src/aim_query.cpp carried.
 const char* material_group(MaterialID m) {
-    switch (m) {
-    case MaterialID::Stone:
-        return "Stone";
-    case MaterialID::Dirt:
-        return "Dirt";
-    case MaterialID::Water:
-        return "Water";
-    case MaterialID::Wood:
-        return "Wood";
-    case MaterialID::Leaves:
-        return "Leaves";
-    case MaterialID::Sand:
-        return "Sand";
-    case MaterialID::Grass:
-        return "Grass";
-    case MaterialID::Air:
-        break;
-    }
-    return "Air";
+    return world::materials::name_of(m);
 }
 
 } // namespace

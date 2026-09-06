@@ -2,12 +2,11 @@
 #include <cstddef>
 #include <stdexcept>
 
+#include "detail/material_macros.hpp"
 #include "detail/terrain_renderer_impl.hpp"
 
-#include "world/chunk/block_type.hpp"
-#include "world/chunk/material.hpp"
-
 #include "Graphics/GraphicsEngine/interface/Shader.h"
+#include "Graphics/GraphicsTools/interface/ShaderMacroHelper.hpp"
 
 namespace render::diligent {
 
@@ -15,26 +14,15 @@ namespace {
 
 using namespace Diligent;
 
-using world::chunk::kBlockTable;
-using world::chunk::kMaterialCount;
-static_assert(kMaterialCount == 8, "terrain.psh.hlsl declares g_MaterialColors[8] -- update both together");
-
-// The material palette cbuffer (float4 per MaterialID), generated FROM world::chunk::kBlockTable
-// (Group P, research/voxel-representation-redesign.md §6) instead of a hand-duplicated array --
-// changing a color in kBlockTable changes the rendered result with no second edit here. Alpha is
-// always 1 (unused by the shader, kept for float4 cbuffer packing). Goal 19's pass tuned these
-// richer/more saturated than the original deliberately-muted placeholders, judged against viewed
-// before/after dumps; Group M (goal 94) extended it with the sand/grass surface bands -- both
-// still true, just sourced from one table now instead of two.
-constexpr std::array<std::array<float, 4>, kMaterialCount> make_material_colors() {
-    std::array<std::array<float, 4>, kMaterialCount> out{};
-    for (std::size_t i = 0; i < kMaterialCount; ++i) {
-        const auto& c = kBlockTable[i].color;
-        out[i] = {c[0], c[1], c[2], 1.0f};
-    }
-    return out;
-}
-constexpr std::array<std::array<float, 4>, kMaterialCount> kMaterialColors = make_material_colors();
+// The material palette cbuffer: one record per material (rgb albedo + the shading model in .w,
+// detail::material_record's layout), generated FROM the material registry (Group AC; Group P's
+// kBlockTable before it) -- changing a color in a material's def changes the rendered result with no
+// second edit here, and terrain.{vsh,psh}.hlsl size the array and pick the shading path through the
+// MATERIAL_COUNT / MAT_SHADING_* macros create_shader passes, so no shader carries a material
+// literal. Goal 19's pass tuned these colors richer/more saturated than the original
+// deliberately-muted placeholders, judged against viewed before/after dumps; Group M (goal 94)
+// extended them with the sand/grass surface bands -- both still true, now sourced from the defs.
+constexpr const auto& kMaterialRecords = detail::kMaterialRecords;
 
 // The GPU input layout is a byte-for-byte contract with detail::GpuVertexCompressed (built at
 // upload time from world::meshing::Vertex) -- freeze it here so a layout change breaks the build
@@ -49,11 +37,17 @@ static_assert(offsetof(GpuVertexCompressed, ao) == 11);
 RefCntAutoPtr<IShader> create_shader(TerrainRenderer::Impl& impl,
                                      IShaderSourceInputStreamFactory* streamFactory, SHADER_TYPE type,
                                      const char* file, const char* name) {
+    // The material registry's shader macros (MATERIAL_COUNT, MAT_SHADING_*) -- the helper must
+    // outlive CreateShader, which reads the array it owns.
+    ShaderMacroHelper macros;
+    detail::add_material_macros(macros);
+
     ShaderCreateInfo shaderCI;
     shaderCI.pShaderSourceStreamFactory = streamFactory;
     shaderCI.FilePath = file;
     shaderCI.EntryPoint = "main";
     shaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL; // default is GLSL on Vulkan -- must be explicit
+    shaderCI.Macros = macros;
     shaderCI.Desc.ShaderType = type;
     shaderCI.Desc.Name = name;
 
@@ -183,10 +177,10 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
     {
         BufferDesc desc;
         desc.Name = "Terrain MaterialPalette CB";
-        desc.Size = sizeof(kMaterialColors);
+        desc.Size = sizeof(kMaterialRecords);
         desc.Usage = USAGE_IMMUTABLE;
         desc.BindFlags = BIND_UNIFORM_BUFFER;
-        BufferData initial{kMaterialColors.data(), sizeof(kMaterialColors)};
+        BufferData initial{kMaterialRecords.data(), sizeof(kMaterialRecords)};
         impl.context->impl().device->CreateBuffer(desc, &initial, &impl.materialPalette);
         if (!impl.materialPalette) {
             throw std::runtime_error("material palette buffer creation failed");
@@ -217,6 +211,9 @@ void create_terrain_pipeline(TerrainRenderer::Impl& impl) {
 
     bind_static(SHADER_TYPE_VERTEX, "FrameConstants", impl.frameConstants);
     bind_static(SHADER_TYPE_VERTEX, "ChunkConstants", impl.chunkConstants);
+    // Both stages read the material records: the VS for the shading model (foliage sways), the PS
+    // for albedo and the shading model (water).
+    bind_static(SHADER_TYPE_VERTEX, "MaterialPalette", impl.materialPalette);
     bind_static(SHADER_TYPE_PIXEL, "MaterialPalette", impl.materialPalette);
     bind_static(SHADER_TYPE_PIXEL, "FogConstants", impl.fogConstants);
 

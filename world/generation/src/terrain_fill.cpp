@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "world/chunk/chunk_coord.hpp"
+#include "world/materials/materials.hpp"
 
 namespace world::generation {
 
@@ -14,15 +15,21 @@ using world::chunk::kChunkSize;
 using world::chunk::kMaterialCount;
 using world::chunk::local_index;
 using world::chunk::MaterialID;
+using world::materials::TerrainBands;
+using world::materials::TerrainQuery;
 
 namespace {
 
-// Group M surface banding (goals 81/93/95's design): materials are a pure function of
-// (column surface height, depth below surface, local slope), so they are seam-consistent by
-// construction -- every chunk computing a shared column gets identical answers.
-constexpr float kBeachBand = 1.75f;    // columns with surface <= sea+band get sand, not grass
-constexpr std::int32_t kSoilDepth = 3; // dirt below the surface voxel down to this depth
-constexpr float kGrassMaxSlope = 1.9f; // steeper columns read as exposed rock (no grass skin)
+// Group M surface banding (goals 81/93/95's design): materials are a pure function of (column
+// surface height, depth below surface, local slope), so they are seam-consistent by construction --
+// every chunk computing a shared column gets identical answers. Since Group AC the rule itself lives
+// with the materials: each component's fills() claims its band and TerrainBands holds the constants
+// (this file, terrain_sampler.cpp and aim_query.cpp used to carry three hand-mirrored copies). This
+// path evaluates it at voxel_edge 1 with the column's TRUNCATED integer surface -- goal 161's quirk,
+// deliberately kept, because the sparse-brick sampler proves itself byte-identical against this.
+constexpr std::int32_t kSoilDepth = static_cast<std::int32_t>(TerrainBands::soil_depth);
+static_assert(static_cast<float>(kSoilDepth) == TerrainBands::soil_depth,
+              "the chunk path's whole-chunk short-circuit reasons in whole voxels");
 
 } // namespace
 
@@ -69,10 +76,11 @@ void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightma
     // project's real max palette size ONCE, up front, instead of letting set() discover the need
     // incrementally -- without this, ChunkVoxels::promote() re-packs the ENTIRE index buffer from
     // scratch at every bit-width boundary crossed (0->1, 1->2, 2->4), so a "busy" chunk could pay
-    // that O(voxel count) repack cost up to three times redundantly. kMaterialCount is this
-    // project's own self-updating total (Air included), so this stays correct if a material is
-    // ever added. Only non-Air voxels are ever set() -- Air is already every voxel's default.
+    // that O(voxel count) repack cost up to three times redundantly. kMaterialCount is the
+    // registry's own total (Air included), so this stays correct if a material is ever added. Only
+    // non-Air voxels are ever set() -- Air is already every voxel's default.
     chunk.voxels().reserve_bits(ChunkVoxels::bits_for_palette_size(kMaterialCount));
+    const auto seaLevel = static_cast<float>(params.seaLevel);
     for (std::int32_t lz = 0; lz < kChunkSize; ++lz) {
         for (std::int32_t lx = 0; lx < kChunkSize; ++lx) {
             const float surfaceHeightF = heightAt(lx, lz);
@@ -83,25 +91,20 @@ void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightma
             const float slopeZ = std::abs(heightAt(lx, lz + 1) - heightAt(lx, lz - 1)) * 0.5f;
             const float slope = std::max(slopeX, slopeZ);
 
-            const bool beach = surfaceHeightF <= static_cast<float>(params.seaLevel) + kBeachBand;
-            const bool grassy = !beach && slope <= kGrassMaxSlope;
+            // The beach test reads the REAL surface height, the depth test below the truncated one
+            // -- both as the fill has always done them.
+            const bool beach = TerrainBands::is_beach(surfaceHeightF, seaLevel);
+            const bool grassy = TerrainBands::is_grassy(beach, slope);
 
             for (std::int32_t ly = 0; ly < kChunkSize; ++ly) {
                 const std::int32_t worldY = worldYBase + ly;
-                MaterialID material = MaterialID::Air;
-                if (worldY <= surfaceHeight) {
-                    const std::int32_t depth = surfaceHeight - worldY;
-                    if (depth == 0) {
-                        material =
-                            beach ? MaterialID::Sand : (grassy ? MaterialID::Grass : MaterialID::Stone);
-                    } else if (depth <= kSoilDepth) {
-                        material = beach ? MaterialID::Sand : MaterialID::Dirt;
-                    } else {
-                        material = MaterialID::Stone;
-                    }
-                } else if (worldY <= params.seaLevel) {
-                    material = MaterialID::Water; // water never overrides solid ground (§4)
-                }
+                const TerrainQuery query{static_cast<float>(surfaceHeight),
+                                         static_cast<float>(worldY),
+                                         1.0f,
+                                         seaLevel,
+                                         beach,
+                                         grassy};
+                const MaterialID material = world::materials::terrain_material(query);
                 if (material != MaterialID::Air) {
                     chunk.voxels().set(local_index(lx, ly, lz), material);
                 }

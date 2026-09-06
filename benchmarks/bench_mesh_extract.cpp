@@ -6,11 +6,11 @@
 
 #include <benchmark/benchmark.h>
 
-#include "world/chunk/block_type.hpp"
 #include "world/chunk/chunk_coord.hpp"
 #include "world/chunk/chunk_store.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/generation/terrain_fill.hpp"
+#include "world/materials/materials.hpp"
 #include "world/meshing/mesh_extractor.hpp"
 
 namespace {
@@ -25,9 +25,9 @@ using world::chunk::ChunkCoord;
 // its neighbors) since that shell's exposure depends on what's beyond this snapshot's own bounds,
 // which isn't this count's concern.
 std::size_t count_naive_exposed_faces(const world::chunk::ChunkStore& store, ChunkCoord coord) {
-    using world::chunk::is_occupied;
     using world::chunk::kChunkSize;
     using world::chunk::local_index;
+    using world::materials::is_occupied;
     const world::chunk::Chunk* chunk = store.find(coord);
     std::size_t faces = 0;
     const auto occupied_at = [&](std::int32_t x, std::int32_t y, std::int32_t z) {

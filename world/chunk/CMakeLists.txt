@@ -8,7 +8,6 @@ target_sources(world_chunk PUBLIC
     BASE_DIRS include
     FILES
         include/world/chunk/material.hpp
-        include/world/chunk/block_type.hpp
         include/world/chunk/chunk_voxels.hpp
         include/world/chunk/chunk_coord.hpp
         include/world/chunk/coord_containers.hpp
@@ -18,7 +17,8 @@ target_sources(world_chunk PUBLIC
 )
 
 # Boost::unordered backs coord_containers.hpp's CoordMap/CoordSet (header-only usage).
-target_link_libraries(world_chunk PUBLIC project_warnings Boost::unordered)
+# world_materials: material.hpp re-exports the component registry's MaterialID / kMaterialCount.
+target_link_libraries(world_chunk PUBLIC project_warnings Boost::unordered world_materials)
 
 if(BUILD_TESTING)
   add_subdirectory(tests)

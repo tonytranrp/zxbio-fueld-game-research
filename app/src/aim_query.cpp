@@ -3,25 +3,34 @@
 #include <algorithm>
 #include <cmath>
 
+#include "world/materials/materials.hpp"
+
 namespace app {
 
 namespace {
 
-// Mirror of terrain_fill.cpp's surface-banding constants -- update together (the fill is the
-// authority; this query re-derives its SURFACE material only).
-constexpr float kBeachBand = 1.75f;
-constexpr float kGrassMaxSlope = 1.9f;
+using world::materials::TerrainBands;
+using world::materials::TerrainQuery;
+
 constexpr float kSeaLevel = 0.0f;
 
+// The SURFACE voxel of the column under (x, z), by the one band rule the chunk fill and the
+// sparse-brick sampler use (materials::terrain_material at depth 0 in a 1 m voxel) -- the third
+// hand-written copy of that rule and its constants lived here before Group AC. The slope is only
+// computed when it can matter (a beach column is sand regardless).
 world::chunk::MaterialID surface_material(const world::generation::HeightmapGenerator& heightmap, float x,
                                           float z, float surface) {
-    if (surface <= kSeaLevel + kBeachBand) {
-        return world::chunk::MaterialID::Sand;
+    const bool beach = TerrainBands::is_beach(surface, kSeaLevel);
+    float slope = 0.0f;
+    if (!beach) {
+        const float slopeX =
+            std::abs(heightmap.height_at(x + 1.0f, z) - heightmap.height_at(x - 1.0f, z)) * 0.5f;
+        const float slopeZ =
+            std::abs(heightmap.height_at(x, z + 1.0f) - heightmap.height_at(x, z - 1.0f)) * 0.5f;
+        slope = std::max(slopeX, slopeZ);
     }
-    const float slopeX = std::abs(heightmap.height_at(x + 1.0f, z) - heightmap.height_at(x - 1.0f, z)) * 0.5f;
-    const float slopeZ = std::abs(heightmap.height_at(x, z + 1.0f) - heightmap.height_at(x, z - 1.0f)) * 0.5f;
-    return std::max(slopeX, slopeZ) <= kGrassMaxSlope ? world::chunk::MaterialID::Grass
-                                                      : world::chunk::MaterialID::Stone;
+    const TerrainQuery query{surface, surface, 1.0f, kSeaLevel, beach, TerrainBands::is_grassy(beach, slope)};
+    return world::materials::terrain_material(query);
 }
 
 } // namespace
@@ -68,25 +77,9 @@ AimHit query_aim(const world::generation::HeightmapGenerator& heightmap, glm::ve
 }
 
 const char* material_name(world::chunk::MaterialID material) noexcept {
-    switch (material) {
-    case world::chunk::MaterialID::Air:
-        return "Air";
-    case world::chunk::MaterialID::Stone:
-        return "Stone";
-    case world::chunk::MaterialID::Dirt:
-        return "Dirt";
-    case world::chunk::MaterialID::Water:
-        return "Water";
-    case world::chunk::MaterialID::Wood:
-        return "Wood";
-    case world::chunk::MaterialID::Leaves:
-        return "Leaves";
-    case world::chunk::MaterialID::Sand:
-        return "Sand";
-    case world::chunk::MaterialID::Grass:
-        return "Grass";
-    }
-    return "?";
+    // The registry's display name (Group AC) -- this and tools/mesh_dump used to carry two switch
+    // statements over the same eight strings.
+    return world::materials::name_of(material);
 }
 
 } // namespace app

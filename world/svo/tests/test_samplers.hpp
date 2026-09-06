@@ -78,7 +78,9 @@ struct RandomSampler {
         if ((h & 0xFFu) >= density256) {
             return MaterialID::Air;
         }
-        return static_cast<MaterialID>(1u + ((h >> 8) % 7u)); // 1..7, never Air
+        // Any registered material but Air.
+        return static_cast<MaterialID>(
+            1u + ((h >> 8) % static_cast<std::uint32_t>(world::chunk::kMaterialCount - 1)));
     }
 
     [[nodiscard]] BoxClassification classify(const Box&) const noexcept {

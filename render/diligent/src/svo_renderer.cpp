@@ -11,9 +11,9 @@
 #include "render/diligent/svo_renderer.hpp"
 
 #include "engine/core/log.hpp"
-#include "world/chunk/block_type.hpp"
-#include "world/chunk/material.hpp"
+#include "world/materials/materials.hpp"
 
+#include "detail/material_macros.hpp"
 #include "detail/render_context_impl.hpp"
 
 #include "Graphics/GraphicsEngine/interface/Buffer.h"
@@ -36,11 +36,11 @@ using namespace Diligent;
 
 namespace {
 
-using world::chunk::kBlockTable;
-using world::chunk::kMaterialCount;
-static_assert(kMaterialCount == 8, "svo_march.psh.hlsl declares g_MaterialColors[8] -- update both together");
+using world::materials::kMaterialCount;
 
-// Mirror of svo_march.psh.hlsl's cbuffer MarchConstants -- update both together.
+// Mirror of svo_march.psh.hlsl's cbuffer MarchConstants -- update both together. The material
+// records at the tail are detail::kMaterialRecords (rgb albedo + shading model in .w); the shader
+// sizes that array with the MATERIAL_COUNT macro create_shader passes from the same registry.
 struct MarchConstantsCpu {
     glm::mat4 invViewProj;
     glm::mat4 viewProj;
@@ -50,9 +50,10 @@ struct MarchConstantsCpu {
     glm::uvec4 treeInts;      // V, max brick level, root offset, flags | view << 8
     glm::vec4 shadeParams;    // smooth pixels, grain amplitude, AO lod multiplier, raw pixel angle
     glm::vec4 jitter;         // xy pixels, zw 1/size
-    std::array<std::array<float, 4>, kMaterialCount> materialColors;
+    std::array<detail::MaterialRecord, kMaterialCount> materials;
 };
-static_assert(sizeof(MarchConstantsCpu) == 64 + 64 + 16 * 6 + 16 * 8, "must match the HLSL cbuffer exactly");
+static_assert(sizeof(MarchConstantsCpu) == 64 + 64 + 16 * 6 + 16 * kMaterialCount,
+              "must match the HLSL cbuffer exactly");
 
 // Mirror of svo_taa.psh.hlsl's cbuffer TaaConstants -- update both together.
 struct TaaConstantsCpu {
@@ -91,11 +92,17 @@ glm::vec2 halton_jitter(std::uint32_t index) noexcept {
 
 RefCntAutoPtr<IShader> create_shader(RenderContext::Impl& rc, IShaderSourceInputStreamFactory* factory,
                                      SHADER_TYPE type, const char* file, const char* name) {
+    // The material registry's shader macros (MATERIAL_COUNT, MAT_SHADING_*); the helper owns the
+    // array CreateShader reads, so it lives until the call returns.
+    ShaderMacroHelper macros;
+    detail::add_material_macros(macros);
+
     ShaderCreateInfo ci;
     ci.pShaderSourceStreamFactory = factory;
     ci.FilePath = file;
     ci.EntryPoint = "main";
     ci.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
+    ci.Macros = macros;
     ci.Desc.ShaderType = type;
     ci.Desc.Name = name;
     ci.Desc.UseCombinedTextureSamplers = true;
@@ -600,10 +607,7 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
                                   static_cast<std::uint32_t>(g.max_brick_level()), impl_->rootOffset, flags);
         cb->shadeParams = glm::vec4(s.smooth_pixels, s.grain_amplitude, s.ao_lod, rawPixelAngle);
         cb->jitter = jitter;
-        for (std::size_t i = 0; i < kMaterialCount; ++i) {
-            const auto& c = kBlockTable[i].color;
-            cb->materialColors[i] = {c[0], c[1], c[2], 1.0f};
-        }
+        cb->materials = detail::kMaterialRecords;
     }
     ctx->SetPipelineState(impl_->pso);
     ctx->CommitShaderResources(impl_->srb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

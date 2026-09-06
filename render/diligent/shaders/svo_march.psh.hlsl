@@ -30,8 +30,21 @@ cbuffer MarchConstants
     float4 g_ShadeParams;      // x = smooth-normal span (pixels), y = grain amplitude,
                                // z = AO lod multiplier, w = raw pixel angle (radians, unscaled)
     float4 g_Jitter;           // xy = sub-pixel jitter (pixels), zw = 1 / viewport size
-    float4 g_MaterialColors[8];
+    // One record per material (render/diligent/detail/material_macros.hpp's material_record):
+    // rgb = linear albedo, w = shading model. MATERIAL_COUNT and MAT_SHADING_* are macros the C++
+    // side passes at shader creation from the material registry -- no material literal lives here.
+    float4 g_Materials[MATERIAL_COUNT];
 };
+
+float3 MaterialAlbedo(uint material)
+{
+    return g_Materials[min(material, MATERIAL_COUNT - 1u)].rgb;
+}
+
+uint MaterialShading(uint material)
+{
+    return uint(g_Materials[min(material, MATERIAL_COUNT - 1u)].w + 0.5);
+}
 
 StructuredBuffer<uint> g_Nodes;
 StructuredBuffer<uint> g_Bricks;
@@ -528,7 +541,7 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const float3 smoothNormal = haveSmooth ? normalize(hit.smoothNormal) : faceNormal;
     const float3 normal = normalize(lerp(smoothNormal, faceNormal, faceWeight));
 
-    const float3 albedoBase = g_MaterialColors[min(hit.material, 7u)].rgb;
+    const float3 albedoBase = MaterialAlbedo(hit.material);
     const float n1 = ValueNoise(p.xz * (1.0 / 24.0));
     const float n2 = ValueNoise(p.xz * (1.0 / 7.0) + 17.31);
     const float mottle = 0.90 + 0.20 * (0.65 * n1 + 0.35 * n2);
@@ -577,7 +590,7 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const float3 groundAmbient = float3(0.14, 0.15, 0.19);
     const float3 ambient = lerp(groundAmbient, skyAmbient, normal.y * 0.5 + 0.5);
     float3 color = albedo * (ambient * ao + kSunColor * diffuse * lit);
-    if (hit.material == 3u)
+    if (MaterialShading(hit.material) == MAT_SHADING_WATER)
     {
         color = ShadeWater(p, -dir, g_CameraPosWorld.w) * lerp(0.6, 1.0, lit);
     }
@@ -602,7 +615,7 @@ void main(in PSInput PSIn, out PSOutput PSOut)
         else if (view == kViewCubePixels)   color = saturate(cubePixels / 8.0).xxx;
         else if (view == kViewSmoothNormal) color = haveSmooth ? smoothNormal * 0.5 + 0.5 : float3(1.0, 0.0, 1.0);
         else if (view == kViewLodCube)      color = hit.lodCube ? float3(1.0, 0.2, 0.1) : float3(0.1, 0.4, 1.0);
-        else if (view == kViewMaterial)     color = g_MaterialColors[min(hit.material, 7u)].rgb;
+        else if (view == kViewMaterial)     color = MaterialAlbedo(hit.material);
         else if (view == kViewDistance)     color = frac(hit.t * 0.5).xxx; // 2 m bands
     }
 

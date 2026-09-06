@@ -127,20 +127,12 @@ void TerrainSampler::trees_touching(const Box& box, std::vector<std::uint32_t>& 
 
 MaterialID TerrainSampler::column_material(float surfaceHeight, bool beach, bool grassy, float voxelBottom,
                                            float voxelEdge) const noexcept {
-    if (voxelBottom <= surfaceHeight) {
-        const float depth = surfaceHeight - voxelBottom;
-        if (depth < voxelEdge) {
-            return beach ? MaterialID::Sand : (grassy ? MaterialID::Grass : MaterialID::Stone);
-        }
-        if (depth < kSoilDepth + voxelEdge) {
-            return beach ? MaterialID::Sand : MaterialID::Dirt;
-        }
-        return MaterialID::Stone;
-    }
-    if (voxelBottom <= params_.sea_level) {
-        return MaterialID::Water; // water never overrides solid ground (fill_terrain's rule)
-    }
-    return MaterialID::Air;
+    // The band rule is the materials' own (Group AC): each component claims its band at this voxel
+    // size -- the same function fill_terrain evaluates at 1 m, which is what makes the two worlds
+    // byte-identical there (test_terrain_sampler.cpp).
+    const world::materials::TerrainQuery query{surfaceHeight,     voxelBottom, voxelEdge,
+                                               params_.sea_level, beach,       grassy};
+    return world::materials::terrain_material(query);
 }
 
 BoxClassification TerrainSampler::classify(const Box& box) const {
@@ -414,10 +406,9 @@ void TerrainSampler::voxelize_trees(const glm::vec3& origin, float voxelEdge, Br
                         continue;
                     }
                     // Terrain wins over canopy (no carving grass out of a hillside a lobe leans
-                    // into); the trunk wins over everything (it is sunk into the ground on purpose).
-                    const MaterialID current = brick.at(x, y, z);
-                    const bool terrainSolid = current != MaterialID::Air && current != MaterialID::Water;
-                    if (!terrainSolid || tm == MaterialID::Wood) {
+                    // into); the trunk wins over everything (it is sunk into the ground on purpose)
+                    // -- the materials' own yields_to_trees / overrides_terrain flags.
+                    if (world::materials::tree_replaces(brick.at(x, y, z), tm)) {
                         brick.set(x, y, z, tm);
                     }
                 }
@@ -443,8 +434,7 @@ MaterialID TerrainSampler::material_at(const glm::vec3& voxelMin, float voxelEdg
             if (tm == MaterialID::Air) {
                 continue;
             }
-            const bool terrainSolid = m != MaterialID::Air && m != MaterialID::Water;
-            if (!terrainSolid || tm == MaterialID::Wood) {
+            if (world::materials::tree_replaces(m, tm)) {
                 m = tm;
             }
         }

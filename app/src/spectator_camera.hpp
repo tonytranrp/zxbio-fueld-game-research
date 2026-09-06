@@ -3,6 +3,7 @@
 #include "engine/core/math.hpp"
 #include "engine/ecs/components.hpp"
 #include "engine/input/input_state.hpp"
+#include "world/materials/materials.hpp"
 
 namespace app {
 
@@ -34,10 +35,14 @@ inline constexpr float kWalkSpeedFactor = 0.25f; // walking is deliberately slow
 // Swimming (goal 79): passive buoyancy replaces the old walk-on-water sea clamp. Fully submerged
 // feet get double-gravity upthrust, so the equilibrium (upthrust*depth == gravity) floats the
 // feet kSwimEquilibriumDepth under the surface with the eyes above water; drag damps the bob.
+// The numbers are the Water material's own (world/materials/defs/water.hpp, Group AC); the sea
+// level is a world constant -- the camera knows where the water is, the material says how it swims.
 inline constexpr float kSeaLevelWorld = 0.0f;
-inline constexpr float kBuoyancyAcceleration = 64.0f; // upthrust at >=1 voxel submersion (2x gravity)
-inline constexpr float kWaterDrag = 2.5f;             // exponential vertical damping in water
-inline constexpr float kSwimEquilibriumDepth = 0.5f;  // feet rest this far under the surface
+inline constexpr world::materials::LiquidPhysics kWaterPhysics =
+    world::materials::properties_of(world::materials::MaterialID::Water).liquid;
+inline constexpr float kBuoyancyAcceleration = kWaterPhysics.buoyancy_acceleration; // at >=1 voxel submersion
+inline constexpr float kWaterDrag = kWaterPhysics.drag;                             // exponential damping
+inline constexpr float kSwimEquilibriumDepth = kWaterPhysics.swim_equilibrium_depth; // feet rest here
 inline constexpr float kGravityAcceleration = -32.0f; // world units/s^2 (voxel-scale gravity)
 inline constexpr float kEyeHeight = 1.7f;             // camera above the ground surface when standing
 

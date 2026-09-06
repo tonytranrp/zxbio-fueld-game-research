@@ -44,7 +44,7 @@ Table of contents: [A. Documentation migration](#a-documentation-migration) ·
 [Z. Shading correctness & the Lin look](#z-shading-correctness--the-lin-look) ·
 [AA. Body-vs-world collision](#aa-body-vs-world-collision) ·
 [AB. The lag, measured](#ab-the-lag-measured) ·
-[AC. Materials as components](#ac-materials-as-components)
+[AC. Materials as components (done)](#ac-materials-as-components)
 
 ---
 
@@ -1088,13 +1088,29 @@ self-contained component files. Decision log with every measurement and the bise
 
 ## AC. Materials as components
 
-176. Every material as its own definition file composed into a compile-time registry (one source
-     for color, name, solidity, liquid physics, shading model, band role), consumed by both
-     renderers' palettes, the sampler/fill band rules (three copies today), the aim query, and the
-     walk physics — no `[8]`/`7u`/`3u`/`5u` literals, no "must stay in enum order" comments, a
-     compile-time check that ids are contiguous. **Check**: the survey's every-site table
-     (`research/lin-look-log.md` §0 names it) reduced to registry lookups; tests unchanged or
-     strengthened; shaders read a material record instead of a literal.
+176. [x] Every material is its own definition file (`world/materials/defs/<name>.hpp`, one struct
+     of `static constexpr` members satisfying the `MaterialDefinition` concept) composed into a
+     compile-time registry (`RegistryOf<Defs...>` in `materials.hpp`): one source for name, albedo,
+     phase (gas/solid/liquid/foliage), shading model, liquid physics (the swim constants), the two
+     tree-voxelization flags, and `fills()` (the terrain band it claims). **`MaterialID`'s
+     enumerators are DERIVED from `Registry::index_of<Def>()`**, so ids are contiguous from 0 by
+     construction and nothing hardcodes the order; `kMaterialCount` is `Registry::size`. Consumed
+     by: the mesher (`is_occupied`/`is_liquid()`), the chunk fill and the svo sampler (one
+     `terrain_material(TerrainQuery)` replacing the three hand-mirrored band rules and their three
+     copies of `kBeachBand`/`kSoilDepth`/`kGrassMaxSlope`, now `TerrainBands`), the aim readout and
+     `mesh_dump` (`name_of`, replacing two switch tables), the walk physics (Water's own
+     `LiquidPhysics`), the tree-voxelization priority (`tree_replaces`, replacing the inline
+     `!= Air && != Water || == Wood`), and BOTH renderers (one float4 record per material — rgb
+     albedo + shading model in `.w` — uploaded to the terrain and svo palettes; the shaders size
+     the array with a `MATERIAL_COUNT` macro and pick the water/foliage path via `MAT_SHADING_*`
+     macros, both passed at shader creation from the registry — no `[8]`/`min(m,7u)`/`== 3u`/`== 5u`
+     literal survives). **Check**: `world_materials_tests` proves the enum matches the composition,
+     that exactly one component claims every terrain voxel over a grid, and that `terrain_material`
+     reproduces both old band rules (the chunk path's integer one and the sampler's meters one) byte
+     for byte; the full suite stays green on both backends and the `material`/`distance` svo debug
+     views now render on the CPU tool too. Decision log: `research/materials-as-components.md` (it
+     supersedes goal 113's written "constexpr table, no runtime registry" — still a constexpr table,
+     now a composed one). Kept `constexpr`, zero runtime dispatch, as 113 required.
 
 ## Sources
 

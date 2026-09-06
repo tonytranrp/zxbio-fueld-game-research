@@ -21,8 +21,8 @@
 
 #include "engine/core/math.hpp"
 #include "engine/jobs/thread_pool.hpp"
-#include "world/chunk/block_type.hpp"
 #include "world/generation/heightmap_generator.hpp"
+#include "world/materials/materials.hpp"
 #include "world/svo/brick_tree.hpp"
 #include "world/svo/ray_trace.hpp"
 #include "world/svo/terrain_sampler.hpp"
@@ -358,7 +358,7 @@ int main(int argc, char** argv) {
     const std::string_view view = o.view;
     if (!view.empty() && view != "lit" && view != "ao" && view != "normal" && view != "facenormal" &&
         view != "level" && view != "steps" && view != "coverage" && view != "cubepx" && view != "smooth" &&
-        view != "lodcube") {
+        view != "lodcube" && view != "material" && view != "distance") {
         std::fprintf(stderr, "unknown --view %s\n", o.view.c_str());
         return EXIT_FAILURE;
     }
@@ -443,8 +443,9 @@ int main(int argc, char** argv) {
                         haveSmooth ? glm::normalize(hit.smooth_normal) : faceNormal;
                     const glm::vec3 n = glm::normalize(glm::mix(smoothNormal, faceNormal, faceWeight));
 
-                    const auto& props = world::chunk::properties_of(hit.material);
-                    glm::vec3 albedo{props.color[0], props.color[1], props.color[2]};
+                    const world::materials::MaterialDef& props =
+                        world::materials::properties_of(hit.material);
+                    glm::vec3 albedo{props.albedo.r, props.albedo.g, props.albedo.b};
                     const float n1 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 24.0f));
                     const float n2 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 7.0f) + 17.31f);
                     albedo *= 0.90f + 0.20f * (0.65f * n1 + 0.35f * n2);
@@ -503,7 +504,7 @@ int main(int argc, char** argv) {
                     }
                     const glm::vec3 ambient = glm::mix(kGroundAmbient, kSkyAmbient, n.y * 0.5f + 0.5f);
                     color = albedo * (ambient * ao + kSunColor * diffuse * lit);
-                    if (hit.material == MaterialID::Water) {
+                    if (props.shading == world::materials::Shading::Water) {
                         const glm::vec3 viewDir = -ray.dir;
                         const float cosTheta = std::clamp(viewDir.y, 0.0f, 1.0f);
                         const float fresnel = 0.02f + 0.98f * std::pow(1.0f - cosTheta, 5.0f);
@@ -542,6 +543,10 @@ int main(int argc, char** argv) {
                             color = haveSmooth ? smoothNormal * 0.5f + 0.5f : glm::vec3{1.0f, 0.0f, 1.0f};
                         } else if (view == "lodcube") {
                             color = hit.lod_cube ? glm::vec3{1.0f, 0.2f, 0.1f} : glm::vec3{0.1f, 0.4f, 1.0f};
+                        } else if (view == "material") {
+                            color = glm::vec3{props.albedo.r, props.albedo.g, props.albedo.b};
+                        } else if (view == "distance") {
+                            color = glm::vec3{hit.t * 0.5f - std::floor(hit.t * 0.5f)}; // 2 m bands
                         }
                     }
                 }

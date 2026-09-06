@@ -19,7 +19,7 @@ water) chosen to evoke the *feeling* of that aesthetic. Since the Voxel Represen
 (`research/voxel-representation-redesign.md`), the terrain mesh itself is genuinely blocky —
 per-voxel-face, greedy-merged cubes — rather than a smooth iso-surface merely *lit* to look chunky.
 
-## Current state (2026-09-05, after the micro-voxel pivot and the Lin-look, collision & lag pass)
+## Current state (2026-09-06, after the micro-voxel pivot, the Lin-look/collision/lag pass, and materials as components)
 
 **The world is now sub-centimeter.** `voxel_app`'s default path (`--renderer svo`,
 `research/micro-voxel-pivot-log.md`) builds a **sparse-brick octree** around the camera — 8³
@@ -66,9 +66,25 @@ pre-TAA 48% counted the moiré as contrast); fly `--autofly`, 900 frames: **0 fr
 worst 16.9 ms (38 ms before the pass); GPU march+resolve **3.2–6.3 ms**; `--autofly --walk`: 0
 frames below the ground surface. Captures viewed on both backends: `research/captures/lin_*.png`.
 Open: whole-rebuild cost on movement (goal 158), material compression (157), editing (160), the
-one-time growth-swap hitch (175, 43 ms when a tree outgrows its spare buffers), colliding against
-the octree once editing exists (173), and **materials as components (176) — the one part of the
-user's second round not yet built**.
+one-time growth-swap hitch (175, 43 ms when a tree outgrows its spare buffers), and colliding
+against the octree once editing exists (173).
+
+**Materials as components (2026-09-06, `research/materials-as-components.md`, goal 176)** closed
+the one part of the user's second round the Lin-look pass left unbuilt: every material is now its
+own `world/materials/defs/<name>.hpp` component file (name, albedo, phase, shading model, liquid
+physics, the two tree-voxelization flags, and the terrain band it `fills()`), composed into
+`RegistryOf<Defs...>` — `MaterialID`'s enumerators are DERIVED from the pack's own order, so there
+is no enum-order, table-order, or count to keep in sync anywhere. This replaced the three
+hand-mirrored copies of the terrain band constants (`terrain_fill.cpp`, `terrain_sampler.hpp`,
+`aim_query.cpp`) with one `TerrainBands`/`terrain_material()`, the two GPU color palettes and two
+`3u`/`5u` shader literals with one record per material and `MATERIAL_COUNT`/`MAT_SHADING_*` shader
+macros (both renderers and the CPU tool read the same table), and the two display-name switch
+statements with one `name_of()`. Still exactly what goal 113 asked for — a constexpr table, zero
+runtime dispatch — just composed from per-material files instead of one hand-written array.
+**119/119 tests** (up from 113: `world_materials_tests`' 10 cases prove the registry reproduces
+both retired band rules byte-for-byte over a grid and that exactly one component claims every
+terrain voxel; `test_block_type.cpp` and the table it tested are gone), clean incremental build, no
+behavioral fix needed after the first full build+test pass.
 
 ### The mesh path (still shipped behind `--renderer mesh`, unchanged)
 
@@ -406,14 +422,33 @@ tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the oct
   surface because both come from the same height function and tree placements. The moment editing
   mutates the tree (goal 160) the collider is stale — goal 173's octree-backed `SolidQuery` is the
   planned swap, behind a boundary that already exists.
-- **Materials still live in parallel tables with hardcoded offsets** (goal 176 — the one part of
-  the user's second round not yet built): the enum order, `kBlockTable` rows, two
-  `g_MaterialColors[8]` cbuffers with `3u`/`5u` literals in the shaders, three copies of the band
-  constants (`terrain_fill.cpp`, `terrain_sampler.hpp`, `aim_query.cpp`), two name tables, and
-  `supports_growth`/`hardness`/`is_solid` with zero consumers. The read-only survey of every site
-  (named in `research/lin-look-log.md` §0) is the input to that group.
 - **The svo world cannot be edited** — it is rebuilt from the analytic sampler; there is no
   mutable structure (goal 160).
+
+### The materials-as-components pass's own additions (2026-09-06, `research/materials-as-components.md`)
+
+- **Derive the enum from the composition, don't declare it beside it.** `MaterialID`'s enumerators
+  read `Registry::index_of<defs::X>()`, so a material's id IS its position in the
+  `RegistryOf<Defs...>` pack — there is no second declaration that could drift from the table, and
+  `RegistryOf`'s own `static_assert` that component 0 is the Gas phase turns "Air is 0" from a
+  convention several files independently trusted into a build failure to violate.
+- **A property with zero consumers doesn't get carried into the new schema on the chance it gains
+  one.** The survey found `supports_growth` and `hardness` declared and unused in the old table;
+  neither is a `MaterialDef` field now. Re-adding either is a new member in the struct and all
+  eight `defs/*.hpp` files when something real reads it.
+- **Prove the refactor against oracles, not just against itself.** `test_registry.cpp` keeps the
+  two retired band rules verbatim as `old_chunk_rule`/`old_sampler_rule` functions and checks the
+  new `terrain_material()` against both over grids covering every voxel edge from 1 m down to the
+  finest sparse-brick leaf — the byte-for-byte equivalence is a checked fact, not an inspection
+  claim.
+- **A field becoming a method is a feature, not a wart.** `is_liquid`/`is_solid`/`is_occupied` went
+  from stored bools to methods derived from one `Phase` enum; every old call site failed to compile
+  until fixed, which is what surfaced all of them instead of trusting the survey's grep to be
+  exhaustive.
+- **"Which shading model" moved to data; "how it looks" deliberately did not.** The shaders read
+  `MAT_SHADING_WATER`/`MAT_SHADING_FOLIAGE` macros instead of material-ID literals, but the three
+  renderers' three independently-tuned water body colors were left alone — unifying them was never
+  the ask, and each was judged against its own renderer's viewed captures.
 
 - **The pre-redesign sliver-curtain defect's status is genuinely unknown, not silently carried
   forward or silently declared fixed**: it was root-caused (as far as three offline
@@ -468,6 +503,9 @@ tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the oct
 
 ## Sources this file compresses
 
+`research/materials-as-components.md` (materials as components: the schema, the registry
+mechanism, what closed each of the survey's hardcoded sites, what was deliberately not carried
+forward, and the verification).
 `research/lin-look-log.md` (the Lin-look, collision & lag pass: what each of the user's five
 complaints measured as, the bisection tables, the 900-frame A/B, and what was decided against).
 `research/micro-voxel-pivot-log.md` (the sub-cm pivot: every design decision, the build-time
