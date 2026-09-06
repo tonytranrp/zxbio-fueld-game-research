@@ -54,6 +54,10 @@ RenderContext::RenderContext(const RenderContextCreateInfo& info) : impl_(std::m
         if (info.enable_validation) {
             engineCI.SetValidationLevel(VALIDATION_LEVEL_1);
         }
+        // GPU timestamps for the svo overlay's "gpu ms" line (goal 170); optional so a driver
+        // without them still comes up.
+        engineCI.Features.TimestampQueries = DEVICE_FEATURE_STATE_OPTIONAL;
+        engineCI.Features.DurationQueries = DEVICE_FEATURE_STATE_OPTIONAL;
         // Request VK_EXT_memory_budget for the overlay's machine-wide VRAM numbers (task 30);
         // fall back to a plain device if this driver doesn't have it rather than failing startup
         // over a diagnostics feature.
@@ -88,6 +92,8 @@ RenderContext::RenderContext(const RenderContextCreateInfo& info) : impl_(std::m
         if (info.enable_validation) {
             engineCI.SetValidationLevel(VALIDATION_LEVEL_1);
         }
+        engineCI.Features.TimestampQueries = DEVICE_FEATURE_STATE_OPTIONAL;
+        engineCI.Features.DurationQueries = DEVICE_FEATURE_STATE_OPTIONAL;
         factory->CreateDeviceAndContextsD3D12(engineCI, &impl_->device, contexts);
         if (!impl_->device) {
             throw std::runtime_error("D3D12 device creation failed -- no compatible GPU enumerated");

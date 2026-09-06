@@ -1,5 +1,6 @@
 #include "svo_world.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <exception>
@@ -19,9 +20,22 @@ namespace app {
 using engine::core::log;
 using engine::core::LogLevel;
 
+namespace {
+
+// Goal 170's measured rule: a build on EVERY hardware thread starved the render thread -- 12 of
+// the 13 frames over 20 ms in a 900-frame walk were `present` stalls of 20-30 ms with a build
+// running and nothing else happening; on 12 of 16 threads the same walk had one slow frame (the
+// tree swap). Three quarters of the machine builds, the rest keeps the frame moving.
+std::size_t default_build_threads() noexcept {
+    const unsigned int hw = std::jthread::hardware_concurrency();
+    return hw == 0 ? 1 : std::max<std::size_t>(1, static_cast<std::size_t>(hw) * 3 / 4);
+}
+
+} // namespace
+
 SvoWorld::SvoWorld(const SvoWorldOptions& options)
     : options_(options), heightmap_(options.seed),
-      pool_(options.worker_threads == 0 ? std::jthread::hardware_concurrency() : options.worker_threads) {}
+      pool_(options.worker_threads == 0 ? default_build_threads() : options.worker_threads) {}
 
 SvoWorld::~SvoWorld() = default; // worker_ joins first (declared last), then pool_ drains
 

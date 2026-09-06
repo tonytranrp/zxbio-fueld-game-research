@@ -19,12 +19,30 @@ namespace world::svo {
 //   bits 16..23 material: the solid leaf's material, or the representative material an LOD
 //               early-out shades an internal node / brick with (never Air for a present node)
 //
+// Layout v2 (docs/goals.md Group Z, research/lin-look-log.md §2): internal nodes and brick leaves
+// carry one ATTRIBUTE word after the header -- the node's area-weighted average surface normal
+// (three int8 snorm components) and its volume coverage (uint8) -- so a hit can be shaded with a
+// normal averaged over any ancestor's extent (the anti-moiré "smooth normal" at distance) and a
+// LOD cube knows how solid it really is:
+//
+//   internal:   [header][attributes][child pointer per set mask bit ...]
+//   brick leaf: [header][brick index][attributes]
+//   solid leaf: [header]                    (a solid cube's normal is whichever face is hit)
+//
 // A child slot holds the word offset of the child's header inside the same node array. Air is not
 // a node at all -- an unset mask bit. Octant bit layout: bit0 = +x half, bit1 = +y, bit2 = +z.
 inline constexpr std::uint32_t kNodeKindInternal = 0u;
 inline constexpr std::uint32_t kNodeKindBrick = 1u;
 inline constexpr std::uint32_t kNodeKindSolid = 2u;
 inline constexpr std::uint32_t kNoNode = 0xFFFFFFFFu; // "absent child" sentinel inside the builder only
+
+// Word offsets relative to the header (mirrored by svo_march.psh.hlsl -- update both together).
+inline constexpr std::uint32_t kNodeAttrSlotInternal = 1u;
+inline constexpr std::uint32_t kNodeBrickIndexSlot = 1u;
+inline constexpr std::uint32_t kNodeAttrSlotBrick = 2u;
+inline constexpr std::uint32_t kNodeFirstChildSlot = 2u;
+inline constexpr std::uint32_t kNodeWordsBrick = 3u;
+inline constexpr std::uint32_t kNodeWordsSolid = 1u;
 
 [[nodiscard]] constexpr std::uint32_t make_node_header(std::uint32_t kind, std::uint32_t childMask,
                                                        world::chunk::MaterialID material) noexcept {
@@ -40,10 +58,43 @@ inline constexpr std::uint32_t kNoNode = 0xFFFFFFFFu; // "absent child" sentinel
     return static_cast<world::chunk::MaterialID>((header >> 16) & 0xFFu);
 }
 // Word offset (relative to the header) of octant `octant`'s child pointer: pointers are packed in
-// octant order, so it is 1 + the number of present octants below it.
+// octant order behind the attribute word, so it is 2 + the number of present octants below it.
 [[nodiscard]] constexpr std::uint32_t node_child_slot(std::uint32_t header, int octant) noexcept {
     const std::uint32_t below = node_child_mask(header) & ((1u << octant) - 1u);
-    return 1u + static_cast<std::uint32_t>(std::popcount(below));
+    return kNodeFirstChildSlot + static_cast<std::uint32_t>(std::popcount(below));
+}
+// Words an internal node occupies: header + attributes + one pointer per present child.
+[[nodiscard]] constexpr std::uint32_t node_words_internal(std::uint32_t header) noexcept {
+    return kNodeFirstChildSlot + static_cast<std::uint32_t>(std::popcount(node_child_mask(header)));
+}
+// Offset of the attribute word for a header of the given kind; kNoNode for solid leaves.
+[[nodiscard]] constexpr std::uint32_t node_attr_slot(std::uint32_t header) noexcept {
+    const std::uint32_t kind = node_kind(header);
+    return kind == kNodeKindInternal ? kNodeAttrSlotInternal
+                                     : (kind == kNodeKindBrick ? kNodeAttrSlotBrick : kNoNode);
+}
+
+// The attribute word: bits 0..7 / 8..15 / 16..23 = normal x/y/z as int8 in [-127, 127] (snorm,
+// decode = value / 127), bits 24..31 = coverage as uint8 (decode = value / 255). A zero normal
+// (nothing exposed) decodes to the zero vector; consumers fall back to the face normal then.
+[[nodiscard]] constexpr std::uint32_t pack_snorm8(float v) noexcept {
+    const float c = v > 1.0f ? 1.0f : (v < -1.0f ? -1.0f : v);
+    const int i = static_cast<int>(c * 127.0f + (c >= 0.0f ? 0.5f : -0.5f));
+    return static_cast<std::uint32_t>(static_cast<std::uint8_t>(static_cast<std::int8_t>(i)));
+}
+[[nodiscard]] constexpr float unpack_snorm8(std::uint32_t byte) noexcept {
+    return static_cast<float>(static_cast<std::int8_t>(static_cast<std::uint8_t>(byte & 0xFFu))) / 127.0f;
+}
+[[nodiscard]] inline std::uint32_t make_node_attributes(const glm::vec3& normal, float coverage) noexcept {
+    const float c = coverage < 0.0f ? 0.0f : (coverage > 1.0f ? 1.0f : coverage);
+    const auto cov = static_cast<std::uint32_t>(c * 255.0f + 0.5f);
+    return pack_snorm8(normal.x) | (pack_snorm8(normal.y) << 8) | (pack_snorm8(normal.z) << 16) | (cov << 24);
+}
+[[nodiscard]] inline glm::vec3 node_attr_normal(std::uint32_t attr) noexcept {
+    return glm::vec3{unpack_snorm8(attr), unpack_snorm8(attr >> 8), unpack_snorm8(attr >> 16)};
+}
+[[nodiscard]] constexpr float node_attr_coverage(std::uint32_t attr) noexcept {
+    return static_cast<float>((attr >> 24) & 0xFFu) / 255.0f;
 }
 [[nodiscard]] constexpr int octant_of(int cx, int cy, int cz) noexcept {
     return (cx & 1) | ((cy & 1) << 1) | ((cz & 1) << 2);

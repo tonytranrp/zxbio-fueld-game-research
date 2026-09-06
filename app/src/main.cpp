@@ -32,6 +32,8 @@
 #include "render/interface/camera.hpp"
 #include "spectator_camera.hpp"
 #include "svo_world.hpp"
+#include "world/collision/aabb_sweep.hpp"
+#include "world/collision/terrain_collider.hpp"
 #include "world/streaming/chunk_events.hpp"
 #include "world/streaming/world_bounds.hpp"
 #include "world_loader.hpp"
@@ -65,6 +67,7 @@ struct AppOptions {
     bool validation = false;
     bool autofly = false; // Group D smoke check: fly +X automatically once the world has loaded
     bool walk = false;    // start in walk (gravity) mode; with --autofly, also asserts no fall-through
+    bool noclip = false;  // Group AA: skip body-vs-world collision (the pre-collision spectator)
     std::size_t upload_budget = 4; // mesh commits per frame; 0 = unlimited (the pre-fix stutter behavior)
     std::uint32_t dump_every = 0;  // goal 7: write a numbered frame dump every N frames (0 = off)
     // Goal 52's per-pass kill switches: isolate a visual regression to one pass without reverts.
@@ -137,6 +140,8 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             options.autofly = true;
         } else if (arg == "--walk") {
             options.walk = true;
+        } else if (arg == "--noclip") {
+            options.noclip = true;
         } else if (arg == "--upload-budget") {
             const char* value = next_value();
             options.upload_budget =
@@ -161,6 +166,58 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             options.svo_settings.lod_march = false;
         } else if (arg == "--lod-quality") {
             options.svo_settings.lod_quality = next_float(options.svo_settings.lod_quality);
+        } else if (arg == "--no-grain") {
+            options.svo_settings.grain = false;
+        } else if (arg == "--no-taa") {
+            options.svo_settings.taa = false;
+        } else if (arg == "--smooth-pixels") {
+            options.svo_settings.smooth_pixels = next_float(options.svo_settings.smooth_pixels);
+        } else if (arg == "--grain") {
+            options.svo_settings.grain_amplitude = next_float(options.svo_settings.grain_amplitude);
+        } else if (arg == "--ao-radius") {
+            options.svo_settings.ao_radius_px = next_float(options.svo_settings.ao_radius_px);
+        } else if (arg == "--shadow-lod") {
+            options.svo_settings.shadow_lod = next_float(options.svo_settings.shadow_lod);
+        } else if (arg == "--svo-threads") {
+            options.svo.worker_threads = static_cast<std::size_t>(std::max(0, next_int(0)));
+        } else if (arg == "--svo-upload-mb") {
+            options.svo_settings.upload_bytes_per_frame =
+                static_cast<std::size_t>(std::max(1, next_int(32))) * std::size_t{1024} * 1024;
+        } else if (arg == "--debug-view") {
+            // Goal 165: one shading term per view, so a wrong frame names its cause.
+            const char* value = next_value();
+            const std::string_view view = value ? value : "";
+            using render::diligent::SvoDebugView;
+            static constexpr std::pair<std::string_view, SvoDebugView> kViews[] = {
+                {"lit", SvoDebugView::Lit},
+                {"ao", SvoDebugView::AO},
+                {"normal", SvoDebugView::Normal},
+                {"facenormal", SvoDebugView::FaceNormal},
+                {"level", SvoDebugView::Level},
+                {"steps", SvoDebugView::Steps},
+                {"coverage", SvoDebugView::Coverage},
+                {"cubepx", SvoDebugView::CubePixels},
+                {"smooth", SvoDebugView::SmoothNormal},
+                {"lodcube", SvoDebugView::LodCube},
+                {"material", SvoDebugView::Material},
+                {"distance", SvoDebugView::Distance},
+            };
+            bool found = false;
+            for (const auto& [name, id] : kViews) {
+                if (view == name) {
+                    options.svo_settings.debug_view = id;
+                    found = true;
+                }
+            }
+            if (!found) {
+                log(LogLevel::Error,
+                    "--debug-view expects "
+                    "lit|ao|normal|facenormal|level|steps|coverage|cubepx|smooth|lodcube|material|distance, "
+                    "got \"{}\"",
+                    view);
+                return std::nullopt;
+            }
+            options.no_post = true; // raw values, not tone-mapped ones
         } else if (arg == "--voxel-log2") {
             options.svo.voxel_size_log2 = next_int(options.svo.voxel_size_log2);
         } else if (arg == "--region-log2") {
@@ -209,11 +266,14 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             log(LogLevel::Error,
                 "unknown argument \"{}\" (known: --mode vk|d3d12, --renderer svo|mesh, --frames N, --radius "
                 "N, "
-                "--seed N, --verify-frame, --validation, --autofly, --walk, --upload-budget N, --dump-every "
+                "--seed N, --verify-frame, --validation, --autofly, --walk, --noclip, --upload-budget N, "
+                "--dump-every "
                 "N, "
                 "--no-post/--no-bloom/--no-tonemap/--no-sky, --no-shadows, --no-ao, --no-lod-march, "
-                "--lod-quality Q, --voxel-log2 N, --region-log2 N, --lod-radius M, --no-trees, --pos x,y,z, "
-                "--yaw D, --pitch D)",
+                "--lod-quality Q, --no-grain, --no-taa, --smooth-pixels N, --grain A, --ao-radius PX, "
+                "--shadow-lod M, --svo-threads N, --svo-upload-mb N, --debug-view NAME, --voxel-log2 N, "
+                "--region-log2 N, "
+                "--lod-radius M, --no-trees, --pos x,y,z, --yaw D, --pitch D)",
                 arg);
             return std::nullopt;
         }
@@ -245,12 +305,13 @@ struct ChunkEventCounters {
 // Input handling + camera movement + walk-mode invariant accounting. Returns the camera snapshot
 // the render pass consumes. `heightmap` is whichever world's analytic ground function is live --
 // both world representations sample the same one, so walk mode is representation-agnostic.
-render::interface::Camera update_camera_phase(engine::ecs::Registry& registry,
-                                              engine::ecs::Entity cameraEntity,
-                                              engine::input::GlfwInput& input,
-                                              const world::generation::HeightmapGenerator& heightmap,
-                                              const engine::core::Clock& clock, const AppOptions& options,
-                                              std::uint32_t& walkViolations) {
+// `collider` (Group AA) sweeps the camera's body against the world in BOTH modes -- fly mode
+// stops at mountains and trunks too, walk mode additionally climbs ledges; null = --noclip.
+render::interface::Camera
+update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraEntity,
+                    engine::input::GlfwInput& input, const world::generation::HeightmapGenerator& heightmap,
+                    world::collision::TerrainCollider* collider, const engine::core::Clock& clock,
+                    const AppOptions& options, std::uint32_t& walkViolations) {
     auto [transform, lens, spectator] =
         registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(
             cameraEntity);
@@ -264,8 +325,30 @@ render::interface::Camera update_camera_phase(engine::ecs::Registry& registry,
         log(LogLevel::Info, "camera mode: {}", spectator.mode == app::CameraMoveMode::Walk ? "walk" : "fly");
     }
     const float groundHeight = heightmap.height_at(transform.position.x, transform.position.z);
-    app::update_spectator_camera(transform, spectator, input.state(), input.take_look_delta(),
-                                 static_cast<float>(clock.delta_seconds()), groundHeight);
+    const bool walking = spectator.mode == app::CameraMoveMode::Walk;
+    if (collider != nullptr) {
+        collider->refresh(transform.position);
+        const app::SpectatorStep step =
+            app::compute_spectator_step(transform, spectator, input.state(), input.take_look_delta(),
+                                        static_cast<float>(clock.delta_seconds()), groundHeight);
+        const glm::vec3 feet = transform.position - glm::vec3{0.0f, app::kEyeHeight, 0.0f};
+        const world::collision::Aabb body =
+            world::collision::Aabb::upright(feet, app::kBodyHalfWidth, app::kBodyHeight);
+        world::collision::SweepParams sweep;
+        sweep.step_height = walking ? app::kStepHeight : 0.0f;
+        const world::collision::SweepResult moved =
+            world::collision::move_and_slide(*collider, body, step.delta, sweep);
+        transform.position += moved.delta;
+        if (walking && (moved.grounded || (moved.blocked_y && step.delta.y > 0.0f))) {
+            spectator.vertical_velocity = 0.0f; // landed, or bumped the head
+        }
+        if (walking) {
+            app::clamp_to_ground(transform, spectator, groundHeight); // backstop; see spectator_camera.hpp
+        }
+    } else {
+        app::update_spectator_camera(transform, spectator, input.state(), input.take_look_delta(),
+                                     static_cast<float>(clock.delta_seconds()), groundHeight);
+    }
     if (options.autofly) {
         // Constant sideways travel (at boost speed in fly mode; ground-bound in walk mode) --
         // goal 133's mechanical re-check: a static, fully-loaded world should show zero
@@ -273,7 +356,7 @@ render::interface::Camera update_camera_phase(engine::ecs::Registry& registry,
         // 1-2 fps under the old per-tick streaming system.
         transform.position.x += (options.walk ? 20.0f : 160.0f) * static_cast<float>(clock.delta_seconds());
     }
-    if (options.walk && spectator.mode == app::CameraMoveMode::Walk) {
+    if (options.walk && walking) {
         // Group V task 27's mechanical check, evaluated EVERY frame of a walk run: the camera
         // must never end an update below the ground surface (fall-through at chunk seams or
         // steep slopes is exactly the bug class this watches for).
@@ -409,7 +492,9 @@ bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t f
         // Local-contrast metric (see frame_verify.cpp for the two prior metrics it replaced and
         // why): terrain texture measures 12.3% at this pose, sky-only 0.9%. 6% keeps the
         // winding-bug lesson's discrimination -- sliver-band frames fail hard.
-        cap.verifyOk = fraction >= 0.06f;
+        // A debug view (one flat shading term) has no terrain texture to measure: it captures only.
+        const bool debugView = options.svo_settings.debug_view != render::diligent::SvoDebugView::None;
+        cap.verifyOk = debugView || fraction >= 0.06f;
         cap.verifyRan = true;
         log(cap.verifyOk ? LogLevel::Info : LogLevel::Error,
             "frame verification: {:.1f}% of pixels carry terrain-scale local contrast (threshold 6%) with "
@@ -528,6 +613,11 @@ int run_mesh(Session& s, const AppOptions& options) {
     app::WorldLoader world(bounds, options.seed, std::jthread::hardware_concurrency(), renderer, s.registry,
                            dispatcher, s.spawnPosition, options.upload_budget);
     world.begin();
+    // Group AA: the mesh world is 1 m blocks, so the body collides against 1 m voxel columns.
+    world::collision::TerrainColliderParams colliderParams;
+    colliderParams.seed = options.seed;
+    colliderParams.voxel_edge = 1.0f;
+    world::collision::TerrainCollider collider(world.heightmap(), colliderParams);
 
     CaptureState cap;
     cap.verifyOk = !options.verify_frame;
@@ -577,8 +667,9 @@ int run_mesh(Session& s, const AppOptions& options) {
                 world.log_timings();
                 loggedReady = true;
             }
-            const render::interface::Camera camera = update_camera_phase(
-                s.registry, s.cameraEntity, *s.input, world.heightmap(), s.clock, options, walkViolations);
+            const render::interface::Camera camera =
+                update_camera_phase(s.registry, s.cameraEntity, *s.input, world.heightmap(),
+                                    options.noclip ? nullptr : &collider, s.clock, options, walkViolations);
 
             renderer.render(camera);
             if (s.postProcess) {
@@ -634,6 +725,14 @@ int run_svo(Session& s, const AppOptions& options) {
     render::diligent::SvoRenderer renderer(*s.context);
     renderer.set_settings(options.svo_settings);
     app::SvoWorld world(options.svo);
+    // Group AA: the body collides against the same voxelization rule the tree is sampled with, at
+    // the tree's finest voxel, over a cached height grid -- independent of the renderer's LOD.
+    world::collision::TerrainColliderParams colliderParams;
+    colliderParams.seed = options.seed;
+    colliderParams.voxel_edge = world.geometry_for(s.spawnPosition).finest_voxel_edge();
+    colliderParams.trees = options.svo.trees;
+    world::collision::TerrainCollider collider(world.heightmap(), colliderParams);
+    collider.refresh(s.spawnPosition); // the first cache is built synchronously: pay it here, not mid-frame
 
     CaptureState cap;
     cap.verifyOk = !options.verify_frame;
@@ -649,6 +748,37 @@ int run_svo(Session& s, const AppOptions& options) {
         geometry.root_edge(), static_cast<double>(geometry.finest_voxel_edge()) * 1000.0,
         geometry.max_brick_level() + 1, options.svo.lod_radius, options.svo.trees ? "on" : "off");
     world.request_build(s.spawnPosition);
+
+    // Goal 170's measurement: where a slow frame's time went, attributed per phase, so "the lag"
+    // is a number with a cause rather than a feeling. A frame over kSlowFrameMs is logged with
+    // its breakdown; the exit summary counts them by what was happening.
+    constexpr double kSlowFrameMs = 20.0;
+    struct FramePhases {
+        double upload = 0.0; // begin_upload + pump_upload (buffer creation, a slice's UpdateBuffer)
+        double camera = 0.0; // input, collision (incl. a synchronous cache refresh), rebuild request
+        double render = 0.0; // SvoRenderer::render (CPU side: constants, draws recorded)
+        double post = 0.0;
+        double overlay = 0.0;
+        double present = 0.0;
+        bool swapped = false;   // the whole tree landed and was swapped in this frame
+        bool uploading = false; // a slice was copied this frame
+        bool building = false;  // a background build was running
+        bool refreshed = false; // the collider's height cache was rebuilt synchronously
+    };
+    FramePhases prevPhases;
+    struct SlowFrames {
+        std::uint32_t total = 0;
+        std::uint32_t whileUploading = 0;
+        std::uint32_t onSwap = 0;
+        std::uint32_t whileBuilding = 0;
+        std::uint32_t other = 0;
+    } slow;
+    const auto phase_ms = [](std::chrono::steady_clock::time_point& t) {
+        const auto now = std::chrono::steady_clock::now();
+        const double ms = std::chrono::duration<double, std::milli>(now - t).count();
+        t = now;
+        return ms;
+    };
 
     // Hands a finished build to the renderer's staged upload, and pumps that upload one slice per
     // frame; logs the tree the frame it lands.
@@ -679,7 +809,37 @@ int run_svo(Session& s, const AppOptions& options) {
         if (s.input->state().quit_requested) {
             break;
         }
-        adopt_finished();
+        // The clock's delta is the PREVIOUS frame's duration: attribute it to that frame's phases.
+        if (frame > 0 && renderer.has_tree()) {
+            const double frameMs = s.clock.delta_seconds() * 1000.0;
+            if (frameMs > kSlowFrameMs) {
+                ++slow.total;
+                if (prevPhases.swapped) {
+                    ++slow.onSwap;
+                } else if (prevPhases.uploading) {
+                    ++slow.whileUploading;
+                } else if (prevPhases.building) {
+                    ++slow.whileBuilding;
+                } else {
+                    ++slow.other;
+                }
+                log(LogLevel::Warn,
+                    "slow frame {}: {:.1f} ms = upload {:.1f} + camera {:.1f} + render {:.1f} + post {:.1f} "
+                    "+ "
+                    "overlay {:.1f} + present {:.1f}{}{}{}{}",
+                    frame - 1, frameMs, prevPhases.upload, prevPhases.camera, prevPhases.render,
+                    prevPhases.post, prevPhases.overlay, prevPhases.present,
+                    prevPhases.swapped ? " [tree swapped]" : "", prevPhases.uploading ? " [uploading]" : "",
+                    prevPhases.building ? " [building]" : "",
+                    prevPhases.refreshed ? " [cache refreshed]" : "");
+            }
+        }
+        FramePhases phases;
+        auto phaseClock = std::chrono::steady_clock::now();
+        phases.uploading = renderer.upload_pending() || world.take_finished_pending();
+        phases.building = world.building();
+        phases.swapped = adopt_finished();
+        phases.upload = phase_ms(phaseClock);
 
         if (!renderer.has_tree()) {
             // Loading screen until the first tree lands: sky only, no camera control.
@@ -696,8 +856,11 @@ int run_svo(Session& s, const AppOptions& options) {
                 break;
             }
         } else {
-            const render::interface::Camera camera = update_camera_phase(
-                s.registry, s.cameraEntity, *s.input, world.heightmap(), s.clock, options, walkViolations);
+            const double refreshBefore = collider.last_refresh_ms();
+            const render::interface::Camera camera =
+                update_camera_phase(s.registry, s.cameraEntity, *s.input, world.heightmap(),
+                                    options.noclip ? nullptr : &collider, s.clock, options, walkViolations);
+            phases.refreshed = collider.last_refresh_ms() != refreshBefore && !collider.refresh_pending();
             // Rebuild once the camera has left the inner half of the finest LOD ring: the tree is
             // still correct everywhere (coarser rings are conservative), just not at full detail
             // right around the camera until the new one lands.
@@ -705,11 +868,14 @@ int run_svo(Session& s, const AppOptions& options) {
                 world.distance_from_build_center(camera.position) > options.svo.lod_radius * 0.5f) {
                 world.request_build(camera.position);
             }
+            phases.camera = phase_ms(phaseClock);
 
             renderer.render(camera);
+            phases.render = phase_ms(phaseClock);
             if (s.postProcess) {
                 s.postProcess->execute(frame);
             }
+            phases.post = phase_ms(phaseClock);
 
             telemetry.poll_budget(*s.context);
             telemetry.smooth(s.clock);
@@ -724,6 +890,7 @@ int run_svo(Session& s, const AppOptions& options) {
             stats.svo.memory_bytes = last.memory_bytes;
             stats.svo.build_seconds = last.stats.seconds;
             stats.svo.upload_ms = lastUploadMs;
+            stats.svo.gpu_ms = renderer.last_gpu_ms();
             stats.svo.building = world.building();
             stats.svo.voxel_mm = static_cast<double>(geometry.finest_voxel_edge()) * 1000.0;
             stats.svo.levels = geometry.max_brick_level() + 1;
@@ -740,19 +907,24 @@ int run_svo(Session& s, const AppOptions& options) {
             stats.gpu_self_peak_bytes = renderer.gpu_memory().peak_bytes();
             stats.budget = telemetry.budget;
             s.overlay->render(stats);
+            phases.overlay = phase_ms(phaseClock);
 
             capture_phase(cap, options, frame, *s.context, 1, *s.input);
 
             telemetry.track_worst(s.clock);
             if (telemetry.report_due()) {
-                log(LogLevel::Info, "{:.1f} fps (worst {:.1f} ms), svo {} bricks / {:.1f} MB{}",
-                    telemetry.report_fps(), telemetry.worstFrameMs, last.bricks,
+                log(LogLevel::Info,
+                    "{:.1f} fps (worst {:.1f} ms, gpu {:.2f} ms), svo {} bricks / {:.1f} MB{}",
+                    telemetry.report_fps(), telemetry.worstFrameMs, renderer.last_gpu_ms(), last.bricks,
                     static_cast<double>(last.memory_bytes) / 1.0e6, world.building() ? ", rebuilding" : "");
                 telemetry.reset_report();
             }
         }
 
+        phaseClock = std::chrono::steady_clock::now();
         s.context->present();
+        phases.present = phase_ms(phaseClock);
+        prevPhases = phases;
         FrameMark;
         ++frame;
         ++telemetry.framesSinceReport;
@@ -777,6 +949,10 @@ int run_svo(Session& s, const AppOptions& options) {
             static_cast<double>(renderer.gpu_memory().allocated_bytes()) / (1024.0 * 1024.0),
             static_cast<double>(renderer.gpu_memory().peak_bytes()) / (1024.0 * 1024.0));
     }
+    log(LogLevel::Info,
+        "slow frames (> {:.0f} ms): {} of {} -- {} on a tree swap, {} while uploading a slice, {} while only "
+        "building, {} other",
+        kSlowFrameMs, slow.total, frame, slow.onSwap, slow.whileUploading, slow.whileBuilding, slow.other);
     log(LogLevel::Info, "exiting after {} frames on {}", frame,
         render::diligent::to_string(s.context->backend()));
     return cap.verifyOk && autoflyOk && walkOk ? EXIT_SUCCESS : EXIT_FAILURE;

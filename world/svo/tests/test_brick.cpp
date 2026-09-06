@@ -14,6 +14,58 @@ TEST_CASE("brick voxel index is X-innermost with 8^3 extent", "[svo][brick]") {
     CHECK(kBrickWords == 144);
 }
 
+TEST_CASE("exposed face sum points out of the solid and ignores the brick boundary", "[svo][brick]") {
+    // Bottom half solid: the only exposed faces inside the brick are the 64 top faces at y = 3.
+    Brick floor;
+    for (int z = 0; z < 8; ++z) {
+        for (int y = 0; y < 4; ++y) {
+            for (int x = 0; x < 8; ++x) {
+                floor.set(x, y, z, MaterialID::Dirt);
+            }
+        }
+    }
+    CHECK(floor.exposed_face_sum() == glm::ivec3{0, 64, 0});
+
+    // Left half solid (x < 4): 64 +x faces at x = 3.
+    Brick wall;
+    for (int z = 0; z < 8; ++z) {
+        for (int y = 0; y < 8; ++y) {
+            for (int x = 0; x < 4; ++x) {
+                wall.set(x, y, z, MaterialID::Stone);
+            }
+        }
+    }
+    CHECK(wall.exposed_face_sum() == glm::ivec3{64, 0, 0});
+
+    // A 45-degree ramp rising toward +x (solid where y < x): 8 exposed top faces per z-row are
+    // matched by 8 exposed -x faces (the risers), so the sum is the ramp normal (-1, 1, 0) * 56.
+    Brick ramp;
+    for (int z = 0; z < 8; ++z) {
+        for (int y = 0; y < 8; ++y) {
+            for (int x = 0; x < 8; ++x) {
+                if (y < x) {
+                    ramp.set(x, y, z, MaterialID::Sand);
+                }
+            }
+        }
+    }
+    const glm::ivec3 rampSum = ramp.exposed_face_sum();
+    CHECK(rampSum.x == -rampSum.y);
+    CHECK(rampSum.y > 0);
+    CHECK(rampSum.z == 0);
+
+    // One isolated voxel in the middle exposes all six faces, which cancel.
+    Brick dot;
+    dot.set(3, 3, 3, MaterialID::Wood);
+    CHECK(dot.exposed_face_sum() == glm::ivec3{0, 0, 0});
+    // A full brick exposes nothing inside.
+    Brick full;
+    for (std::size_t i = 0; i < kBrickVoxels; ++i) {
+        full.set(i, MaterialID::Stone);
+    }
+    CHECK(full.exposed_face_sum() == glm::ivec3{0, 0, 0});
+}
+
 TEST_CASE("brick set/get round-trips every voxel and keeps the occupancy mask in sync", "[svo][brick]") {
     Brick brick;
     REQUIRE(brick.empty());

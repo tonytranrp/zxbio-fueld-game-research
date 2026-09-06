@@ -52,8 +52,22 @@ struct Options {
     float fov_deg = 70.0f;
     bool trees = true;
     bool shadows = true;
+    bool ao = true;
+    bool grain = true;
     bool verify = false;
     bool lod_march = true;
+    // Group Z knobs (the app's defaults; see SvoRenderer::Settings).
+    float smooth_pixels = 6.0f;
+    float grain_amplitude = 0.10f;
+    float ao_radius_px = 32.0f;
+    float shadow_lod = 4.0f;
+    float ao_lod = 8.0f;
+    // --lod-center: build the tree's LOD around a point OTHER than the camera -- how the app looks
+    // after the camera has moved away from the last build center (goal 164's repro).
+    glm::vec3 lod_center{0.0f};
+    bool lod_center_set = false;
+    // --view: one shading term instead of the shaded color (mirrors --debug-view in the app).
+    std::string view;
     std::string out = "svo_render.png";
     unsigned threads = std::max(1u, std::thread::hardware_concurrency());
 };
@@ -112,8 +126,35 @@ bool parse(int argc, char** argv, Options& o) {
             o.trees = false;
         } else if (a == "--no-shadows") {
             o.shadows = false;
+        } else if (a == "--no-ao") {
+            o.ao = false;
+        } else if (a == "--no-grain") {
+            o.grain = false;
         } else if (a == "--no-lod-march") {
             o.lod_march = false;
+        } else if (a == "--smooth-pixels") {
+            o.smooth_pixels = static_cast<float>(std::atof(next()));
+        } else if (a == "--grain") {
+            o.grain_amplitude = static_cast<float>(std::atof(next()));
+        } else if (a == "--ao-radius") {
+            o.ao_radius_px = static_cast<float>(std::atof(next()));
+        } else if (a == "--shadow-lod") {
+            o.shadow_lod = static_cast<float>(std::atof(next()));
+        } else if (a == "--lod-center") {
+            const char* v = next();
+#if defined(_MSC_VER)
+            if (v == nullptr ||
+                sscanf_s(v, "%f,%f,%f", &o.lod_center.x, &o.lod_center.y, &o.lod_center.z) != 3) {
+#else
+            if (v == nullptr ||
+                std::sscanf(v, "%f,%f,%f", &o.lod_center.x, &o.lod_center.y, &o.lod_center.z) != 3) {
+#endif
+                std::fprintf(stderr, "--lod-center expects x,y,z\n");
+                return false;
+            }
+            o.lod_center_set = true;
+        } else if (a == "--view") {
+            o.view = next();
         } else if (a == "--verify") {
             o.verify = true;
         } else if (a == "--out") {
@@ -124,9 +165,11 @@ bool parse(int argc, char** argv, Options& o) {
             std::fprintf(
                 stderr,
                 "unknown argument %s (known: --seed N --voxel-log2 N --root-log2 N --lod-radius M --pos "
-                "x,y,z "
-                "--yaw D --pitch D --size WxH --fov D --no-trees --no-shadows --no-lod-march --verify --out "
-                "file.png --threads N)\n",
+                "x,y,z --xz x,z --yaw D --pitch D --size WxH --fov D --no-trees --no-shadows --no-ao "
+                "--no-grain --no-lod-march --smooth-pixels N --grain A --ao-radius PX --shadow-lod M "
+                "--lod-center x,y,z --view "
+                "lit|ao|normal|facenormal|level|steps|coverage|cubepx|smooth|lodcube "
+                "--verify --out file.png --threads N)\n",
                 argv[i]);
             return false;
         }
@@ -157,6 +200,21 @@ glm::vec3 sky_radiance(const glm::vec3& dir) {
 float hash2(const glm::vec2& p) {
     const float s = std::sin(glm::dot(p, glm::vec2{127.1f, 311.7f})) * 43758.5453f;
     return s - std::floor(s);
+}
+
+float hash3(const glm::vec3& p) {
+    const float s = std::sin(glm::dot(p, glm::vec3{127.1f, 311.7f, 74.7f})) * 43758.5453f;
+    return s - std::floor(s);
+}
+
+// svo_march.psh.hlsl's LevelColor: a repeating 6-hue ramp so adjacent levels contrast.
+glm::vec3 level_color(int level) {
+    const float h = (static_cast<float>(level) / 6.0f - std::floor(static_cast<float>(level) / 6.0f)) * 6.0f;
+    const glm::vec3 c =
+        glm::clamp(glm::vec3{std::abs(h - 3.0f) - 1.0f, 2.0f - std::abs(h - 2.0f), 2.0f - std::abs(h - 4.0f)},
+                   0.0f, 1.0f);
+    const float parity = static_cast<float>(level % 2);
+    return c * (0.55f + 0.45f * parity);
 }
 
 float value_noise(const glm::vec2& p) {
@@ -224,10 +282,10 @@ int main(int argc, char** argv) {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - samplerStart).count();
 
     BuildParams bp;
-    bp.lod_center = o.pos;
+    bp.lod_center = o.lod_center_set ? o.lod_center : o.pos;
     bp.lod_radius = o.lod_radius;
     engine::jobs::ThreadPool pool(o.threads);
-    sampler.set_focus(o.pos, 4.0f * o.lod_radius);
+    sampler.set_focus(bp.lod_center, 4.0f * o.lod_radius);
     BuildStats stats;
     const BrickTree tree = build_tree(sampler, g, bp, &pool, &stats);
     const BrickTree::Stats ts = tree.stats();
@@ -284,10 +342,26 @@ int main(int argc, char** argv) {
     const float tanHalf = std::tan(glm::radians(o.fov_deg) * 0.5f);
     const float aspect = static_cast<float>(o.width) / static_cast<float>(o.height);
     // One pixel's angular size: the LOD early-out threshold (same formula the GPU uses).
+    const float rawPixelAngle = 2.0f * tanHalf / static_cast<float>(o.height);
     TraceParams primary;
-    primary.lod_pixel_angle = o.lod_march ? 2.0f * tanHalf / static_cast<float>(o.height) : 0.0f;
-    TraceParams shadow = primary;
-    shadow.lod_pixel_angle *= 4.0f; // shadows tolerate a coarser LOD
+    primary.lod_pixel_angle = o.lod_march ? rawPixelAngle : 0.0f;
+    primary.smooth_pixel_angle = o.smooth_pixels * rawPixelAngle;
+    // Secondary rays (svo_march.psh.hlsl's rule, goal 164): LOD by distance from THEIR origin
+    // (t_offset stays 0), coarser multipliers, no smoothing.
+    constexpr float kSecondaryCoverage = 0.35f; // svo_march.psh.hlsl's kSecondaryCoverage
+    TraceParams shadow;
+    shadow.lod_pixel_angle = primary.lod_pixel_angle * o.shadow_lod;
+    shadow.lod_coverage_threshold = kSecondaryCoverage;
+    TraceParams aoParams;
+    aoParams.lod_pixel_angle = primary.lod_pixel_angle * o.ao_lod;
+    aoParams.lod_coverage_threshold = kSecondaryCoverage;
+    const std::string_view view = o.view;
+    if (!view.empty() && view != "lit" && view != "ao" && view != "normal" && view != "facenormal" &&
+        view != "level" && view != "steps" && view != "coverage" && view != "cubepx" && view != "smooth" &&
+        view != "lodcube") {
+        std::fprintf(stderr, "unknown --view %s\n", o.view.c_str());
+        return EXIT_FAILURE;
+    }
 
     {
         // Center-pixel ray: marcher vs brute force, to separate "wrong rays" from "wrong marcher".
@@ -329,14 +403,18 @@ int main(int argc, char** argv) {
 
     std::vector<std::uint8_t> rgb(static_cast<std::size_t>(o.width) * o.height * 3u);
     std::atomic<std::uint64_t> totalSteps{0};
+    std::atomic<std::uint64_t> secondarySteps{0};
     std::atomic<std::uint64_t> hits{0};
+    std::atomic<std::uint64_t> shadowed{0};
     const auto renderStart = std::chrono::steady_clock::now();
     std::vector<std::future<void>> rows;
     rows.reserve(o.height);
     for (std::uint32_t y = 0; y < o.height; ++y) {
         rows.push_back(pool.submit([&, y] {
             std::uint64_t steps = 0;
+            std::uint64_t steps2 = 0;
             std::uint64_t rowHits = 0;
+            std::uint64_t rowShadowed = 0;
             for (std::uint32_t x = 0; x < o.width; ++x) {
                 const float ndcX = (static_cast<float>(x) + 0.5f) / static_cast<float>(o.width) * 2.0f - 1.0f;
                 const float ndcY =
@@ -348,35 +426,92 @@ int main(int argc, char** argv) {
                 steps += hit.steps;
                 glm::vec3 color;
                 if (!hit.hit) {
-                    color = sky_radiance(ray.dir);
+                    color = view.empty() ? sky_radiance(ray.dir) : glm::vec3{0.0f};
+                    if (view == "steps") {
+                        color = glm::vec3{std::clamp(static_cast<float>(hit.steps) / 256.0f, 0.0f, 1.0f)};
+                    }
                 } else {
                     ++rowHits;
-                    const glm::vec3 n{hit.normal};
+                    // svo_march.psh.hlsl's shading, statement for statement (Group Z).
+                    const glm::vec3 faceNormal{hit.normal};
                     const glm::vec3 p = hit.position;
+                    const float cubePixels = hit.cube_edge / std::max(hit.t * rawPixelAngle, 1.0e-6f);
+                    const float faceWeight = std::clamp((cubePixels - 1.5f) / 3.0f, 0.0f, 1.0f);
+                    const bool haveSmooth =
+                        !hit.solid_leaf && glm::dot(hit.smooth_normal, hit.smooth_normal) > 0.01f;
+                    const glm::vec3 smoothNormal =
+                        haveSmooth ? glm::normalize(hit.smooth_normal) : faceNormal;
+                    const glm::vec3 n = glm::normalize(glm::mix(smoothNormal, faceNormal, faceWeight));
+
                     const auto& props = world::chunk::properties_of(hit.material);
                     glm::vec3 albedo{props.color[0], props.color[1], props.color[2]};
                     const float n1 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 24.0f));
                     const float n2 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 7.0f) + 17.31f);
                     albedo *= 0.90f + 0.20f * (0.65f * n1 + 0.35f * n2);
+                    if (o.grain && hit.cube_edge > 0.0f) {
+                        const glm::vec3 cell =
+                            glm::floor((p - faceNormal * (0.5f * hit.cube_edge)) / hit.cube_edge);
+                        const float amplitude =
+                            o.grain_amplitude * std::clamp((cubePixels - 1.5f) / 2.5f, 0.0f, 1.0f);
+                        albedo *= 1.0f + amplitude * (hash3(cell) * 2.0f - 1.0f);
+                    }
                     const float diffuse = std::max(glm::dot(n, -kSunDirection), 0.0f);
+                    // Secondary origins (svo_march.psh.hlsl): off the face, then lifted along the
+                    // averaged normal by one local cube (shadows) / half (AO) so the staircase does
+                    // not shade itself; a solid leaf is its own face and gets no lift.
+                    const float liftEdge = hit.solid_leaf ? 0.0f : hit.cube_edge;
+                    const glm::vec3 faceOffset =
+                        p + faceNormal * (g.finest_voxel_edge() * 0.5f + hit.t * 1.0e-4f);
+                    const glm::vec3 shadowOrigin = faceOffset + smoothNormal * liftEdge;
+                    const glm::vec3 offsetOrigin = faceOffset + smoothNormal * (0.5f * liftEdge);
                     float lit = 1.0f;
                     if (o.shadows && diffuse > 0.0f) {
                         Ray sray;
-                        sray.origin = p + n * (g.finest_voxel_edge() * 0.5f + hit.t * 1.0e-4f);
+                        sray.origin = shadowOrigin;
                         sray.dir = -kSunDirection;
-                        TraceParams sp2 = shadow;
-                        sp2.t_offset = hit.t;
-                        lit = trace_ray(tree, sray, sp2).hit ? 0.0f : 1.0f;
+                        const Hit sh = trace_ray(tree, sray, shadow);
+                        steps2 += sh.steps;
+                        lit = sh.hit ? 0.0f : 1.0f;
+                        rowShadowed += sh.hit ? 1u : 0u;
+                    }
+                    float ao = 1.0f;
+                    if (o.ao) {
+                        const float rayLength = std::max(0.15f, o.ao_radius_px * hit.t * rawPixelAngle);
+                        const glm::vec3 helper =
+                            std::abs(n.y) < 0.9f ? glm::vec3{0.0f, 1.0f, 0.0f} : glm::vec3{1.0f, 0.0f, 0.0f};
+                        const glm::vec3 tangent = glm::normalize(glm::cross(helper, n));
+                        const glm::vec3 bitangent = glm::cross(n, tangent);
+                        const float rot =
+                            hash2(glm::vec2{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f}) *
+                            6.2831853f;
+                        float occluded = 0.0f;
+                        for (int k = 0; k < 4; ++k) {
+                            const float phi = rot + static_cast<float>(k) * 1.5707963f;
+                            Ray aray;
+                            aray.origin = offsetOrigin;
+                            aray.dir = glm::normalize(
+                                n * 0.75f + (tangent * std::cos(phi) + bitangent * std::sin(phi)) * 0.66f);
+                            TraceParams ap = aoParams;
+                            ap.max_t = rayLength;
+                            const Hit ah = trace_ray(tree, aray, ap);
+                            steps2 += ah.steps;
+                            if (ah.hit) {
+                                occluded += 1.0f - std::clamp(ah.t / rayLength, 0.0f, 1.0f);
+                            }
+                        }
+                        ao = 1.0f - 0.6f * (occluded * 0.25f);
                     }
                     const glm::vec3 ambient = glm::mix(kGroundAmbient, kSkyAmbient, n.y * 0.5f + 0.5f);
-                    color = albedo * (ambient + kSunColor * diffuse * lit);
+                    color = albedo * (ambient * ao + kSunColor * diffuse * lit);
                     if (hit.material == MaterialID::Water) {
                         const glm::vec3 viewDir = -ray.dir;
                         const float cosTheta = std::clamp(viewDir.y, 0.0f, 1.0f);
                         const float fresnel = 0.02f + 0.98f * std::pow(1.0f - cosTheta, 5.0f);
                         const glm::vec3 body{0.10f, 0.28f, 0.40f};
-                        color = glm::mix(
-                            body, sky_radiance(glm::reflect(ray.dir, glm::vec3{0.0f, 1.0f, 0.0f})), fresnel);
+                        color =
+                            glm::mix(body, sky_radiance(glm::reflect(ray.dir, glm::vec3{0.0f, 1.0f, 0.0f})),
+                                     fresnel) *
+                            glm::mix(0.6f, 1.0f, lit);
                     }
                     // exp2 height fog converging on the sky gradient (terrain.psh.hlsl's formula).
                     const float dist = hit.t;
@@ -385,15 +520,42 @@ int main(int argc, char** argv) {
                     const float rawFog = 1.0f - std::exp2(-(dist * density) * (dist * density) * 1.442695f);
                     const float fogAmount = std::clamp(rawFog * 1.12f, 0.0f, 1.0f);
                     color = glm::mix(color, sky_gradient(ray.dir), fogAmount);
+
+                    if (!view.empty()) {
+                        if (view == "lit") {
+                            color = glm::vec3{lit};
+                        } else if (view == "ao") {
+                            color = glm::vec3{ao};
+                        } else if (view == "normal") {
+                            color = n * 0.5f + 0.5f;
+                        } else if (view == "facenormal") {
+                            color = faceNormal * 0.5f + 0.5f;
+                        } else if (view == "level") {
+                            color = level_color(hit.level);
+                        } else if (view == "steps") {
+                            color = glm::vec3{std::clamp(static_cast<float>(hit.steps) / 256.0f, 0.0f, 1.0f)};
+                        } else if (view == "coverage") {
+                            color = glm::vec3{hit.coverage};
+                        } else if (view == "cubepx") {
+                            color = glm::vec3{std::clamp(cubePixels / 8.0f, 0.0f, 1.0f)};
+                        } else if (view == "smooth") {
+                            color = haveSmooth ? smoothNormal * 0.5f + 0.5f : glm::vec3{1.0f, 0.0f, 1.0f};
+                        } else if (view == "lodcube") {
+                            color = hit.lod_cube ? glm::vec3{1.0f, 0.2f, 0.1f} : glm::vec3{0.1f, 0.4f, 1.0f};
+                        }
+                    }
                 }
-                const glm::vec3 mapped = tonemap(color);
+                // Debug views are written raw (the app disables its post chain for them too).
+                const glm::vec3 mapped = view.empty() ? tonemap(color) : color;
                 const std::size_t i = (static_cast<std::size_t>(y) * o.width + x) * 3u;
                 rgb[i + 0] = to_srgb8(mapped.x);
                 rgb[i + 1] = to_srgb8(mapped.y);
                 rgb[i + 2] = to_srgb8(mapped.z);
             }
             totalSteps.fetch_add(steps, std::memory_order_relaxed);
+            secondarySteps.fetch_add(steps2, std::memory_order_relaxed);
             hits.fetch_add(rowHits, std::memory_order_relaxed);
+            shadowed.fetch_add(rowShadowed, std::memory_order_relaxed);
         }));
     }
     for (std::future<void>& f : rows) {
@@ -402,11 +564,14 @@ int main(int argc, char** argv) {
     const double renderSeconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - renderStart).count();
     const double pixels = static_cast<double>(o.width) * o.height;
-    std::printf("render: %ux%u in %.2fs (%.1f Mrays/s primary%s), %.1f%% pixels hit terrain, %.1f traversal "
-                "steps/ray\n",
-                o.width, o.height, renderSeconds, pixels / renderSeconds / 1.0e6,
-                o.shadows ? " + shadow rays" : "", 100.0 * static_cast<double>(hits.load()) / pixels,
-                static_cast<double>(totalSteps.load()) / pixels);
+    std::printf(
+        "render: %ux%u in %.2fs (%.1f Mrays/s primary%s%s), %.1f%% pixels hit terrain, %.1f primary + "
+        "%.1f secondary traversal steps/pixel, %.1f%% of hits in sun shadow\n",
+        o.width, o.height, renderSeconds, pixels / renderSeconds / 1.0e6, o.shadows ? " + shadow rays" : "",
+        o.ao ? " + 4 AO rays" : "", 100.0 * static_cast<double>(hits.load()) / pixels,
+        static_cast<double>(totalSteps.load()) / pixels, static_cast<double>(secondarySteps.load()) / pixels,
+        hits.load() > 0 ? 100.0 * static_cast<double>(shadowed.load()) / static_cast<double>(hits.load())
+                        : 0.0);
 
     if (!svo_render::PngWriter::write(o.out.c_str(), o.width, o.height, rgb.data())) {
         std::fprintf(stderr, "failed to write %s\n", o.out.c_str());

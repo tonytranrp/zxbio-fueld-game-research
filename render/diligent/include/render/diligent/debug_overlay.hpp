@@ -45,6 +45,7 @@ struct OverlayStats {
         std::size_t uploads = 0;
         double build_seconds = 0.0;
         double upload_ms = 0.0;
+        double gpu_ms = 0.0; // last completed march+resolve GPU time (0 = no timestamp support)
         double voxel_mm = 0.0;
         int levels = 0;
     } svo;

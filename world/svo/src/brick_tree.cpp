@@ -36,7 +36,7 @@ world::chunk::MaterialID BrickTree::material_at(const glm::vec3& worldPos) const
             const int shift = V - level - TreeGeometry::kBrickLog2;
             const std::size_t index =
                 brick_voxel_index((cx >> shift) & 7, (cy >> shift) & 7, (cz >> shift) & 7);
-            return brick_word_material(brick_words(nodes[node + 1]), index);
+            return brick_word_material(brick_words(nodes[node + kNodeBrickIndexSlot]), index);
         }
         const int shift = V - level - 1;
         const int octant = octant_of(cx >> shift, cy >> shift, cz >> shift);
@@ -79,6 +79,38 @@ int BrickTree::leaf_level_at(const glm::vec3& worldPos) const noexcept {
     }
 }
 
+std::uint32_t BrickTree::attributes_at(const glm::vec3& worldPos, int wantedLevel) const noexcept {
+    if (empty() || !geometry.contains(worldPos) || wantedLevel < 0) {
+        return 0u;
+    }
+    const int V = geometry.voxel_bits();
+    const float cellsPerAxis = std::ldexp(1.0f, V);
+    const glm::vec3 local = (worldPos - geometry.origin) / geometry.root_edge();
+    const auto toCell = [&](float v) {
+        const float f = std::floor(v * cellsPerAxis);
+        return static_cast<std::int32_t>(std::clamp(f, 0.0f, cellsPerAxis - 1.0f));
+    };
+    const std::int32_t cx = toCell(local.x);
+    const std::int32_t cy = toCell(local.y);
+    const std::int32_t cz = toCell(local.z);
+    std::uint32_t node = root;
+    int level = 0;
+    for (;;) {
+        const std::uint32_t header = nodes[node];
+        if (level == wantedLevel || node_kind(header) != kNodeKindInternal) {
+            const std::uint32_t slot = node_attr_slot(header);
+            return slot == kNoNode ? 0u : nodes[node + slot];
+        }
+        const int shift = V - level - 1;
+        const int octant = octant_of(cx >> shift, cy >> shift, cz >> shift);
+        if ((node_child_mask(header) & (1u << octant)) == 0u) {
+            return 0u;
+        }
+        node = nodes[node + node_child_slot(header, octant)];
+        ++level;
+    }
+}
+
 BrickTree::Stats BrickTree::stats() const {
     Stats s;
     if (empty()) {
@@ -95,17 +127,17 @@ BrickTree::Stats BrickTree::stats() const {
         switch (node_kind(header)) {
         case kNodeKindSolid:
             ++s.solid_leaves;
-            usedWords += 1;
+            usedWords += kNodeWordsSolid;
             break;
         case kNodeKindBrick:
             ++s.brick_leaves;
             ++s.bricks_per_level[static_cast<std::size_t>(level)];
-            usedWords += 2;
+            usedWords += kNodeWordsBrick;
             break;
         default: {
             ++s.internal_nodes;
             const std::uint32_t mask = node_child_mask(header);
-            usedWords += 1 + static_cast<std::size_t>(std::popcount(mask));
+            usedWords += node_words_internal(header);
             for (int octant = 0; octant < 8; ++octant) {
                 if ((mask & (1u << octant)) != 0u) {
                     stack.emplace_back(nodes[node + node_child_slot(header, octant)], level + 1);

@@ -5,9 +5,9 @@
 
 namespace app {
 
-void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraState& state,
-                             const engine::input::InputState& input, glm::vec2 lookDeltaPixels,
-                             float dtSeconds, float groundHeightWorld) noexcept {
+SpectatorStep compute_spectator_step(engine::ecs::Transform& transform, SpectatorCameraState& state,
+                                     const engine::input::InputState& input, glm::vec2 lookDeltaPixels,
+                                     float dtSeconds, float groundHeightWorld) noexcept {
     // Mouse look: cursor right (+x) turns right (negative yaw about +Y), cursor down (+y) looks
     // down (negative pitch). Clamp shy of ±90° so forward never exactly degenerates onto world up.
     state.yaw_radians -= lookDeltaPixels.x * state.look_sensitivity;
@@ -19,6 +19,7 @@ void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraS
                             glm::angleAxis(state.pitch_radians, glm::vec3(1.0f, 0.0f, 0.0f));
 
     constexpr glm::vec3 kWorldUp{0.0f, 1.0f, 0.0f};
+    SpectatorStep step;
 
     if (state.mode == CameraMoveMode::Fly) {
         // Move along the view axes (full free-flight: "forward" includes pitch), vertical strafe
@@ -43,15 +44,15 @@ void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraS
         const float wishLength = glm::length(wish);
         if (wishLength > 0.0f) {
             const float speed = state.move_speed * (input.speed_boost ? kSpectatorBoostFactor : 1.0f);
-            transform.position += wish / wishLength * speed * dtSeconds;
+            step.delta = wish / wishLength * speed * dtSeconds;
         }
-        return;
+        return step;
     }
 
     // Walk mode (TERRAIN_FIXES_BRIEF Group V tasks 24): horizontal movement follows YAW only --
     // looking at the ground must not slow walking -- and the vertical axis belongs to physics:
-    // constant gravity acceleration, position integration, and a hard clamp to the analytic
-    // ground surface with velocity zeroed on contact. Space/Ctrl are deliberately inert here.
+    // constant gravity acceleration integrated into a velocity the caller's collision (or the
+    // legacy ground clamp) resolves. Space/Ctrl are deliberately inert here.
     const glm::vec3 walkForward{-std::sin(state.yaw_radians), 0.0f, -std::cos(state.yaw_radians)};
     const glm::vec3 walkRight{std::cos(state.yaw_radians), 0.0f, -std::sin(state.yaw_radians)};
 
@@ -68,7 +69,7 @@ void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraS
     if (wishLength > 0.0f) {
         const float speed =
             state.move_speed * kWalkSpeedFactor * (input.speed_boost ? kSpectatorBoostFactor : 1.0f);
-        transform.position += wish / wishLength * speed * dtSeconds;
+        step.delta = wish / wishLength * speed * dtSeconds;
     }
 
     // Swimming (goal 79): when the feet are below the water surface over a genuinely submerged
@@ -85,8 +86,23 @@ void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraS
     } else {
         state.vertical_velocity += kGravityAcceleration * dtSeconds;
     }
-    transform.position.y += state.vertical_velocity * dtSeconds;
+    step.delta.y += state.vertical_velocity * dtSeconds;
+    return step;
+}
 
+void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraState& state,
+                             const engine::input::InputState& input, glm::vec2 lookDeltaPixels,
+                             float dtSeconds, float groundHeightWorld) noexcept {
+    const SpectatorStep step =
+        compute_spectator_step(transform, state, input, lookDeltaPixels, dtSeconds, groundHeightWorld);
+    transform.position += step.delta;
+    if (state.mode == CameraMoveMode::Walk) {
+        clamp_to_ground(transform, state, groundHeightWorld);
+    }
+}
+
+void clamp_to_ground(engine::ecs::Transform& transform, SpectatorCameraState& state,
+                     float groundHeightWorld) noexcept {
     // The hard floor is the REAL ground (the seabed under water, now that ground_height no longer
     // clamps to sea level) -- swimming floats you above it, but you can still stand in shallows.
     const float standingEyeY = groundHeightWorld + kEyeHeight;

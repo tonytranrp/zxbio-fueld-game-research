@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "engine/core/math.hpp"
 #include "world/chunk/material.hpp"
 
 namespace world::svo {
@@ -104,6 +105,14 @@ public:
     // of the 64 columns (what a heightmap world exposes from above). Air only if nothing is
     // occupied. Used as the LOD-cube shading material carried in the parent node header.
     [[nodiscard]] world::chunk::MaterialID representative() const noexcept;
+
+    // Sum of the outward normals of the brick's EXPOSED faces -- an occupied voxel's face against
+    // an empty voxel of the same brick -- in units of one voxel face (Group Z: the per-node
+    // average normal the shader blends toward at distance is built bottom-up from this). Faces on
+    // the brick's outer boundary have an unknown neighbor and are not counted; the tree builder
+    // adds coarse exposure (solid children against absent siblings) at the parent level instead.
+    // Water counts as occupied, so a still water surface sums to +y.
+    [[nodiscard]] glm::ivec3 exposed_face_sum() const noexcept;
 
     [[nodiscard]] const std::array<std::uint32_t, kBrickWords>& words() const noexcept { return words_; }
     [[nodiscard]] std::array<std::uint32_t, kBrickWords>& words() noexcept { return words_; }

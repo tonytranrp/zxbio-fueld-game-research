@@ -19,7 +19,7 @@ water) chosen to evoke the *feeling* of that aesthetic. Since the Voxel Represen
 (`research/voxel-representation-redesign.md`), the terrain mesh itself is genuinely blocky —
 per-voxel-face, greedy-merged cubes — rather than a smooth iso-surface merely *lit* to look chunky.
 
-## Current state (2026-09-05, after the micro-voxel pivot)
+## Current state (2026-09-05, after the micro-voxel pivot and the Lin-look, collision & lag pass)
 
 **The world is now sub-centimeter.** `voxel_app`'s default path (`--renderer svo`,
 `research/micro-voxel-pivot-log.md`) builds a **sparse-brick octree** around the camera — 8³
@@ -34,11 +34,41 @@ chain. The camera moving 2 m triggers a whole-tree rebuild (0.6–1.3 s, backgro
 the GPU over ~7 frames and swapped in whole). Mesh-world everything below stays available behind
 `--renderer mesh`.
 
-Numbers: **101/101 tests** (24 new `world/svo` tests including a 7,000-ray brute-force traversal
-oracle, plus a CPU-rendered smoke frame in the GPU-less CI jobs); `--verify-frame` reads **48%**
-local contrast on both Vulkan and D3D12 (identical dumps, viewed). Open: sub-pixel voxel shimmer
-2–8 m out (goal 159, needs TAA), whole-rebuild cost on movement (goal 158), material compression
-(goal 157), editing (goal 160).
+**The Lin-look, collision & lag pass (2026-09-05, `research/lin-look-log.md`, goals 164–175)**
+answered the user's second round on that world — shadow "circles" after a rebuild, no collision,
+lag near mountains, a "swirly" artifact on every slope, and the look itself ("fine grains and
+smooth ... still a voxel but blends"). Each complaint was measured before it was touched. The rings
+were secondary rays judging their LOD by distance from the EYE, so the early-out fired on the node
+containing their own origin whenever the camera was >2.4x farther from a surface than the tree's
+build center — fixed by judging from their own origin (provably self-hit-free), plus a one-cube
+lift of the shadow origin along the averaged normal against the scale-free staircase self-shadow
+(47% of a 45° slope under this sun, at ANY step size) and a 35% coverage threshold so a mostly-air
+LOD node is descended rather than hit. The swirl was the raw face-normal staircase at pixel-sized
+cubes: **tree layout v2** stores an area-weighted average normal and a volume coverage per node,
+and shading blends the hit cube's face toward that average by projected cube size (cubes above
+4.5 px stay cubes — the John Lin close-up — cubes near a pixel take the ~6 px ancestor's normal),
+with a per-cube brightness grain that fades out below 1.5 px. The sub-pixel shimmer got a
+Halton-jittered, distance-reprojected **TAA** (`svo_taa.psh.hlsl`; no motion vectors — the world is
+static). The water checkerboard (also in the user's own screenshot) was the sun glint alone, found
+by bisecting one shader return line and sampling one pixel row after every debug view had come back
+uniform. The lag was NOT rendering — a GPU timestamp put march+resolve at 3.2–6.3 ms everywhere —
+but a tree build on every hardware thread starving `present`: the pool defaults to 3/4 of the
+threads and the previous tree's GPU buffers are reused as a spare pair instead of created per swap.
+And the camera got a body: `world/collision`'s `move_and_slide` over a `SolidQuery` concept, with
+`TerrainCollider` applying the tree's own voxelization rule to the same height function and tree
+placements, so it agrees with what is drawn and never depends on the renderer's LOD (`--noclip`
+restores the old spectator).
+
+Numbers: **113/113 tests** (27 `world/svo` including the 7,000-ray brute-force traversal oracle
+and layout v2's attribute tests, 9 `world/collision`, plus the CPU-rendered smoke frame in the
+GPU-less CI jobs); `--verify-frame` reads **34%** local contrast on both Vulkan and D3D12 (the
+pre-TAA 48% counted the moiré as contrast); fly `--autofly`, 900 frames: **0 frames over 20 ms**,
+worst 16.9 ms (38 ms before the pass); GPU march+resolve **3.2–6.3 ms**; `--autofly --walk`: 0
+frames below the ground surface. Captures viewed on both backends: `research/captures/lin_*.png`.
+Open: whole-rebuild cost on movement (goal 158), material compression (157), editing (160), the
+one-time growth-swap hitch (175, 43 ms when a tree outgrows its spare buffers), colliding against
+the octree once editing exists (173), and **materials as components (176) — the one part of the
+user's second round not yet built**.
 
 ### The mesh path (still shipped behind `--renderer mesh`, unchanged)
 
@@ -141,12 +171,20 @@ not yet**, and that gap is named, not glossed over.
 engine/{core,ecs,jobs,input,events}   -- core loop/log/config, EnTT wrapper, ThreadPool (moodycamel-
                                           backed), GLFW input (+G walk toggle, F2 screenshot),
                                           entt::dispatcher event bus
-world/{chunk,generation,meshing,streaming,svo}
+world/{chunk,generation,meshing,streaming,svo,collision}
   svo/         -- MICRO-VOXEL PIVOT (2026-09-05): sparse-brick octree -- 8^3 bricks (material
                   bytes + occupancy mask) under an SVDAG-layout node array with distance LOD built
-                  in; TerrainSampler (the generator generalized to meters + implicit trees);
-                  HeightField (sound min/max pyramid); parallel build_tree; trace_ray, the CPU
-                  reference the HLSL marcher mirrors. README.md states the folder's rules.
+                  in; layout v2 (Group Z) adds one attribute word per node -- int8 x3 area-weighted
+                  average normal + uint8 volume coverage, built bottom-up; TerrainSampler (the
+                  generator generalized to meters + implicit trees); HeightField (sound min/max
+                  pyramid); parallel build_tree; trace_ray (TraceParams: secondary rays judge LOD
+                  from their own origin, coverage-aware early-out), the CPU reference the HLSL
+                  marcher mirrors. README.md states the folder's rules.
+  collision/   -- Group AA: SolidQuery concept ("does this box overlap solid?"), move_and_slide
+                  (y/x/z, bisected, 0.25 m sub-steps, ledge step-up in walk mode, never traps a
+                  body that starts inside solid), TerrainCollider (the tree's own voxelization rule
+                  over a cached 16 m / 3.1 cm height grid rebuilt on a background thread + trunk
+                  boxes; never reads the rendered tree). README.md states the folder's rules.
   chunk/       -- paletted voxel storage; CoordMap/CoordSet over boost::unordered_flat_map;
                   8 materials (Air,Stone,Dirt,Water,Wood,Leaves,Sand,Grass); block_type.hpp's
                   kBlockTable is the single source of truth for every material's real properties
@@ -168,9 +206,15 @@ render/{interface,diligent}  -- interface stays Diligent-free (grep-verified); d
                   device/PSOs/sky pass/fog constants/post chain (PostProcessor: RGBA16F scene
                   target + DiligentFX Bloom + soft-knee composite)/frame verify+PNG dumps/overlay
                   (DebugOverlay::render_loading is the new one-time load progress bar); SvoRenderer
-                  + shaders/svo_march.psh.hlsl (the fullscreen GPU ray march writing SV_Depth)
-app/          -- main.cpp: Session (shared setup) + run_svo (SvoWorld background rebuilds ->
-                  SvoRenderer) / run_mesh (the loop below); svo_world.{hpp,cpp};
+                  + shaders/svo_march.psh.hlsl (the fullscreen GPU ray march writing SV_Depth and,
+                  since Group Z, the hit distance for TAA; 12 --debug-view terms) +
+                  shaders/svo_taa.psh.hlsl (distance-reprojected temporal resolve, 1/8 blend) + a
+                  GPU timestamp pair ("gpu march+resolve" in the overlay); spare GPU buffer pair
+                  reused across tree swaps
+app/          -- main.cpp: Session (shared setup) + run_svo (SvoWorld background rebuilds on 3/4
+                  of the hardware threads -> SvoRenderer; the camera body moves through
+                  world/collision; a slow-frame attributor logs every frame > 20 ms by phase and
+                  cause) / run_mesh (the loop below); svo_world.{hpp,cpp};
                   the mesh loop branches on WorldLoader::finished() -- a loading-screen
                   phase, then the interactive phase with NO per-frame streaming call at all;
                   world_loader.{hpp,cpp} (replaced chunk_streaming.*) does one-time parallel
@@ -179,7 +223,8 @@ app/          -- main.cpp: Session (shared setup) + run_svo (SvoWorld background
                   system paced GPU uploads; spectator camera (fly/walk/swim), tree_decoration
                   (3 shapes), aim_query, crash_handler
 tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the octree world to PNG,
-                  a ctest), benchmarks/ (Google Benchmark + dated baselines + measure_world_memory's
+                  a ctest; --lod-center builds the LOD around a point other than the eye, --view
+                  renders one shading term), benchmarks/ (Google Benchmark + dated baselines + measure_world_memory's
                   one-shot storage report)
 ```
 
@@ -311,16 +356,62 @@ tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the oct
   ray queries (portable traversal is already vsync-bound), 4-bit materials (fits the card; goal
   157 with a number), TAA (real shimmer, real goal 159, not this pass).
 
+### The Lin-look, collision & lag pass's own additions (2026-09-05, `research/lin-look-log.md`)
+
+- **Reproduce a moving-camera artifact deterministically before theorizing about it.** The shadow
+  rings only appeared "when the rebuild finishes" and slid with the camera; `svo_render
+  --lod-center` builds the LOD around a point other than the eye, which made the disc appear on
+  the CPU at will, and the `lit` view named the term. The fix (secondary rays judge LOD from their
+  own origin) is then a one-line invariant with a proof — the threshold is 0 at the origin, so
+  the descent reaches the real leaf — not a tuned bias.
+- **One shading term per debug view, and the view that shows the bug IS the explanation.** The
+  `facenormal` view is the swirl; the `smooth` view is not. Every view of the water came back
+  uniform, which is exactly what forced the shader-return-line bisection that found the glint.
+  A frame that names its cause beats staring at a composite.
+- **"The lag isn't the rendering" was right, and only a GPU timestamp plus a per-phase attributor
+  could say so.** March+resolve was 3.2–6.3 ms the whole time; 12 of 13 slow frames were `present`
+  stalls while a build ran on all 16 threads. The obvious fix (smaller upload slices) made it
+  WORSE — measured, not assumed — and the real one was two lines (3/4 of the threads; reuse the
+  previous tree's buffers). The palette-compression goal (157) stays open with its number because
+  the hitch was never about bytes.
+- **Staircase self-shadowing is scale-free, so no per-voxel fix can exist**: a slope of tangent s
+  puts s/tan(sun elevation) of every tread in its own riser's shadow at any step size — terracing
+  at coarse LOD, moiré at pixel-sized steps. Offsetting the shadow origin along the averaged normal
+  is the standard answer (Gustafsson); the exception (solid leaves get no lift — a water top IS
+  its surface) was found by a D3D12 capture, not by reasoning.
+- **Collide against the function, not the render.** The renderer's tree is correct only near its
+  build center and lags the camera by one rebuild; the analytic height function agrees with what is
+  drawn everywhere and costs nothing per tree. The `SolidQuery` concept is the seam where an
+  octree-backed query goes once editing (goal 160) makes the analytic world stale (goal 173).
+- Decided against, in writing: per-voxel stored normals (3–4x the brick bytes; the per-node average
+  blended by projected size gives the same distant smoothness and keeps the close-up cubes the user
+  asked for), cone-traced soft shadows (a look change nobody asked for), DiligentFX's own TAA
+  (needs motion vectors and its PostFXContext machinery for a static world; ours is 80 lines over
+  the distance the march already writes).
+
 ## Honest "what problems does the code have now" (goal 103, re-examined after the redesign)
 
-- **The svo path rebuilds the whole tree and re-uploads 200–400 MB whenever the camera moves 2 m**
-  (0.6–1.3 s in the background, staged onto the GPU at 32 MB/frame — the synchronous first
-  version's 45–80 ms worst frames became 38 ms). Correct and playable, but the far rings barely
-  change between rebuilds and the finest ring lags a fast-moving camera; goal 158's incremental
-  reuse is the real fix, deliberately deferred until measured.
-- **Sub-pixel voxels shimmer** 2–8 m from the camera (visible moiré in every capture): the marcher's
-  LOD early-out stops at nodes, not at the 8 mm voxels inside the finest bricks. TAA/supersampling
-  is goal 159; the mesh path never had this problem because it never had sub-pixel geometry.
+- **The svo path rebuilds the whole tree and re-uploads 200–540 MB whenever the camera moves 2 m**
+  (0.6–1.3 s in the background, staged onto the GPU at 32 MB/frame, swapped into a reused spare
+  buffer pair). Fly autofly now has 0 frames over 20 ms, but the far rings barely change between
+  rebuilds and the finest ring lags a fast-moving camera; goal 158's incremental reuse is the real
+  fix, deliberately deferred until measured. A tree that outgrows its spare buffers still pays a
+  synchronous creation (43 ms at 540 MB, one-time growth — goal 175).
+- **TAA hides the sub-pixel shimmer rather than removing its source**: the marcher still stops at
+  nodes, not at the 8 mm voxels inside the finest bricks; history is rejected on a 2% + 5 cm
+  distance mismatch and clamped to the 3x3 neighborhood, so a hard camera cut shows one frame of
+  the raw moiré, and `--no-taa` shows the residual any time. The lighting half of the moiré is
+  genuinely gone (the averaged-normal blend), the geometric half is filtered.
+- **Collision is analytic, not against the octree**: `TerrainCollider` agrees with the drawn
+  surface because both come from the same height function and tree placements. The moment editing
+  mutates the tree (goal 160) the collider is stale — goal 173's octree-backed `SolidQuery` is the
+  planned swap, behind a boundary that already exists.
+- **Materials still live in parallel tables with hardcoded offsets** (goal 176 — the one part of
+  the user's second round not yet built): the enum order, `kBlockTable` rows, two
+  `g_MaterialColors[8]` cbuffers with `3u`/`5u` literals in the shaders, three copies of the band
+  constants (`terrain_fill.cpp`, `terrain_sampler.hpp`, `aim_query.cpp`), two name tables, and
+  `supports_growth`/`hardness`/`is_solid` with zero consumers. The read-only survey of every site
+  (named in `research/lin-look-log.md` §0) is the input to that group.
 - **The svo world cannot be edited** — it is rebuilt from the analytic sampler; there is no
   mutable structure (goal 160).
 
@@ -377,6 +468,8 @@ tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the oct
 
 ## Sources this file compresses
 
+`research/lin-look-log.md` (the Lin-look, collision & lag pass: what each of the user's five
+complaints measured as, the bisection tables, the 900-frame A/B, and what was decided against).
 `research/micro-voxel-pivot-log.md` (the sub-cm pivot: every design decision, the build-time
 optimization table, and the real numbers).
 `research/chunk-generation-optimization-log.md` (the prior pass's own full record — root causes, the

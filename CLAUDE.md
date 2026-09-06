@@ -265,6 +265,47 @@ Machine-relevant deltas ONLY:
 - The 165 Hz panel caps fps readings at ~155–159 (FIFO_RELAXED); a "GPU headroom" question needs
   a Tracy GPU zone or a heavier pose (ground level at a hilltop measured 76 fps), not the fps line.
 
+## Lin-look, collision & lag pass (2026-09-05, after the pivot) — operational deltas
+
+Full record: `research/lin-look-log.md`; backlog Groups Z–AC (goals 164–176) in `docs/goals.md`.
+Machine-relevant deltas ONLY:
+
+- **`--debug-view NAME`** renders ONE shading term per frame:
+  `lit|ao|normal|facenormal|level|steps|coverage|cubepx|smooth|lodcube|material|distance`
+  (`tools/svo_render --view` takes the same names). Reach for it before staring at a composite —
+  each view attributed one bug in this pass. TAA is off under a debug view; `--verify-frame`
+  captures one without judging it.
+- **Shaders load at runtime**: edit `render/diligent/shaders/*.hlsl` and relaunch, no rebuild.
+  That is what made the water bisection (swap one `return` line, sample one pixel row with a
+  five-line Python script) a four-run job.
+- **`svo_render --lod-center x,y,z`** builds the LOD around a point other than the camera — the
+  deterministic reproduction of "the camera moved away from the last build center". Any artifact
+  that appears "after the rebuild finishes" starts here, on the CPU, not in the app.
+- New app flags: `--no-taa`, `--smooth-pixels N` (ancestor span for the averaged normal, ~6 px),
+  `--grain A` / `--no-grain` (per-cube brightness grain, default 0.10), `--ao-radius PX`,
+  `--shadow-lod M`, `--svo-threads N` (build pool; default 3/4 of the hardware threads — a build on
+  EVERY thread starved `present`, measured: 12 of 13 slow frames), `--svo-upload-mb N` (slice
+  size, default 32; 8 made the stutter WORSE), `--noclip` (the old spectator — collision is on by
+  default in fly AND walk).
+- **Vulkan faults if the app's very first command is a timestamp query** (`vkCmdWriteTimestamp`
+  inside the NVIDIA driver, with no post-processor warm-up ahead of it); the `gpu march+resolve`
+  timer skips the first two frames. The overlay and the 2 s stats line print it — that number
+  (3.2–6.3 ms everywhere measured) is how "the lag is not the rendering" was settled.
+- **Slow-frame attributor**: on the svo path every frame over 20 ms logs
+  `slow frame N: X ms = upload + camera + render + post + overlay + present` plus what was happening
+  (uploading / tree swapped / building), and the exit summary counts them by cause. A "why did it
+  hitch" question starts with a 900-frame `--autofly --walk` run and this log, not with a profiler.
+- **`--verify-frame` reads 34% on both backends now**; the section above's 48% counted the moiré
+  as contrast. Threshold unchanged (6%).
+- **Tree layout v2**: internal nodes and brick leaves carry one attribute word after the header
+  (int8 x3 average normal + uint8 coverage), so the child-slot arithmetic moved everywhere.
+  `tree_layout.hpp`, `ray_trace.cpp` and `svo_march.psh.hlsl` change together; the 7,000-ray
+  oracle is the check.
+- `tools/svo_render` writes its PNGs stored, not compressed (2,765,798 bytes at 1280x720 = raw
+  RGB + headers) — re-save through PIL (12.x is installed, Python 3.14) before committing one.
+- **113/113 tests** (9 new in `world/collision`, 3 new in `world/svo`). Captures for the pass:
+  `research/captures/lin_*.png` (named at the end of the research log).
+
 ## Phase status
 
 **Phase 0 (repo scaffold + dependency fetch/build smoke test): DONE.** Clean configure+build

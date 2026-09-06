@@ -22,6 +22,7 @@ target_link_libraries(voxel_app PRIVATE
     world_meshing
     world_streaming
     world_svo
+    world_collision
     render_interface
     render_diligent
     glfw

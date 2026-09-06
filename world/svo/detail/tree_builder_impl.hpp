@@ -19,10 +19,20 @@
 
 namespace world::svo::detail {
 
+// What a built node reports upward (Group Z): its area-weighted exposed-face normal sum (world
+// units squared, so coarse and fine children mix by real surface area) and the fraction of its
+// volume that is occupied. The parent packs its own summary into its attribute word
+// (tree_layout.hpp) and keeps accumulating.
+struct NodeSummary {
+    glm::vec3 normal_sum{0.0f};
+    float coverage = 0.0f;
+};
+
 struct SubtreeOutput {
     std::vector<std::uint32_t> nodes;
     std::vector<std::uint32_t> bricks;
     std::uint32_t root = kNoNode;
+    NodeSummary summary; // of `root`, for the parent that splices this subtree in
     BuildStats stats;
 };
 
@@ -38,7 +48,7 @@ inline void relocate_subtree(SubtreeOutput& out, std::uint32_t nodeOffset, std::
         const std::uint32_t header = out.nodes[at];
         const std::uint32_t kind = node_kind(header);
         if (kind == kNodeKindBrick) {
-            out.nodes[at + 1] += brickBase;
+            out.nodes[at + kNodeBrickIndexSlot] += brickBase;
         } else if (kind == kNodeKindInternal) {
             const std::uint32_t mask = node_child_mask(header);
             for (int octant = 0; octant < 8; ++octant) {
@@ -75,6 +85,16 @@ inline world::chunk::MaterialID choose_representative(const std::array<world::ch
         return best;
     };
     constexpr std::uint32_t kTopOctants = 0b11001100u; // bit1 (y) set: octants 2,3,6,7
+    // Water is by construction the top of every column below sea level, so a node whose top
+    // octants hold any water contains the water SURFACE -- what a viewer above sees. Without this
+    // a shore node's top octants tie between water and the seabed rising through them, and the
+    // tie-break alternates per node: sand-colored checkerboards on the water at every LOD ring.
+    for (int octant = 0; octant < 8; ++octant) {
+        if ((mask & kTopOctants & (1u << octant)) != 0u &&
+            reps[static_cast<std::size_t>(octant)] == MaterialID::Water) {
+            return MaterialID::Water;
+        }
+    }
     const MaterialID top = vote(kTopOctants);
     return top != MaterialID::Air ? top : vote(~kTopOctants);
 }
@@ -88,9 +108,10 @@ public:
     // Builds the node for the level-`level` cell `cell` into `out`. `known` carries a
     // classification the parent already computed for this box (or Mixed-with-unknown = compute).
     // When `jobs` is non-null and `level == params.parallel_split_level`, the pre-built subtree for
-    // this cell is spliced in instead of built.
+    // this cell is spliced in instead of built. `summary` (optional) receives the node's normal
+    // sum + coverage for the parent's attribute word.
     std::uint32_t build_node(int level, glm::ivec3 cell, SubtreeOutput& out, const BoxClassification* known,
-                             std::vector<SubtreeOutput>* jobs) {
+                             std::vector<SubtreeOutput>* jobs, NodeSummary* summary) {
         const Box box = box_of(level, cell);
         BoxClassification cls;
         if (known != nullptr) {
@@ -102,13 +123,13 @@ public:
             return kNoNode;
         }
         if (cls.cls == BoxClass::Solid) {
-            return emit_solid(out, cls.material);
+            return emit_solid(out, cls.material, summary);
         }
         if (jobs != nullptr && level == params_.parallel_split_level) {
-            return splice_job(cell, out, *jobs);
+            return splice_job(cell, out, *jobs, summary);
         }
         if (is_leaf_level(level, box)) {
-            return emit_brick(level, box, out);
+            return emit_brick(level, box, out, summary);
         }
 
         // Internal node: classify every child first so the exact number of slots to reserve is
@@ -129,22 +150,24 @@ public:
             return kNoNode;
         }
         const auto me = static_cast<std::uint32_t>(out.nodes.size());
-        out.nodes.resize(out.nodes.size() + 1 + nonAir, 0u);
+        out.nodes.resize(out.nodes.size() + kNodeFirstChildSlot + nonAir, 0u);
 
         std::uint32_t mask = 0;
         std::uint32_t slot = 0;
         std::array<world::chunk::MaterialID, 8> reps{};
+        std::array<NodeSummary, 8> childSummary{};
         for (int octant = 0; octant < 8; ++octant) {
             const BoxClassification& c = childCls[static_cast<std::size_t>(octant)];
             if (c.cls == BoxClass::Air) {
                 continue;
             }
-            const std::uint32_t child = build_node(level + 1, child_cell(cell, octant), out, &c, jobs);
+            const std::uint32_t child = build_node(level + 1, child_cell(cell, octant), out, &c, jobs,
+                                                   &childSummary[static_cast<std::size_t>(octant)]);
             if (child == kNoNode) {
                 continue;
             }
             mask |= 1u << octant;
-            out.nodes[me + 1 + slot] = child;
+            out.nodes[me + kNodeFirstChildSlot + slot] = child;
             ++slot;
             reps[static_cast<std::size_t>(octant)] = node_material(out.nodes[child]);
         }
@@ -156,6 +179,36 @@ public:
         }
         out.stats.padding_words += nonAir - static_cast<std::uint32_t>(std::popcount(mask));
         out.nodes[me] = make_node_header(kNodeKindInternal, mask, choose_representative(reps, mask));
+
+        // Attributes: children's summaries plus the coarse exposure a brick cannot see -- a solid
+        // child's face against an ABSENT (air) sibling is one whole exposed child face.
+        NodeSummary mine;
+        const float childEdge = geometry_.level_edge(level + 1);
+        const float childFaceArea = childEdge * childEdge;
+        for (int octant = 0; octant < 8; ++octant) {
+            if ((mask & (1u << octant)) == 0u) {
+                continue;
+            }
+            const NodeSummary& cs = childSummary[static_cast<std::size_t>(octant)];
+            mine.normal_sum += cs.normal_sum;
+            mine.coverage += cs.coverage * 0.125f;
+            const std::uint32_t childHeader =
+                out.nodes[out.nodes[me + node_child_slot(out.nodes[me], octant)]];
+            if (node_kind(childHeader) != kNodeKindSolid) {
+                continue;
+            }
+            for (int axis = 0; axis < 3; ++axis) {
+                const int sibling = octant ^ (1 << axis);
+                if ((mask & (1u << sibling)) == 0u) {
+                    // The sibling in the +axis direction is absent when this child sits in the -half.
+                    mine.normal_sum[axis] += ((octant >> axis) & 1) != 0 ? -childFaceArea : childFaceArea;
+                }
+            }
+        }
+        out.nodes[me + kNodeAttrSlotInternal] = pack_summary(mine);
+        if (summary != nullptr) {
+            *summary = mine;
+        }
         return me;
     }
 
@@ -185,10 +238,20 @@ private:
         return geometry_.level_voxel_edge(level) <= target;
     }
 
-    static std::uint32_t emit_solid(SubtreeOutput& out, world::chunk::MaterialID material) {
+    [[nodiscard]] static std::uint32_t pack_summary(const NodeSummary& s) noexcept {
+        const float length = glm::length(s.normal_sum);
+        const glm::vec3 n = length > 1.0e-12f ? s.normal_sum / length : glm::vec3{0.0f};
+        return make_node_attributes(n, s.coverage);
+    }
+
+    static std::uint32_t emit_solid(SubtreeOutput& out, world::chunk::MaterialID material,
+                                    NodeSummary* summary) {
         const auto at = static_cast<std::uint32_t>(out.nodes.size());
         out.nodes.push_back(make_node_header(kNodeKindSolid, 0u, material));
         ++out.stats.solid_leaves;
+        if (summary != nullptr) {
+            *summary = NodeSummary{glm::vec3{0.0f}, 1.0f}; // exposure is the parent's to judge
+        }
         return at;
     }
 
@@ -201,10 +264,11 @@ private:
         return cls;
     }
 
-    std::uint32_t emit_brick(int level, const Box& box, SubtreeOutput& out) {
+    std::uint32_t emit_brick(int level, const Box& box, SubtreeOutput& out, NodeSummary* summary) {
         Brick brick;
         const auto start = std::chrono::steady_clock::now();
-        sampler_.fill_brick(box.min, geometry_.level_voxel_edge(level), brick);
+        const float voxelEdge = geometry_.level_voxel_edge(level);
+        sampler_.fill_brick(box.min, voxelEdge, brick);
         out.stats.fill_seconds +=
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         ++out.stats.bricks_sampled;
@@ -216,17 +280,25 @@ private:
         }
         if (brick.is_homogeneous()) {
             ++out.stats.solid_per_level[lv];
-            return emit_solid(out, brick.at(std::size_t{0}));
+            return emit_solid(out, brick.at(std::size_t{0}), summary);
         }
+        NodeSummary mine;
+        mine.normal_sum = glm::vec3{brick.exposed_face_sum()} * (voxelEdge * voxelEdge);
+        mine.coverage = static_cast<float>(brick.occupied_count()) / static_cast<float>(kBrickVoxels);
         const auto at = static_cast<std::uint32_t>(out.nodes.size());
         out.nodes.push_back(make_node_header(kNodeKindBrick, 0u, brick.representative()));
         out.nodes.push_back(static_cast<std::uint32_t>(out.bricks.size() / kBrickWords));
+        out.nodes.push_back(pack_summary(mine));
         out.bricks.insert(out.bricks.end(), brick.words().begin(), brick.words().end());
         ++out.stats.bricks_kept;
+        if (summary != nullptr) {
+            *summary = mine;
+        }
         return at;
     }
 
-    std::uint32_t splice_job(glm::ivec3 cell, SubtreeOutput& out, std::vector<SubtreeOutput>& jobs) const {
+    std::uint32_t splice_job(glm::ivec3 cell, SubtreeOutput& out, std::vector<SubtreeOutput>& jobs,
+                             NodeSummary* summary) const {
         const int n = 1 << params_.parallel_split_level;
         const auto un = static_cast<std::size_t>(n);
         const std::size_t index =
@@ -254,6 +326,9 @@ private:
         out.nodes.insert(out.nodes.end(), job.nodes.begin(), job.nodes.end());
         out.bricks.insert(out.bricks.end(), job.bricks.begin(), job.bricks.end());
         const std::uint32_t root = job.root + nodeBase;
+        if (summary != nullptr) {
+            *summary = job.summary;
+        }
         job = SubtreeOutput{}; // release the job's memory as soon as it is merged
         return root;
     }
@@ -293,7 +368,8 @@ BrickTree build_tree(const S& sampler, const TreeGeometry& geometry, const Build
                         static_cast<std::size_t>(x);
                     futures.push_back(pool->submit([&builder, &jobs, index, split, x, y, z] {
                         detail::SubtreeOutput& job = jobs[index];
-                        job.root = builder.build_node(split, glm::ivec3{x, y, z}, job, nullptr, nullptr);
+                        job.root = builder.build_node(split, glm::ivec3{x, y, z}, job, nullptr, nullptr,
+                                                      &job.summary);
                     }));
                 }
             }
@@ -301,9 +377,9 @@ BrickTree build_tree(const S& sampler, const TreeGeometry& geometry, const Build
         for (std::future<void>& f : futures) {
             f.get(); // rethrows a job's exception here, on the caller's thread
         }
-        out.root = builder.build_node(0, glm::ivec3{0, 0, 0}, out, nullptr, &jobs);
+        out.root = builder.build_node(0, glm::ivec3{0, 0, 0}, out, nullptr, &jobs, &out.summary);
     } else {
-        out.root = builder.build_node(0, glm::ivec3{0, 0, 0}, out, nullptr, nullptr);
+        out.root = builder.build_node(0, glm::ivec3{0, 0, 0}, out, nullptr, nullptr, &out.summary);
     }
 
     BrickTree tree;

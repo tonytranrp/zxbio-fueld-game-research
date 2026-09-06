@@ -65,6 +65,7 @@ void DebugOverlay::render(const OverlayStats& stats) {
                         stats.svo.solid_leaves);
             ImGui::Text("build %.2f s, upload %.1f ms, %zu uploads, %zu trees", stats.svo.build_seconds,
                         stats.svo.upload_ms, stats.svo.uploads, stats.svo.trees);
+            ImGui::Text("gpu march+resolve: %.2f ms", stats.svo.gpu_ms);
         } else {
             ImGui::Text("chunks ready: %zu", stats.ready_chunks);
             ImGui::Text("visible after culling: %zu / %zu", stats.visible_chunks, stats.total_chunk_meshes);

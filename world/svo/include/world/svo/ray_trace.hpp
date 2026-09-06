@@ -19,9 +19,23 @@ struct TraceParams {
     // travelled, drops below this angle (radians ~ one pixel's angular size * quality). 0 disables
     // it -- the exact traversal the tests use.
     float lod_pixel_angle = 0.0f;
-    // Distance already travelled from the CAMERA before this ray started (secondary rays), so LOD
-    // is judged by distance from the eye, not from the bounce point.
+    // Added to the distance travelled before the LOD test. The first version fed secondary rays
+    // their primary hit distance here so LOD followed distance from the EYE; that let the early-out
+    // fire on the node containing the secondary ray's own origin whenever the eye was farther from
+    // a surface than ~2.4x that surface's distance from the tree's build center -- the "shadow
+    // rings" (docs/goals.md goal 164). Secondary rays now leave it 0 and judge LOD by distance from
+    // their own origin, which provably cannot self-hit. Kept for tools/tests.
     float t_offset = 0.0f;
+    // Smooth-normal selection: the hit reports the attribute normal of the deepest ancestor whose
+    // edge is at least `t * smooth_pixel_angle` (an ancestor spanning ~N pixels). 0 = the hit
+    // node's own attributes.
+    float smooth_pixel_angle = 0.0f;
+    // An LOD early-out only counts as a hit when the node's volume coverage (its attribute word)
+    // is at least this; below it the ray keeps descending as if the node were still too big.
+    // 0 = every internal node is solid at the early-out (primary rays: closed silhouettes).
+    // Secondary rays use ~0.35 so a mostly-empty node near a ridge does not throw a whole
+    // node's worth of shadow (goal 171: the blocky shadow patches in the `lit` debug view).
+    float lod_coverage_threshold = 0.0f;
     float max_t = std::numeric_limits<float>::infinity();
 };
 
@@ -33,7 +47,16 @@ struct Hit {
     glm::vec3 position{0.0f};   // origin + t * dir
     int level = -1;             // node level the hit came from (brick level for a voxel hit)
     bool lod_cube = false;      // true when an LOD early-out shaded an internal node as a cube
+    bool solid_leaf = false;    // true when the hit is a solid leaf's face (its own surface; no attributes)
     std::uint32_t steps = 0;    // traversal iterations (diagnostics)
+    // Group Z attributes: the edge (meters, for a unit-length dir in the geometry's units) of the
+    // cube that was hit -- a brick voxel, an LOD cube, or a solid leaf -- and the averaged surface
+    // normal + volume coverage read from the node the smoothing rule selected (tree_layout.hpp).
+    // smooth_normal is the zero vector when nothing exposed was recorded there.
+    float cube_edge = 0.0f;
+    glm::vec3 smooth_normal{0.0f};
+    float coverage = 0.0f;
+    int smooth_level = -1; // the level whose attributes smooth_normal came from
 };
 
 // The CPU REFERENCE marcher (research/micro-voxel-pivot-log.md §2.7): stack-based octree descent

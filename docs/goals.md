@@ -40,7 +40,11 @@ Table of contents: [A. Documentation migration](#a-documentation-migration) ·
 [V. Chunk-generation load-time optimization](#v-chunk-generation-load-time-optimization) ·
 [W. Sparse-brick octree core](#w-sparse-brick-octree-core-micro-voxel-pivot) ·
 [X. GPU ray-marched renderer](#x-gpu-ray-marched-renderer) ·
-[Y. Micro-voxel measurements & follow-ups](#y-micro-voxel-measurements--follow-ups)
+[Y. Micro-voxel measurements & follow-ups](#y-micro-voxel-measurements--follow-ups) ·
+[Z. Shading correctness & the Lin look](#z-shading-correctness--the-lin-look) ·
+[AA. Body-vs-world collision](#aa-body-vs-world-collision) ·
+[AB. The lag, measured](#ab-the-lag-measured) ·
+[AC. Materials as components](#ac-materials-as-components)
 
 ---
 
@@ -982,8 +986,10 @@ not (the brief's §2.2 "bricked SVO" was built here directly, in `world/svo`).
 158. Incremental rebuild: reuse unchanged subtrees (far rings) and a persistent brick pool with
      partial uploads, instead of the whole-tree rebuild + 200–400 MB upload on every move.
      **Check**: rebuild wall-clock and upload bytes per camera step, before/after.
-159. Temporal AA (or supersampling) for the sub-pixel voxel shimmer 2–8 m out — visible moiré in
+159. [x] Temporal AA (or supersampling) for the sub-pixel voxel shimmer 2–8 m out — visible moiré in
      every capture, the same reason John Lin's renderer needs TAA. **Check**: viewed capture pair.
+     Done as goal 168 (Group Z), together with the averaged-normal blend that removes the moiré's
+     lighting component.
 160. Editing: the tree is rebuilt from an analytic sampler and never mutated; digging/placing needs
      a mutable structure (HashDAG is the researched shape, brief §2.2). Not started.
 161. `fill_terrain` truncates the surface height toward zero (`static_cast<int32_t>`) instead of
@@ -996,6 +1002,99 @@ not (the brief's §2.2 "bricked SVO" was built here directly, in `world/svo`).
      next optimization, not another guess.
 163. DAG deduplication as a measurement (brief §5.3, hash-interning): expected small on noise
      terrain; the brief's 16-identical-tiles test is the unit check.
+
+## Lin-look, collision & lag pass (groups Z–AC)
+
+The user's second round on the micro-voxel world, with three screenshots: shadow "circles" after a
+rebuild and shadows that appear "when I stay still"; no collision ("I can't go through blocks or
+the mountains"); lag "when I go close to mountains" that is "not the rendering"; a "swirly"
+artifact on every slope; the look ("fine grains and smooth ... still a voxel but blends") vs. our
+blocky cubes; and materials living in parallel tables with hardcoded offsets instead of
+self-contained component files. Decision log with every measurement and the bisection tables:
+`research/lin-look-log.md`.
+
+## Z. Shading correctness & the Lin look
+
+164. [x] **The shadow rings.** Secondary rays judged LOD by distance from the eye, so the early-out
+     fired on the node containing their own origin whenever the camera was >2.4x farther from a
+     surface than the tree's build center — a dark disc of self-shadow + self-occlusion around the
+     previous build center, appearing when a rebuild lands and sliding with the camera. Secondary
+     rays now judge LOD by distance from their own origin (`TraceParams::t_offset` stays 0), which
+     cannot self-hit. **Check**: `svo_render --lod-center` 20 m off the camera, `--view lit` and
+     `--view ao`: no disc (was: the nearest slope black); CPU shadowed-hit fraction 3.3% → 0.6%.
+165. [x] **Layout v2 — a normal and a coverage per node.** Internal nodes and brick leaves carry
+     an attribute word (int8 x3 area-weighted exposed-face normal + uint8 volume coverage) built
+     bottom-up (`Brick::exposed_face_sum` row bit tricks; solid-vs-absent sibling faces at the
+     parent). **Check**: sphere surface bricks within 35° of radial, root coverage 0.128 within
+     1% of 33,510/262,144, oracle 0/7,000 mismatches on the new child-slot arithmetic; build time
+     unchanged (0.57–0.78 s); +~3 MB on a 350 MB tree.
+166. [x] **Staircase self-shadowing.** A slope of tangent s built from steps of any size shadows
+     s/tan(sun elevation) of every tread (47% at 45° here) — terracing at coarse LOD, moiré at
+     pixel-sized steps. Shadow origins lift one local cube along the averaged normal (AO half a
+     cube); solid leaves get no lift (a water top IS its surface — lifting it along a parent's
+     normal put origins inside the shore). **Check**: `lit` view flat on sun-facing slopes;
+     D3D12 capture without the intermediate water checkerboard.
+167. [x] **The swirl.** Shading normal = blend of the hit cube's face (weight 1 above 4.5 px
+     projected size) and the averaged normal of the ancestor spanning ~6 px (`--smooth-pixels`);
+     per-cube brightness grain (`--grain`, off under 1.5 px, full at 4 px) for the "fine grain".
+     **Check**: `facenormal` view shows the staircase moiré, `normal` view does not; viewed
+     captures on both backends (`research/captures/lin_*.png`).
+168. [x] **Temporal AA** (`svo_taa.psh.hlsl`): Halton-jittered primary rays, hit distance written
+     to a second target, reprojection through the previous view-projection (static world: no
+     motion vectors), distance-mismatch rejection (2% + 5 cm), 3x3 clamp, 1/8 blend; `--no-taa`.
+     **Check**: `--verify-frame` 34.2% on Vulkan and D3D12 (48% before counted the moiré);
+     autofly worst frame unchanged; captures viewed.
+169. [x] **The water checkerboard** (also in the user's screenshot). Every debug view uniform on the
+     water; bisected by swapping `ShadeWater`'s return line and sampling one pixel row: the sun
+     glint alone (`pow(., 256)` through a 3–7 m ripple lattice with a near-vertical half-vector).
+     Broad dim highlight + half-meter noise. **Check**: row y=690: 105→208→170 became 122→146→140.
+170. [x] **Debug views + GPU time**: `--debug-view lit|ao|normal|facenormal|level|steps|coverage|cubepx|smooth|lodcube|material|distance`
+     (`svo_render --view`, same names; `--verify-frame` captures without judging them), a
+     timestamp query (`gpu march+resolve` in the overlay and the 2 s log; Vulkan faults if the
+     app's very first command is a timestamp — skipped for two frames). **Check**: each view
+     attributed one bug above.
+171. [x] **Coverage-aware secondary early-out**: an LOD node under 35% solid is descended, not hit,
+     by shadow/AO rays (`TraceParams::lod_coverage_threshold`; primary rays keep 0 so silhouettes
+     stay closed). **Check**: the blocky black patches near ridges in the `lit` view; oracle
+     unaffected (threshold 0).
+
+## AA. Body-vs-world collision
+
+172. [x] `world/collision`: `SolidQuery` concept, `move_and_slide` (y/x/z, bisected, 0.25 m
+     sub-steps so a 1.1 m boost frame cannot jump a 0.5 m trunk, 0.55 m step-up in walk mode,
+     never traps a body that starts inside solid), `TerrainCollider` (the tree's own voxelization
+     rule over a cached 16 m / 3.1 cm height grid rebuilt on a background thread + trunk boxes;
+     independent of the renderer's LOD). Camera body 0.6 x 1.75 m, collision in fly and walk
+     (`--noclip`). **Check**: 9 tests (walls, sliding, ledges, thin-wall tunneling, 40 random
+     drops settle ≤11 cm above the footprint's highest column, a 5 m cliff walk, trunk yes /
+     canopy no at both speeds); `--autofly --walk`: 0 ground violations.
+173. Collide against the octree once editing (goal 160) can make the analytic world stale: the
+     `SolidQuery` boundary is already there; the query is a per-box point-sample of the tree
+     near the build center. **Check**: the same 9 tests against a tree-backed query.
+
+## AB. The lag, measured
+
+174. [x] A slow-frame attributor (every frame >20 ms logs upload / camera / render / post /
+     overlay / present + uploading / swapped / building flags; exit summary by cause) and a
+     900-frame walk A/B: 12 of 13 slow frames were `present` stalls while a build ran on all 16
+     threads; 8 MB slices made it worse; 12 threads left one (the swap). Fixes: the build pool
+     defaults to 3/4 of the hardware threads; the previous tree's GPU buffers are reused as a
+     spare pair (25% growth headroom) instead of created per swap; the collider's first cache is
+     built before the loop. **Check**: fly autofly 0 frames >20 ms (worst 16.9 ms, was 38);
+     walk: 3, all one-time growth swaps (43 ms); GPU march+resolve 3.2–6.3 ms.
+175. The growth swap: a tree that outgrows its spare buffers still pays a synchronous buffer
+     creation (43 ms at 540 MB). **Check**: create on the build thread's own device context, or
+     size spares from the last N trees; measured with the attributor.
+
+## AC. Materials as components
+
+176. Every material as its own definition file composed into a compile-time registry (one source
+     for color, name, solidity, liquid physics, shading model, band role), consumed by both
+     renderers' palettes, the sampler/fill band rules (three copies today), the aim query, and the
+     walk physics — no `[8]`/`7u`/`3u`/`5u` literals, no "must stay in enum order" comments, a
+     compile-time check that ids are contiguous. **Check**: the survey's every-site table
+     (`research/lin-look-log.md` §0 names it) reduced to registry lookups; tests unchanged or
+     strengthened; shaders read a material record instead of a literal.
 
 ## Sources
 
@@ -1017,3 +1116,8 @@ brief (Laine & Karras 2010; Kämpe, Sintorn & Assarsson 2013; Careil et al. 2020
 al. 2009 GigaVoxels; Dolonius et al. 2017) and to this session's own direct reading of every module
 it touched — the brief's stack (Rust/VoxelHex) did not match this repository's, so its techniques
 were re-implemented, not adopted; `research/micro-voxel-pivot-log.md` has the decisions and numbers.
+Groups Z–AC trace to this session's own measurements (the CPU reference tool with `--lod-center`,
+the debug views, a shader-return-line bisection with pixel-row sampling, and a slow-frame
+attributor over 900-frame autofly runs), a live web pass on Lin's renderer / voxel anti-aliasing /
+LOD shadow acne (ESVO's `Raycast.inl`, Fessler's Derived Surface Shading, Gustafsson, Binks, Playdead
+TRAA), and a read-only survey of every hardcoded material site — `research/lin-look-log.md`.

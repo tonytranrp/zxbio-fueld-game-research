@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include "world/svo/tree_layout.hpp"
@@ -20,14 +22,37 @@ TEST_CASE("node header packs kind, child mask and material losslessly", "[svo][l
     CHECK(node_kind(brick) == kNodeKindBrick);
 }
 
-TEST_CASE("child slots are packed in octant order behind the header", "[svo][layout]") {
-    // Octants 0, 4, 5, 7 present -> pointers at header+1..header+4 in that order (the SVDAG
-    // paper's layout: 4 + 4*popcount bytes per internal node).
+TEST_CASE("child slots are packed in octant order behind the header and attribute word", "[svo][layout]") {
+    // Octants 0, 4, 5, 7 present -> pointers at header+2..header+5 in that order (the SVDAG
+    // paper's layout plus Group Z's one attribute word: 8 + 4*popcount bytes per internal node).
     const std::uint32_t h = make_node_header(kNodeKindInternal, 0b10110001u, MaterialID::Stone);
-    CHECK(node_child_slot(h, 0) == 1);
-    CHECK(node_child_slot(h, 4) == 2);
-    CHECK(node_child_slot(h, 5) == 3);
-    CHECK(node_child_slot(h, 7) == 4);
+    CHECK(node_child_slot(h, 0) == 2);
+    CHECK(node_child_slot(h, 4) == 3);
+    CHECK(node_child_slot(h, 5) == 4);
+    CHECK(node_child_slot(h, 7) == 5);
+    CHECK(node_words_internal(h) == 6);
+    CHECK(node_attr_slot(h) == kNodeAttrSlotInternal);
+    CHECK(node_attr_slot(make_node_header(kNodeKindBrick, 0u, MaterialID::Dirt)) == kNodeAttrSlotBrick);
+    CHECK(node_attr_slot(make_node_header(kNodeKindSolid, 0u, MaterialID::Dirt)) == kNoNode);
+}
+
+TEST_CASE("attribute word round-trips a normal to 1/127 and coverage to 1/255", "[svo][layout]") {
+    const glm::vec3 n = glm::normalize(glm::vec3{0.3f, -0.8f, 0.5f});
+    const std::uint32_t attr = make_node_attributes(n, 0.37f);
+    const glm::vec3 back = node_attr_normal(attr);
+    CHECK(std::abs(back.x - n.x) <= 1.0f / 127.0f);
+    CHECK(std::abs(back.y - n.y) <= 1.0f / 127.0f);
+    CHECK(std::abs(back.z - n.z) <= 1.0f / 127.0f);
+    CHECK(std::abs(node_attr_coverage(attr) - 0.37f) <= 1.0f / 255.0f);
+
+    // Axis normals and the extremes are exact; a zero normal stays zero (the "nothing exposed"
+    // signal consumers fall back from).
+    CHECK(node_attr_normal(make_node_attributes(glm::vec3{0.0f, 1.0f, 0.0f}, 1.0f)) ==
+          glm::vec3{0.0f, 1.0f, 0.0f});
+    CHECK(node_attr_normal(make_node_attributes(glm::vec3{-1.0f, 0.0f, 0.0f}, 0.0f)) ==
+          glm::vec3{-1.0f, 0.0f, 0.0f});
+    CHECK(node_attr_coverage(make_node_attributes(glm::vec3{0.0f}, 1.0f)) == 1.0f);
+    CHECK(node_attr_normal(make_node_attributes(glm::vec3{0.0f}, 0.5f)) == glm::vec3{0.0f});
 }
 
 TEST_CASE("octant bit layout is x, y, z", "[svo][layout]") {

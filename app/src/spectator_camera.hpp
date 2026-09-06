@@ -41,10 +41,35 @@ inline constexpr float kSwimEquilibriumDepth = 0.5f;  // feet rest this far unde
 inline constexpr float kGravityAcceleration = -32.0f; // world units/s^2 (voxel-scale gravity)
 inline constexpr float kEyeHeight = 1.7f;             // camera above the ground surface when standing
 
+// The body the collision sweep moves (docs/goals.md Group AA): an upright box whose feet sit
+// kEyeHeight under the camera. 0.6 m wide, 1.75 m tall -- the eye is 5 cm under the top.
+inline constexpr float kBodyHalfWidth = 0.3f;
+inline constexpr float kBodyHeight = 1.75f;
+inline constexpr float kStepHeight = 0.55f; // walk mode climbs ledges up to this (fly mode: none)
+
+// The motion this frame WANTS, before the world has a say: orientation is applied to the
+// transform, the vertical velocity is integrated (gravity/buoyancy in walk mode), and the wanted
+// displacement is returned without moving the position. The app feeds it to
+// world::collision::move_and_slide; update_spectator_camera below is the collision-free legacy
+// path (tests, --noclip).
+struct SpectatorStep {
+    glm::vec3 delta{0.0f};
+};
+SpectatorStep compute_spectator_step(engine::ecs::Transform& transform, SpectatorCameraState& state,
+                                     const engine::input::InputState& input, glm::vec2 lookDeltaPixels,
+                                     float dtSeconds, float groundHeightWorld) noexcept;
+
+// Walk mode's analytic floor: never let the eye end under ground height + kEyeHeight. With
+// collision on this is a backstop that should never fire (the voxel top the sweep lands on is at
+// or above the analytic surface); without it, it is the whole ground model.
+void clamp_to_ground(engine::ecs::Transform& transform, SpectatorCameraState& state,
+                     float groundHeightWorld) noexcept;
+
 // Delta-time-integrated update (Phase 1 brief §6: speed must not couple to framerate). Pure
 // function of plain data -- unit-testable without GLFW or a window; the app's frame loop is just
 // glue around this. groundHeightWorld: the terrain surface height at the camera's current (x,z)
 // column (from the same height function that generated the terrain); only read in Walk mode.
+// Equivalent to compute_spectator_step + applying the delta + clamp_to_ground.
 void update_spectator_camera(engine::ecs::Transform& transform, SpectatorCameraState& state,
                              const engine::input::InputState& input, glm::vec2 lookDeltaPixels,
                              float dtSeconds, float groundHeightWorld = 0.0f) noexcept;

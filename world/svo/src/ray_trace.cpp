@@ -135,8 +135,12 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
     int level = 0;
     const std::uint32_t* nodes = tree.nodes.data();
 
+    // `cubeEdge` is the hit cube's edge in world units; `attrLevel` the deepest level whose node
+    // on the stack carries attributes for this hit (the brick leaf itself, or a solid leaf's
+    // parent). The smoothing rule then walks up while the ancestor spans less than
+    // t * smooth_pixel_angle.
     const auto make_hit = [&](float tHit, MaterialID material, int hitLevel, bool lodCube,
-                              std::uint32_t steps) {
+                              std::uint32_t steps, float cubeEdge, int attrLevel) {
         Hit h;
         h.hit = true;
         h.t = tHit;
@@ -145,7 +149,26 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
         h.position = ray.origin + tHit * ray.dir;
         h.level = hitLevel;
         h.lod_cube = lodCube;
+        h.solid_leaf = attrLevel < hitLevel; // only a solid leaf's attributes come from its parent
         h.steps = steps;
+        h.cube_edge = cubeEdge;
+        int L = attrLevel;
+        if (params.smooth_pixel_angle > 0.0f) {
+            const float wanted = tHit * params.smooth_pixel_angle;
+            while (L > 0 && g.level_edge(L) < wanted) {
+                --L;
+            }
+        }
+        if (L >= 0) {
+            const std::uint32_t attrHeader = nodes[stack[L]];
+            const std::uint32_t slot = node_attr_slot(attrHeader);
+            if (slot != kNoNode) {
+                const std::uint32_t attr = nodes[stack[L] + slot];
+                h.smooth_normal = node_attr_normal(attr);
+                h.coverage = node_attr_coverage(attr);
+                h.smooth_level = L;
+            }
+        }
         return h;
     };
 
@@ -165,12 +188,13 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
             const std::uint32_t header = nodes[node];
             const std::uint32_t kind = node_kind(header);
             if (kind == kNodeKindSolid) {
-                return make_hit(t, node_material(header), level, false, iteration);
+                return make_hit(t, node_material(header), level, false, iteration, g.level_edge(level),
+                                level - 1);
             }
             if (kind == kNodeKindBrick) {
                 const int shift = tr.V - level - TreeGeometry::kBrickLog2; // finest bits below a brick voxel
                 const int cellShift = tr.V - level;
-                const std::uint32_t* bw = tree.brick_words(nodes[node + 1]);
+                const std::uint32_t* bw = tree.brick_words(nodes[node + kNodeBrickIndexSlot]);
                 glm::ivec3 v{(c.x >> shift) & 7, (c.y >> shift) & 7, (c.z >> shift) & 7};
                 const glm::ivec3 brickCell{(c.x >> cellShift) << cellShift, (c.y >> cellShift) << cellShift,
                                            (c.z >> cellShift) << cellShift};
@@ -187,7 +211,8 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
                 for (;;) {
                     const std::size_t index = brick_voxel_index(v.x, v.y, v.z);
                     if (brick_word_occupied(bw, index)) {
-                        return make_hit(t, brick_word_material(bw, index), level, false, iteration);
+                        return make_hit(t, brick_word_material(bw, index), level, false, iteration,
+                                        g.level_voxel_edge(level), level);
                     }
                     const int axis = argmin3(tMax);
                     t = tMax[axis];
@@ -209,8 +234,12 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
             const int childLevel = level + 1;
             if (params.lod_pixel_angle > 0.0f) {
                 const float childEdgeWorld = g.level_edge(childLevel);
-                if (childEdgeWorld < (t + params.t_offset) * params.lod_pixel_angle) {
-                    return make_hit(t, node_material(header), level, true, iteration);
+                if (childEdgeWorld < (t + params.t_offset) * params.lod_pixel_angle &&
+                    (params.lod_coverage_threshold <= 0.0f ||
+                     node_attr_coverage(nodes[node + kNodeAttrSlotInternal]) >=
+                         params.lod_coverage_threshold)) {
+                    return make_hit(t, node_material(header), level, true, iteration, g.level_edge(level),
+                                    level);
                 }
             }
             const int sh = tr.V - childLevel;
@@ -310,6 +339,7 @@ Hit trace_ray_brute_force(const BrickTree& tree, const Ray& ray) noexcept {
             h.position = ray.origin + t * ray.dir;
             h.level = g.max_brick_level();
             h.steps = iteration;
+            h.cube_edge = g.finest_voxel_edge();
             return h;
         }
         const int axis = argmin3(tMax);

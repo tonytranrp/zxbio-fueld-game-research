@@ -46,6 +46,12 @@ public:
     // outside the tree). Tests use it to check where distance-based LOD stopped subdividing.
     [[nodiscard]] int leaf_level_at(const glm::vec3& worldPos) const noexcept;
 
+    // The attribute word (tree_layout.hpp: average normal + coverage) of the node at `level`
+    // containing the point, walking down from the root; 0 when there is no such node, or when the
+    // node answering there is a solid leaf (which carries no attributes). Tests and tools use it;
+    // the marchers read the same words from their traversal stack.
+    [[nodiscard]] std::uint32_t attributes_at(const glm::vec3& worldPos, int level) const noexcept;
+
     struct Stats {
         std::size_t internal_nodes = 0;
         std::size_t brick_leaves = 0;

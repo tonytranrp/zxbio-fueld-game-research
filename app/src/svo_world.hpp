@@ -20,7 +20,7 @@ struct SvoWorldOptions {
     int root_size_log2 = 9;   // 512 m region around the camera
     float lod_radius = 4.0f;  // full resolution within this distance, halving per doubling beyond
     bool trees = true;
-    std::size_t worker_threads = 0; // 0 = hardware concurrency
+    std::size_t worker_threads = 0; // 0 = three quarters of the hardware threads (goal 170)
 };
 
 // The micro-voxel world (docs/goals.md Group X): owns the generator and builds world::svo
@@ -43,6 +43,12 @@ public:
 
     // Hands over the most recently finished tree, once.
     [[nodiscard]] std::optional<world::svo::BrickTree> take_finished();
+    // True while a finished tree is waiting to be taken (diagnostics: the frame that takes it
+    // pays for the GPU buffer creation).
+    [[nodiscard]] bool take_finished_pending() const {
+        const std::lock_guard guard(mutex_);
+        return finished_.has_value();
+    }
 
     [[nodiscard]] bool building() const noexcept { return building_.load(); }
     [[nodiscard]] float distance_from_build_center(glm::vec3 camera) const noexcept;

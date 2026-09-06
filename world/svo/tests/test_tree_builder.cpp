@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdio>
 
 #include <catch2/catch_test_macros.hpp>
@@ -66,6 +67,54 @@ TEST_CASE("uniform-LOD tree reproduces the sampler at every finest voxel", "[svo
     CHECK(ts.brick_leaves == stats.bricks_kept);
     CHECK(ts.deepest_level == g.max_brick_level());
     CHECK(tree.stats().padding_words == stats.padding_words);
+}
+
+TEST_CASE("node attributes hold outward average normals and volume coverage", "[svo][builder]") {
+    const TreeGeometry g = small_geometry();
+    const SphereSampler sphere = small_sphere();
+    BuildParams params;
+    params.uniform_lod = true;
+    const BrickTree tree = build_tree(sphere, g, params, nullptr, nullptr);
+    REQUIRE_FALSE(tree.empty());
+
+    // Every brick leaf on the sphere's surface should report a normal within ~35 degrees of the
+    // radial direction at its center (a 1 m staircase over an 8 m brick is coarse, so allow the
+    // slack), and a coverage strictly between 0 and 1. Solid interior leaves carry no attributes;
+    // their parents do, with coverage weighted by how many solid octants they hold.
+    std::size_t surfaceBricks = 0;
+    for (float z = 4.0f; z < 64.0f; z += 8.0f) {
+        for (float y = 4.0f; y < 64.0f; y += 8.0f) {
+            for (float x = 4.0f; x < 64.0f; x += 8.0f) {
+                const glm::vec3 p{x, y, z};
+                if (tree.leaf_level_at(p) != g.max_brick_level() || tree.material_at(p) == MaterialID::Air) {
+                    continue;
+                }
+                const std::uint32_t attr = tree.attributes_at(p, g.max_brick_level());
+                if (attr == 0u) {
+                    continue; // a solid leaf
+                }
+                const glm::vec3 n = node_attr_normal(attr);
+                const glm::vec3 radial = glm::normalize(p - sphere.center);
+                REQUIRE(glm::length(n) > 0.9f);
+                CHECK(glm::dot(n, radial) > 0.8f);
+                const float c = node_attr_coverage(attr);
+                CHECK(c > 0.0f);
+                CHECK(c < 1.0f);
+                ++surfaceBricks;
+            }
+        }
+    }
+    CHECK(surfaceBricks > 20);
+
+    // The root's coverage is the sphere's volume fraction of the 64 m cube (33510 / 262144).
+    const std::uint32_t rootAttr = tree.nodes[tree.root + kNodeAttrSlotInternal];
+    CHECK(std::abs(node_attr_coverage(rootAttr) - 33510.0f / 262144.0f) < 0.01f);
+    // A closed sphere's summed outward normal is ~zero: nothing exposed in any preferred direction.
+    CHECK(glm::length(node_attr_normal(rootAttr)) < 0.5f);
+    // A node holding the sphere's top cap points up.
+    const std::uint32_t capAttr = tree.attributes_at(glm::vec3{32.0f, 50.0f, 32.0f}, 2);
+    REQUIRE(capAttr != 0u);
+    CHECK(node_attr_normal(capAttr).y > 0.9f);
 }
 
 TEST_CASE("parallel build produces byte-identical nodes and bricks", "[svo][builder]") {
