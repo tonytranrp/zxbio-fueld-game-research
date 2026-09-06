@@ -87,7 +87,7 @@ inline constexpr std::uint32_t kNodeWordsSolid = 1u;
 }
 [[nodiscard]] inline std::uint32_t make_node_attributes(const glm::vec3& normal, float coverage) noexcept {
     const float c = coverage < 0.0f ? 0.0f : (coverage > 1.0f ? 1.0f : coverage);
-    const auto cov = static_cast<std::uint32_t>(c * 255.0f + 0.5f);
+    const auto cov = static_cast<std::uint32_t>(std::lround(c * 255.0f));
     return pack_snorm8(normal.x) | (pack_snorm8(normal.y) << 8) | (pack_snorm8(normal.z) << 16) | (cov << 24);
 }
 [[nodiscard]] inline glm::vec3 node_attr_normal(std::uint32_t attr) noexcept {

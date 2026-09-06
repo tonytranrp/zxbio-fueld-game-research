@@ -85,6 +85,14 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
     const TreeGeometry& g = tree.geometry;
     Traversal tr;
     tr.V = g.voxel_bits();
+    // The traversal stack (`stack[kMaxLevels]` below) is sized from kMaxVoxelBits (tree_layout.hpp's
+    // "float has a 24-bit mantissa" ceiling); voxel_bits() is root_size_log2 - voxel_size_log2, both
+    // set from user-supplied CLI flags (--region-log2/--voxel-log2) with no upstream clamp, so this
+    // is a real boundary, not a defensive no-op -- caught once per ray rather than trusted from the
+    // caller (clang-analyzer's ArrayBound flagged the unguarded stack access this closes).
+    if (tr.V > kMaxVoxelBits) {
+        return miss;
+    }
     tr.cells = std::ldexp(1.0f, tr.V);
     const float invRoot = 1.0f / g.root_edge();
     tr.o = (ray.origin - g.origin) * invRoot;
@@ -182,9 +190,13 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
         int exitAxis = 0;
         float tOut = 0.0f;
 
-        // Descend from the current level to the deepest node containing cell c.
+        // Descend from the current level to the deepest node containing cell c. `level` only ever
+        // grows via `level = childLevel` below, one internal-node step at a time from an entry
+        // state of <= max_brick_level() -- itself <= tr.V - 3, guarded <= kMaxVoxelBits - 3 above --
+        // so it never reaches kMaxLevels (stack's extent). The analyzer can't trace that invariant
+        // through the loop; verified by the 7,000-ray brute-force oracle (test_ray_trace.cpp).
         for (;;) {
-            const std::uint32_t node = stack[level];
+            const std::uint32_t node = stack[level]; // NOLINT(clang-analyzer-security.ArrayBound)
             const std::uint32_t header = nodes[node];
             const std::uint32_t kind = node_kind(header);
             if (kind == kNodeKindSolid) {
