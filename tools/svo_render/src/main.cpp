@@ -194,9 +194,11 @@ int main(int argc, char** argv) {
         o.pos.y = std::max(heightmap.height_at(o.pos.x, o.pos.z), 0.0f) + 1.7f;
     }
     std::printf("surface heights around the camera:");
-    for (float dz = -32.0f; dz <= 32.0f; dz += 16.0f) {
+    for (int iz = -2; iz <= 2; ++iz) {
+        const float dz = 16.0f * static_cast<float>(iz);
         std::printf("\n  z=%+6.1f:", static_cast<double>(o.pos.z + dz));
-        for (float dx = -32.0f; dx <= 32.0f; dx += 16.0f) {
+        for (int ix = -2; ix <= 2; ++ix) {
+            const float dx = 16.0f * static_cast<float>(ix);
             std::printf(" %6.1f", static_cast<double>(heightmap.height_at(o.pos.x + dx, o.pos.z + dz)));
         }
     }
@@ -255,8 +257,8 @@ int main(int argc, char** argv) {
                 static_cast<double>(heightmap.height_at(o.pos.x, o.pos.z)),
                 static_cast<int>(tree.material_at(o.pos)), tree.leaf_level_at(o.pos));
     std::printf("column under the camera (y: material/level):");
-    for (float dy = 0.5f; dy <= 6.0f; dy += 0.5f) {
-        const glm::vec3 p = o.pos - glm::vec3{0.0f, dy, 0.0f};
+    for (int iy = 1; iy <= 12; ++iy) {
+        const glm::vec3 p = o.pos - glm::vec3{0.0f, 0.5f * static_cast<float>(iy), 0.0f};
         std::printf(" %.1f:%d/%d", static_cast<double>(p.y), static_cast<int>(tree.material_at(p)),
                     tree.leaf_level_at(p));
     }
