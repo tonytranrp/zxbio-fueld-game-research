@@ -9,6 +9,7 @@
 //
 // Usage: tree_dump [species] [seed] [out.obj]
 //   species: round | conifer | shrub | aspen   (default round)
+// The same values are also settable by name (--species/--seed/--out); --help lists them.
 //   seed:    integer                            (default 1337)
 //   out:     path                               (default tree_<species>_<seed>.obj)
 
@@ -20,6 +21,8 @@
 #include <string>
 #include <string_view>
 
+#include "dump_options.hpp"
+#include "engine/cli/help.hpp"
 #include "world/generation/tree_skeleton.hpp"
 
 namespace {
@@ -28,54 +31,23 @@ using world::generation::SkeletonSegment;
 using world::generation::TreeSkeleton;
 using world::generation::TreeSpecies;
 
-bool parse_int(const char* s, int& out) {
-    if (s == nullptr) {
-        return false;
-    }
-    char* end = nullptr;
-    errno = 0;
-    const long v = std::strtol(s, &end, 10);
-    if (end == s || *end != '\0' || errno == ERANGE || v < std::numeric_limits<int>::min() ||
-        v > std::numeric_limits<int>::max()) {
-        return false;
-    }
-    out = static_cast<int>(v);
-    return true;
-}
-
-bool parse_species(std::string_view name, TreeSpecies& out) {
-    if (name == "round") {
-        out = TreeSpecies::RoundBroadleaf;
-    } else if (name == "conifer") {
-        out = TreeSpecies::Conifer;
-    } else if (name == "shrub") {
-        out = TreeSpecies::Shrub;
-    } else if (name == "aspen") {
-        out = TreeSpecies::Aspen;
-    } else {
-        return false;
-    }
-    return true;
-}
-
 int run(int argc, char** argv) {
-    TreeSpecies species = TreeSpecies::RoundBroadleaf;
-    std::string speciesName = "round";
-    int seed = 1337;
-
-    if (argc > 1) {
-        speciesName = argv[1];
-        if (!parse_species(speciesName, species)) {
-            std::fprintf(stderr, "species must be round|conifer|shrub|aspen, got \"%s\"\n", argv[1]);
-            return EXIT_FAILURE;
-        }
-    }
-    if (argc > 2 && !parse_int(argv[2], seed)) {
-        std::fprintf(stderr, "seed must be an integer\n");
+    tools::tree_dump::Options opt;
+    const engine::cli::ParseOutcome parsed = tools::tree_dump::parse_options(argc, argv, opt);
+    if (!parsed.ok) {
+        std::fprintf(stderr, "%s\n\n", parsed.message.c_str());
+        std::fputs(tools::tree_dump::help_text().c_str(), stderr);
         return EXIT_FAILURE;
     }
+    if (parsed.help_requested) {
+        std::fputs(tools::tree_dump::help_text().c_str(), stdout);
+        return EXIT_SUCCESS;
+    }
+    const TreeSpecies species = opt.species;
+    const std::string speciesName{tools::tree_dump::species_name(species)};
+    const int seed = opt.seed;
     const std::string path =
-        argc > 3 ? argv[3] : ("tree_" + speciesName + "_" + std::to_string(seed) + ".obj");
+        opt.out.empty() ? ("tree_" + speciesName + "_" + std::to_string(seed) + ".obj") : opt.out;
 
     TreeSkeleton tree = world::generation::grow_skeleton(seed, {0.0f, 0.0f, 0.0f},
                                                          world::generation::species_params(species));

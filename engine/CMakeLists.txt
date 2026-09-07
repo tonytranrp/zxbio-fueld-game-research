@@ -1,4 +1,5 @@
 add_subdirectory(core)
+add_subdirectory(cli)  # the one declarative option layer every executable parses through (Prompt 002 AI-A)
 add_subdirectory(ecs)
 add_subdirectory(events)
 if(VOXEL_BUILD_RENDERER)

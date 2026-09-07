@@ -8,13 +8,16 @@ add_executable(app_tests
     test_spectator_camera.cpp
     test_tree_decoration.cpp
 test_aim_query.cpp
+    test_app_options.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app_options.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/spectator_camera.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/tree_decoration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/aim_query.cpp
 )
 target_include_directories(app_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
-target_link_libraries(app_tests PRIVATE engine_core engine_ecs engine_input world_generation world_meshing
-                                        world_player world_collision
+target_link_libraries(app_tests PRIVATE engine_cli engine_core engine_ecs engine_input world_generation
+                                        world_meshing world_player world_collision world_streaming
+                                        world_svo world_wind render_diligent
                                         Catch2::Catch2WithMain project_warnings)
 
 include(Catch)

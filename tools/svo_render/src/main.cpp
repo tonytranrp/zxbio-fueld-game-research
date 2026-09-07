@@ -31,223 +31,15 @@
 #include "world/svo/terrain_sampler.hpp"
 #include "world/svo/tree_builder.hpp"
 
+#include "engine/cli/help.hpp"
+#include "render_options.hpp"
+
 #include "../png_writer.hpp"
 
 namespace {
 
 using namespace world::svo;
-
-struct Options {
-    int seed = 1337;
-    int voxel_log2 = -7; // 7.8 mm
-    int root_log2 = 9;   // 512 m
-    float lod_radius = 4.0f;
-    // Default pose: hovering above the ~65 m summit near the origin, looking down the -Z valley
-    // toward the sea -- chosen by looking at real renders (a ground-level pose here stares into a
-    // slope half a meter away), not guessed.
-    glm::vec3 pos{12.0f, 82.0f, 24.0f};
-    float yaw_deg = 0.0f;
-    float pitch_deg = -22.0f;
-    bool pos_set = false;
-    std::uint32_t width = 1280;
-    std::uint32_t height = 720;
-    float fov_deg = 70.0f;
-    bool trees = true;
-    bool shadows = true;
-    bool ao = true;
-    bool grain = true;
-    bool verify = false;
-    bool lod_march = true;
-    // Group Z knobs (the app's defaults; see SvoRenderer::Settings).
-    float smooth_pixels = 6.0f;
-    float grain_amplitude = 0.10f;
-    float ao_radius_px = 32.0f;
-    float shadow_lod = 4.0f;
-    float ao_lod = 8.0f;
-    // --lod-center: build the tree's LOD around a point OTHER than the camera -- how the app looks
-    // after the camera has moved away from the last build center (goal 164's repro).
-    glm::vec3 lod_center{0.0f};
-    bool lod_center_set = false;
-    // --view: one shading term instead of the shaded color (mirrors --debug-view in the app).
-    std::string view;
-    std::string out = "svo_render.png";
-    unsigned threads = std::max(1u, std::thread::hardware_concurrency());
-};
-
-// atoi/atof silently return 0 on a malformed string, and are UB on nullptr -- next() returns
-// nullptr when a flag is the last argument. A bad number should fail the parse (parse()'s existing
-// convention for every other malformed option), not silently become 0.
-bool parse_int(const char* s, int& out) {
-    if (s == nullptr) {
-        return false;
-    }
-    char* end = nullptr;
-    errno = 0;
-    const long v = std::strtol(s, &end, 10);
-    if (end == s || *end != '\0' || errno == ERANGE || v < std::numeric_limits<int>::min() ||
-        v > std::numeric_limits<int>::max()) {
-        return false;
-    }
-    out = static_cast<int>(v);
-    return true;
-}
-
-bool parse_float(const char* s, float& out) {
-    if (s == nullptr) {
-        return false;
-    }
-    char* end = nullptr;
-    errno = 0;
-    const double v = std::strtod(s, &end);
-    if (end == s || *end != '\0' || errno == ERANGE) {
-        return false;
-    }
-    out = static_cast<float>(v);
-    return true;
-}
-
-bool parse(int argc, char** argv, Options& o) {
-    for (int i = 1; i < argc; ++i) {
-        const std::string_view a = argv[i];
-        auto next = [&]() -> const char* { return i + 1 < argc ? argv[++i] : nullptr; };
-        if (a == "--seed") {
-            if (!parse_int(next(), o.seed)) {
-                std::fprintf(stderr, "--seed expects an integer\n");
-                return false;
-            }
-        } else if (a == "--voxel-log2") {
-            if (!parse_int(next(), o.voxel_log2)) {
-                std::fprintf(stderr, "--voxel-log2 expects an integer\n");
-                return false;
-            }
-        } else if (a == "--root-log2") {
-            if (!parse_int(next(), o.root_log2)) {
-                std::fprintf(stderr, "--root-log2 expects an integer\n");
-                return false;
-            }
-        } else if (a == "--lod-radius") {
-            if (!parse_float(next(), o.lod_radius)) {
-                std::fprintf(stderr, "--lod-radius expects a number\n");
-                return false;
-            }
-        } else if (a == "--pos") {
-            const char* v = next();
-#if defined(_MSC_VER)
-            if (v == nullptr || sscanf_s(v, "%f,%f,%f", &o.pos.x, &o.pos.y, &o.pos.z) != 3) {
-#else
-            if (v == nullptr || std::sscanf(v, "%f,%f,%f", &o.pos.x, &o.pos.y, &o.pos.z) != 3) {
-#endif
-                std::fprintf(stderr, "--pos expects x,y,z\n");
-                return false;
-            }
-            o.pos_set = true;
-        } else if (a == "--xz") {
-            const char* v = next();
-#if defined(_MSC_VER)
-            if (v == nullptr || sscanf_s(v, "%f,%f", &o.pos.x, &o.pos.z) != 2) {
-#else
-            if (v == nullptr || std::sscanf(v, "%f,%f", &o.pos.x, &o.pos.z) != 2) {
-#endif
-                std::fprintf(stderr, "--xz expects x,z (eye height is derived from the terrain)\n");
-                return false;
-            }
-            o.pos_set = false;
-        } else if (a == "--yaw") {
-            if (!parse_float(next(), o.yaw_deg)) {
-                std::fprintf(stderr, "--yaw expects a number\n");
-                return false;
-            }
-        } else if (a == "--pitch") {
-            if (!parse_float(next(), o.pitch_deg)) {
-                std::fprintf(stderr, "--pitch expects a number\n");
-                return false;
-            }
-        } else if (a == "--size") {
-            const char* v = next();
-#if defined(_MSC_VER)
-            if (v == nullptr || sscanf_s(v, "%ux%u", &o.width, &o.height) != 2) {
-#else
-            if (v == nullptr || std::sscanf(v, "%ux%u", &o.width, &o.height) != 2) {
-#endif
-                std::fprintf(stderr, "--size expects WxH\n");
-                return false;
-            }
-        } else if (a == "--fov") {
-            if (!parse_float(next(), o.fov_deg)) {
-                std::fprintf(stderr, "--fov expects a number\n");
-                return false;
-            }
-        } else if (a == "--no-trees") {
-            o.trees = false;
-        } else if (a == "--no-shadows") {
-            o.shadows = false;
-        } else if (a == "--no-ao") {
-            o.ao = false;
-        } else if (a == "--no-grain") {
-            o.grain = false;
-        } else if (a == "--no-lod-march") {
-            o.lod_march = false;
-        } else if (a == "--smooth-pixels") {
-            if (!parse_float(next(), o.smooth_pixels)) {
-                std::fprintf(stderr, "--smooth-pixels expects a number\n");
-                return false;
-            }
-        } else if (a == "--grain") {
-            if (!parse_float(next(), o.grain_amplitude)) {
-                std::fprintf(stderr, "--grain expects a number\n");
-                return false;
-            }
-        } else if (a == "--ao-radius") {
-            if (!parse_float(next(), o.ao_radius_px)) {
-                std::fprintf(stderr, "--ao-radius expects a number\n");
-                return false;
-            }
-        } else if (a == "--shadow-lod") {
-            if (!parse_float(next(), o.shadow_lod)) {
-                std::fprintf(stderr, "--shadow-lod expects a number\n");
-                return false;
-            }
-        } else if (a == "--lod-center") {
-            const char* v = next();
-#if defined(_MSC_VER)
-            if (v == nullptr ||
-                sscanf_s(v, "%f,%f,%f", &o.lod_center.x, &o.lod_center.y, &o.lod_center.z) != 3) {
-#else
-            if (v == nullptr ||
-                std::sscanf(v, "%f,%f,%f", &o.lod_center.x, &o.lod_center.y, &o.lod_center.z) != 3) {
-#endif
-                std::fprintf(stderr, "--lod-center expects x,y,z\n");
-                return false;
-            }
-            o.lod_center_set = true;
-        } else if (a == "--view") {
-            o.view = next();
-        } else if (a == "--verify") {
-            o.verify = true;
-        } else if (a == "--out") {
-            o.out = next();
-        } else if (a == "--threads") {
-            int threads = 0;
-            if (!parse_int(next(), threads)) {
-                std::fprintf(stderr, "--threads expects an integer\n");
-                return false;
-            }
-            o.threads = static_cast<unsigned>(std::max(1, threads));
-        } else {
-            std::fprintf(
-                stderr,
-                "unknown argument %s (known: --seed N --voxel-log2 N --root-log2 N --lod-radius M --pos "
-                "x,y,z --xz x,z --yaw D --pitch D --size WxH --fov D --no-trees --no-shadows --no-ao "
-                "--no-grain --no-lod-march --smooth-pixels N --grain A --ao-radius PX --shadow-lod M "
-                "--lod-center x,y,z --view "
-                "lit|ao|normal|facenormal|level|steps|coverage|cubepx|smooth|lodcube "
-                "--verify --out file.png --threads N)\n",
-                argv[i]);
-            return false;
-        }
-    }
-    return true;
-}
+using tools::svo_render::Options;
 
 // ---- shading: the same palette as render/diligent/shaders/sky_common.fxh + terrain.psh.hlsl ----
 // glm::normalize isn't constexpr (unlike the literal-only vec3s below), so this can't be one; GLM's
@@ -318,22 +110,45 @@ std::uint8_t to_srgb8(float linear) {
 } // namespace
 
 int run(int argc, char** argv) {
-    Options o;
-    if (!parse(argc, argv, o)) {
+    Options opt;
+    const engine::cli::ParseOutcome parsed = tools::svo_render::parse_options(argc, argv, opt);
+    if (!parsed.ok) {
+        std::fprintf(stderr, "%s\n\n", parsed.message.c_str());
+        std::fputs(tools::svo_render::help_text().c_str(), stderr);
         return EXIT_FAILURE;
     }
-    const world::generation::HeightmapGenerator heightmap(o.seed);
-    if (!o.pos_set) {
+    if (parsed.help_requested) {
+        std::fputs(tools::svo_render::help_text().c_str(), stdout);
+        return EXIT_SUCCESS;
+    }
+    // The pose, resolved once from the three ways it can be given. --pos wins outright; --xz gives
+    // x and z and derives the eye height from the terrain; neither gives the default pose, whose
+    // height is derived the same way. Two optionals replaced a vec3 plus two `_set` booleans that
+    // could disagree with each other.
+    const world::generation::HeightmapGenerator heightmap(opt.seed);
+    struct Resolved {
+        glm::vec3 pos;
+        std::uint32_t width;
+        std::uint32_t height;
+    };
+    Resolved r{opt.default_pos(), opt.size.width, opt.size.height};
+    if (opt.pos) {
+        r.pos = *opt.pos;
+    } else {
+        if (opt.xz) {
+            r.pos.x = opt.xz->x;
+            r.pos.z = opt.xz->y;
+        }
         // Standing on the ground -- or, when the column is under the sea, on the water surface.
-        o.pos.y = std::max(heightmap.height_at(o.pos.x, o.pos.z), 0.0f) + 1.7f;
+        r.pos.y = std::max(heightmap.height_at(r.pos.x, r.pos.z), 0.0f) + 1.7f;
     }
     std::printf("surface heights around the camera:");
     for (int iz = -2; iz <= 2; ++iz) {
         const float dz = 16.0f * static_cast<float>(iz);
-        std::printf("\n  z=%+6.1f:", static_cast<double>(o.pos.z + dz));
+        std::printf("\n  z=%+6.1f:", static_cast<double>(r.pos.z + dz));
         for (int ix = -2; ix <= 2; ++ix) {
             const float dx = 16.0f * static_cast<float>(ix);
-            std::printf(" %6.1f", static_cast<double>(heightmap.height_at(o.pos.x + dx, o.pos.z + dz)));
+            std::printf(" %6.1f", static_cast<double>(heightmap.height_at(r.pos.x + dx, r.pos.z + dz)));
         }
     }
     std::printf("\n");
@@ -342,15 +157,15 @@ int run(int argc, char** argv) {
     // covers [8 - half, 8 + half): this terrain spans [-64, 64] m plus ~15 m of trees, so a 128 m
     // root keeps every hilltop and tree while only clipping the deepest (never visible) sea floor.
     TreeGeometry g;
-    g.root_size_log2 = o.root_log2;
-    g.voxel_size_log2 = o.voxel_log2;
+    g.root_size_log2 = opt.root_log2;
+    g.voxel_size_log2 = opt.voxel_log2;
     const float half = g.root_edge() * 0.5f;
-    g.origin = glm::vec3{std::floor((o.pos.x - half) / 8.0f) * 8.0f, 8.0f - half,
-                         std::floor((o.pos.z - half) / 8.0f) * 8.0f};
+    g.origin = glm::vec3{std::floor((r.pos.x - half) / 8.0f) * 8.0f, 8.0f - half,
+                         std::floor((r.pos.z - half) / 8.0f) * 8.0f};
 
     TerrainSamplerParams sp;
-    sp.seed = o.seed;
-    sp.trees = o.trees;
+    sp.seed = opt.seed;
+    sp.trees = opt.trees;
     const Box region{g.origin, g.max_corner()};
     const auto samplerStart = std::chrono::steady_clock::now();
     TerrainSampler sampler(heightmap, sp, region);
@@ -358,10 +173,10 @@ int run(int argc, char** argv) {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - samplerStart).count();
 
     BuildParams bp;
-    bp.lod_center = o.lod_center_set ? o.lod_center : o.pos;
-    bp.lod_radius = o.lod_radius;
-    engine::jobs::ThreadPool pool(o.threads);
-    sampler.set_focus(bp.lod_center, 4.0f * o.lod_radius);
+    bp.lod_center = opt.lod_center.value_or(r.pos);
+    bp.lod_radius = opt.lod_radius;
+    engine::jobs::ThreadPool pool(opt.threads_or_default());
+    sampler.set_focus(bp.lod_center, 4.0f * opt.lod_radius);
     BuildStats stats;
     const BrickTree tree = build_tree(sampler, g, bp, &pool, &stats);
     const BrickTree::Stats ts = tree.stats();
@@ -387,18 +202,18 @@ int run(int argc, char** argv) {
     }
 
     std::printf("camera (%.2f, %.2f, %.2f): surface %.2f, tree material at camera %d (leaf level %d)\n",
-                static_cast<double>(o.pos.x), static_cast<double>(o.pos.y), static_cast<double>(o.pos.z),
-                static_cast<double>(heightmap.height_at(o.pos.x, o.pos.z)),
-                static_cast<int>(tree.material_at(o.pos)), tree.leaf_level_at(o.pos));
+                static_cast<double>(r.pos.x), static_cast<double>(r.pos.y), static_cast<double>(r.pos.z),
+                static_cast<double>(heightmap.height_at(r.pos.x, r.pos.z)),
+                static_cast<int>(tree.material_at(r.pos)), tree.leaf_level_at(r.pos));
     std::printf("column under the camera (y: material/level):");
     for (int iy = 1; iy <= 12; ++iy) {
-        const glm::vec3 p = o.pos - glm::vec3{0.0f, 0.5f * static_cast<float>(iy), 0.0f};
+        const glm::vec3 p = r.pos - glm::vec3{0.0f, 0.5f * static_cast<float>(iy), 0.0f};
         std::printf(" %.1f:%d/%d", static_cast<double>(p.y), static_cast<int>(tree.material_at(p)),
                     tree.leaf_level_at(p));
     }
     {
         Ray down;
-        down.origin = o.pos;
+        down.origin = r.pos;
         down.dir = glm::vec3{0.0f, -1.0f, 0.0f};
         const Hit h = trace_ray(tree, down);
         const Hit b = trace_ray_brute_force(tree, down);
@@ -410,39 +225,39 @@ int run(int argc, char** argv) {
     }
 
     // Camera: the app's spectator conventions (yaw about +Y, 0 = -Z; pitch about local +X).
-    const glm::quat orientation = glm::angleAxis(glm::radians(o.yaw_deg), glm::vec3{0.0f, 1.0f, 0.0f}) *
-                                  glm::angleAxis(glm::radians(o.pitch_deg), glm::vec3{1.0f, 0.0f, 0.0f});
+    const glm::quat orientation = glm::angleAxis(glm::radians(opt.yaw_deg), glm::vec3{0.0f, 1.0f, 0.0f}) *
+                                  glm::angleAxis(glm::radians(opt.pitch_deg), glm::vec3{1.0f, 0.0f, 0.0f});
     const glm::vec3 forward = orientation * glm::vec3{0.0f, 0.0f, -1.0f};
     const glm::vec3 right = orientation * glm::vec3{1.0f, 0.0f, 0.0f};
     const glm::vec3 up = orientation * glm::vec3{0.0f, 1.0f, 0.0f};
-    const float tanHalf = std::tan(glm::radians(o.fov_deg) * 0.5f);
-    const float aspect = static_cast<float>(o.width) / static_cast<float>(o.height);
+    const float tanHalf = std::tan(glm::radians(opt.fov_deg) * 0.5f);
+    const float aspect = static_cast<float>(r.width) / static_cast<float>(r.height);
     // One pixel's angular size: the LOD early-out threshold (same formula the GPU uses).
-    const float rawPixelAngle = 2.0f * tanHalf / static_cast<float>(o.height);
+    const float rawPixelAngle = 2.0f * tanHalf / static_cast<float>(r.height);
     TraceParams primary;
-    primary.lod_pixel_angle = o.lod_march ? rawPixelAngle : 0.0f;
-    primary.smooth_pixel_angle = o.smooth_pixels * rawPixelAngle;
+    primary.lod_pixel_angle = opt.lod_march ? rawPixelAngle : 0.0f;
+    primary.smooth_pixel_angle = opt.smooth_pixels * rawPixelAngle;
     // Secondary rays (svo_march.psh.hlsl's rule, goal 164): LOD by distance from THEIR origin
     // (t_offset stays 0), coarser multipliers, no smoothing.
     constexpr float kSecondaryCoverage = 0.35f; // svo_march.psh.hlsl's kSecondaryCoverage
     TraceParams shadow;
-    shadow.lod_pixel_angle = primary.lod_pixel_angle * o.shadow_lod;
+    shadow.lod_pixel_angle = primary.lod_pixel_angle * opt.shadow_lod;
     shadow.lod_coverage_threshold = kSecondaryCoverage;
     TraceParams aoParams;
-    aoParams.lod_pixel_angle = primary.lod_pixel_angle * o.ao_lod;
+    aoParams.lod_pixel_angle = primary.lod_pixel_angle * opt.ao_lod;
     aoParams.lod_coverage_threshold = kSecondaryCoverage;
-    const std::string_view view = o.view;
+    const std::string_view view = opt.view;
     if (!view.empty() && view != "lit" && view != "ao" && view != "normal" && view != "facenormal" &&
         view != "level" && view != "steps" && view != "coverage" && view != "cubepx" && view != "smooth" &&
         view != "lodcube" && view != "material" && view != "distance") {
-        std::fprintf(stderr, "unknown --view %s\n", o.view.c_str());
+        std::fprintf(stderr, "unknown --view %s\n", opt.view.c_str());
         return EXIT_FAILURE;
     }
 
     {
         // Center-pixel ray: marcher vs brute force, to separate "wrong rays" from "wrong marcher".
         Ray center;
-        center.origin = o.pos;
+        center.origin = r.pos;
         center.dir = forward;
         const Hit h = trace_ray(tree, center);
         const Hit b = trace_ray_brute_force(tree, center);
@@ -463,7 +278,7 @@ int run(int argc, char** argv) {
                 const float ndcX = (static_cast<float>(px) + 0.5f) / 5.0f * 2.0f - 1.0f;
                 const float ndcY = 1.0f - (static_cast<float>(py) + 0.5f) / 5.0f * 2.0f;
                 Ray ray;
-                ray.origin = o.pos;
+                ray.origin = r.pos;
                 ray.dir = glm::normalize(forward + right * (ndcX * tanHalf * aspect) + up * (ndcY * tanHalf));
                 const Hit h = trace_ray(tree, ray, primary);
                 if (h.hit) {
@@ -477,26 +292,26 @@ int run(int argc, char** argv) {
         }
     }
 
-    std::vector<std::uint8_t> rgb(static_cast<std::size_t>(o.width) * o.height * 3u);
+    std::vector<std::uint8_t> rgb(static_cast<std::size_t>(r.width) * r.height * 3u);
     std::atomic<std::uint64_t> totalSteps{0};
     std::atomic<std::uint64_t> secondarySteps{0};
     std::atomic<std::uint64_t> hits{0};
     std::atomic<std::uint64_t> shadowed{0};
     const auto renderStart = std::chrono::steady_clock::now();
     std::vector<std::future<void>> rows;
-    rows.reserve(o.height);
-    for (std::uint32_t y = 0; y < o.height; ++y) {
+    rows.reserve(r.height);
+    for (std::uint32_t y = 0; y < r.height; ++y) {
         rows.push_back(pool.submit([&, y] {
             std::uint64_t steps = 0;
             std::uint64_t steps2 = 0;
             std::uint64_t rowHits = 0;
             std::uint64_t rowShadowed = 0;
-            for (std::uint32_t x = 0; x < o.width; ++x) {
-                const float ndcX = (static_cast<float>(x) + 0.5f) / static_cast<float>(o.width) * 2.0f - 1.0f;
+            for (std::uint32_t x = 0; x < r.width; ++x) {
+                const float ndcX = (static_cast<float>(x) + 0.5f) / static_cast<float>(r.width) * 2.0f - 1.0f;
                 const float ndcY =
-                    1.0f - (static_cast<float>(y) + 0.5f) / static_cast<float>(o.height) * 2.0f;
+                    1.0f - (static_cast<float>(y) + 0.5f) / static_cast<float>(r.height) * 2.0f;
                 Ray ray;
-                ray.origin = o.pos;
+                ray.origin = r.pos;
                 ray.dir = glm::normalize(forward + right * (ndcX * tanHalf * aspect) + up * (ndcY * tanHalf));
                 const Hit hit = trace_ray(tree, ray, primary);
                 steps += hit.steps;
@@ -525,11 +340,11 @@ int run(int argc, char** argv) {
                     const float n1 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 24.0f));
                     const float n2 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 7.0f) + 17.31f);
                     albedo *= 0.90f + 0.20f * (0.65f * n1 + 0.35f * n2);
-                    if (o.grain && hit.cube_edge > 0.0f) {
+                    if (opt.grain && hit.cube_edge > 0.0f) {
                         const glm::vec3 cell =
                             glm::floor((p - faceNormal * (0.5f * hit.cube_edge)) / hit.cube_edge);
                         const float amplitude =
-                            o.grain_amplitude * std::clamp((cubePixels - 1.5f) / 2.5f, 0.0f, 1.0f);
+                            opt.grain_amplitude * std::clamp((cubePixels - 1.5f) / 2.5f, 0.0f, 1.0f);
                         albedo *= 1.0f + amplitude * (hash3(cell) * 2.0f - 1.0f);
                     }
                     const float diffuse = std::max(glm::dot(n, -kSunDirection), 0.0f);
@@ -542,7 +357,7 @@ int run(int argc, char** argv) {
                     const glm::vec3 shadowOrigin = faceOffset + smoothNormal * liftEdge;
                     const glm::vec3 offsetOrigin = faceOffset + smoothNormal * (0.5f * liftEdge);
                     float lit = 1.0f;
-                    if (o.shadows && diffuse > 0.0f) {
+                    if (opt.shadows && diffuse > 0.0f) {
                         Ray sray;
                         sray.origin = shadowOrigin;
                         sray.dir = -kSunDirection;
@@ -552,8 +367,8 @@ int run(int argc, char** argv) {
                         rowShadowed += sh.hit ? 1u : 0u;
                     }
                     float ao = 1.0f;
-                    if (o.ao) {
-                        const float rayLength = std::max(0.15f, o.ao_radius_px * hit.t * rawPixelAngle);
+                    if (opt.ao) {
+                        const float rayLength = std::max(0.15f, opt.ao_radius_px * hit.t * rawPixelAngle);
                         const glm::vec3 helper =
                             std::abs(n.y) < 0.9f ? glm::vec3{0.0f, 1.0f, 0.0f} : glm::vec3{1.0f, 0.0f, 0.0f};
                         const glm::vec3 tangent = glm::normalize(glm::cross(helper, n));
@@ -628,7 +443,7 @@ int run(int argc, char** argv) {
                 }
                 // Debug views are written raw (the app disables its post chain for them too).
                 const glm::vec3 mapped = view.empty() ? tonemap(color) : color;
-                const std::size_t i = (static_cast<std::size_t>(y) * o.width + x) * 3u;
+                const std::size_t i = (static_cast<std::size_t>(y) * r.width + x) * 3u;
                 rgb[i + 0] = to_srgb8(mapped.x);
                 rgb[i + 1] = to_srgb8(mapped.y);
                 rgb[i + 2] = to_srgb8(mapped.z);
@@ -644,31 +459,31 @@ int run(int argc, char** argv) {
     }
     const double renderSeconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - renderStart).count();
-    const double pixels = static_cast<double>(o.width) * o.height;
+    const double pixels = static_cast<double>(r.width) * r.height;
     std::printf(
         "render: %ux%u in %.2fs (%.1f Mrays/s primary%s%s), %.1f%% pixels hit terrain, %.1f primary + "
         "%.1f secondary traversal steps/pixel, %.1f%% of hits in sun shadow\n",
-        o.width, o.height, renderSeconds, pixels / renderSeconds / 1.0e6, o.shadows ? " + shadow rays" : "",
-        o.ao ? " + 4 AO rays" : "", 100.0 * static_cast<double>(hits.load()) / pixels,
+        r.width, r.height, renderSeconds, pixels / renderSeconds / 1.0e6, opt.shadows ? " + shadow rays" : "",
+        opt.ao ? " + 4 AO rays" : "", 100.0 * static_cast<double>(hits.load()) / pixels,
         static_cast<double>(totalSteps.load()) / pixels, static_cast<double>(secondarySteps.load()) / pixels,
         hits.load() > 0 ? 100.0 * static_cast<double>(shadowed.load()) / static_cast<double>(hits.load())
                         : 0.0);
 
-    if (!svo_render::PngWriter::write(o.out.c_str(), o.width, o.height, rgb.data())) {
-        std::fprintf(stderr, "failed to write %s\n", o.out.c_str());
+    if (!svo_render::PngWriter::write(opt.out.c_str(), r.width, r.height, rgb.data())) {
+        std::fprintf(stderr, "failed to write %s\n", opt.out.c_str());
         return EXIT_FAILURE;
     }
-    std::printf("wrote %s\n", o.out.c_str());
+    std::printf("wrote %s\n", opt.out.c_str());
 
-    if (o.verify) {
+    if (opt.verify) {
         // The app's --verify-frame local-contrast metric (frame_verify.cpp): a pixel counts when
         // it differs from its left or up neighbor by > 4/255 on any channel.
         std::uint64_t differing = 0;
-        for (std::uint32_t y = 1; y < o.height; ++y) {
-            for (std::uint32_t x = 1; x < o.width; ++x) {
-                const std::size_t i = (static_cast<std::size_t>(y) * o.width + x) * 3u;
+        for (std::uint32_t y = 1; y < r.height; ++y) {
+            for (std::uint32_t x = 1; x < r.width; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * r.width + x) * 3u;
                 const std::size_t l = i - 3u;
-                const std::size_t u = i - static_cast<std::size_t>(o.width) * 3u;
+                const std::size_t u = i - static_cast<std::size_t>(r.width) * 3u;
                 bool differs = false;
                 for (std::size_t c = 0; c < 3 && !differs; ++c) {
                     differs = std::abs(int(rgb[i + c]) - int(rgb[l + c])) > 4 ||

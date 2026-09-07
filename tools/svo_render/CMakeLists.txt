@@ -1,5 +1,5 @@
-add_executable(svo_render src/main.cpp)
-target_link_libraries(svo_render PRIVATE project_warnings engine_jobs world_chunk world_generation world_svo)
+add_executable(svo_render src/main.cpp src/render_options.cpp)
+target_link_libraries(svo_render PRIVATE project_warnings engine_cli engine_jobs world_chunk world_generation world_svo)
 
 if(BUILD_TESTING)
   # End-to-end CPU proof that the sparse-brick octree pipeline renders real terrain, runnable in the

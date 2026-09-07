@@ -13,6 +13,7 @@
 #include <thread>
 
 #include "aim_query.hpp"
+#include "app_options.hpp"
 #include "crash_handler.hpp"
 #include "engine/core/clock.hpp"
 #include "engine/core/log.hpp"
@@ -53,260 +54,13 @@ namespace {
 using engine::core::log;
 using engine::core::LogLevel;
 
-// Which world representation + renderer to run (micro-voxel pivot, docs/goals.md Groups W-X).
-//   Svo:  sparse-brick octree at sub-centimeter voxels near the camera, GPU ray-marched.
-//   Mesh: the greedy-meshed 1 m chunk world (Groups P-V), kept intact as the fallback.
-enum class RendererKind { Svo, Mesh };
-
-struct AppOptions {
-    render::diligent::Backend backend = render::diligent::Backend::Vulkan;
-    RendererKind renderer = RendererKind::Svo;
-    std::uint32_t frames = 0; // 0 = run until the window is closed
-    // Group S (Voxel Representation Redesign SS3): the mesh world's horizontal Chebyshev half-size,
-    // pregenerated once at startup rather than streamed around the camera. Defaults to goal 127's
-    // 48-column trial size, not the original 8km ask -- see docs/goals.md goal 132.
-    std::int32_t radius = world::streaming::kDefaultWorldBounds.radius_chunks;
-    int seed = 1337;
-    bool verify_frame = false; // Group B smoke check: read the frame back, fail on an empty one
-    bool validation = false;
-    bool autofly = false; // Group D smoke check: fly +X automatically once the world has loaded
-    bool walk = false;    // start in walk (gravity) mode; with --autofly, also asserts no fall-through
-    bool noclip = false;  // Group AA: skip body-vs-world collision (the pre-collision spectator)
-    // Prompt 001 Group AD. The step allowance is a SMOOTHING BUDGET on the svo path (7.8 mm voxels
-    // make every slope a sub-cm staircase) and a real ledge climb on the mesh path (1 m blocks);
-    // unset takes each path's own default.
-    std::optional<float> step_height;
-    bool no_view_polish = false; // head-bob, landing dip, boost FOV kick off
-    // A4's crosshair. Default on, but suppressed under --verify-frame so a HUD cross cannot
-    // inflate the local-contrast metric; --crosshair forces it back on for a capture.
-    std::optional<bool> crosshair;
-    std::size_t upload_budget = 4; // mesh commits per frame; 0 = unlimited (the pre-fix stutter behavior)
-    std::uint32_t dump_every = 0;  // goal 7: write a numbered frame dump every N frames (0 = off)
-    // Goal 52's per-pass kill switches: isolate a visual regression to one pass without reverts.
-    bool no_post = false;    // whole post chain off: render straight to swap chain (pre-Stage-2 path)
-    bool no_bloom = false;   // bloom off, tonemap composite still on
-    bool no_tonemap = false; // tonemap off (raw clamp), bloom still on
-    bool no_sky = false;     // gradient-sky pass off (falls back to the flat clear color)
-    // Debug camera overrides for the visual-verification workflow (goal 8's multi-angle baseline
-    // and every later "view a dump from X" check): unset = the default start pose.
-    std::optional<glm::vec3> start_pos;
-    std::optional<float> start_yaw_deg;
-    std::optional<float> start_pitch_deg;
-    // Micro-voxel (svo) options.
-    app::SvoWorldOptions svo;
-    render::diligent::SvoRenderer::Settings svo_settings;
-};
+using app::AppOptions;
+using app::RendererKind;
 
 // How long --verify-frame keeps waiting for the world to finish loading before declaring failure.
 // Wall-clock, not a frame count: a loading-screen frame's cost is dominated by the world build,
 // which varies with --radius / the svo region, so a frame-count budget has no fixed meaning.
 constexpr std::chrono::seconds kVerifyLoadTimeout{600};
-
-std::optional<AppOptions> parse_args(std::span<char*> args) {
-    AppOptions options;
-    for (std::size_t i = 1; i < args.size(); ++i) {
-        const std::string_view arg = args[i];
-        const auto next_value = [&]() -> const char* { return i + 1 < args.size() ? args[++i] : nullptr; };
-        const auto next_float = [&](float fallback) {
-            const char* value = next_value();
-            return value ? static_cast<float>(std::strtod(value, nullptr)) : fallback;
-        };
-        const auto next_int = [&](int fallback) {
-            const char* value = next_value();
-            return value ? static_cast<int>(std::strtol(value, nullptr, 10)) : fallback;
-        };
-        if (arg == "--mode") {
-            const char* value = next_value();
-            const std::string_view mode = value ? value : "";
-            if (mode == "vk" || mode == "vulkan") {
-                options.backend = render::diligent::Backend::Vulkan;
-            } else if (mode == "d3d12") {
-                options.backend = render::diligent::Backend::D3D12;
-            } else {
-                log(LogLevel::Error, "--mode expects vk|d3d12, got \"{}\"", mode);
-                return std::nullopt;
-            }
-        } else if (arg == "--renderer") {
-            const char* value = next_value();
-            const std::string_view kind = value ? value : "";
-            if (kind == "svo") {
-                options.renderer = RendererKind::Svo;
-            } else if (kind == "mesh") {
-                options.renderer = RendererKind::Mesh;
-            } else {
-                log(LogLevel::Error, "--renderer expects svo|mesh, got \"{}\"", kind);
-                return std::nullopt;
-            }
-        } else if (arg == "--frames") {
-            const char* value = next_value();
-            options.frames = value ? static_cast<std::uint32_t>(std::strtoul(value, nullptr, 10)) : 0;
-        } else if (arg == "--radius") {
-            options.radius = next_int(options.radius);
-        } else if (arg == "--seed") {
-            options.seed = next_int(options.seed);
-        } else if (arg == "--verify-frame") {
-            options.verify_frame = true;
-        } else if (arg == "--validation") {
-            options.validation = true;
-        } else if (arg == "--autofly") {
-            options.autofly = true;
-        } else if (arg == "--walk") {
-            options.walk = true;
-        } else if (arg == "--noclip") {
-            options.noclip = true;
-        } else if (arg == "--step-height") {
-            options.step_height = next_float(world::player::kSvoStepHeight);
-        } else if (arg == "--no-view-polish") {
-            options.no_view_polish = true;
-        } else if (arg == "--wind-speed") {
-            options.svo_settings.wind.base_speed = next_float(options.svo_settings.wind.base_speed);
-        } else if (arg == "--no-wind") {
-            options.svo_settings.wind = world::wind::still_wind();
-        } else if (arg == "--crosshair") {
-            options.crosshair = true;
-        } else if (arg == "--no-crosshair") {
-            options.crosshair = false;
-        } else if (arg == "--upload-budget") {
-            const char* value = next_value();
-            options.upload_budget =
-                value ? static_cast<std::size_t>(std::strtoul(value, nullptr, 10)) : options.upload_budget;
-        } else if (arg == "--dump-every") {
-            const char* value = next_value();
-            options.dump_every =
-                value ? static_cast<std::uint32_t>(std::strtoul(value, nullptr, 10)) : options.dump_every;
-        } else if (arg == "--no-post") {
-            options.no_post = true;
-        } else if (arg == "--no-sky") {
-            options.no_sky = true;
-        } else if (arg == "--no-bloom") {
-            options.no_bloom = true;
-        } else if (arg == "--no-tonemap") {
-            options.no_tonemap = true;
-        } else if (arg == "--no-shadows") {
-            options.svo_settings.shadows = false;
-        } else if (arg == "--no-ao") {
-            options.svo_settings.ao = false;
-        } else if (arg == "--no-lod-march") {
-            options.svo_settings.lod_march = false;
-        } else if (arg == "--lod-quality") {
-            options.svo_settings.lod_quality = next_float(options.svo_settings.lod_quality);
-        } else if (arg == "--no-grain") {
-            options.svo_settings.grain = false;
-        } else if (arg == "--no-taa") {
-            options.svo_settings.taa = false;
-        } else if (arg == "--smooth-pixels") {
-            options.svo_settings.smooth_pixels = next_float(options.svo_settings.smooth_pixels);
-        } else if (arg == "--grain") {
-            options.svo_settings.grain_amplitude = next_float(options.svo_settings.grain_amplitude);
-        } else if (arg == "--ao-radius") {
-            options.svo_settings.ao_radius_px = next_float(options.svo_settings.ao_radius_px);
-        } else if (arg == "--shadow-lod") {
-            options.svo_settings.shadow_lod = next_float(options.svo_settings.shadow_lod);
-        } else if (arg == "--svo-threads") {
-            options.svo.worker_threads = static_cast<std::size_t>(std::max(0, next_int(0)));
-        } else if (arg == "--svo-upload-mb") {
-            options.svo_settings.upload_bytes_per_frame =
-                static_cast<std::size_t>(std::max(1, next_int(32))) * std::size_t{1024} * 1024;
-        } else if (arg == "--debug-view") {
-            // Goal 165: one shading term per view, so a wrong frame names its cause.
-            const char* value = next_value();
-            const std::string_view view = value ? value : "";
-            using render::diligent::SvoDebugView;
-            static constexpr std::pair<std::string_view, SvoDebugView> kViews[] = {
-                {"lit", SvoDebugView::Lit},
-                {"ao", SvoDebugView::AO},
-                {"normal", SvoDebugView::Normal},
-                {"facenormal", SvoDebugView::FaceNormal},
-                {"level", SvoDebugView::Level},
-                {"steps", SvoDebugView::Steps},
-                {"coverage", SvoDebugView::Coverage},
-                {"cubepx", SvoDebugView::CubePixels},
-                {"smooth", SvoDebugView::SmoothNormal},
-                {"lodcube", SvoDebugView::LodCube},
-                {"material", SvoDebugView::Material},
-                {"distance", SvoDebugView::Distance},
-            };
-            bool found = false;
-            for (const auto& [name, id] : kViews) {
-                if (view == name) {
-                    options.svo_settings.debug_view = id;
-                    found = true;
-                }
-            }
-            if (!found) {
-                log(LogLevel::Error,
-                    "--debug-view expects "
-                    "lit|ao|normal|facenormal|level|steps|coverage|cubepx|smooth|lodcube|material|distance, "
-                    "got \"{}\"",
-                    view);
-                return std::nullopt;
-            }
-            options.no_post = true; // raw values, not tone-mapped ones
-        } else if (arg == "--voxel-log2") {
-            options.svo.voxel_size_log2 = next_int(options.svo.voxel_size_log2);
-        } else if (arg == "--region-log2") {
-            options.svo.root_size_log2 = next_int(options.svo.root_size_log2);
-        } else if (arg == "--lod-radius") {
-            options.svo.lod_radius = next_float(options.svo.lod_radius);
-        } else if (arg == "--no-trees") {
-            options.svo.trees = false;
-        } else if (arg == "--pos") {
-            const char* value = next_value();
-            glm::vec3 p{};
-#if defined(_MSC_VER)
-            const int parsed = value ? sscanf_s(value, "%f,%f,%f", &p.x, &p.y, &p.z) : 0;
-#else
-            const int parsed = value ? std::sscanf(value, "%f,%f,%f", &p.x, &p.y, &p.z) : 0;
-#endif
-            if (parsed == 3) {
-                options.start_pos = p;
-            } else {
-                log(LogLevel::Error, "--pos expects x,y,z");
-                return std::nullopt;
-            }
-        } else if (arg == "--yaw") {
-            options.start_yaw_deg = next_float(0.0f);
-        } else if (arg == "--pitch") {
-            options.start_pitch_deg = next_float(0.0f);
-#ifndef NDEBUG
-        } else if (arg == "--crash-test") {
-            // Group J task 20's check: deliberately exercise each crash-handler hook. Debug-only
-            // by construction -- the flag does not exist in release builds.
-            const char* value = next_value();
-            const std::string_view mode = value ? value : "";
-            log(LogLevel::Info, "crash-test: triggering \"{}\"", mode);
-            if (mode == "av") {
-                int* p = nullptr;
-                *p = 42; // NOLINT(clang-analyzer-core.NullDereference) -- the point of the test
-            } else if (mode == "abort") {
-                std::abort();
-            } else if (mode == "terminate") {
-                std::terminate();
-            }
-            log(LogLevel::Error, "--crash-test expects av|abort|terminate, got \"{}\"", mode);
-            return std::nullopt;
-#endif
-        } else {
-            log(LogLevel::Error,
-                "unknown argument \"{}\" (known: --mode vk|d3d12, --renderer svo|mesh, --frames N, --radius "
-                "N, "
-                "--seed N, --verify-frame, --validation, --autofly, --walk, --noclip, --upload-budget N, "
-                "--dump-every "
-                "N, "
-                "--no-post/--no-bloom/--no-tonemap/--no-sky, --no-shadows, --no-ao, --no-lod-march, "
-                "--lod-quality Q, --no-grain, --no-taa, --smooth-pixels N, --grain A, --ao-radius PX, "
-                "--shadow-lod M, --svo-threads N, --svo-upload-mb N, --debug-view NAME, --voxel-log2 N, "
-                "--region-log2 N, "
-                "--lod-radius M, --no-trees, --pos x,y,z, --yaw D, --pitch D, --step-height M, "
-                "--no-view-polish, --crosshair/--no-crosshair, --wind-speed M, --no-wind)",
-                arg);
-            return std::nullopt;
-        }
-    }
-    options.svo.seed = options.seed;
-    options.svo_settings.sky = !options.no_sky;
-    return options;
-}
 
 // Goal 130: the overlay's ready-chunk count is event-sourced (ChunkMeshReady), the same discipline
 // Group L established for the old streaming system -- a static world just drops the unload half of
@@ -411,7 +165,7 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
         const glm::vec3 travelled = transform.position - before;
         polish.horizontal_speed = glm::length(glm::vec2{travelled.x, travelled.z}) / dt;
         polish.boosting = input.state().speed_boost;
-        const bool polishOn = !options.no_view_polish && !options.autofly && !options.verify_frame;
+        const bool polishOn = options.view_polish && !options.autofly && !options.verify_frame;
         viewOffsetY = world::player::update_view_polish(spectator.physics, spectator.tuning, polish, step,
                                                         polishOn, dt);
 
@@ -633,10 +387,10 @@ struct Session {
         // Post-process chain (Group D): bloom + tonemap over an offscreen HDR scene target.
         // Constructed BEFORE either renderer on purpose -- it registers the scene target whose
         // format their PSOs are created against. Skippable wholesale for A/B against the direct path.
-        if (!options.no_post) {
+        if (options.post) {
             postProcess = std::make_unique<render::diligent::PostProcessor>(*context);
-            postProcess->set_bloom_enabled(!options.no_bloom);
-            postProcess->set_tonemap_enabled(!options.no_tonemap);
+            postProcess->set_bloom_enabled(options.bloom);
+            postProcess->set_tonemap_enabled(options.tonemap);
         }
         render::diligent::attach_gpu_profiler(
             *context); // Tracy GPU zones (Vulkan only; safe no-op elsewhere)
@@ -701,7 +455,7 @@ struct Session {
 
 int run_mesh(Session& s, const AppOptions& options) {
     render::diligent::TerrainRenderer renderer(*s.context);
-    renderer.set_sky_enabled(!options.no_sky);
+    renderer.set_sky_enabled(options.sky);
     // C7: --wind-speed / --no-wind mean the same thing on both renderer paths.
     renderer.set_wind(options.svo_settings.wind);
 
@@ -1114,11 +868,37 @@ int main(int argc, char** argv) {
         // would otherwise eat the final log lines -- including exception reports -- if the process
         // dies without flushing. Cost is irrelevant at this log volume.
         std::setvbuf(stdout, nullptr, _IONBF, 0);
-        const auto options = parse_args(std::span<char*>(argv, static_cast<std::size_t>(argc)));
-        if (!options) {
+        AppOptions options;
+        const engine::cli::ParseOutcome parsed = app::parse_app_options(argc, argv, options);
+        if (!parsed.ok) {
+            log(LogLevel::Error, "{}", parsed.message);
+            std::fputs("\n", stderr);
+            std::fputs(app::app_help_text().c_str(), stderr);
             return EXIT_FAILURE;
         }
-        return run(*options);
+        if (parsed.help_requested) {
+            std::fputs(app::app_help_text().c_str(), stdout);
+            return EXIT_SUCCESS;
+        }
+#ifndef NDEBUG
+        // Group J task 20's check: deliberately exercise each crash-handler hook. Debug-only by
+        // construction -- the flag does not exist in a release build's table. It fires AFTER the
+        // parse now rather than inside it, which is what lets the option be a row like any other.
+        if (!options.crash_test.empty()) {
+            log(LogLevel::Info, "crash-test: triggering \"{}\"", options.crash_test);
+            if (options.crash_test == "av") {
+                int* p = nullptr;
+                *p = 42; // NOLINT(clang-analyzer-core.NullDereference) -- the point of the test
+            } else if (options.crash_test == "abort") {
+                std::abort();
+            } else if (options.crash_test == "terminate") {
+                std::terminate();
+            }
+            log(LogLevel::Error, "--crash-test expects av|abort|terminate, got \"{}\"", options.crash_test);
+            return EXIT_FAILURE;
+        }
+#endif
+        return run(options);
     } catch (const std::exception& e) {
         // fprintf, not log(): a handler in main must not itself be able to throw, and log()
         // formats. tools/svo_render's main reports the same way for the same reason.

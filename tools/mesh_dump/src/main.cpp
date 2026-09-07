@@ -6,12 +6,15 @@
 //
 // Usage: mesh_dump [cx cy cz] [seed] [out.obj]
 //   defaults:      0  0  0     1337   chunk_<cx>_<cy>_<cz>.obj
+// The same values are also settable by name (--cx/--cy/--cz/--seed/--out); --help lists them.
 
 #include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 
+#include "dump_options.hpp"
+#include "engine/cli/help.hpp"
 #include "world/chunk/chunk_store.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/generation/terrain_fill.hpp"
@@ -32,22 +35,23 @@ const char* material_group(MaterialID m) {
 } // namespace
 
 int main(int argc, char** argv) try {
-    const auto argInt = [&](int i, int fallback) {
-        // strtol over atoi (clang-tidy bugprone-unchecked-string-to-number-conversion): a garbage
-        // argument falls back instead of silently becoming 0.
-        if (argc <= i) {
-            return fallback;
-        }
-        char* end = nullptr;
-        const long v = std::strtol(argv[i], &end, 10);
-        return end != argv[i] ? static_cast<int>(v) : fallback;
-    };
-    const ChunkCoord coord{argInt(1, 0), argInt(2, 0), argInt(3, 0)};
-    const int seed = argInt(4, 1337);
-    const std::string outPath = argc > 5
-                                    ? argv[5]
-                                    : "chunk_" + std::to_string(coord.x) + "_" + std::to_string(coord.y) +
-                                          "_" + std::to_string(coord.z) + ".obj";
+    tools::mesh_dump::Options opt;
+    const engine::cli::ParseOutcome parsed = tools::mesh_dump::parse_options(argc, argv, opt);
+    if (!parsed.ok) {
+        std::fprintf(stderr, "%s\n\n", parsed.message.c_str());
+        std::fputs(tools::mesh_dump::help_text().c_str(), stderr);
+        return EXIT_FAILURE;
+    }
+    if (parsed.help_requested) {
+        std::fputs(tools::mesh_dump::help_text().c_str(), stdout);
+        return EXIT_SUCCESS;
+    }
+    const ChunkCoord coord{opt.cx, opt.cy, opt.cz};
+    const int seed = opt.seed;
+    const std::string outPath = opt.out.empty()
+                                    ? "chunk_" + std::to_string(coord.x) + "_" + std::to_string(coord.y) +
+                                          "_" + std::to_string(coord.z) + ".obj"
+                                    : opt.out;
 
     const world::generation::HeightmapGenerator generator(seed);
     world::chunk::ChunkStore store;

@@ -1,5 +1,6 @@
 add_executable(voxel_app
     src/main.cpp
+    src/app_options.cpp
     src/glfw_window.cpp
     src/spectator_camera.cpp
     src/world_loader.cpp
@@ -12,6 +13,7 @@ target_link_libraries(voxel_app PRIVATE dbghelp) # crash_handler's stack symboli
 
 target_link_libraries(voxel_app PRIVATE
     project_warnings
+    engine_cli
     engine_core
     engine_ecs
     engine_events
