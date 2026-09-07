@@ -498,7 +498,7 @@ nothing.**
 water.** That is a real budget miss, measured, attributed, and not fixed here: the fix is a
 "contains solid" summary bit on the node header so a water-only subtree can be rejected at its root,
 which is a tree-layout change and belongs with Prompt 004's work on that layout, not bolted on here.
-Goal 244 opened.
+Goal 276 opened.
 
 ---
 
@@ -968,5 +968,5 @@ Stated plainly rather than left to inference:
   goal 235 built, and nothing yet reads the polynomial.
 - **The terrain is mostly unwalkable** at the limit goal 235 chose -- 57-71 degrees on the scenario
   named "hillside". That is recorded as a requirement for Prompt 006 rather than worked around here.
-- **Collision over deep water misses its budget** (goal 244), for a reason attributed but not fixed.
-- **Moving captures have no goldens** (goal 246, section 11), because they cannot reproduce yet.
+- **Collision over deep water misses its budget** (goal 276), for a reason attributed but not fixed.
+- **Moving captures have no goldens** (goal 278, section 11), because they cannot reproduce yet.

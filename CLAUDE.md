@@ -388,7 +388,7 @@ Full record: `research/player-embodiment-log.md`. Machine-relevant deltas ONLY:
 - **GOLDENS ONLY WORK AT REST.** Measured: identical back-to-back runs differ 0.0001-0.11% for
   captures taken at rest and **5.3-35.5% after sustained motion**, against a 1.5% gate. Every moving
   capture's golden is DELETED, not loosened, and its scenario carries a `GOLDEN POLICY` note. Do not
-  re-accept them before Prompt 004 removes the rebuild storm (goal 246).
+  re-accept them before Prompt 004 removes the rebuild storm (goal 278).
 - **The crosshair asks the OCTREE on the svo path** (`query_aim_octree`, via `world::svo::trace_ray`
   with LOD and smoothing off), and its range is **34 m**, not 300 -- the distance a 1 cm detail stays
   resolvable at 20/20. `--aim-range` overrides. A test comparing against `material_at` is 1272/1272.

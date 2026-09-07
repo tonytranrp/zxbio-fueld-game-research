@@ -1650,7 +1650,7 @@ Reasoning and every measurement: `research/player-embodiment-log.md`.
      **Position**: budget met on land (0.026-0.116 ms/tick across the scenario set), missed over
      deep water (0.20-0.28). Not fixed here -- the fix is a "contains solid" summary bit on the node
      header so a water-only subtree is rejected at its root, which is a tree-layout change and
-     belongs with Prompt 004's work on that layout. **Goal 244.**
+     belongs with Prompt 004's work on that layout. **Goal 276.**
 
 ### AJ-B. One body, always
 
@@ -1771,13 +1771,13 @@ Reasoning and every measurement: `research/player-embodiment-log.md`.
      transitions broken down by (from, to) beside the dominant wave period, because a flicker count
      is unreadable without one.
 
-244. [ ] A "contains solid" summary bit on the octree node header, so `overlaps_solid` can reject a
+276. [ ] A "contains solid" summary bit on the octree node header, so `overlaps_solid` can reject a
      water-only or air-only subtree at its root instead of descending it to exhaustion. Goal 230
      measured the cost of not having one: collision over deep water is 0.20-0.28 ms/tick against a
      0.20 budget, while the same body on land is 0.026-0.116, and the discriminator is provably not
      query count or node count but whether the query finds anything. Tree-layout change; belongs
      with Prompt 004.
-245. [ ] A hard-edged planar sliver appears over distant terrain on the SVO path at grazing angles
+277. [ ] A hard-edged planar sliver appears over distant terrain on the SVO path at grazing angles
      -- captured at `research/captures/ajb_lod_sliver_fly_transect.png` (fly_transect's final frame,
      vk, 40+ m from the LOD centre). Pre-existing and unrelated to Group AJ (same terrain, different
      camera), and it reads like an LOD seam rather than the mesh path's known sliver curtains
@@ -1785,7 +1785,7 @@ Reasoning and every measurement: `research/player-embodiment-log.md`.
      a golden's job is to detect change -- but it is a defect and it is written down here rather
      than accepted silently.
 
-246. [ ] Restore goldens for MOVING captures once Prompt 004 removes the rebuild storm. Measured
+278. [ ] Restore goldens for MOVING captures once Prompt 004 removes the rebuild storm. Measured
      while re-taking every golden for AJ-B: two identical back-to-back runs differ by **0.0001-0.11%
      for captures taken AT REST and by 5.3-35.5% for captures taken after sustained motion**, against
      a 1.5% gate. Prompt 002 saw one instance (fly_orbit vk 70.4% while d3d12 was bit-identical) and
@@ -1901,7 +1901,7 @@ Reasoning and every measurement: `research/player-embodiment-log.md`.
      Strip: `research/captures/aj_landing_strip.png`; scenario `landing_strip`; the per-capture eye
      offset is logged split into polish and smoothing.
      Two workflow defects fixed on the way: **`capture ... no-golden`** is now part of the .scn
-     grammar (round-trips through `emit_scenario`, beats `--accept-golden`) because goal 246's policy
+     grammar (round-trips through `emit_scenario`, beats `--accept-golden`) because goal 278's policy
      was a comment plus a manual `rm` that the tool silently undid twice; and the scenario ctest
      tests take **`RESOURCE_LOCK gpu`** after `valley_far` failed its golden under `ctest -j 2` and
      then passed three standalone runs at 0.002%.

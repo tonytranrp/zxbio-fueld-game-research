@@ -314,7 +314,7 @@ threshold is a number of stops above what the eye is adapted to.
 - **Two measured negatives kept as negatives.** Collision costs 0.026–0.116 ms/tick on land and
   **0.20–0.28 over deep water**, missing its budget — attributed (`overlaps_solid` early-outs on the
   first solid voxel, and over water there is none, so the query runs to exhaustion) and left for the
-  tree-layout change that fixes it (goal 244). And adaptation-scaled bloom is **a correct mechanism
+  tree-layout change that fixes it (goal 276). And adaptation-scaled bloom is **a correct mechanism
   with no subject**: 147× the energy at −4 EV proves it works, and across this world's real −0.96 to
   −1.55 EV range it does nothing, because the HDR output rarely exceeds 1.0.
 
