@@ -1,0 +1,376 @@
+{
+  "schema": 1,
+  "scenario": "spawn_stand",
+  "description": "The cheapest smoke test: spawn at the default pose, stand still for three seconds, capture the frame the world becomes visible and the last frame. It is the first thing to run after any change, because it fails for the largest number of reasons -- a broken shader, a broken build, a broken tree, an empty frame -- in six seconds instead of six minutes.",
+  "scenario_source": "dev/scenarios\\spawn_stand.scn",
+  "git_sha": "1defc4c",
+  "build_preset": "RelWithDebInfo",
+  "headless": true,
+  "timestamp": "2026-09-07T07:58:42Z",
+  "options": [
+    "--no-taa"
+  ],
+  "scenario_text": "name spawn_stand\ndescribe The cheapest smoke test: spawn at the default pose, stand still for three seconds, capture the frame the world becomes visible and the last frame. It is the first thing to run after any change, because it fails for the largest number of reasons -- a broken shader, a broken build, a broken tree, an empty frame -- in six seconds instead of six minutes.\nbackend both\noption --no-taa\npose_ground 48,0 -90 -10 1.7\nwait 3\ncapture event world-ready first_light\ncapture end final\nassert frames > 0\nassert contrast_percent > 6\nassert walk_violations == 0\n",
+  "runs": [
+    {
+      "backend": "vk",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 313,
+      "warmup_frames": 996,
+      "warmup_seconds": 6.39484,
+      "contrast_percent": 17.3121,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 9.65066,
+        "median": 8.4694,
+        "p95": 14.7086,
+        "p99": 15.6435,
+        "max": 224.61,
+        "min": 0.7394
+      },
+      "gpu_ms": {
+        "mean": 6.23769,
+        "median": 6.29163,
+        "p95": 8.17466,
+        "p99": 8.70895,
+        "max": 8.98552,
+        "min": 0.0498295
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 2,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 1
+      },
+      "histogram": {
+        "0-4": 2,
+        "4-6": 50,
+        "6-8": 90,
+        "8-11": 96,
+        "11-16": 73,
+        "16-20": 0,
+        "20-33": 1,
+        "33-50": 0,
+        "50+": 1
+      },
+      "phase_accounting": {
+        "coverage": 0.998863,
+        "frames_outside_1pct": 3
+      },
+      "counters": {
+        "bricks": 903469,
+        "internal_nodes": 365965,
+        "solid_leaves": 1306485,
+        "resident_mb": 550.36,
+        "peak_gpu_mb": 656.08,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 996,
+          "wall_ms": 224.61,
+          "frame_start_ms": 0.0046,
+          "upload_ms": 50.5739,
+          "camera_ms": 0.0039,
+          "render_ms": 0.095,
+          "post_ms": 0.075,
+          "overlay_ms": 0.3859,
+          "present_ms": 0.2014,
+          "capture_ms": 173.245,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 1270,
+          "wall_ms": 23.1331,
+          "frame_start_ms": 0.0162,
+          "upload_ms": 0.0021,
+          "camera_ms": 0.012,
+          "render_ms": 0.5815,
+          "post_ms": 0.2471,
+          "overlay_ms": 0.4077,
+          "present_ms": 21.8555,
+          "capture_ms": 0.0056,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 1238,
+          "wall_ms": 15.8413,
+          "frame_start_ms": 0.0044,
+          "upload_ms": 0.0005,
+          "camera_ms": 0.0078,
+          "render_ms": 0.1325,
+          "post_ms": 0.1011,
+          "overlay_ms": 0.2514,
+          "present_ms": 15.3371,
+          "capture_ms": 0.0021,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 1289,
+          "wall_ms": 15.6435,
+          "frame_start_ms": 0.0051,
+          "upload_ms": 0.0009,
+          "camera_ms": 0.0036,
+          "render_ms": 0.1289,
+          "post_ms": 0.1786,
+          "overlay_ms": 0.4284,
+          "present_ms": 14.8891,
+          "capture_ms": 0.0029,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 1108,
+          "wall_ms": 15.4416,
+          "frame_start_ms": 0.0048,
+          "upload_ms": 0.0008,
+          "camera_ms": 0.0093,
+          "render_ms": 0.1178,
+          "post_ms": 0.1652,
+          "overlay_ms": 0.3634,
+          "present_ms": 14.7513,
+          "capture_ms": 0.0018,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "first_light",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_first_light.png",
+          "written": true,
+          "golden": "dev/goldens\\spawn_stand\\vk\\first_light.png",
+          "golden_checked": false,
+          "note": "no golden"
+        },
+        {
+          "name": "final",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_final.png",
+          "written": true,
+          "golden": "dev/goldens\\spawn_stand\\vk\\final.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 313,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 17.3121,
+          "passed": true
+        },
+        {
+          "metric": "walk_violations",
+          "op": "==",
+          "threshold": 0,
+          "measured": 0,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "backend": "d3d12",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 235,
+      "warmup_frames": 668,
+      "warmup_seconds": 4.40194,
+      "contrast_percent": 17.2943,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 12.8156,
+        "median": 12.1325,
+        "p95": 12.4473,
+        "p99": 12.5945,
+        "max": 198.733,
+        "min": 0.4477
+      },
+      "gpu_ms": {
+        "mean": 6.7552,
+        "median": 6.70505,
+        "p95": 8.1172,
+        "p99": 8.3096,
+        "max": 12.2449,
+        "min": 0.133038
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 1,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 2,
+        "4-6": 0,
+        "6-8": 0,
+        "8-11": 0,
+        "11-16": 232,
+        "16-20": 0,
+        "20-33": 0,
+        "33-50": 0,
+        "50+": 1
+      },
+      "phase_accounting": {
+        "coverage": 0.999419,
+        "frames_outside_1pct": 1
+      },
+      "counters": {
+        "bricks": 903469,
+        "internal_nodes": 365965,
+        "solid_leaves": 1306485,
+        "resident_mb": 550.36,
+        "peak_gpu_mb": 656.08,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 668,
+          "wall_ms": 198.733,
+          "frame_start_ms": 0.0045,
+          "upload_ms": 29.0743,
+          "camera_ms": 0.0053,
+          "render_ms": 0.1862,
+          "post_ms": 0.0816,
+          "overlay_ms": 0.3423,
+          "present_ms": 0.8526,
+          "capture_ms": 168.175,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 745,
+          "wall_ms": 13.0563,
+          "frame_start_ms": 0.0022,
+          "upload_ms": 0.0004,
+          "camera_ms": 0.0075,
+          "render_ms": 0.0716,
+          "post_ms": 0.0536,
+          "overlay_ms": 0.1513,
+          "present_ms": 12.7634,
+          "capture_ms": 0.001,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 895,
+          "wall_ms": 12.5945,
+          "frame_start_ms": 0.0037,
+          "upload_ms": 0.0004,
+          "camera_ms": 0.0088,
+          "render_ms": 0.0862,
+          "post_ms": 0.0596,
+          "overlay_ms": 0.1331,
+          "present_ms": 12.2948,
+          "capture_ms": 0.001,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 678,
+          "wall_ms": 12.5652,
+          "frame_start_ms": 0.0045,
+          "upload_ms": 0.0004,
+          "camera_ms": 0.0043,
+          "render_ms": 0.1016,
+          "post_ms": 0.0629,
+          "overlay_ms": 0.1912,
+          "present_ms": 12.1881,
+          "capture_ms": 0.0017,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 731,
+          "wall_ms": 12.5108,
+          "frame_start_ms": 0.0024,
+          "upload_ms": 0.0003,
+          "camera_ms": 0.0057,
+          "render_ms": 0.0608,
+          "post_ms": 0.0457,
+          "overlay_ms": 0.143,
+          "present_ms": 12.2451,
+          "capture_ms": 0.0012,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "first_light",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_first_light.png",
+          "written": true,
+          "golden": "dev/goldens\\spawn_stand\\d3d12\\first_light.png",
+          "golden_checked": false,
+          "note": "no golden"
+        },
+        {
+          "name": "final",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_final.png",
+          "written": true,
+          "golden": "dev/goldens\\spawn_stand\\d3d12\\final.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 235,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 17.2943,
+          "passed": true
+        },
+        {
+          "metric": "walk_violations",
+          "op": "==",
+          "threshold": 0,
+          "measured": 0,
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

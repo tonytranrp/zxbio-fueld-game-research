@@ -92,6 +92,9 @@ endif()
 
 add_subdirectory(engine)
 add_subdirectory(world)
+# The development harness (Prompt 002). dev/scenario and dev/telemetry are GPU-free by design and
+# build in the no-GPU CI job; dev/harness is gated on VOXEL_BUILD_RENDERER inside dev/CMakeLists.
+add_subdirectory(dev)
 if(VOXEL_BUILD_RENDERER)
   add_subdirectory(render)
   add_subdirectory(app)

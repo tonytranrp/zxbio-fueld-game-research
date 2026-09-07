@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
@@ -11,6 +12,7 @@
 
 #include "Common/interface/DataBlobImpl.hpp"
 #include "Graphics/GraphicsEngine/interface/Texture.h"
+#include "TextureLoader/interface/Image.h"
 #include "TextureLoader/interface/PNGCodec.h"
 
 namespace render::diligent {
@@ -205,6 +207,71 @@ bool dump_frame(RenderContext& context, const char* path) {
     BackbufferReadback frame;
     read_back_buffer(rc, frame);
     return write_capture(frame, path);
+}
+
+// ---- Prompt 002 goal 217: the golden-image comparison's I/O -------------------------------------
+// Exposed from this module rather than from dev/harness because the decoder is DiligentTools'
+// bundled libpng -- the same one write_capture() encodes with -- and putting libpng on a second
+// module's include path to read back what this one wrote would be two paths to one format.
+
+FrameImage read_back_frame(RenderContext& context) {
+    auto& rc = context.impl();
+    BackbufferReadback frame;
+    read_back_buffer(rc, frame);
+    FrameImage image;
+    image.width = frame.width;
+    image.height = frame.height;
+    image.rgb = repack_rgb(frame);
+    return image;
+}
+
+FrameImage decode_png_file(const char* path) {
+    FrameImage image;
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return image;
+    }
+    const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file),
+                                          std::istreambuf_iterator<char>()};
+    if (bytes.empty()) {
+        return image;
+    }
+    auto pixels = Diligent::DataBlobImpl::Create();
+    Diligent::ImageDesc desc;
+    if (Diligent::DecodePng(bytes.data(), bytes.size(), pixels.RawPtr(), &desc) !=
+        Diligent::DECODE_PNG_RESULT_OK) {
+        return image;
+    }
+    if (desc.ComponentType != Diligent::VT_UINT8 || (desc.NumComponents != 3 && desc.NumComponents != 4)) {
+        return image; // a golden this project did not write; refuse rather than guess
+    }
+    image.width = desc.Width;
+    image.height = desc.Height;
+    image.rgb.resize(static_cast<std::size_t>(desc.Width) * desc.Height * 3u);
+    const auto* src = static_cast<const std::uint8_t*>(pixels->GetConstDataPtr());
+    for (std::uint32_t y = 0; y < desc.Height; ++y) {
+        const std::uint8_t* row = src + static_cast<std::size_t>(y) * desc.RowStride;
+        std::uint8_t* dst = image.rgb.data() + static_cast<std::size_t>(y) * desc.Width * 3u;
+        for (std::uint32_t x = 0; x < desc.Width; ++x) {
+            const std::uint8_t* px = row + static_cast<std::size_t>(x) * desc.NumComponents;
+            dst[static_cast<std::size_t>(x) * 3u + 0] = px[0];
+            dst[static_cast<std::size_t>(x) * 3u + 1] = px[1];
+            dst[static_cast<std::size_t>(x) * 3u + 2] = px[2];
+        }
+    }
+    return image;
+}
+
+bool encode_png_file(const char* path, const FrameImage& image) {
+    if (image.empty() || image.width == 0 || image.height == 0) {
+        return false;
+    }
+    auto pngBits = Diligent::DataBlobImpl::Create();
+    if (Diligent::EncodePng(image.rgb.data(), image.width, image.height, image.width * 3u,
+                            /*PNG_COLOR_TYPE_RGB*/ 2, pngBits.RawPtr()) != Diligent::ENCODE_PNG_RESULT_OK) {
+        return false;
+    }
+    return write_file(path, pngBits->GetConstDataPtr(), pngBits->GetSize());
 }
 
 } // namespace render::diligent

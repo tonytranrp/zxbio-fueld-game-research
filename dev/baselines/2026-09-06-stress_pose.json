@@ -1,0 +1,346 @@
+{
+  "schema": 1,
+  "scenario": "stress_pose",
+  "description": "The worst pose measured so far: ground level at a hilltop, shadows and AO on, looking out over the terrain. CLAUDE.md records 76 fps here against 155-159 panoramic, so this -- not the panorama -- is the pose a GPU budget is set from. Used by goals 220 and 221 as the instrumentation-cost measurement pose.",
+  "scenario_source": "dev/scenarios\\stress_pose.scn",
+  "git_sha": "1defc4c",
+  "build_preset": "RelWithDebInfo",
+  "headless": true,
+  "timestamp": "2026-09-07T08:00:28Z",
+  "options": [
+    "--no-taa"
+  ],
+  "scenario_text": "name stress_pose\ndescribe The worst pose measured so far: ground level at a hilltop, shadows and AO on, looking out over the terrain. CLAUDE.md records 76 fps here against 155-159 panoramic, so this -- not the panorama -- is the pose a GPU budget is set from. Used by goals 220 and 221 as the instrumentation-cost measurement pose.\nbackend both\noption --no-taa\npose_ground 48,0 -90 -6 1.7\nwait 5\ncapture end stress_pose\nassert frames > 0\nassert contrast_percent > 6\n",
+  "runs": [
+    {
+      "backend": "vk",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 775,
+      "warmup_frames": 740,
+      "warmup_seconds": 4.66393,
+      "contrast_percent": 17.3266,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 6.70309,
+        "median": 5.287,
+        "p95": 8.2533,
+        "p99": 8.6334,
+        "max": 451.163,
+        "min": 0.8556
+      },
+      "gpu_ms": {
+        "mean": 4.9486,
+        "median": 5.06163,
+        "p95": 5.32174,
+        "p99": 5.73015,
+        "max": 6.30784,
+        "min": 0.0574589
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 2,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 1
+      },
+      "histogram": {
+        "0-4": 2,
+        "4-6": 512,
+        "6-8": 143,
+        "8-11": 115,
+        "11-16": 1,
+        "16-20": 0,
+        "20-33": 0,
+        "33-50": 0,
+        "50+": 2
+      },
+      "phase_accounting": {
+        "coverage": 1.66642,
+        "frames_outside_1pct": 7
+      },
+      "counters": {
+        "bricks": 903469,
+        "internal_nodes": 365965,
+        "solid_leaves": 1306485,
+        "resident_mb": 550.36,
+        "peak_gpu_mb": 656.08,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 811,
+          "wall_ms": 451.163,
+          "frame_start_ms": 0.0065,
+          "upload_ms": 0.0006,
+          "camera_ms": 0.0128,
+          "render_ms": 0.2966,
+          "post_ms": 0.0871,
+          "overlay_ms": 0.2601,
+          "present_ms": 6.9654,
+          "capture_ms": 0.0016,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 740,
+          "wall_ms": 71.746,
+          "frame_start_ms": 0.0048,
+          "upload_ms": 48.4394,
+          "camera_ms": 0.0091,
+          "render_ms": 0.2222,
+          "post_ms": 0.1975,
+          "overlay_ms": 0.4902,
+          "present_ms": 0.6256,
+          "capture_ms": 21.6888,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 745,
+          "wall_ms": 11.0436,
+          "frame_start_ms": 0.0081,
+          "upload_ms": 0.005,
+          "camera_ms": 0.0101,
+          "render_ms": 0.2239,
+          "post_ms": 0.1406,
+          "overlay_ms": 0.2299,
+          "present_ms": 10.3727,
+          "capture_ms": 0.0059,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 942,
+          "wall_ms": 8.8704,
+          "frame_start_ms": 0.0064,
+          "upload_ms": 0.0013,
+          "camera_ms": 0.0048,
+          "render_ms": 0.1581,
+          "post_ms": 0.1312,
+          "overlay_ms": 0.2427,
+          "present_ms": 8.312,
+          "capture_ms": 0.0034,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 894,
+          "wall_ms": 8.8059,
+          "frame_start_ms": 0.006,
+          "upload_ms": 0.0006,
+          "camera_ms": 0.0032,
+          "render_ms": 0.119,
+          "post_ms": 0.0706,
+          "overlay_ms": 0.1604,
+          "present_ms": 8.44,
+          "capture_ms": 0.0016,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "stress_pose",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_stress_pose.png",
+          "written": true,
+          "golden": "dev/goldens\\stress_pose\\vk\\stress_pose.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 775,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 17.3266,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "backend": "d3d12",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 410,
+      "warmup_frames": 636,
+      "warmup_seconds": 4.14559,
+      "contrast_percent": 17.2765,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 12.2072,
+        "median": 12.1281,
+        "p95": 12.6143,
+        "p99": 13.5917,
+        "max": 56.8377,
+        "min": 0.7438
+      },
+      "gpu_ms": {
+        "mean": 6.50975,
+        "median": 6.43897,
+        "p95": 6.82616,
+        "p99": 9.18031,
+        "max": 14.1263,
+        "min": 0.106573
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 1,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 2,
+        "4-6": 0,
+        "6-8": 0,
+        "8-11": 4,
+        "11-16": 401,
+        "16-20": 2,
+        "20-33": 0,
+        "33-50": 0,
+        "50+": 1
+      },
+      "phase_accounting": {
+        "coverage": 0.999253,
+        "frames_outside_1pct": 1
+      },
+      "counters": {
+        "bricks": 903469,
+        "internal_nodes": 365965,
+        "solid_leaves": 1306485,
+        "resident_mb": 550.36,
+        "peak_gpu_mb": 656.08,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 636,
+          "wall_ms": 56.8377,
+          "frame_start_ms": 0.0029,
+          "upload_ms": 32.6756,
+          "camera_ms": 0.0058,
+          "render_ms": 0.1898,
+          "post_ms": 0.0802,
+          "overlay_ms": 0.2123,
+          "present_ms": 0.939,
+          "capture_ms": 22.7134,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 639,
+          "wall_ms": 18.6198,
+          "frame_start_ms": 0.0015,
+          "upload_ms": 0.0003,
+          "camera_ms": 0.0016,
+          "render_ms": 0.0636,
+          "post_ms": 0.0486,
+          "overlay_ms": 0.1819,
+          "present_ms": 18.3131,
+          "capture_ms": 0.0014,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 640,
+          "wall_ms": 18.2719,
+          "frame_start_ms": 0.0054,
+          "upload_ms": 0.0005,
+          "camera_ms": 0.0106,
+          "render_ms": 0.0962,
+          "post_ms": 0.0744,
+          "overlay_ms": 0.1621,
+          "present_ms": 17.9121,
+          "capture_ms": 0.0013,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 974,
+          "wall_ms": 14.0041,
+          "frame_start_ms": 0.0082,
+          "upload_ms": 0.0014,
+          "camera_ms": 0.0134,
+          "render_ms": 0.1752,
+          "post_ms": 0.1255,
+          "overlay_ms": 0.2633,
+          "present_ms": 13.3869,
+          "capture_ms": 0.0042,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 1012,
+          "wall_ms": 13.5917,
+          "frame_start_ms": 0.0062,
+          "upload_ms": 0.0011,
+          "camera_ms": 0.0042,
+          "render_ms": 0.5561,
+          "post_ms": 0.6774,
+          "overlay_ms": 0.3492,
+          "present_ms": 11.9854,
+          "capture_ms": 0.003,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "stress_pose",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_stress_pose.png",
+          "written": true,
+          "golden": "dev/goldens\\stress_pose\\d3d12\\stress_pose.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 410,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 17.2765,
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

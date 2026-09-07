@@ -1,0 +1,346 @@
+{
+  "schema": 1,
+  "scenario": "valley_far",
+  "description": "A 300 m view down a valley. The distance/LOD look shot: everything past the finest ring is a coarser node, so this is where the LOD ladder's seams, the moire Prompt 005 is about, and the fog Prompt 007 derives all become visible at once.",
+  "scenario_source": "dev/scenarios\\valley_far.scn",
+  "git_sha": "1defc4c",
+  "build_preset": "RelWithDebInfo",
+  "headless": true,
+  "timestamp": "2026-09-07T07:59:54Z",
+  "options": [
+    "--no-taa"
+  ],
+  "scenario_text": "name valley_far\ndescribe A 300 m view down a valley. The distance/LOD look shot: everything past the finest ring is a coarser node, so this is where the LOD ladder's seams, the moire Prompt 005 is about, and the fog Prompt 007 derives all become visible at once.\nbackend both\noption --no-taa\npose_ground 48,0 -90 -8 12\nwait 2\ncapture end valley_far\nassert frames > 0\nassert contrast_percent > 6\n",
+  "runs": [
+    {
+      "backend": "vk",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 322,
+      "warmup_frames": 388,
+      "warmup_seconds": 2.42263,
+      "contrast_percent": 21.7665,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 6.27317,
+        "median": 4.2583,
+        "p95": 10.7819,
+        "p99": 10.9354,
+        "max": 35.4516,
+        "min": 0.6665
+      },
+      "gpu_ms": {
+        "mean": 4.00159,
+        "median": 3.86763,
+        "p95": 6.3591,
+        "p99": 6.76441,
+        "max": 7.16901,
+        "min": 0.10848
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 1,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 98,
+        "4-6": 99,
+        "6-8": 18,
+        "8-11": 104,
+        "11-16": 2,
+        "16-20": 0,
+        "20-33": 0,
+        "33-50": 1,
+        "50+": 0
+      },
+      "phase_accounting": {
+        "coverage": 0.99859,
+        "frames_outside_1pct": 3
+      },
+      "counters": {
+        "bricks": 624179,
+        "internal_nodes": 230962,
+        "solid_leaves": 746571,
+        "resident_mb": 378.64,
+        "peak_gpu_mb": 451.374,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 388,
+          "wall_ms": 35.4516,
+          "frame_start_ms": 0.004,
+          "upload_ms": 20.9688,
+          "camera_ms": 0.0062,
+          "render_ms": 0.1927,
+          "post_ms": 0.1483,
+          "overlay_ms": 0.3603,
+          "present_ms": 0.4563,
+          "capture_ms": 13.2933,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 455,
+          "wall_ms": 11.0547,
+          "frame_start_ms": 0.0021,
+          "upload_ms": 0.0002,
+          "camera_ms": 0.0013,
+          "render_ms": 0.0555,
+          "post_ms": 0.0506,
+          "overlay_ms": 0.298,
+          "present_ms": 10.6411,
+          "capture_ms": 0.0021,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 667,
+          "wall_ms": 11.0107,
+          "frame_start_ms": 0.0061,
+          "upload_ms": 0.0006,
+          "camera_ms": 0.0026,
+          "render_ms": 0.1023,
+          "post_ms": 0.0791,
+          "overlay_ms": 0.2363,
+          "present_ms": 10.5756,
+          "capture_ms": 0.0024,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 426,
+          "wall_ms": 10.9354,
+          "frame_start_ms": 0.0014,
+          "upload_ms": 0.0002,
+          "camera_ms": 0.0097,
+          "render_ms": 0.045,
+          "post_ms": 0.0447,
+          "overlay_ms": 0.1468,
+          "present_ms": 10.6819,
+          "capture_ms": 0.0011,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 478,
+          "wall_ms": 10.9238,
+          "frame_start_ms": 0.0015,
+          "upload_ms": 0.0004,
+          "camera_ms": 0.0011,
+          "render_ms": 0.0458,
+          "post_ms": 0.0502,
+          "overlay_ms": 0.2078,
+          "present_ms": 10.6128,
+          "capture_ms": 0.001,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "valley_far",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_valley_far.png",
+          "written": true,
+          "golden": "dev/goldens\\valley_far\\vk\\valley_far.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 322,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 21.7665,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "backend": "d3d12",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 314,
+      "warmup_frames": 328,
+      "warmup_seconds": 2.32896,
+      "contrast_percent": 21.7316,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 6.40573,
+        "median": 6.0706,
+        "p95": 6.539,
+        "p99": 12.3181,
+        "max": 35.6184,
+        "min": 1.1387
+      },
+      "gpu_ms": {
+        "mean": 5.26279,
+        "median": 5.27954,
+        "p95": 5.5511,
+        "p99": 8.29768,
+        "max": 8.70299,
+        "min": 0.0727177
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 1,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 1,
+        "4-6": 100,
+        "6-8": 198,
+        "8-11": 0,
+        "11-16": 14,
+        "16-20": 0,
+        "20-33": 0,
+        "33-50": 1,
+        "50+": 0
+      },
+      "phase_accounting": {
+        "coverage": 0.999018,
+        "frames_outside_1pct": 1
+      },
+      "counters": {
+        "bricks": 624179,
+        "internal_nodes": 230962,
+        "solid_leaves": 746571,
+        "resident_mb": 378.64,
+        "peak_gpu_mb": 451.374,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 328,
+          "wall_ms": 35.6184,
+          "frame_start_ms": 0.0027,
+          "upload_ms": 17.4961,
+          "camera_ms": 0.0073,
+          "render_ms": 0.1828,
+          "post_ms": 0.0972,
+          "overlay_ms": 0.3009,
+          "present_ms": 1.1575,
+          "capture_ms": 16.3475,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 333,
+          "wall_ms": 12.795,
+          "frame_start_ms": 0.0042,
+          "upload_ms": 0.0005,
+          "camera_ms": 0.0149,
+          "render_ms": 0.0909,
+          "post_ms": 0.0823,
+          "overlay_ms": 0.1777,
+          "present_ms": 12.4081,
+          "capture_ms": 0.002,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 341,
+          "wall_ms": 12.4274,
+          "frame_start_ms": 0.0055,
+          "upload_ms": 0.0013,
+          "camera_ms": 0.0189,
+          "render_ms": 0.1213,
+          "post_ms": 0.0792,
+          "overlay_ms": 0.1948,
+          "present_ms": 11.9948,
+          "capture_ms": 0.0025,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 331,
+          "wall_ms": 12.3181,
+          "frame_start_ms": 0.0023,
+          "upload_ms": 0.0003,
+          "camera_ms": 0.0015,
+          "render_ms": 0.071,
+          "post_ms": 0.0528,
+          "overlay_ms": 0.1772,
+          "present_ms": 12.0027,
+          "capture_ms": 0.0012,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 338,
+          "wall_ms": 12.2827,
+          "frame_start_ms": 0.005,
+          "upload_ms": 0.0006,
+          "camera_ms": 0.0032,
+          "render_ms": 0.108,
+          "post_ms": 0.0654,
+          "overlay_ms": 0.1698,
+          "present_ms": 11.9164,
+          "capture_ms": 0.0011,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "valley_far",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_valley_far.png",
+          "written": true,
+          "golden": "dev/goldens\\valley_far\\d3d12\\valley_far.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 314,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 21.7316,
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

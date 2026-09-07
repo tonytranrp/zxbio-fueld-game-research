@@ -1,0 +1,27 @@
+name walk_hillside
+describe Walk up and then back down a steep slope. Asserts no ground violations and -- once Prompt 003's step-jitter metric exists -- that the smoothed eye does not visibly stair-step. The svo world is 7.8 mm voxels, so every slope is a sub-centimetre staircase and this is the pose where the smoothing budget either works or does not.
+backend both
+
+option --walk
+
+pose_ground 0,16 -90 -10 1.7
+# +X from x=0 climbs 25.9 -> 61.9 -> 66.7 m over 32 m at z=+16: a real slope, not a guess.
+hold forward 8
+hold none 1
+look 90 -8 1
+hold forward 8
+
+# A settle before the final capture. A moving scenario requests a whole-world rebuild every 2 m
+# (run_svo's lod_radius*0.5), and whether the last one has LANDED by the final frame depends on
+# wall-clock timing -- measured: fly_orbit's vk `final` differed from its own golden by 70.4% of
+# pixels on a re-run while d3d12's was bit-identical, purely because one run's rebuild arrived
+# and the other's did not. That is the rebuild storm Prompt 004 exists to remove; until it is
+# removed, a golden taken immediately after motion is not reproducible. Waiting is the honest
+# workaround, and this line should be deletable once 004 lands.
+wait 3
+
+capture event grounded on_ground
+capture end final
+
+assert walk_violations == 0
+assert contrast_percent > 6

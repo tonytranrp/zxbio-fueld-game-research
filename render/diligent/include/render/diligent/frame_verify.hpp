@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <vector>
+
 #include "render/diligent/render_context.hpp"
 
 namespace render::diligent {
@@ -21,5 +24,24 @@ namespace render::diligent {
 // screenshot-hotkey callers are explicitly debug workflows). Throws on staging/copy failure;
 // returns false only if the file itself could not be written or encoded.
 bool dump_frame(RenderContext& context, const char* path);
+
+// Prompt 002 goal 217. One tightly-packed RGB frame, in memory. The golden-image comparison needs
+// to READ a PNG as well as write one, and the decoder is already in the dependency tree
+// (DiligentTools' bundled libpng, the same one dump_frame encodes with) -- so it is exposed here
+// rather than pulled into dev/harness, which would then need libpng on its include path for no
+// other reason.
+struct FrameImage {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<std::uint8_t> rgb; // 3 bytes per pixel, rows top to bottom
+
+    [[nodiscard]] bool empty() const noexcept { return rgb.empty(); }
+};
+
+// Same staging-copy + WaitForIdle cost as dump_frame; a debug/verification call, never per frame.
+[[nodiscard]] FrameImage read_back_frame(RenderContext& context);
+// Returns an empty image if the file is missing or is not an 8-bit RGB/RGBA PNG.
+[[nodiscard]] FrameImage decode_png_file(const char* path);
+[[nodiscard]] bool encode_png_file(const char* path, const FrameImage& image);
 
 } // namespace render::diligent

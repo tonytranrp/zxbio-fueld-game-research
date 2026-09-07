@@ -1,0 +1,346 @@
+{
+  "schema": 1,
+  "scenario": "throughput_ramp",
+  "description": "Goal 219's yardstick, as a fixed pose. The harness's --ramp mode re-runs this scenario once per rung of the --lod-radius / --lod-quality ladder and tabulates resident bricks, resident MB, primary-ray steps, GPU march ms and fps -- so \"how many voxels can this GPU march at 150 fps\" has a number. Run on its own it is one rung at the shipping defaults.",
+  "scenario_source": "dev/scenarios\\throughput_ramp.scn",
+  "git_sha": "1defc4c",
+  "build_preset": "RelWithDebInfo",
+  "headless": true,
+  "timestamp": "2026-09-07T08:01:57Z",
+  "options": [
+    "--no-taa"
+  ],
+  "scenario_text": "name throughput_ramp\ndescribe Goal 219's yardstick, as a fixed pose. The harness's --ramp mode re-runs this scenario once per rung of the --lod-radius / --lod-quality ladder and tabulates resident bricks, resident MB, primary-ray steps, GPU march ms and fps -- so \"how many voxels can this GPU march at 150 fps\" has a number. Run on its own it is one rung at the shipping defaults.\nbackend both\noption --no-taa\npose_ground 48,0 -90 -6 1.7\nwait 3\ncapture end throughput_ramp\nassert frames > 0\nassert contrast_percent > 6\n",
+  "runs": [
+    {
+      "backend": "vk",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 489,
+      "warmup_frames": 715,
+      "warmup_seconds": 4.43927,
+      "contrast_percent": 17.3061,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 6.15481,
+        "median": 5.2689,
+        "p95": 8.2912,
+        "p99": 8.5533,
+        "max": 55.4986,
+        "min": 1.0817
+      },
+      "gpu_ms": {
+        "mean": 4.91111,
+        "median": 5.04231,
+        "p95": 5.26118,
+        "p99": 5.37086,
+        "max": 5.87654,
+        "min": 0.0863075
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 1,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 1,
+        "4-6": 325,
+        "6-8": 75,
+        "8-11": 86,
+        "11-16": 1,
+        "16-20": 0,
+        "20-33": 0,
+        "33-50": 0,
+        "50+": 1
+      },
+      "phase_accounting": {
+        "coverage": 0.999026,
+        "frames_outside_1pct": 2
+      },
+      "counters": {
+        "bricks": 903469,
+        "internal_nodes": 365965,
+        "solid_leaves": 1306485,
+        "resident_mb": 550.36,
+        "peak_gpu_mb": 656.08,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 715,
+          "wall_ms": 55.4986,
+          "frame_start_ms": 0.0016,
+          "upload_ms": 36.3465,
+          "camera_ms": 0.0188,
+          "render_ms": 0.2933,
+          "post_ms": 0.3469,
+          "overlay_ms": 0.5055,
+          "present_ms": 0.5414,
+          "capture_ms": 17.4118,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 720,
+          "wall_ms": 11.7005,
+          "frame_start_ms": 0.0127,
+          "upload_ms": 0.0012,
+          "camera_ms": 0.0067,
+          "render_ms": 0.2208,
+          "post_ms": 0.1938,
+          "overlay_ms": 0.2757,
+          "present_ms": 10.973,
+          "capture_ms": 0.0051,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 1059,
+          "wall_ms": 8.634,
+          "frame_start_ms": 0.005,
+          "upload_ms": 0.0024,
+          "camera_ms": 0.0087,
+          "render_ms": 0.1148,
+          "post_ms": 0.0718,
+          "overlay_ms": 0.1138,
+          "present_ms": 8.3066,
+          "capture_ms": 0.0029,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 891,
+          "wall_ms": 8.626,
+          "frame_start_ms": 0.0022,
+          "upload_ms": 0.0005,
+          "camera_ms": 0.0058,
+          "render_ms": 0.0553,
+          "post_ms": 0.0442,
+          "overlay_ms": 0.1155,
+          "present_ms": 8.3961,
+          "capture_ms": 0.0007,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 888,
+          "wall_ms": 8.5533,
+          "frame_start_ms": 0.011,
+          "upload_ms": 0.0007,
+          "camera_ms": 0.0016,
+          "render_ms": 0.0909,
+          "post_ms": 0.0598,
+          "overlay_ms": 0.1359,
+          "present_ms": 8.2485,
+          "capture_ms": 0.0012,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "throughput_ramp",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_throughput_ramp.png",
+          "written": true,
+          "golden": "dev/goldens\\throughput_ramp\\vk\\throughput_ramp.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 489,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 17.3061,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "backend": "d3d12",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 246,
+      "warmup_frames": 612,
+      "warmup_seconds": 3.9423,
+      "contrast_percent": 17.2696,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 12.2431,
+        "median": 12.1338,
+        "p95": 12.4808,
+        "p99": 17.9187,
+        "max": 50.1506,
+        "min": 0.7878
+      },
+      "gpu_ms": {
+        "mean": 6.43803,
+        "median": 6.356,
+        "p95": 7.43413,
+        "p99": 12.8357,
+        "max": 13.9027,
+        "min": 0.101328
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 1,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 2,
+        "4-6": 0,
+        "6-8": 0,
+        "8-11": 0,
+        "11-16": 241,
+        "16-20": 2,
+        "20-33": 0,
+        "33-50": 0,
+        "50+": 1
+      },
+      "phase_accounting": {
+        "coverage": 0.999275,
+        "frames_outside_1pct": 1
+      },
+      "counters": {
+        "bricks": 903469,
+        "internal_nodes": 365965,
+        "solid_leaves": 1306485,
+        "resident_mb": 550.36,
+        "peak_gpu_mb": 656.08,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 612,
+          "wall_ms": 50.1506,
+          "frame_start_ms": 0.002,
+          "upload_ms": 24.1782,
+          "camera_ms": 0.0102,
+          "render_ms": 0.3322,
+          "post_ms": 0.192,
+          "overlay_ms": 0.2878,
+          "present_ms": 1.2785,
+          "capture_ms": 23.8486,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 615,
+          "wall_ms": 18.2812,
+          "frame_start_ms": 0.0022,
+          "upload_ms": 0.0003,
+          "camera_ms": 0.0018,
+          "render_ms": 0.0651,
+          "post_ms": 0.068,
+          "overlay_ms": 0.1585,
+          "present_ms": 17.9746,
+          "capture_ms": 0.0018,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 616,
+          "wall_ms": 17.9187,
+          "frame_start_ms": 0.0053,
+          "upload_ms": 0.0007,
+          "camera_ms": 0.0113,
+          "render_ms": 0.106,
+          "post_ms": 0.0715,
+          "overlay_ms": 0.1372,
+          "present_ms": 17.5765,
+          "capture_ms": 0.002,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 632,
+          "wall_ms": 12.8277,
+          "frame_start_ms": 0.0073,
+          "upload_ms": 0.0013,
+          "camera_ms": 0.0133,
+          "render_ms": 0.1272,
+          "post_ms": 0.0835,
+          "overlay_ms": 0.1236,
+          "present_ms": 12.4538,
+          "capture_ms": 0.0024,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 799,
+          "wall_ms": 12.7261,
+          "frame_start_ms": 0.0046,
+          "upload_ms": 0.0006,
+          "camera_ms": 0.0096,
+          "render_ms": 0.1114,
+          "post_ms": 0.0667,
+          "overlay_ms": 0.1817,
+          "present_ms": 12.3401,
+          "capture_ms": 0.0017,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "throughput_ramp",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_throughput_ramp.png",
+          "written": true,
+          "golden": "dev/goldens\\throughput_ramp\\d3d12\\throughput_ramp.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 246,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 17.2696,
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

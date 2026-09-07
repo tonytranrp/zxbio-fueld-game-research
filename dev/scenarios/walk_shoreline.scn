@@ -1,0 +1,32 @@
+name walk_shoreline
+describe Walk from inland ground down to the waterline, into the sea, swim, and climb back out. This is the scenario Prompt 001 Group A's swim/dive/shore-pop physics was hand-driven to check; it exercises all three Stances in one run, so a regression in any of them shows up as a ground violation or a stall rather than as a feeling.
+backend both
+
+option --walk
+
+pose_ground 64,0 -90 -8 1.7
+# Downhill along +X from 56 m to the waterline at about x=112, then into the sea and back out.
+# The heights along this line, from tools/svo_render: 66.0, 56.2, 47.2, 13.5, -0.5 at x = 48..112.
+hold forward 6
+hold none 1
+hold forward 8
+hold none 2
+look 90 -5 1
+hold forward 10
+
+# A settle before the final capture. A moving scenario requests a whole-world rebuild every 2 m
+# (run_svo's lod_radius*0.5), and whether the last one has LANDED by the final frame depends on
+# wall-clock timing -- measured: fly_orbit's vk `final` differed from its own golden by 70.4% of
+# pixels on a re-run while d3d12's was bit-identical, purely because one run's rebuild arrived
+# and the other's did not. That is the rebuild storm Prompt 004 exists to remove; until it is
+# removed, a golden taken immediately after motion is not reproducible. Waiting is the honest
+# workaround, and this line should be deletable once 004 lands.
+wait 3
+
+capture event grounded on_ground
+capture event world-ready first_light
+capture end final
+
+assert walk_violations == 0
+assert frames > 0
+assert contrast_percent > 6

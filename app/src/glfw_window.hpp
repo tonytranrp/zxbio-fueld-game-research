@@ -15,7 +15,12 @@ namespace app {
 class GlfwWindow {
 public:
     // Throws std::runtime_error if GLFW init or window creation fails.
-    GlfwWindow(std::uint32_t width, std::uint32_t height, const char* title);
+    // `visible` false creates the window hidden (GLFW_VISIBLE). That is what voxel_harness
+    // --headless means here: the same swap chain and the same back-buffer readback --verify-frame
+    // already uses, with nothing on screen. It is NOT a surfaceless presentation path, so a driver
+    // that behaves differently without a visible surface would not be caught by it -- stated
+    // rather than implied, because "headless" usually promises more than this.
+    GlfwWindow(std::uint32_t width, std::uint32_t height, const char* title, bool visible = true);
     ~GlfwWindow();
 
     GlfwWindow(const GlfwWindow&) = delete;

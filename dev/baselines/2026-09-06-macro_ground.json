@@ -1,0 +1,346 @@
+{
+  "schema": 1,
+  "scenario": "macro_ground",
+  "description": "Camera 30 cm above the ground looking down at 45 degrees, holding still. The close-up look shot: at 7.8 mm voxels this is where individual cubes are several pixels across and the John Lin look either reads or does not. Post is left on because the look INCLUDES the tone mapping.",
+  "scenario_source": "dev/scenarios\\macro_ground.scn",
+  "git_sha": "1defc4c",
+  "build_preset": "RelWithDebInfo",
+  "headless": true,
+  "timestamp": "2026-09-07T07:59:07Z",
+  "options": [
+    "--no-taa"
+  ],
+  "scenario_text": "name macro_ground\ndescribe Camera 30 cm above the ground looking down at 45 degrees, holding still. The close-up look shot: at 7.8 mm voxels this is where individual cubes are several pixels across and the John Lin look either reads or does not. Post is left on because the look INCLUDES the tone mapping.\nbackend both\noption --no-taa\npose_ground 48,0 -90 -45 0.3\nwait 2\ncapture end macro_ground\nassert frames > 0\nassert contrast_percent > 6\n",
+  "runs": [
+    {
+      "backend": "vk",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 217,
+      "warmup_frames": 697,
+      "warmup_seconds": 4.31766,
+      "contrast_percent": 28.9755,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 9.28495,
+        "median": 8.7408,
+        "p95": 11.9733,
+        "p99": 17.2594,
+        "max": 49.7747,
+        "min": 0.3519
+      },
+      "gpu_ms": {
+        "mean": 8.41648,
+        "median": 8.32939,
+        "p95": 8.85344,
+        "p99": 16.3441,
+        "max": 16.6135,
+        "min": 0.0932217
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 1,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 1,
+        "4-6": 0,
+        "6-8": 1,
+        "8-11": 190,
+        "11-16": 21,
+        "16-20": 3,
+        "20-33": 0,
+        "33-50": 1,
+        "50+": 0
+      },
+      "phase_accounting": {
+        "coverage": 0.99909,
+        "frames_outside_1pct": 3
+      },
+      "counters": {
+        "bricks": 939841,
+        "internal_nodes": 384416,
+        "solid_leaves": 1388126,
+        "resident_mb": 572.797,
+        "peak_gpu_mb": 682.827,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 697,
+          "wall_ms": 49.7747,
+          "frame_start_ms": 0.0043,
+          "upload_ms": 26.4594,
+          "camera_ms": 0.0062,
+          "render_ms": 0.1156,
+          "post_ms": 0.0769,
+          "overlay_ms": 0.0997,
+          "present_ms": 0.1753,
+          "capture_ms": 22.8149,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 701,
+          "wall_ms": 17.5873,
+          "frame_start_ms": 0.0065,
+          "upload_ms": 0.0009,
+          "camera_ms": 0.0094,
+          "render_ms": 0.1344,
+          "post_ms": 0.0831,
+          "overlay_ms": 0.0254,
+          "present_ms": 17.3169,
+          "capture_ms": 0.0024,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 699,
+          "wall_ms": 17.2594,
+          "frame_start_ms": 0.0012,
+          "upload_ms": 0.0002,
+          "camera_ms": 0.001,
+          "render_ms": 0.02,
+          "post_ms": 0.0396,
+          "overlay_ms": 0.0128,
+          "present_ms": 17.1795,
+          "capture_ms": 0.0003,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 700,
+          "wall_ms": 16.7882,
+          "frame_start_ms": 0.0034,
+          "upload_ms": 0.0007,
+          "camera_ms": 0.0073,
+          "render_ms": 0.0777,
+          "post_ms": 0.0583,
+          "overlay_ms": 0.0171,
+          "present_ms": 16.6114,
+          "capture_ms": 0.0011,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 702,
+          "wall_ms": 13.0867,
+          "frame_start_ms": 0.0038,
+          "upload_ms": 0.0005,
+          "camera_ms": 0.0078,
+          "render_ms": 0.1822,
+          "post_ms": 0.0971,
+          "overlay_ms": 0.0261,
+          "present_ms": 12.7545,
+          "capture_ms": 0.0026,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "macro_ground",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_macro_ground.png",
+          "written": true,
+          "golden": "dev/goldens\\macro_ground\\vk\\macro_ground.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 217,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 28.9755,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "backend": "d3d12",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 157,
+      "warmup_frames": 623,
+      "warmup_seconds": 4.005,
+      "contrast_percent": 29.0783,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 12.7737,
+        "median": 12.1272,
+        "p95": 18.1832,
+        "p99": 18.6146,
+        "max": 69.8398,
+        "min": 0.9255
+      },
+      "gpu_ms": {
+        "mean": 10.7624,
+        "median": 10.5381,
+        "p95": 15.7909,
+        "p99": 16.3114,
+        "max": 26.9599,
+        "min": 0.12064
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 1,
+        "on_swap": 1,
+        "while_uploading": 0,
+        "while_building": 0,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 2,
+        "4-6": 0,
+        "6-8": 0,
+        "8-11": 0,
+        "11-16": 143,
+        "16-20": 11,
+        "20-33": 0,
+        "33-50": 0,
+        "50+": 1
+      },
+      "phase_accounting": {
+        "coverage": 0.999195,
+        "frames_outside_1pct": 1
+      },
+      "counters": {
+        "bricks": 939841,
+        "internal_nodes": 384416,
+        "solid_leaves": 1388126,
+        "resident_mb": 572.797,
+        "peak_gpu_mb": 682.827,
+        "uploads": 1
+      },
+      "worst_frames": [
+        {
+          "index": 623,
+          "wall_ms": 69.8398,
+          "frame_start_ms": 0.0095,
+          "upload_ms": 30.8431,
+          "camera_ms": 0.0072,
+          "render_ms": 0.1732,
+          "post_ms": 0.1041,
+          "overlay_ms": 0.0595,
+          "present_ms": 1.7353,
+          "capture_ms": 36.8893,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 626,
+          "wall_ms": 18.6146,
+          "frame_start_ms": 0.0023,
+          "upload_ms": 0.0004,
+          "camera_ms": 0.008,
+          "render_ms": 0.0734,
+          "post_ms": 0.065,
+          "overlay_ms": 0.0179,
+          "present_ms": 18.4367,
+          "capture_ms": 0.0007,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 633,
+          "wall_ms": 18.2877,
+          "frame_start_ms": 0.0071,
+          "upload_ms": 0.0011,
+          "camera_ms": 0.0113,
+          "render_ms": 0.1415,
+          "post_ms": 0.1009,
+          "overlay_ms": 0.0213,
+          "present_ms": 17.9929,
+          "capture_ms": 0.0024,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 627,
+          "wall_ms": 18.2863,
+          "frame_start_ms": 0.0068,
+          "upload_ms": 0.0009,
+          "camera_ms": 0.0138,
+          "render_ms": 0.1547,
+          "post_ms": 0.1508,
+          "overlay_ms": 0.0306,
+          "present_ms": 17.9109,
+          "capture_ms": 0.0026,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 631,
+          "wall_ms": 18.2522,
+          "frame_start_ms": 0.0062,
+          "upload_ms": 0.0006,
+          "camera_ms": 0.0117,
+          "render_ms": 0.1432,
+          "post_ms": 0.1157,
+          "overlay_ms": 0.0239,
+          "present_ms": 17.942,
+          "capture_ms": 0.0022,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "macro_ground",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_macro_ground.png",
+          "written": true,
+          "golden": "dev/goldens\\macro_ground\\d3d12\\macro_ground.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 157,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 29.0783,
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

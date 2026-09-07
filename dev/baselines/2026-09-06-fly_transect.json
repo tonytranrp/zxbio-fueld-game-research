@@ -1,0 +1,377 @@
+{
+  "schema": 1,
+  "scenario": "fly_transect",
+  "description": "A long straight flight at speed across the region. THIS IS THE STUTTER REPRODUCTION: run_svo asks for a whole-world rebuild once the camera leaves lod_radius*0.5 = 2 metres of the last build centre, and a boosted fly covers that in ~12 ms against a 0.6-1.3 s build -- so builds run back to back for the whole traverse. The frame-time percentiles and the slow-frame-by-cause counts here are the numbers Prompt 004 has to move.",
+  "scenario_source": "dev/scenarios\\fly_transect.scn",
+  "git_sha": "1defc4c",
+  "build_preset": "RelWithDebInfo",
+  "headless": true,
+  "timestamp": "2026-09-07T08:05:12Z",
+  "options": [
+  ],
+  "scenario_text": "name fly_transect\ndescribe A long straight flight at speed across the region. THIS IS THE STUTTER REPRODUCTION: run_svo asks for a whole-world rebuild once the camera leaves lod_radius*0.5 = 2 metres of the last build centre, and a boosted fly covers that in ~12 ms against a 0.6-1.3 s build -- so builds run back to back for the whole traverse. The frame-time percentiles and the slow-frame-by-cause counts here are the numbers Prompt 004 has to move.\nbackend both\npose_ground -120,0 -90 -6 40\nhold forward 6\nhold none 1\nwait 3\ncapture frame 60 early\ncapture frame 400 mid\ncapture end final\nassert frames > 0\nassert contrast_percent > 6\n",
+  "runs": [
+    {
+      "backend": "vk",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 1554,
+      "warmup_frames": 457,
+      "warmup_seconds": 2.83208,
+      "contrast_percent": 43.7708,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 6.44287,
+        "median": 5.9386,
+        "p95": 10.8504,
+        "p99": 15.6743,
+        "max": 216.196,
+        "min": 0.5562
+      },
+      "gpu_ms": {
+        "mean": 3.39742,
+        "median": 3.38006,
+        "p95": 4.36735,
+        "p99": 6.5434,
+        "max": 9.14812,
+        "min": 0.170469
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 11,
+        "on_swap": 3,
+        "while_uploading": 0,
+        "while_building": 7,
+        "other": 1
+      },
+      "histogram": {
+        "0-4": 319,
+        "4-6": 511,
+        "6-8": 376,
+        "8-11": 280,
+        "11-16": 54,
+        "16-20": 3,
+        "20-33": 7,
+        "33-50": 2,
+        "50+": 2
+      },
+      "phase_accounting": {
+        "coverage": 0.998857,
+        "frames_outside_1pct": 38
+      },
+      "counters": {
+        "bricks": 673390,
+        "internal_nodes": 239482,
+        "solid_leaves": 753262,
+        "resident_mb": 407.948,
+        "peak_gpu_mb": 1008.98,
+        "uploads": 3
+      },
+      "worst_frames": [
+        {
+          "index": 458,
+          "wall_ms": 216.196,
+          "frame_start_ms": 0.003,
+          "upload_ms": 0.0011,
+          "camera_ms": 0.6234,
+          "render_ms": 0.1171,
+          "post_ms": 0.0722,
+          "overlay_ms": 0.1651,
+          "present_ms": 0.2773,
+          "capture_ms": 214.87,
+          "swapped": false,
+          "uploading": false,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 457,
+          "wall_ms": 178.603,
+          "frame_start_ms": 0.001,
+          "upload_ms": 24.7546,
+          "camera_ms": 0.0273,
+          "render_ms": 0.122,
+          "post_ms": 0.067,
+          "overlay_ms": 0.3427,
+          "present_ms": 0.228,
+          "capture_ms": 153.039,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 1247,
+          "wall_ms": 35.9775,
+          "frame_start_ms": 0.0032,
+          "upload_ms": 0.001,
+          "camera_ms": 0.0022,
+          "render_ms": 0.1131,
+          "post_ms": 0.0711,
+          "overlay_ms": 0.0261,
+          "present_ms": 35.7432,
+          "capture_ms": 0.0017,
+          "swapped": false,
+          "uploading": false,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 1352,
+          "wall_ms": 34.7801,
+          "frame_start_ms": 0.0082,
+          "upload_ms": 33.4044,
+          "camera_ms": 0.0127,
+          "render_ms": 0.399,
+          "post_ms": 0.1899,
+          "overlay_ms": 0.0616,
+          "present_ms": 0.6854,
+          "capture_ms": 0.0077,
+          "swapped": true,
+          "uploading": true,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 1248,
+          "wall_ms": 28.4755,
+          "frame_start_ms": 0.0128,
+          "upload_ms": 0.0022,
+          "camera_ms": 1.5585,
+          "render_ms": 0.2889,
+          "post_ms": 0.1301,
+          "overlay_ms": 0.044,
+          "present_ms": 26.2622,
+          "capture_ms": 0.0053,
+          "swapped": false,
+          "uploading": false,
+          "building": true,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "early",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_early.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_transect\\vk\\early.png",
+          "golden_checked": false,
+          "note": "no golden"
+        },
+        {
+          "name": "mid",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_mid.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_transect\\vk\\mid.png",
+          "golden_checked": false,
+          "note": "no golden"
+        },
+        {
+          "name": "final",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_final.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_transect\\vk\\final.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 1554,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 43.7708,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "backend": "d3d12",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 1479,
+      "warmup_frames": 376,
+      "warmup_seconds": 2.59764,
+      "contrast_percent": 57.5307,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 6.92844,
+        "median": 6.0714,
+        "p95": 12.0638,
+        "p99": 12.4628,
+        "max": 485.719,
+        "min": 0.6861
+      },
+      "gpu_ms": {
+        "mean": 4.20666,
+        "median": 4.31204,
+        "p95": 4.90284,
+        "p99": 8.55327,
+        "max": 14.3094,
+        "min": 0.190496
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 6,
+        "on_swap": 4,
+        "while_uploading": 1,
+        "while_building": 1,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 16,
+        "4-6": 464,
+        "6-8": 890,
+        "8-11": 9,
+        "11-16": 92,
+        "16-20": 2,
+        "20-33": 4,
+        "33-50": 0,
+        "50+": 2
+      },
+      "phase_accounting": {
+        "coverage": 0.999102,
+        "frames_outside_1pct": 26
+      },
+      "counters": {
+        "bricks": 971576,
+        "internal_nodes": 386752,
+        "solid_leaves": 1373583,
+        "resident_mb": 591.58,
+        "peak_gpu_mb": 1223.23,
+        "uploads": 4
+      },
+      "worst_frames": [
+        {
+          "index": 400,
+          "wall_ms": 485.719,
+          "frame_start_ms": 0.0049,
+          "upload_ms": 0.0011,
+          "camera_ms": 0.0027,
+          "render_ms": 0.3569,
+          "post_ms": 0.1957,
+          "overlay_ms": 0.2408,
+          "present_ms": 2.0564,
+          "capture_ms": 482.856,
+          "swapped": false,
+          "uploading": false,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 376,
+          "wall_ms": 179.418,
+          "frame_start_ms": 0.0047,
+          "upload_ms": 25.5097,
+          "camera_ms": 0.0073,
+          "render_ms": 0.2659,
+          "post_ms": 0.0797,
+          "overlay_ms": 0.2416,
+          "present_ms": 1.0276,
+          "capture_ms": 152.263,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 1813,
+          "wall_ms": 31.0799,
+          "frame_start_ms": 0.0058,
+          "upload_ms": 29.8866,
+          "camera_ms": 0.0194,
+          "render_ms": 0.2065,
+          "post_ms": 0.0637,
+          "overlay_ms": 0.0233,
+          "present_ms": 0.8699,
+          "capture_ms": 0.0019,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 679,
+          "wall_ms": 25.4442,
+          "frame_start_ms": 0.0036,
+          "upload_ms": 23.2414,
+          "camera_ms": 0.1209,
+          "render_ms": 0.4578,
+          "post_ms": 0.3089,
+          "overlay_ms": 0.1242,
+          "present_ms": 1.1725,
+          "capture_ms": 0.0031,
+          "swapped": true,
+          "uploading": true,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 1796,
+          "wall_ms": 25.0732,
+          "frame_start_ms": 0.0018,
+          "upload_ms": 23.5317,
+          "camera_ms": 0.02,
+          "render_ms": 0.1383,
+          "post_ms": 0.0591,
+          "overlay_ms": 0.0222,
+          "present_ms": 1.2936,
+          "capture_ms": 0.0019,
+          "swapped": false,
+          "uploading": true,
+          "building": true,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "early",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_early.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_transect\\d3d12\\early.png",
+          "golden_checked": false,
+          "note": "no golden"
+        },
+        {
+          "name": "mid",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_mid.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_transect\\d3d12\\mid.png",
+          "golden_checked": false,
+          "note": "no golden"
+        },
+        {
+          "name": "final",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_final.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_transect\\d3d12\\final.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 1479,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 57.5307,
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

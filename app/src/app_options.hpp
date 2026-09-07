@@ -56,6 +56,10 @@ struct AppOptions {
     bool bloom = true;       // bloom off, tonemap composite still on
     bool tonemap = true;     // tonemap off (raw clamp), bloom still on
     bool sky = true;         // gradient-sky pass (false: flat clear color)
+    // The ImGui debug panel. On for a human, off for a golden: its fps, ms, brick count and VRAM
+    // digits change every single run, so leaving it in a reference image bakes run-to-run noise
+    // into the thing the comparison is supposed to hold still. voxel_harness defaults it off.
+    bool overlay = true;
     // A4's crosshair. Default on, but suppressed under --verify-frame so a HUD cross cannot
     // inflate the local-contrast metric; --crosshair forces it back on for a capture.
     std::optional<bool> crosshair;

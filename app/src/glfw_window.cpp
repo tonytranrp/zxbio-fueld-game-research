@@ -14,13 +14,14 @@
 
 namespace app {
 
-GlfwWindow::GlfwWindow(std::uint32_t width, std::uint32_t height, const char* title) {
+GlfwWindow::GlfwWindow(std::uint32_t width, std::uint32_t height, const char* title, bool visible) {
     if (glfwInit() != GLFW_TRUE) {
         const char* description = nullptr;
         glfwGetError(&description);
         throw std::runtime_error(std::string("glfwInit failed: ") + (description ? description : "unknown"));
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
     window_ = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height), title, nullptr, nullptr);
     if (window_ == nullptr) {
         const char* description = nullptr;

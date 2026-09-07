@@ -1,0 +1,362 @@
+{
+  "schema": 1,
+  "scenario": "fly_orbit",
+  "description": "Orbit a hilltop at about 60 m, looking inward. The panoramic pose -- the one every fps number in docs/progress.md was taken at, and the one that flatters the renderer most, which is exactly why it must never be the only one measured.",
+  "scenario_source": "dev/scenarios\\fly_orbit.scn",
+  "git_sha": "1defc4c",
+  "build_preset": "RelWithDebInfo",
+  "headless": true,
+  "timestamp": "2026-09-07T08:01:29Z",
+  "options": [
+    "--no-taa"
+  ],
+  "scenario_text": "name fly_orbit\ndescribe Orbit a hilltop at about 60 m, looking inward. The panoramic pose -- the one every fps number in docs/progress.md was taken at, and the one that flatters the renderer most, which is exactly why it must never be the only one measured.\nbackend both\noption --no-taa\npose_ground 48,0 -90 -20 60\nlook 135 -20 2\nhold forward 3\nlook 180 -20 2\nhold forward 3\nlook 225 -20 2\nhold forward 3\nwait 3\ncapture frame 120 quarter\ncapture end final\nassert frames > 0\nassert contrast_percent > 6\n",
+  "runs": [
+    {
+      "backend": "vk",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 2728,
+      "warmup_frames": 293,
+      "warmup_seconds": 2.19118,
+      "contrast_percent": 21.0752,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 6.63787,
+        "median": 5.9896,
+        "p95": 11.4722,
+        "p99": 27.1776,
+        "max": 230.18,
+        "min": 0.5858
+      },
+      "gpu_ms": {
+        "mean": 3.69333,
+        "median": 4.16994,
+        "p95": 5.32889,
+        "p99": 5.93829,
+        "max": 9.21488,
+        "min": 0.115395
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 41,
+        "on_swap": 6,
+        "while_uploading": 1,
+        "while_building": 34,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 396,
+        "4-6": 987,
+        "6-8": 724,
+        "8-11": 455,
+        "11-16": 106,
+        "16-20": 19,
+        "20-33": 24,
+        "33-50": 16,
+        "50+": 1
+      },
+      "phase_accounting": {
+        "coverage": 1.00513,
+        "frames_outside_1pct": 76
+      },
+      "counters": {
+        "bricks": 684007,
+        "internal_nodes": 242234,
+        "solid_leaves": 756016,
+        "resident_mb": 414.241,
+        "peak_gpu_mb": 964.714,
+        "uploads": 7
+      },
+      "worst_frames": [
+        {
+          "index": 293,
+          "wall_ms": 230.18,
+          "frame_start_ms": 0.0052,
+          "upload_ms": 25.7365,
+          "camera_ms": 0.0081,
+          "render_ms": 0.1572,
+          "post_ms": 0.1152,
+          "overlay_ms": 0.367,
+          "present_ms": 0.3668,
+          "capture_ms": 203.394,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 2031,
+          "wall_ms": 49.5418,
+          "frame_start_ms": 0.007,
+          "upload_ms": 48.7503,
+          "camera_ms": 0.025,
+          "render_ms": 0.1488,
+          "post_ms": 0.1025,
+          "overlay_ms": 0.2429,
+          "present_ms": 0.2575,
+          "capture_ms": 0.0032,
+          "swapped": true,
+          "uploading": true,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 870,
+          "wall_ms": 39.8845,
+          "frame_start_ms": 0.0353,
+          "upload_ms": 0.001,
+          "camera_ms": 0.0037,
+          "render_ms": 36.5205,
+          "post_ms": 0.2239,
+          "overlay_ms": 2.7624,
+          "present_ms": 0.328,
+          "capture_ms": 0.0046,
+          "swapped": false,
+          "uploading": false,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 719,
+          "wall_ms": 39.2954,
+          "frame_start_ms": 0.0058,
+          "upload_ms": 0.0018,
+          "camera_ms": 37.9478,
+          "render_ms": 0.1464,
+          "post_ms": 0.1514,
+          "overlay_ms": 0.6972,
+          "present_ms": 0.3373,
+          "capture_ms": 0.0037,
+          "swapped": false,
+          "uploading": false,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 2417,
+          "wall_ms": 39.0929,
+          "frame_start_ms": 0.0083,
+          "upload_ms": 38.485,
+          "camera_ms": 0.2442,
+          "render_ms": 0.0962,
+          "post_ms": 0.0679,
+          "overlay_ms": 0.0162,
+          "present_ms": 0.1725,
+          "capture_ms": 0.0019,
+          "swapped": true,
+          "uploading": true,
+          "building": true,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "quarter",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_quarter.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_orbit\\vk\\quarter.png",
+          "golden_checked": false,
+          "note": "no golden"
+        },
+        {
+          "name": "final",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\vk_final.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_orbit\\vk\\final.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 2728,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 21.0752,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "backend": "d3d12",
+      "passed": true,
+      "exit_code": 0,
+      "frames": 2480,
+      "warmup_frames": 157,
+      "warmup_seconds": 1.18376,
+      "contrast_percent": 21.7049,
+      "walk_violations": 0,
+      "frame_ms": {
+        "mean": 7.29899,
+        "median": 6.1007,
+        "p95": 12.2626,
+        "p99": 12.8769,
+        "max": 199.889,
+        "min": 1.2362
+      },
+      "gpu_ms": {
+        "mean": 4.2221,
+        "median": 5.05042,
+        "p95": 6.20866,
+        "p99": 7.04813,
+        "max": 13.2976,
+        "min": 0.136137
+      },
+      "slow_frames": {
+        "threshold_ms": 20,
+        "total": 10,
+        "on_swap": 5,
+        "while_uploading": 3,
+        "while_building": 2,
+        "other": 0
+      },
+      "histogram": {
+        "0-4": 20,
+        "4-6": 689,
+        "6-8": 1294,
+        "8-11": 31,
+        "11-16": 434,
+        "16-20": 2,
+        "20-33": 9,
+        "33-50": 0,
+        "50+": 1
+      },
+      "phase_accounting": {
+        "coverage": 0.999697,
+        "frames_outside_1pct": 51
+      },
+      "counters": {
+        "bricks": 684007,
+        "internal_nodes": 242234,
+        "solid_leaves": 756016,
+        "resident_mb": 414.241,
+        "peak_gpu_mb": 973.404,
+        "uploads": 8
+      },
+      "worst_frames": [
+        {
+          "index": 157,
+          "wall_ms": 199.889,
+          "frame_start_ms": 0.0051,
+          "upload_ms": 9.6797,
+          "camera_ms": 0.0307,
+          "render_ms": 0.3443,
+          "post_ms": 0.1536,
+          "overlay_ms": 0.3703,
+          "present_ms": 1.2897,
+          "capture_ms": 188.008,
+          "swapped": true,
+          "uploading": true,
+          "building": false,
+          "refreshed": false
+        },
+        {
+          "index": 1749,
+          "wall_ms": 32.9643,
+          "frame_start_ms": 0.0116,
+          "upload_ms": 31.1081,
+          "camera_ms": 0.0101,
+          "render_ms": 0.2663,
+          "post_ms": 0.1127,
+          "overlay_ms": 0.1844,
+          "present_ms": 1.2566,
+          "capture_ms": 0.0052,
+          "swapped": true,
+          "uploading": true,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 2058,
+          "wall_ms": 30.6029,
+          "frame_start_ms": 0.0077,
+          "upload_ms": 28.4452,
+          "camera_ms": 0.3093,
+          "render_ms": 0.2886,
+          "post_ms": 0.1276,
+          "overlay_ms": 0.0294,
+          "present_ms": 1.3744,
+          "capture_ms": 0.0066,
+          "swapped": true,
+          "uploading": true,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 2205,
+          "wall_ms": 30.4279,
+          "frame_start_ms": 0.0125,
+          "upload_ms": 0.0017,
+          "camera_ms": 0.0073,
+          "render_ms": 0.2472,
+          "post_ms": 0.1766,
+          "overlay_ms": 0.0424,
+          "present_ms": 29.9267,
+          "capture_ms": 0.0051,
+          "swapped": false,
+          "uploading": false,
+          "building": true,
+          "refreshed": false
+        },
+        {
+          "index": 1127,
+          "wall_ms": 27.4844,
+          "frame_start_ms": 0.0058,
+          "upload_ms": 0.0006,
+          "camera_ms": 0.1955,
+          "render_ms": 0.1535,
+          "post_ms": 0.1128,
+          "overlay_ms": 0.4036,
+          "present_ms": 26.604,
+          "capture_ms": 0.002,
+          "swapped": false,
+          "uploading": false,
+          "building": true,
+          "refreshed": false
+        }
+      ],
+      "captures": [
+        {
+          "name": "quarter",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_quarter.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_orbit\\d3d12\\quarter.png",
+          "golden_checked": false,
+          "note": "no golden"
+        },
+        {
+          "name": "final",
+          "path": "C:/Users/Tonyt/AppData/Local/Temp/claude/C--Users-Tonyt-Documents-GitHub-zxbio-fueld-game-research/d3706956-de47-4194-919e-529e8acdfde9/scratchpad/g1\\d3d12_final.png",
+          "written": true,
+          "golden": "dev/goldens\\fly_orbit\\d3d12\\final.png",
+          "golden_checked": false,
+          "note": "no golden"
+        }
+      ],
+      "assertions": [
+        {
+          "metric": "frames",
+          "op": ">",
+          "threshold": 0,
+          "measured": 2480,
+          "passed": true
+        },
+        {
+          "metric": "contrast_percent",
+          "op": ">",
+          "threshold": 6,
+          "measured": 21.7049,
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

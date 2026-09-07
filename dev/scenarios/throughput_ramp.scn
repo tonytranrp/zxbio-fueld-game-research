@@ -1,0 +1,16 @@
+name throughput_ramp
+describe Goal 219's yardstick, as a fixed pose. The harness's --ramp mode re-runs this scenario once per rung of the --lod-radius / --lod-quality ladder and tabulates resident bricks, resident MB, primary-ray steps, GPU march ms and fps -- so "how many voxels can this GPU march at 150 fps" has a number. Run on its own it is one rung at the shipping defaults.
+backend both
+
+# TAA off for every scenario that compares a capture against a golden. Measured, not assumed:
+# with TAA on, vk-vs-vk moves 0.996% of pixels at this pose against a 1.5% gate, and with it off
+# 0.341% -- see dev/harness/src/image_compare.hpp for the full four-case table.
+option --no-taa
+
+pose_ground 48,0 -90 -6 1.7
+wait 3
+
+capture end throughput_ramp
+
+assert frames > 0
+assert contrast_percent > 6
