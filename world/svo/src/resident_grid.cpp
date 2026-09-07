@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <optional>
 
 namespace world::svo {
 
@@ -39,7 +40,16 @@ bool ResidentGrid::install(std::size_t index, const BrickTree& tree) {
         return false;
     }
     if (tree.empty()) {
-        evict(index);
+        // RESIDENT AND EMPTY, not evicted. The builder looked here and found nothing, and that is
+        // an answer -- the never-stall fallback must not override it with the proxy's coarser guess.
+        free_cell_slots(index);
+        cellNodes_[index].clear();
+        const bool wasResident = (cells_[index].flags & kFlatCellPresent) != 0u;
+        cells_[index] = FlatCell{};
+        cells_[index].flags = kFlatCellPresent | kFlatCellEmpty;
+        if (!wasResident) {
+            ++residentCells_;
+        }
         return true;
     }
 
@@ -163,7 +173,8 @@ std::uint64_t ResidentGrid::dirty_brick_bytes() const noexcept {
 }
 
 TreeView ResidentGrid::view_of(std::size_t index) const noexcept {
-    if (index >= cells_.size() || (cells_[index].flags & kFlatCellPresent) == 0u) {
+    if (index >= cells_.size() || (cells_[index].flags & kFlatCellPresent) == 0u ||
+        (cells_[index].flags & kFlatCellEmpty) != 0u) {
         return TreeView{};
     }
     TreeView view;
@@ -173,6 +184,52 @@ TreeView ResidentGrid::view_of(std::size_t index) const noexcept {
     view.bricks = bricks_.data();
     view.root = cells_[index].root;
     return view;
+}
+
+Hit trace_ray_grid_never_stall(const ResidentGrid& grid, const Ray& ray, const TraceParams& params,
+                               HitSource& source, GridTraceStats* stats) noexcept {
+    source = HitSource::None;
+    const BrickTree* proxy = grid.proxy();
+    const Hit hit = detail::trace_grid_visit(
+        grid.shape(), ray, params,
+        stats, [&](glm::ivec3 coord, float cellEnter, float cellExit) -> std::optional<Hit> {
+            if (!grid.shape().contains(coord)) {
+                return std::nullopt;
+            }
+            const std::size_t index = grid.shape().index_of(coord);
+            const TreeView view = grid.view_of(index);
+            if (!view.empty()) {
+                const Hit fine = trace_ray(view, ray, params);
+                if (fine.hit) {
+                    source = HitSource::Fine;
+                    return fine;
+                }
+                return std::nullopt;
+            }
+            if (grid.resident(index)) {
+                return std::nullopt; // resident and empty: the fine build's answer is "nothing here"
+            }
+            // GigaVoxels' rule: the cell is not resident, so answer from the next level that IS.
+            // Restricted to this cell's own span -- the proxy covers the whole region, and letting
+            // it answer beyond the absent cell would override resident cells further along the ray
+            // that are about to give a better answer.
+            if (proxy == nullptr || proxy->empty()) {
+                return std::nullopt;
+            }
+            TraceParams coarse = params;
+            coarse.t_start = std::max(params.t_start, cellEnter);
+            coarse.max_t = std::min(params.max_t, cellExit);
+            if (coarse.max_t <= coarse.t_start) {
+                return std::nullopt;
+            }
+            const Hit fallback = trace_ray(proxy->view(), ray, coarse);
+            if (fallback.hit) {
+                source = HitSource::Proxy;
+                return fallback;
+            }
+            return std::nullopt;
+        });
+    return hit;
 }
 
 Hit trace_ray_grid_marking(const ResidentGrid& grid, const Ray& ray, const TraceParams& params,

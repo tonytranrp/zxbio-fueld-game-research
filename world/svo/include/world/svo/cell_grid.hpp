@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -166,12 +167,19 @@ inline GridRay to_grid(const CellGrid& grid, const Ray& ray) noexcept {
     return g;
 }
 
-// The one walk both forms use. `viewOf(coord) -> TreeView` is the only difference between
-// tracing a grid that owns its cells and tracing the flattened array a GPU holds -- keeping it
-// a parameter is what stops the two implementations drifting apart.
-template <typename ViewOf>
-[[nodiscard]] Hit trace_grid_with(const CellGrid& grid, const Ray& ray, const TraceParams& params, GridTraceStats* stats,
-               ViewOf&& viewOf) noexcept {
+// THE ONE WALK. Every grid form shares it, and what differs between them is the per-cell ACTION --
+// `visit(coord, tCellEnter, tCellExit) -> std::optional<Hit>`. Returning a hit ends the walk.
+//
+// Passing the cell's own t-range is what goal 263 needs: a ray stepping into an ABSENT cell must
+// consult the coarse proxy over THAT CELL'S SPAN and no further, because the proxy covers the whole
+// region and would otherwise answer for cells that are resident and about to give a better answer a
+// few steps later.
+//
+// Keeping the action a parameter rather than copying the DDA is deliberate: three near-identical
+// Amanatides-Woo walks would drift, and the one that drifted would be the one nobody was testing.
+template <typename Visit>
+[[nodiscard]] Hit trace_grid_visit(const CellGrid& grid, const Ray& ray, const TraceParams& params,
+                                   GridTraceStats* stats, Visit&& visit) noexcept {
     Hit miss;
     if (stats != nullptr) {
         *stats = GridTraceStats{};
@@ -226,28 +234,23 @@ template <typename ViewOf>
         tDelta[a] = std::abs(g.invd[a]);
     }
 
-    // The walk. Cells are visited in ray order and `trace_ray` returns the nearest hit inside the
-    // cell it is given, so the FIRST hit found is the globally nearest one.
+    // The walk. Cells are visited in ray order and each visit returns the nearest hit WITHIN its
+    // cell, so the first hit returned is the globally nearest one.
     const glm::ivec3 originCell = grid.origin_cell();
+    float cellEnter = tEnter;
     while (true) {
         if (stats != nullptr) {
             ++stats->cells_stepped;
         }
-        if (const TreeView view = viewOf(originCell + cell); !view.empty()) {
+        const int axis = tMax.x < tMax.y ? (tMax.x < tMax.z ? 0 : 2) : (tMax.y < tMax.z ? 1 : 2);
+        const float cellExit = std::min(tMax[axis], tExit);
+        if (const std::optional<Hit> hit = visit(originCell + cell, cellEnter, cellExit); hit) {
             if (stats != nullptr) {
                 ++stats->cells_entered;
             }
-            // The cell's own tree positions itself by `geometry.origin`, so the WORLD ray goes
-            // straight in -- no transform, and the LOD early-out still measures distance from the
-            // ray's own origin exactly as goal 164 requires.
-            const Hit hit = trace_ray(view, ray, params);
-            if (hit.hit) {
-                return hit;
-            }
+            return *hit;
         }
 
-        // Step to the next cell along the ray.
-        const int axis = tMax.x < tMax.y ? (tMax.x < tMax.z ? 0 : 2) : (tMax.y < tMax.z ? 1 : 2);
         if (tMax[axis] > tExit) {
             return miss;
         }
@@ -255,10 +258,28 @@ template <typename ViewOf>
         if (cell[axis] < 0 || cell[axis] >= dims[axis]) {
             return miss;
         }
+        cellEnter = tMax[axis];
         tMax[axis] += tDelta[axis];
     }
 }
 
+// The common case: look a cell up and trace it whole. `viewOf(coord) -> TreeView`.
+template <typename ViewOf>
+[[nodiscard]] Hit trace_grid_with(const CellGrid& grid, const Ray& ray, const TraceParams& params,
+                                  GridTraceStats* stats, ViewOf&& viewOf) noexcept {
+    return trace_grid_visit(grid, ray, params, stats,
+                            [&](glm::ivec3 coord, float, float) -> std::optional<Hit> {
+                                const TreeView view = viewOf(coord);
+                                if (view.empty()) {
+                                    return std::nullopt;
+                                }
+                                // The cell's tree positions itself by geometry.origin, so the WORLD
+                                // ray goes straight in -- no transform, and the LOD early-out still
+                                // measures distance from the ray's own origin (goal 164).
+                                const Hit hit = trace_ray(view, ray, params);
+                                return hit.hit ? std::optional<Hit>{hit} : std::nullopt;
+                            });
+}
 
 } // namespace detail
 
@@ -292,6 +313,15 @@ struct FlatCell {
     std::uint32_t flags = 0;      ///< bit 0 = present; the rest is where AK-D's residency state goes
 };
 inline constexpr std::uint32_t kFlatCellPresent = 1u;
+/// Bit 1: this cell IS resident and is known to contain nothing.
+///
+/// Prompt 004 goal 263 needed this distinction and did not have it. "No geometry here" and "not
+/// loaded yet" are the same thing to a marcher -- both are a cell it cannot trace -- but they are
+/// opposites to the never-stall fallback: an absent cell should be answered from the coarse proxy,
+/// and an EMPTY one must not be, or the proxy's coarser voxels put geometry into space the fine
+/// build correctly found to be empty. The test that caught this saw a proxy hit 0.3 m in front of
+/// the fine one and it was not a rounding error.
+inline constexpr std::uint32_t kFlatCellEmpty = 2u;
 
 class FlatCellGrid {
 public:

@@ -68,7 +68,15 @@ public:
     bool install(std::size_t index, const BrickTree& tree);
 
     /// Drop cell `index`, returning its slots to the pool. Its node words go on the next repack.
+    /// After this the cell is NOT RESIDENT, which is what makes the never-stall fallback answer for
+    /// it -- as distinct from a cell that is resident and empty.
     void evict(std::size_t index);
+
+    /// Is this cell's content known? True for a cell holding geometry AND for one known to hold
+    /// none. False only when it has never been installed, or was evicted.
+    [[nodiscard]] bool resident(std::size_t index) const noexcept {
+        return index < cells_.size() && (cells_[index].flags & kFlatCellPresent) != 0u;
+    }
 
     /// Mark every brick of cell `index` used on `frame` (goal 261's usage stamps, CPU side).
     void touch(std::size_t index, std::uint32_t frame) noexcept;
@@ -86,6 +94,20 @@ public:
     /// A view onto a resident cell, for the CPU-side trace. Empty when the cell is not resident.
     [[nodiscard]] TreeView view_of(std::size_t index) const noexcept;
 
+    /// Prompt 004 goal 263: the always-resident COARSE PROXY covering the whole grid.
+    ///
+    /// GigaVoxels §1.4's rule is "if LOD not available -> pick next higher available level in
+    /// Mip-map": the renderer never waits and never shows a hole, it degrades and files a request.
+    /// A grid cell that is absent has no coarser level OF ITS OWN to fall back to -- it has nothing
+    /// at all -- so the fallback has to be a structure that is always there. This is it: one tree
+    /// over the whole region at a coarse voxel size, small enough to be built once and kept
+    /// resident for the life of the world.
+    ///
+    /// With no proxy set, an absent cell is skipped and the ray passes through -- the pre-263
+    /// behaviour, kept so the two can be compared rather than assumed.
+    void set_proxy(std::shared_ptr<const BrickTree> proxy) noexcept { proxy_ = std::move(proxy); }
+    [[nodiscard]] const BrickTree* proxy() const noexcept { return proxy_.get(); }
+
 private:
     void free_cell_slots(std::size_t index) noexcept;
     void mark_dirty(std::uint32_t slot) noexcept;
@@ -97,6 +119,7 @@ private:
     std::vector<FlatCell> cells_;
     std::vector<std::vector<std::uint32_t>> cellNodes_; // per cell, brick indices already rewritten
     std::vector<std::vector<std::uint32_t>> cellSlots_; // per cell, the pool slots it owns
+    std::shared_ptr<const BrickTree> proxy_;
     std::vector<DirtyRun> dirtyBricks_;
     std::vector<std::uint32_t> dirtyScratch_;
     std::size_t residentCells_ = 0;
@@ -107,6 +130,12 @@ private:
 /// tracing different worlds.
 [[nodiscard]] Hit trace_ray_grid(const ResidentGrid& grid, const Ray& ray, const TraceParams& params = {},
                                  GridTraceStats* stats = nullptr) noexcept;
+
+/// Goal 263: how a hit was obtained -- from the fine grid, or from the coarse proxy because the
+/// cell the ray needed was not resident. The renderer shades both; the distinction exists so a
+/// capture can be judged ("is this frame coarse-but-complete, or is it wrong?") and so the
+/// convergence over the following frames is measurable rather than impressionistic.
+enum class HitSource : std::uint8_t { Fine, Proxy, None };
 
 /// Goal 261: the same march, marking every cell the ray steps into.
 ///
@@ -119,5 +148,15 @@ private:
 [[nodiscard]] Hit trace_ray_grid_marking(const ResidentGrid& grid, const Ray& ray,
                                          const TraceParams& params, std::uint32_t frame,
                                          CellMarks& marks, GridTraceStats* stats = nullptr) noexcept;
+
+/// Goal 263: the same march, but a ray that steps into an ABSENT cell consults the coarse proxy
+/// over that cell's own span instead of passing through it.
+///
+/// Restricting the proxy to the absent cell's span is what makes this correct rather than merely
+/// plausible: the proxy covers the whole region, so consulting it unrestricted would let it answer
+/// for cells that ARE resident and are about to give a better answer a few steps later.
+[[nodiscard]] Hit trace_ray_grid_never_stall(const ResidentGrid& grid, const Ray& ray,
+                                             const TraceParams& params, HitSource& source,
+                                             GridTraceStats* stats = nullptr) noexcept;
 
 } // namespace world::svo

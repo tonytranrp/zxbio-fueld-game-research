@@ -65,10 +65,12 @@ std::size_t total_bricks(const Built& b) {
 
 ResidentGrid install_all(const Built& b, std::size_t slots) {
     ResidentGrid resident{b.grid, slots};
+    const BrickTree nothing;
     for (std::size_t i = 0; i < b.cells.size(); ++i) {
-        if (b.cells[i]) {
-            REQUIRE(resident.install(i, *b.cells[i]));
-        }
+        // Empty cells are installed TOO, as resident-and-empty. A producer that only installs the
+        // cells with geometry leaves the empty ones looking un-loaded, and goal 263's fallback then
+        // fills correct empty space with the proxy's coarser guess.
+        REQUIRE(resident.install(i, b.cells[i] ? *b.cells[i] : nothing));
     }
     resident.repack_nodes();
     return resident;
@@ -107,7 +109,7 @@ TEST_CASE("a resident grid traces identically to the flat one", "[svo][resident]
     const FlatCellGrid flat{owning};
     const ResidentGrid resident = install_all(b, bricks + 64);
 
-    CHECK(resident.resident_cells() == owning.present_count());
+    CHECK(resident.resident_cells() == b.grid.cell_count()); // every cell, empty ones included
     CHECK(resident.pool().used() == bricks);
 
     RayGen gen{std::mt19937{5}};
@@ -244,4 +246,112 @@ TEST_CASE("usage stamps reach every brick of a cell", "[svo][resident]") {
     // Nothing else was touched, so everything else is evictable at frame 42 and this cell is not.
     const std::vector<std::uint32_t> old = resident.pool().evictable(42u, 1000000);
     CHECK(old.size() == resident.pool().used() - b.cells[cell]->brick_count());
+}
+
+
+TEST_CASE("never-stall fills an absent cell from the coarse proxy", "[svo][resident][proxy]") {
+    // Goal 263's rule: "if LOD not available -> pick next higher available level". The property is
+    // not that the answer is RIGHT to the voxel -- it cannot be, the cell is missing -- but that
+    // there is an answer at all where the fine grid would have shown a hole.
+    const Built b = build_cells(6, 4, -2);
+    const std::size_t bricks = total_bricks(b);
+    ResidentGrid resident = install_all(b, bricks + 64);
+
+    // The coarse proxy: the same world at 4x the voxel size, one tree over the whole region.
+    TreeGeometry coarseGeom;
+    coarseGeom.origin = glm::vec3{0.0f};
+    coarseGeom.root_size_log2 = 6;
+    coarseGeom.voxel_size_log2 = 0; // 1 m against the grid's 0.25 m
+    BuildParams cp;
+    cp.uniform_lod = true;
+    auto proxy = std::make_shared<const BrickTree>(
+        build_tree(SphereSampler{glm::vec3{32.0f}, 20.0f, MaterialID::Stone}, coarseGeom, cp, nullptr,
+                   nullptr));
+    REQUIRE_FALSE(proxy->empty());
+    resident.set_proxy(proxy);
+
+    // Evict everything: the fine grid is now entirely absent.
+    for (std::size_t i = 0; i < b.cells.size(); ++i) {
+        resident.evict(i);
+    }
+    resident.repack_nodes();
+    REQUIRE(resident.resident_cells() == 0);
+
+    RayGen gen{std::mt19937{77}};
+    std::size_t answered = 0;
+    std::size_t fromProxy = 0;
+    std::size_t total = 0;
+    for (int i = 0; i < 4000; ++i) {
+        const Ray ray = gen.next();
+        // What the fine grid alone would say with everything evicted: nothing, ever.
+        CHECK_FALSE(trace_ray_grid(resident, ray, TraceParams{}).hit);
+
+        HitSource source = HitSource::None;
+        const Hit hit = trace_ray_grid_never_stall(resident, ray, TraceParams{}, source);
+        ++total;
+        if (hit.hit) {
+            ++answered;
+            CHECK(source == HitSource::Proxy);
+            // And it is a real surface, not an arbitrary answer.
+            const float r = glm::length(hit.position - glm::vec3{32.0f});
+            CHECK(r > 12.0f);
+            CHECK(r < 40.0f);
+            ++fromProxy;
+        }
+    }
+    // The coarse level answers where the fine grid showed a hole. Not every ray hits -- many miss
+    // the sphere entirely -- but a large fraction must, or the fallback is not working.
+    CHECK(answered > total / 5);
+    CHECK(fromProxy == answered);
+}
+
+TEST_CASE("never-stall prefers the FINE answer when the cell is resident", "[svo][resident][proxy]") {
+    // The other half, and the one a careless implementation gets wrong: a proxy that answers for
+    // cells that ARE resident would quietly coarsen the whole image. With everything installed, no
+    // hit may come from the proxy.
+    const Built b = build_cells(6, 4, -2);
+    ResidentGrid resident = install_all(b, total_bricks(b) + 64);
+
+    TreeGeometry coarseGeom;
+    coarseGeom.origin = glm::vec3{0.0f};
+    coarseGeom.root_size_log2 = 6;
+    coarseGeom.voxel_size_log2 = 0;
+    BuildParams cp;
+    cp.uniform_lod = true;
+    resident.set_proxy(std::make_shared<const BrickTree>(build_tree(
+        SphereSampler{glm::vec3{32.0f}, 20.0f, MaterialID::Stone}, coarseGeom, cp, nullptr, nullptr)));
+
+    RayGen gen{std::mt19937{78}};
+    std::size_t fine = 0;
+    for (int i = 0; i < 4000; ++i) {
+        const Ray ray = gen.next();
+        HitSource source = HitSource::None;
+        const Hit withProxy = trace_ray_grid_never_stall(resident, ray, TraceParams{}, source);
+        const Hit without = trace_ray_grid(resident, ray, TraceParams{});
+        // Identical to the plain march: an installed grid must not be affected by the proxy at all.
+        REQUIRE(withProxy.hit == without.hit);
+        if (without.hit) {
+            REQUIRE(withProxy.t == Catch::Approx(without.t));
+            REQUIRE(source == HitSource::Fine);
+            ++fine;
+        }
+    }
+    CHECK(fine > 1000);
+}
+
+TEST_CASE("never-stall without a proxy is the old behaviour exactly", "[svo][resident][proxy]") {
+    // Kept so the two can be compared rather than assumed, which is why set_proxy is optional.
+    const Built b = build_cells(6, 4, -2);
+    ResidentGrid resident = install_all(b, total_bricks(b) + 64);
+    RayGen gen{std::mt19937{79}};
+    for (int i = 0; i < 3000; ++i) {
+        const Ray ray = gen.next();
+        HitSource source = HitSource::None;
+        const Hit a = trace_ray_grid_never_stall(resident, ray, TraceParams{}, source);
+        const Hit b2 = trace_ray_grid(resident, ray, TraceParams{});
+        REQUIRE(a.hit == b2.hit);
+        if (a.hit) {
+            REQUIRE(a.t == Catch::Approx(b2.t));
+        }
+    }
 }
