@@ -1080,9 +1080,17 @@ self-contained component files. Decision log with every measurement and the bise
      (`--noclip`). **Check**: 9 tests (walls, sliding, ledges, thin-wall tunneling, 40 random
      drops settle ≤11 cm above the footprint's highest column, a 5 m cliff walk, trunk yes /
      canopy no at both speeds); `--autofly --walk`: 0 ground violations.
-173. Collide against the octree once editing (goal 160) can make the analytic world stale: the
-     `SolidQuery` boundary is already there; the query is a per-box point-sample of the tree
-     near the build center. **Check**: the same 9 tests against a tree-backed query.
+173. [x] **DONE by goals 226/227** (Prompt 003 Group AJ-A). `world/collision/octree_collider.hpp`
+     answers `SolidQuery` from the SAME `shared_ptr<const BrickTree>` the renderer marches, so
+     collision agrees with what is drawn by construction rather than by re-deriving it. Not a
+     "per-box point-sample near the build center" as sketched here -- an O(depth) integer-voxel
+     octree walk with early-out, 7 nodes visited inside solid and 1 in open air, and `voxel_top`
+     descends +y-first so it is genuinely 3D and survives Prompt 006's caves.
+     **Check PERFORMED**, and it found more than the sketch expected: at uniform LOD the tree and
+     the sampler agree over 10,000 random boxes in BOTH directions (0 disagreements), and under
+     distance LOD there are genuine HOLES -- 0.41% region-wide -- but **zero within 8 m of the LOD
+     centre**, which is where the body always is. See goal 226 for the distance-binned table and the
+     consequence recorded there: the LOD centre must track the body.
 
 ## AB. The lag, measured
 

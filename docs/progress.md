@@ -262,6 +262,62 @@ tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the oct
                   one-shot storage report)
 ```
 
+## Prompt 003 — the game has a body (Group AJ, goals 225–243)
+
+**Current state.** `voxel_app` with no flags starts as a **walking body**, not a spectator. Collision
+is **octree-backed** — the same `shared_ptr<const BrickTree>` the renderer marches — so it has no
+cache and therefore no edge to outrun, which was the real cause of "I can clip through blocks."
+`--fly`, `--noclip` and the `G` toggle live behind one `--dev` door and refuse by name without it.
+The body is **human-scaled**: walk 1.4 m/s, sprint 7.0 with a 10 m/s² ramp, gravity −9.81, jump apex
+0.600 m, and it **slides** on ground steeper than 40°. The crosshair asks the octree and names a
+material only within **34 m**, the distance a 1 cm detail stays resolvable at 20/20. Exposure is
+**metered at the crosshair** over a ~6° pool with fast-up/slow-down adaptation, and bloom's
+threshold is a number of stops above what the eye is adapted to.
+
+### Decisions that survived contact with evidence (Prompt 003's additions)
+
+- **A save that should never fire, firing silently, is a bug detector wired to a mute button.** The
+  analytic backstop clamped the eye to the ground surface with a comment saying it should never
+  fire with collision on. It fired constantly, and that is exactly why the clipping complaint had
+  no symptom anyone could point at. Removing it produced four real bugs in a row and a permanent
+  counter in their place.
+- **Attribute before theorising.** Four separate times this pass, the first plausible cause was
+  wrong and a per-category counter settled it in one run: the inside-solid events were 761/761 the
+  sweep's own escape (not the step-up); the waterline flicker was 16+16 grounded↔airborne (not the
+  water predicate, which I had already "fixed"); collision cost peaked at 1× speed and was neither
+  query count nor node count; and the aim-query mismatches were three different artefacts of my own
+  check, ending at a ray that started inside solid.
+- **When the thing being measured changes, the measuring apparatus is part of the blast radius.**
+  Five instruments in this prompt quietly measured nothing: `walk_violations` was never written; the
+  JSON brace-balance check; the inside-solid counter measuring its own float round-trip;
+  `--speed-scale` scaling only the fly camera after walking moved off `move_speed`; and the view
+  polish switched off in every scenario by the harness's own `--verify-frame`. About one per group,
+  every one found by making the instrument disagree with something rather than by reading it.
+- **A constant that encodes a ratio must say so.** `defs/water.hpp` held `64.0` under a comment
+  reading "2× gravity" — true only while gravity was −32. Changing gravity took net upthrust from
+  +32 to +54.2 m/s² and fired the swimmer out of the sea. The relationship is pinned by a test that
+  links both headers, because neither header can see the other.
+- **A photographic convention applied to a non-photometric scale is a regrade, not an exposure.**
+  Auto-exposure at the standard 0.18 key darkened every scene 28% at a pose whose exposure should
+  have been neutral, because this renderer's values are authored colours near 0.5. At 0.36 the
+  multiplier is 0.9857 at the reference pose and the feature does what it should: nothing in the
+  ordinary case, a real correction on departures.
+- **Goldens only work at rest.** Identical back-to-back runs differ 0.0001–0.11% for captures taken
+  at rest and **5.3–35.5% after sustained motion**, against a 1.5% gate — the LOD rebuild storm
+  again. The moving goldens are deleted rather than loosened, because a 40% gate detects nothing and
+  a check that cannot fail is the vacuous-check pattern above. `capture ... no-golden` is now
+  scenario grammar so the policy cannot be undone by a tool.
+- **This generator's terrain is mostly unwalkable.** The scenario named `walk_hillside` is a
+  **57–71° face**; the shoreline is 58.8°. The body was only climbing it because a 4 cm step budget
+  climbs any staircase, and at 7.8 mm voxels every slope is a staircase. Recorded as a requirement
+  for Prompt 006 rather than worked around by choosing a limit that lets the body climb cliffs.
+- **Two measured negatives kept as negatives.** Collision costs 0.026–0.116 ms/tick on land and
+  **0.20–0.28 over deep water**, missing its budget — attributed (`overlaps_solid` early-outs on the
+  first solid voxel, and over water there is none, so the query runs to exhaustion) and left for the
+  tree-layout change that fixes it (goal 244). And adaptation-scaled bloom is **a correct mechanism
+  with no subject**: 147× the energy at −4 EV proves it works, and across this world's real −0.96 to
+  −1.55 EV range it does nothing, because the HDR output rarely exceeds 1.0.
+
 ## Decided against, Prompt 003 Group AJ-C/AJ-D (goals 239, 243)
 
 These are decisions, not omissions. Each is written down so the next pass does not spend a day

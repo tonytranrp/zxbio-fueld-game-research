@@ -26,6 +26,23 @@ window, a device, or GLFW, so nothing here belongs behind the renderer flag.
   must not re-arm the buffer every tick.
 - **Numbers live in `PlayerTuning`**, one struct, defaults = the shipped feel. No magic constants
   at a use site.
+- **The body is the default and it is human-scaled** (Prompt 003 goals 231-233). `MoveMode::Walk`,
+  walk 1.4 m/s, sprint 7.0, gravity -9.81, jump apex 0.600 m -- every number from
+  `research/locomotion-biomechanics-physics.md`, with each deliberate departure named at the
+  constant. `--fly`, `--noclip` and the `G` toggle need `--dev`. `walk_speed_factor` is GONE: the
+  `move_speed x factor` product it named is what was wrong.
+- **THE ANALYTIC BACKSTOP IS GONE** (goal 228). `step_player` used to clamp the eye to
+  `ground_height + eye_height` with a comment saying it should never fire. It fired constantly, and
+  silently, which made a query gap invisible -- a save that should never fire, firing, is a bug
+  detector wired to a mute button. It survives only for a query declaring `open_world_tag`
+  (`--noclip` and the collision-free tests). The caller COUNTS ticks that end inside solid instead.
+- **A slope steeper than `max_walk_slope_radians` (40 degrees) is slid, not climbed** (goal 235),
+  and the step-up gets no budget there -- at 7.8 mm voxels a 4 cm step climbs any staircase, which
+  is every slope. The limit IS the friction angle, so the slide strength cannot disagree with it.
+- **Numbers a person cannot perceive are not shipped** (goal 240). Every view-polish constant is
+  documented against a threshold from `research/human-movement-and-perception-research.md`: the bob
+  is above the 2.13 cm/s detection threshold and below the 4 deg/s acuity one, by derivation rather
+  than by taste.
 
 ## Files
 
