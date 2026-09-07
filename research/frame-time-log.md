@@ -479,3 +479,46 @@ Research §1.3 is unambiguous and this prompt restates it: a one-voxel apron on 
 **1.95× memory blow-up** — it would take the post-palette 161 MB back to ~314 MB, undoing the entire
 lever above and then some. **No apron.** If Prompt 005 wants filtered brick sampling, the
 corner-centred 3³ trick or explicit neighbour fetches are the published alternatives.
+
+---
+
+## 8. The prerequisite, built — and the cache inside it, measured at 0% and removed (goal 251)
+
+§5's measurement said per-cell rebuild is blocked until the fixed per-build cost is hoisted. That
+cost is `set_focus`: a 1/16 m height field over the focus radius plus a 1/8 m field over four times
+it — **~1.3 M noise samples**, and the count does not depend on the region being built. At 512 m it
+is 5–9% of a build; at 32 m it *is* the build.
+
+**What shipped**: the tiers are now shareable. `TerrainSampler` gained `FocusTiers`
+(`vector<shared_ptr<const HeightField>>`), a `FocusKey` describing the snapped rectangle a tier
+covers, and three functions — `focus_keys()`, `make_focus_tier()`, `adopt_focus()` — so a caller can
+build the tiers **once** and hand the same objects to many samplers. That is precisely what the cell
+grid needs: one set of tiers per rebuild, adopted by every cell in it, instead of 1.3 M samples per
+cell.
+
+Two tests pin it: an adopted tier answers identically to a sampled one over 8,192 probes, and the
+keys snap identically for centres inside one coarse cell while differing for centres a trigger
+distance apart.
+
+### The cache I wrote first, and why it is gone
+
+The obvious next step looked like a cross-**build** cache in `SvoWorld` — remember the last few
+rectangles, reuse on a hit. I implemented it, instrumented it, and measured:
+
+```
+focus tiers: 0 reused, 4 built
+```
+
+**A 0% hit rate, at both 32 m and 64 m regions, over a 900-frame flight.** The reason is arithmetic,
+not tuning: the keys are snapped to the 0.5 m coarse cell, consecutive builds are ≥8 m apart *by
+construction* (goal 249's trigger), and a stationary camera does not rebuild at all (the hysteresis
+and speed gate see to that). **A moving camera never revisits a rectangle and a still one never
+asks.** There is no camera path on which that cache can fire.
+
+It was **removed rather than left in**. Machinery that provably cannot fire is worse than no
+machinery, because it reads as coverage — which is this arc's most repeated failure mode, and the
+first time I have caught it in code I had just written rather than in an instrument I inherited.
+
+**The sharing primitive stays; the cache does not.** The distinction matters: sharing tiers *within*
+one rebuild across many cells is the mechanism that pays, and it is what §5's revised ordering
+called for. Caching them *across* rebuilds was a different idea that happens to be worthless here.

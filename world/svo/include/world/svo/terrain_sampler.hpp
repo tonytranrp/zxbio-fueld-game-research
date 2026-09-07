@@ -13,7 +13,10 @@
 #include "world/materials/terrain_query.hpp"
 #include "world/svo/brick.hpp"
 #include "world/svo/height_field.hpp"
+
 #include "world/svo/sampler.hpp"
+#include <array>
+#include <memory>
 
 namespace world::svo {
 
@@ -55,6 +58,36 @@ public:
     // that made it sample ~7 bricks for every one it kept (measured). Call before build_tree,
     // never concurrently with it (not thread-safe by design; classify() is).
     void set_focus(const glm::vec3& center, float radius);
+
+    // Prompt 004 goal 251 (reopened by 254's measurement): the focus tiers, built once and SHARED.
+    //
+    // `set_focus` samples ~1.3 M noise points -- a 1/16 m field over `radius` plus a 1/8 m field over
+    // 4x that -- and the cost does not shrink with the region being built. Measured: it is 5-9% of a
+    // 512 m whole-region build and invisible, and ~100% of a 32 m cell build. Per-cell rebuild is
+    // therefore not viable until this is hoisted out of the per-build path, which is why these are a
+    // `shared_ptr` the caller can build once and hand to every sampler in a region.
+    using FocusTiers = std::vector<std::shared_ptr<const HeightField>>;
+
+    // The snapped rectangle a tier covers, so a cache can tell "same tier" from "same arguments".
+    // Snapping is to whole coarse cells, exactly as set_focus does it, so two nearby centres that
+    // round to the same rectangle share a field instead of building two identical ones.
+    struct FocusKey {
+        float x0 = 0.0f;
+        float z0 = 0.0f;
+        float extent = 0.0f;
+        float cell = 0.0f;
+        [[nodiscard]] friend bool operator==(const FocusKey&, const FocusKey&) = default;
+    };
+
+    // The two tiers `set_focus` would build for these arguments, as keys -- so a caller can look
+    // them up in a cache before paying to build them.
+    [[nodiscard]] static std::array<FocusKey, 2> focus_keys(const TerrainSamplerParams& params,
+                                                            const glm::vec3& center, float radius) noexcept;
+    [[nodiscard]] static std::shared_ptr<const HeightField>
+    make_focus_tier(const world::generation::HeightmapGenerator& heightmap, const FocusKey& key);
+
+    // Adopt prebuilt tiers instead of sampling them. Finest first, as set_focus orders them.
+    void adopt_focus(FocusTiers tiers);
 
     // Pointwise reference: the material of the voxel of edge `voxelEdge` whose min corner is `p`.
     [[nodiscard]] world::chunk::MaterialID material_at(const glm::vec3& voxelMin, float voxelEdge) const;
@@ -106,7 +139,7 @@ private:
     const world::generation::HeightmapGenerator* heightmap_;
     TerrainSamplerParams params_;
     HeightField field_;
-    std::vector<std::unique_ptr<HeightField>> focusFields_; // set_focus's tiers, finest first
+    FocusTiers focusFields_; // set_focus's tiers, finest first; shared so builds can reuse them
     std::vector<world::generation::TreePlacement> trees_;
     std::vector<Box> treeBounds_;
     TreeGrid treeGrid_;

@@ -208,15 +208,37 @@ void TerrainSampler::set_focus(const glm::vec3& center, float radius) {
     // square is 1M samples (~20 ms) -- it exists because the mid-distance rings (bricks of
     // 25 cm - 1 m) were still sampling 2-4 bricks for every one kept under the 0.5 m field's margin.
     focusFields_.clear();
-    const float coarse = params_.height_field_cell;
-    const auto make = [&](float r, float cell) {
-        const float x0 = std::floor((center.x - r) / coarse) * coarse;
-        const float z0 = std::floor((center.z - r) / coarse) * coarse;
-        const float extent = std::ceil(2.0f * r / coarse) * coarse;
-        focusFields_.push_back(std::make_unique<HeightField>(*heightmap_, x0, z0, extent, cell));
+    for (const FocusKey& key : focus_keys(params_, center, radius)) {
+        focusFields_.push_back(make_focus_tier(*heightmap_, key));
+    }
+}
+
+std::array<TerrainSampler::FocusKey, 2> TerrainSampler::focus_keys(const TerrainSamplerParams& params,
+                                                                   const glm::vec3& center,
+                                                                   float radius) noexcept {
+    // The snapping is the same as the original set_focus: each square is aligned to whole COARSE
+    // cells so no tier boundary splits one. Factored out so a cache can key on the result -- two
+    // camera positions a few centimetres apart snap to the same rectangle and should share a field
+    // rather than sample 1.3 M noise points twice.
+    const float coarse = params.height_field_cell;
+    const auto key = [&](float r, float cell) {
+        FocusKey k;
+        k.x0 = std::floor((center.x - r) / coarse) * coarse;
+        k.z0 = std::floor((center.z - r) / coarse) * coarse;
+        k.extent = std::ceil(2.0f * r / coarse) * coarse;
+        k.cell = cell;
+        return k;
     };
-    make(radius, 1.0f / 16.0f);
-    make(4.0f * radius, 1.0f / 8.0f);
+    return {key(radius, 1.0f / 16.0f), key(4.0f * radius, 1.0f / 8.0f)};
+}
+
+std::shared_ptr<const HeightField>
+TerrainSampler::make_focus_tier(const world::generation::HeightmapGenerator& heightmap, const FocusKey& key) {
+    return std::make_shared<const HeightField>(heightmap, key.x0, key.z0, key.extent, key.cell);
+}
+
+void TerrainSampler::adopt_focus(FocusTiers tiers) {
+    focusFields_ = std::move(tiers);
 }
 
 namespace {

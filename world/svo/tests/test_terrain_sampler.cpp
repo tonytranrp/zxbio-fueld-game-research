@@ -237,3 +237,54 @@ TEST_CASE("a terrain tree builds at sub-centimeter resolution near the camera", 
     CHECK(tree.leaf_level_at(underfoot) == g.max_brick_level());
     CHECK(tree.material_at(underfoot) != MaterialID::Air);
 }
+
+// --- goal 251: the focus tiers are shareable, and sharing them changes nothing --------------------
+
+TEST_CASE("adopted focus tiers give the same answers as sampled ones", "[svo][terrain][focus]") {
+    // The whole point of `adopt_focus` is that a cell grid can build the tiers ONCE and hand them to
+    // every cell in a rebuild instead of paying ~1.3 M noise samples per cell. That is only sound if
+    // an adopted tier is indistinguishable from a sampled one, which is what this pins.
+    const world::generation::HeightmapGenerator heightmap(kSeed);
+    TerrainSamplerParams params;
+    params.seed = kSeed;
+    params.trees = true;
+    const Box region{glm::vec3{-32.0f, -32.0f, -32.0f}, glm::vec3{32.0f, 32.0f, 32.0f}};
+    const glm::vec3 center{0.0f, 8.0f, 0.0f};
+    constexpr float kRadius = 16.0f;
+
+    TerrainSampler sampled(heightmap, params, region);
+    sampled.set_focus(center, kRadius);
+
+    TerrainSampler adopted(heightmap, params, region);
+    TerrainSampler::FocusTiers tiers;
+    for (const TerrainSampler::FocusKey& key : TerrainSampler::focus_keys(params, center, kRadius)) {
+        tiers.push_back(TerrainSampler::make_focus_tier(heightmap, key));
+    }
+    adopted.adopt_focus(std::move(tiers));
+
+    std::size_t compared = 0;
+    for (float z = -16.0f; z < 16.0f; z += 1.0f) {
+        for (float x = -16.0f; x < 16.0f; x += 1.0f) {
+            for (float y = -8.0f; y < 24.0f; y += 4.0f) {
+                const glm::vec3 p{x, y, z};
+                REQUIRE(sampled.material_at(p, 1.0f) == adopted.material_at(p, 1.0f));
+                ++compared;
+            }
+        }
+    }
+    REQUIRE(compared > 5000);
+}
+
+TEST_CASE("focus keys snap identically for nearby centres", "[svo][terrain][focus]") {
+    // The keys are what any sharing scheme compares. Two centres inside the same coarse cell must
+    // produce the same rectangle -- and two a trigger-distance apart must not, which is the
+    // measurement that killed the cross-build cache (0% hit rate at an 8 m trigger).
+    TerrainSamplerParams params;
+    params.seed = kSeed;
+    const auto a = TerrainSampler::focus_keys(params, glm::vec3{0.0f, 8.0f, 0.0f}, 16.0f);
+    const auto b = TerrainSampler::focus_keys(params, glm::vec3{0.01f, 8.0f, 0.01f}, 16.0f);
+    const auto far = TerrainSampler::focus_keys(params, glm::vec3{8.0f, 8.0f, 0.0f}, 16.0f);
+    CHECK(a[0] == b[0]);
+    CHECK(a[1] == b[1]);
+    CHECK_FALSE(a[0] == far[0]);
+}

@@ -11,7 +11,10 @@
 #include "engine/jobs/thread_pool.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/svo/brick_tree.hpp"
+#include "world/svo/terrain_sampler.hpp"
 #include "world/svo/tree_builder.hpp"
+
+#include <vector>
 
 namespace app {
 

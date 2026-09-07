@@ -117,6 +117,16 @@ void SvoWorld::build_job(glm::vec3 camera) {
         const world::svo::Box region{g.origin, g.max_corner()};
         const auto samplerStart = std::chrono::steady_clock::now();
         world::svo::TerrainSampler sampler(heightmap_, sp, region);
+        // Goal 251: the focus tiers are ~1.3 M noise samples and do not shrink with the region --
+        // at a 32 m cell they ARE the build (254's measurement). The sharing primitive for that
+        // lives on TerrainSampler now (`focus_keys` / `make_focus_tier` / `adopt_focus`), and the
+        // cell grid will build the tiers ONCE per rebuild and hand them to every cell in it.
+        //
+        // A cross-BUILD cache was implemented here first and MEASURED AT A 0% HIT RATE: the tiers
+        // are keyed on a rectangle snapped to 0.5 m, and consecutive builds are 8 m apart by
+        // construction (the goal 249 trigger), so a moving camera never revisits one and a
+        // stationary camera never rebuilds. It was removed rather than left in -- machinery that
+        // provably cannot fire is worse than none, because it reads as coverage.
         sampler.set_focus(camera, 4.0f * options_.lod_radius);
         const double samplerSeconds =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - samplerStart).count();
