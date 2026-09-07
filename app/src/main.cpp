@@ -495,7 +495,8 @@ void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock,
                    render::diligent::RenderContext& context, render::diligent::TerrainRenderer& renderer,
                    app::WorldLoader& world, render::diligent::DebugOverlay& overlay,
                    const ChunkEventCounters& chunkCounters, const render::interface::Camera& camera,
-                   const app::TreeLookup& trees, bool crosshair) {
+                   const app::TreeLookup& trees, bool crosshair, const world::wind::WindParams& wind,
+                   float windTime) {
     t.poll_budget(context);
     t.smooth(clock);
     render::diligent::OverlayStats stats;
@@ -523,6 +524,10 @@ void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock,
     stats.gpu_self_peak_bytes = renderer.gpu_memory().peak_bytes();
     stats.budget = t.budget;
     stats.crosshair = crosshair;
+    const world::wind::WindSample windHere = world::wind::sample_wind(wind, camera.position, windTime);
+    stats.wind_speed = windHere.speed;
+    stats.wind_gust = windHere.gust;
+    stats.wind_angle_deg = glm::degrees(wind.base_angle_radians);
     overlay.render(stats);
 }
 
@@ -697,6 +702,8 @@ struct Session {
 int run_mesh(Session& s, const AppOptions& options) {
     render::diligent::TerrainRenderer renderer(*s.context);
     renderer.set_sky_enabled(!options.no_sky);
+    // C7: --wind-speed / --no-wind mean the same thing on both renderer paths.
+    renderer.set_wind(options.svo_settings.wind);
 
     // Group S (Voxel Representation Redesign SS3): the world is static and bounded, pregenerated
     // once at startup instead of streamed around the camera. --radius maps directly to the
@@ -785,7 +792,7 @@ int run_mesh(Session& s, const AppOptions& options) {
                 s.postProcess->execute(frame);
             }
             overlay_phase(telemetry, s.clock, *s.context, renderer, world, *s.overlay, chunkCounters, camera,
-                          aimTrees, crosshairOn);
+                          aimTrees, crosshairOn, options.svo_settings.wind, waveTime);
             capture_phase(cap, options, frame, *s.context, world.ready_chunk_count(), *s.input);
             report_phase(telemetry, s.clock, renderer, world, chunkCounters);
         }

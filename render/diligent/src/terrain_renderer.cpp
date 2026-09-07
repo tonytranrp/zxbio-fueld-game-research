@@ -214,6 +214,11 @@ void TerrainRenderer::render(const render::interface::Camera& camera) {
         MapHelper<detail::FrameConstantsCpu> frame(ctx, impl_->frameConstants, MAP_WRITE, MAP_FLAG_DISCARD);
         frame->viewProj = viewProj;
         frame->timeAndPad = glm::vec4(animSeconds, 0.0f, 0.0f, 0.0f);
+        // C7: the mesh path reads the SAME wind field the svo path does.
+        const glm::vec3 windDir = world::wind::wind_direction(wind_);
+        frame->windDirSpeed = glm::vec4(windDir.x, windDir.z, wind_.base_speed, wind_.gust_amplitude);
+        frame->windGustFlutter =
+            glm::vec4(wind_.gust_frequency, wind_.gust_scroll, wind_.flutter_hz, wind_.flutter_frequency);
     }
     {
         MapHelper<glm::vec4> fog(ctx, impl_->fogConstants, MAP_WRITE, MAP_FLAG_DISCARD);

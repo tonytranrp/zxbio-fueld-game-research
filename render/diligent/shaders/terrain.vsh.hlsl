@@ -11,10 +11,16 @@
 // material registry (world/materials, render/diligent/detail/material_macros.hpp): this shader
 // carries no material literal.
 
+#include "wind.fxh"
+
 cbuffer FrameConstants
 {
     column_major float4x4 g_ViewProj;
-    float4 g_TimeAndPad; // x = elapsed seconds (foliage sway); yzw unused
+    float4 g_TimeAndPad;       // x = elapsed seconds (foliage sway); yzw unused
+    // The ONE wind field (world/wind), same tuning the marcher gets. Shape constants arrive as
+    // WIND_* macros from world/wind's own header, so the two paths cannot disagree.
+    float4 g_WindDirSpeed;     // xy = horizontal direction, z = base speed, w = gust amplitude
+    float4 g_WindGustFlutter;  // x = gust frequency, y = gust scroll, z = flutter Hz, w = flutter freq
 };
 
 cbuffer ChunkConstants
@@ -76,11 +82,23 @@ void main(in VSInput VSIn, out PSInput PSIn)
     // foliage; trunks (Wood) and terrain get zero offset, so trunks visibly stay still while
     // canopies move. Group AC: the material record carries the shading model, so the old
     // "material 5 is Leaves" literal is gone -- the CPU/GPU boundary is crossed by the record.
-    if (MaterialShading(VSIn.Material) == MAT_SHADING_FOLIAGE)
+    //
+    // Prompt 001 C7: this used to be two hand-picked sine waves of its own. It now reads the ONE
+    // wind field (world/wind), so the mesh path's canopies lean the way the svo path's shimmer and
+    // the sea's waves do -- same direction, same gusts, same --wind-speed. That is the whole point
+    // of Group B: nothing invents its own wind again.
+    if (MaterialShading(VSIn.Material) == MAT_SHADING_FOLIAGE && g_WindDirSpeed.z > 0.0)
     {
         const float t = g_TimeAndPad.x;
-        worldPos.x += 0.15 * sin(t * 1.4 + worldPos.x * 0.37 + worldPos.z * 0.21);
-        worldPos.z += 0.15 * cos(t * 1.1 + worldPos.z * 0.29 + worldPos.x * 0.17);
+        const float speed = WindSpeed(worldPos, g_WindDirSpeed.xy, t, g_WindDirSpeed.z,
+                                      g_WindDirSpeed.w, g_WindGustFlutter.x, g_WindGustFlutter.y);
+        const float flutter = WindFlutter(worldPos, t, g_WindGustFlutter.z, g_WindGustFlutter.w);
+        // Lean downwind in proportion to the local wind, plus a small cross-wind flutter so the
+        // canopy does not read as one rigid lean. 0.03 m per m/s puts a 6 m/s breeze at ~18 cm --
+        // about where the old hand-tuned 0.15 m sat, so the mesh world's look is preserved.
+        const float lean = speed * 0.03;
+        worldPos.xz += g_WindDirSpeed.xy * lean;
+        worldPos.xz += float2(-g_WindDirSpeed.y, g_WindDirSpeed.x) * (flutter * 0.05);
     }
 
     PSIn.Pos      = mul(g_ViewProj, float4(worldPos, 1.0));

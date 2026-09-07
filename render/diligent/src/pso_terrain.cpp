@@ -3,6 +3,7 @@
 #include <stdexcept>
 
 #include "detail/material_macros.hpp"
+#include "detail/wind_macros.hpp"
 #include "detail/terrain_renderer_impl.hpp"
 
 #include "Graphics/GraphicsEngine/interface/Shader.h"
@@ -41,6 +42,7 @@ RefCntAutoPtr<IShader> create_shader(TerrainRenderer::Impl& impl,
     // outlive CreateShader, which reads the array it owns.
     ShaderMacroHelper macros;
     detail::add_material_macros(macros);
+    detail::add_wind_macros(macros);
 
     ShaderCreateInfo shaderCI;
     shaderCI.pShaderSourceStreamFactory = streamFactory;

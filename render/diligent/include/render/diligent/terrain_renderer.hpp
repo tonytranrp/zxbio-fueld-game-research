@@ -1,5 +1,7 @@
 #pragma once
 
+#include "world/wind/wind_field.hpp"
+
 #include <array>
 #include <cstddef>
 #include <memory>
@@ -24,6 +26,11 @@ inline constexpr std::array<float, 4> kClearColor{0.25f, 0.5f, 0.8f, 1.0f};
 // PIMPL compile-firewall as RenderContext: consumers never see a DiligentCore type.
 class TerrainRenderer {
 public:
+    // The ONE wind field (world/wind, Prompt 001 C7). The mesh path's canopy sway used to be two
+    // hand-picked sine waves in terrain.vsh.hlsl; it reads this now, so --wind-speed and --no-wind
+    // mean the same thing on both renderer paths.
+    void set_wind(const world::wind::WindParams& wind) noexcept { wind_ = wind; }
+
     // Throws std::runtime_error when shader compilation or PSO creation fails. `context` must
     // outlive this renderer.
     explicit TerrainRenderer(RenderContext& context);
@@ -63,6 +70,7 @@ public:
     struct Impl;
 
 private:
+    world::wind::WindParams wind_{};
     std::unique_ptr<Impl> impl_;
 };
 

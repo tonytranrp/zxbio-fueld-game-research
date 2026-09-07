@@ -23,8 +23,12 @@ namespace render::diligent::detail {
 struct FrameConstantsCpu {
     glm::mat4 viewProj;   // matches: cbuffer FrameConstants { column_major float4x4 g_ViewProj; ... }
     glm::vec4 timeAndPad; // x = elapsed seconds (foliage sway, goal 39); yzw unused
+    // The ONE wind field (world/wind, Prompt 001 C7). The mesh path used to carry its own sine
+    // wobble here, which could not agree with anything else because it was not a field.
+    glm::vec4 windDirSpeed;    // xy = horizontal direction, z = base speed, w = gust amplitude
+    glm::vec4 windGustFlutter; // x = gust frequency, y = gust scroll, z = flutter Hz, w = flutter freq
 };
-static_assert(sizeof(FrameConstantsCpu) == 80, "must match the 80-byte HLSL cbuffer exactly");
+static_assert(sizeof(FrameConstantsCpu) == 80 + 32, "must match the HLSL cbuffer exactly");
 
 struct ChunkConstantsCpu {
     glm::vec4 chunkOriginWorld; // matches: cbuffer ChunkConstants { float4 g_ChunkOriginWorld; } -- xyz used,
