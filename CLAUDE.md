@@ -306,6 +306,49 @@ Machine-relevant deltas ONLY:
 - **113/113 tests** (9 new in `world/collision`, 3 new in `world/svo`). Captures for the pass:
   `research/captures/lin_*.png` (named at the end of the research log).
 
+
+## Development harness (2026-09-06, Prompt 002) -- operational deltas
+
+Full record: `research/dev-harness-log.md`; how to use it: `docs/dev-harness.md`; GPU counters:
+`docs/gpu-counters.md`. Machine-relevant deltas ONLY:
+
+- **`voxel_harness` is the new executable** (`C:/b/<preset>/dev/harness/voxel_harness.exe`). It runs
+  a named scenario through the SAME frame loop `voxel_app` runs -- `app/src/app_run.cpp` is compiled
+  into both -- with a scripted `FrameInput` instead of GLFW. **Run it from the repo root**;
+  `dev/scenarios` and `dev/goldens` are resolved relative to the working directory.
+  `voxel_harness --list-scenarios` enumerates the ten checked-in ones.
+  `--headless` hides the window (same swap chain, same readback); `--report FILE.json`;
+  `--accept-golden`; `--no-golden`; `--ramp lod-radius:1,2,4,8,16`.
+- **`ctest --preset windows-relwithdebinfo -L scenario`** runs the cheap headless scenarios. Plain
+  `ctest` still runs the unit tests and needs no GPU.
+- **Every executable now parses through `engine/cli`.** There is exactly ONE argv-indexing site in
+  the repo (`engine/cli/src/parser.cpp`). `--help` works everywhere and is generated from the table.
+  `@file` response files work everywhere. Name drift is gone: `--root-log2` is an alias of
+  `--region-log2`, `--verify` of `--verify-frame`.
+- **`--no-grain` and `--grain` are two different options**, deliberately kept: `--grain A` sets the
+  amplitude, `--no-grain` removes the term. A `--no-x` toggle otherwise always reaches the same
+  member as `--x` (`--no-shadows`/`--shadows`, `--no-sky`/`--sky`, ...).
+- **New app flags**: `--overlay/--no-overlay` (the harness defaults it OFF -- an fps counter inside
+  a golden is run-to-run noise) and `--gpu-timers/--no-gpu-timers` (per-pass GPU ranges; ON, cost
+  measured at 0.16% of a frame).
+- **`-DVOXEL_TRACY=OFF`** builds without the Tracy client. It exists so "compiled out" is a real
+  binary to measure against, not an assumption.
+- **A scenario pose should be `pose_ground <x,z> <yaw> <pitch> <metres above ground>`, not an
+  absolute `pose`.** An absolute pose spawned `walk_shoreline` eighteen metres inside a hill and
+  every capture read 0.0% contrast. `tools/svo_render --xz X,Z` prints a 5x5 surface-height grid --
+  that is how the library's poses were chosen.
+- **Goldens are PER BACKEND** (`dev/goldens/<scenario>/<vk|d3d12>/`) because vk and d3d12 differ by
+  12.8% of pixels at the same pose. Capture scenarios run `--no-taa` (TAA on doubles the
+  run-to-run noise). A one-pixel change is BELOW the noise floor and cannot be caught -- the metric
+  catches shading-term changes, which is what regressions here look like.
+- **`dev/goldens` is 21 MB and churns.** Prompts 005 and 006 change the look on purpose; if the
+  directory passes ~100 MB of history, move it to Git LFS rather than deleting scenarios.
+- **The frame report accounts for 99.9% of wall time in eight phases.** The two that were missing
+  were found by its own check, and the second one -- `capture` (a staging copy + `WaitForIdle` +
+  libpng) -- is 200+ ms on a frame that writes a PNG. A capture frame is not a normal frame.
+- **`--lod-radius 32` CRASHES** (access violation in `Builder::build_node`, every worker thread):
+  `build_tree` has no memory bound. The ramp found it; goal 219a is open.
+
 ## Phase status
 
 **Phase 0 (repo scaffold + dependency fetch/build smoke test): DONE.** Clean configure+build

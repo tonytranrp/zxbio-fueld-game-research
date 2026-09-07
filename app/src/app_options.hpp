@@ -60,6 +60,9 @@ struct AppOptions {
     // digits change every single run, so leaving it in a reference image bakes run-to-run noise
     // into the thing the comparison is supposed to hold still. voxel_harness defaults it off.
     bool overlay = true;
+    // Goal 220/221: the per-pass GPU timestamps and Tracy's own zones. ON by default -- their cost
+    // is measured, not assumed -- and turning them off is what makes that A/B possible at all.
+    bool gpu_timers = true;
     // A4's crosshair. Default on, but suppressed under --verify-frame so a HUD cross cannot
     // inflate the local-contrast metric; --crosshair forces it back on for a capture.
     std::optional<bool> crosshair;

@@ -3,6 +3,8 @@
 
 #include "render/diligent/debug_overlay.hpp"
 
+#include "render/diligent/gpu_passes.hpp"
+
 #include "detail/render_context_impl.hpp"
 
 #include "ImGuiImplDiligent.hpp"
@@ -43,6 +45,9 @@ DebugOverlay::~DebugOverlay() {
 }
 
 void DebugOverlay::render(const OverlayStats& stats) {
+    // Goal 220: ImGui's own GPU range. Small, and that is the point -- "the overlay is free" was
+    // an assumption until it had a number.
+    const GpuPassScope overlayScope(*impl_->context, GpuPass::Overlay);
     auto& rc = impl_->context->impl();
     const Diligent::SwapChainDesc& scDesc = rc.swapchain->GetDesc();
 

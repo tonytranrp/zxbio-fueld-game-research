@@ -91,6 +91,10 @@ int run_ramp(const scenario::Scenario& sc, const Options& harnessOptions, render
 
         RampRung row;
         row.value = value;
+        // A rung that produced no frames FAILED; it did not run slowly. The first version of this
+        // table printed a row of zeros for --lod-radius 16 and then reported it as "the first rung
+        // under 60 fps", which is a measurement that never happened being read as a result.
+        row.measured = run.report.frame_count() > 0;
         const telemetry::FrameCounters counters = run.report.final_counters();
         row.bricks = counters.bricks;
         row.resident_mb = static_cast<double>(counters.resident_bytes) / 1.0e6;
@@ -124,6 +128,11 @@ int run_ramp(const scenario::Scenario& sc, const Options& harnessOptions, render
     std::printf("%10s %12s %12s %14s %12s %12s %12s %8s\n", option.c_str(), "bricks", "resident MB",
                 "internal nodes", "mean steps", "gpu ms p50", "gpu ms p95", "fps");
     for (const RampRung& row : out) {
+        if (!row.measured) {
+            std::printf("%10s    FAILED -- no frames measured (the build did not complete)\n",
+                        row.value.c_str());
+            continue;
+        }
         std::printf("%10s %12zu %12.1f %14zu %12.1f %12.2f %12.2f %8.1f\n", row.value.c_str(), row.bricks,
                     row.resident_mb, row.node_words, row.mean_primary_steps, row.gpu_ms_median,
                     row.gpu_ms_p95, row.fps_from_frame_ms);
@@ -134,6 +143,9 @@ int run_ramp(const scenario::Scenario& sc, const Options& harnessOptions, render
     // out loud rather than failing a run over.
     bool monotone = true;
     for (std::size_t i = 1; i < out.size(); ++i) {
+        if (!out[i].measured || !out[i - 1].measured) {
+            continue;
+        }
         const bool moreDetail = out[i].bricks > out[i - 1].bricks;
         const bool moreCost = out[i].gpu_ms_median > out[i - 1].gpu_ms_median;
         if (moreDetail != moreCost) {
@@ -149,6 +161,9 @@ int run_ramp(const scenario::Scenario& sc, const Options& harnessOptions, render
     const char* below150 = "never";
     const char* below60 = "never";
     for (const RampRung& row : out) {
+        if (!row.measured) {
+            continue; // a failed rung is not a slow rung
+        }
         if (row.fps_from_frame_ms < 150.0 && std::string{below150} == "never") {
             below150 = row.value.c_str();
         }

@@ -309,3 +309,142 @@ The single slow frame is the first tree swap, and its cost is `upload` plus `cap
 tree-swap frame is the only slow frame in a stationary scenario** — which is the number Prompt 004's
 AK-B/AK-C/AK-D have to move, and `fly_transect` is the scenario that turns it from one frame into
 a storm.
+
+---
+
+## 8b. The throughput ramp (goal 219) — and the two things it found
+
+`voxel_harness --scenario throughput_ramp --backend vk --headless --ramp lod-radius:1,2,4,8,16`,
+RelWithDebInfo, this machine, pose held fixed. `mean steps` is read back out of the `steps` debug
+view, so it is the marcher's own iteration count and not an estimate.
+
+| `--lod-radius` | bricks | resident MB | internal nodes | mean steps | gpu ms p50 | gpu ms p95 | fps |
+|---|---|---|---|---|---|---|---|
+| 1 | 58,266 | 35.3 | 21,793 | 83.4 | 2.99 | 3.52 | 150.5 |
+| 2 | 229,454 | 139.5 | 90,384 | 86.6 | 3.53 | 4.28 | 162.3 |
+| 4 | 903,469 | 550.4 | 365,965 | 89.2 | 4.60 | 6.21 | 163.6 |
+| 8 | 3,412,367 | 2,082.2 | 1,424,067 | 91.3 | 5.87 | 6.17 | 83.7 |
+| 16 | — | — | — | — | — | — | **FAILED, no frames** |
+
+**Resident detail and GPU cost do move together** across every measured rung — the tool checks and
+says so. **First rung under 150 fps: 8.** There is no measured rung under 60 fps.
+
+### Finding 1: the marcher is not the bottleneck, and by a wide margin
+
+Between rung 1 and rung 8 the resident data grows **58× (58 K → 3.4 M bricks, 35 MB → 2.08 GB)**
+while GPU march time grows **2.0× (2.99 → 5.87 ms)** and mean primary-ray steps grow **9%
+(83.4 → 91.3)**. That is what a sparse hierarchy is supposed to do, and it is now a number rather
+than a hope.
+
+The fps drop at rung 8 — 163.6 → 83.7 — is therefore **not the GPU**: the march only went from
+4.60 to 5.87 ms. It is the CPU side building and uploading 2 GB. **Prompt 004's headroom is on the
+build/upload path, not in the shader**, and this table is the evidence.
+
+### Finding 2: the ramp crashed, which is what a yardstick is for
+
+`--lod-radius 32` dies with `0xC0000005` inside
+`world::svo::detail::Builder<TerrainSampler>::build_node` (`tree_builder_impl.hpp:166`) on **every
+worker thread at once** — the signature of an unbounded allocation, not a logic error.
+`--lod-radius 16` did not crash but produced **no frames at all**. `build_tree` has no memory bound
+(goal 219a).
+
+Two consequences, both recorded rather than worked around:
+
+- **A rung that crashes takes the harness with it**, because the harness *is* the app, in-process.
+  Running rungs as child processes would fix it; not done here.
+- **The first version of this table printed a row of zeros for rung 16 and then reported it as "the
+  first rung under 60 fps".** A measurement that never happened was being read as a result. Rungs
+  now carry a `measured` flag and a failed rung prints `FAILED`, is excluded from the monotonicity
+  check, and is excluded from the fps thresholds.
+
+---
+
+## 9. Instrumentation cost, measured three ways (goals 220 and 221)
+
+Scenario `timers_on`/`timers_off` — `stress_pose`'s pose, `--no-taa`, 5 s hold, ~810 measured
+frames per run. Three runs per condition.
+
+### Per-pass GPU timestamps (goal 220)
+
+**Do the ranges add up?** On `stress_pose`, the four named ranges against the whole-frame range:
+
+| backend | march | resolve | post | overlay | whole frame | sum accounts for |
+|---|---|---|---|---|---|---|
+| Vulkan | 5.00 | 0.00 | 0.10 | 0.00 | 5.11 | **99.9%** |
+| D3D12 | 6.26 | 0.00 | 0.09 | 0.00 | 6.38 | **97.6%** |
+
+Both inside the 10% the prompt asked for. The zeros are correct, not missing: `stress_pose` runs
+`--no-taa` (no resolve pass) and the harness turns the overlay off. A probe scenario with both on
+reads `march 4.97 / resolve 0.05 / post 0.10 / overlay 0.00`, **sum 100.0%** — so the resolve range
+measures something, and ImGui's own GPU cost is **below this timer's resolution**, which is a bound
+rather than an assumption.
+
+**The march is essentially the whole GPU frame** — 5.00 of 5.11 ms. Everything else together is
+2%.
+
+**What do they cost?**
+
+| | run 1 | run 2 | run 3 | mean of means |
+|---|---|---|---|---|
+| timers ON, mean frame ms | 6.13 | 6.13 | 6.16 | **6.14** |
+| timers OFF, mean frame ms | 6.13 | 6.16 | 6.15 | **6.15** |
+
+**0.01 ms of a 6.14 ms frame — 0.16%** — against a within-condition *median* spread of ±0.65 ms
+(the medians ranged 5.25–6.05 with the timers on and 5.90–6.05 with them off, which is why the mean
+is the statistic to read here: the median is quantised by vsync). They stay on by default.
+
+*A note on the prompt's own wording*: it asked to compare this against "the vk-vs-vk noise floor
+you measured in 217". That floor is an **image** metric (a fraction of changed pixels) and cannot be
+compared with a time. The run-to-run frame-time spread is the comparable number and is what is
+reported.
+
+### Tracy (goal 221)
+
+`-DVOXEL_TRACY=OFF` was added so "compiled out" is a real binary rather than an assumption.
+`TRACY_ON_DEMAND` is on in both builds that have it.
+
+| | mean frame ms, three runs | mean of means |
+|---|---|---|
+| compiled **OUT** | 6.26, 6.17, 6.16 | **6.20** |
+| compiled **IN**, not connected | 6.29, 6.13, 6.13 | **6.18** |
+| compiled **IN**, server connected | 6.17, 6.12, 6.14 | **6.14** |
+
+All three within **0.06 ms** of each other, against a 0.10–0.16 ms within-condition spread.
+`TRACY_ON_DEMAND` does what it claims, and — the part that surprised me — even a **connected**
+client is not measurable in the mean. Tracy stays compiled in by default; no build option is needed
+to protect the shipping preset.
+
+**One hypothesis I formed and then killed with the measurement.** The connected runs' worst frames
+were 53.0 / 42.7 / 34.4 ms, and I was about to write that the connection handshake produces a
+stutter. It does not: the *unconnected* runs' worst frames are **45.1 / 123.3 / 38.7 ms** — larger.
+The worst frame in this scenario is the tree swap plus the capture readback, which varies by 3× on
+its own and swamps anything Tracy does. Reporting the first three numbers without the comparison
+would have produced a plausible, confident, wrong finding.
+
+The connected leg was captured with `tracy-capture-daemon` (`C:/b/tracy-capture/`), which wrote a
+real `.tracy` file each run — so "connected" means connected, not "a server was listening".
+
+### GPU counters (goal 222)
+
+The decision and its four reasons are in `docs/gpu-counters.md`; the short version is that
+timestamps already answer the gating question, counter access is permission-gated on both machines
+that matter, the Perf SDK is a licensed dependency for a number one person reads on one machine, and
+occupancy is not actionable until Prompt 004 restructures the traversal loop. **What would change
+the answer is named there**: a regression timestamps cannot localise, or a CI runner with counter
+access.
+
+---
+
+## 10. Two more defects this pass created and then found
+
+**A test race that only failed in one build configuration.** Three `include` test cases shared one
+temp directory; `catch_discover_tests` makes each case its own ctest test and `ctest -j 8` runs them
+concurrently, and the cycle case ends with `remove_all()`. "include resolves relative to the
+including file" failed in the renderer build and passed in the core build — the shape of a bug you
+chase in the wrong place. Each case now gets its own directory named after itself. Confirmed by
+three consecutive clean `ctest -j 8` runs.
+
+**A frame budget that counted the loading screen.** `macro_ground` declared `option --frames 240`
+against a ~2 s (≈300 frame) world build and reported **0 frames measured**. The script does not
+advance during loading, so the script is what ends a run and `--frames` is only a ceiling — now
+generous, and documented as also counting loading frames.

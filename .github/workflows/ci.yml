@@ -137,6 +137,34 @@ jobs:
         run: |
           & C:/b/app/voxel_app.exe --mode d3d12 --renderer svo --region-log2 7 --no-ao --frames 3
           if ($LASTEXITCODE -ne 0) { Write-Host "::warning::WARP svo smoke run exited $LASTEXITCODE (best-effort, non-gating)"; exit $LASTEXITCODE }
+      # Prompt 002 goal 223: the harness itself, headless, under WARP.
+      #
+      # WITH --no-golden, DELIBERATELY. WARP is a software rasteriser; its image is not this GPU's
+      # image, and the golden calibration measured 12.8% of pixels differing between two REAL
+      # backends on the same machine -- a software rasteriser is further away than that. The two
+      # options were WARP-specific goldens or no image comparison here; taking WARP goldens would
+      # mean maintaining a second reference set that nobody looks at and that cannot catch a
+      # regression on the hardware anyone actually runs. So this step asserts the NON-IMAGE half:
+      # the scenario runs, the script drives the simulation, the captures are written, and every
+      # declared assertion (frames, contrast, walk violations) holds. The image comparison stays a
+      # local, per-GPU gate.
+      - name: Harness smoke (headless scenario, WARP)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & C:/b/dev/harness/voxel_harness.exe --scenario spawn_stand --backend d3d12 --headless `
+            --no-golden --frames 60 --out-dir C:/b/harness-out --report C:/b/harness-out/spawn_stand.json
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::harness smoke exited $LASTEXITCODE (best-effort, non-gating)"; exit $LASTEXITCODE }
+      - name: Harness smoke report
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          if (Test-Path C:/b/harness-out/spawn_stand.json) {
+            Get-Content C:/b/harness-out/spawn_stand.json | python -m json.tool > $null
+            if ($LASTEXITCODE -ne 0) { Write-Host "::warning::harness report is not valid JSON"; exit 1 }
+            Write-Host "harness report parsed OK"
+          }
 
   renderer-linux:
     name: renderer (Linux, GCC, full tree + Lavapipe smoke, best-effort)

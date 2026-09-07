@@ -52,6 +52,17 @@ struct FrameCounters {
     std::size_t gpu_bytes = 0;
     std::size_t uploads = 0;
     double gpu_ms = 0.0; // the timestamped march+resolve range; 0 before the first valid query
+    // Goal 220's per-pass ranges. `gpu_frame_ms` brackets the whole frame's GPU work; the four
+    // below must sum inside it, and how closely is the Check.
+    double gpu_frame_ms = 0.0;
+    double gpu_march_ms = 0.0;
+    double gpu_resolve_ms = 0.0;
+    double gpu_post_ms = 0.0;
+    double gpu_overlay_ms = 0.0;
+
+    [[nodiscard]] double gpu_pass_sum() const noexcept {
+        return gpu_march_ms + gpu_resolve_ms + gpu_post_ms + gpu_overlay_ms;
+    }
 };
 
 struct FrameRecord {

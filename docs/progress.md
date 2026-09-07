@@ -238,6 +238,24 @@ app/          -- main.cpp: Session (shared setup) + run_svo (SvoWorld background
                   proportional floor -- needed at this scale) the same way the old streaming
                   system paced GPU uploads; spectator camera (fly/walk/swim), tree_decoration
                   (3 shapes), aim_query, crash_handler
+engine/cli    -- ONE declarative option layer for every executable: an option is a constexpr row
+                 (name, alias, kind, setter, help, default) and parsing is one runtime loop over the
+                 table. The whole type erasure is one function pointer per row from
+                 bind<&Owner::member>(); parse() is compiled once for every table in the repo.
+                 voxel_app's 43 flags, svo_render's 24 and both dump tools' positional forms all go
+                 through it -- exactly one argv-indexing site exists in the whole repo now.
+dev/scenario  -- what a verification IS, as data: a pose, a motion script (hold/look/goto/wait), a
+                 set of capture points and a set of assertions, in a line-oriented .scn file that
+                 needs no rebuild to add. Carries world::player::PlayerIntent rather than a second
+                 input vocabulary, so a scenario cannot express an input the player cannot make.
+                 GPU-free; built and tested in the gating no-GPU CI job.
+dev/telemetry -- FramePhases (eight terms now, two of them added by their own accounting check) +
+                 FrameReport (percentiles, histogram, slow frames by cause, worst five) + a ~90-line
+                 JSON writer. voxel_app's stats line and the harness's report derive from ONE object.
+dev/harness   -- voxel_harness: resolves a scenario, builds the engine through voxel_app's OWN
+                 option table, drives the fixed-step controller from the script instead of GLFW, and
+                 runs app_run.cpp -- the same object file voxel_app links. Captures, per-backend
+                 goldens with a calibrated metric, a JSON report, and the --ramp throughput yardstick.
 tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the octree world to PNG,
                   a ctest; --lod-center builds the LOD around a point other than the eye, --view
                   renders one shading term), benchmarks/ (Google Benchmark + dated baselines + measure_world_memory's
@@ -404,6 +422,68 @@ tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the oct
   asked for), cone-traced soft shadows (a look change nobody asked for), DiligentFX's own TAA
   (needs motion vectors and its PostFXContext machinery for a static world; ours is 80 lines over
   the distance the march already writes).
+
+### The development-harness pass's own additions (2026-09-06, `research/dev-harness-log.md`)
+
+**The harness runs the same frame loop the app does, and that is a fact about the build.** `Session`,
+`run_svo` and `run_mesh` left `main.cpp`'s anonymous namespace for `app/src/app_run.cpp`, which
+`voxel_harness` compiles directly; `main.cpp` is 71 lines. The seam is `app::FrameInput`, so a
+scripted scenario reaches the same `step_player()` at the same fixed timestep the keyboard does.
+This is the structural answer to the previous pass's `--autofly`, which teleported outside the
+simulation it was testing and reported 74 ground violations that were its own — a harness that runs
+a *copy* of the loop drifts and then lies.
+
+- **A phase-accounting check is worthless if it is circular, and mine was.** Setting the frame
+  record's `wall_ms` to `phases.sum()` made coverage read 100% by construction. With the clock's own
+  number it read 99.7%, and `spawn_stand`'s tree-swap frame showed **19.2 ms of phases against
+  205.4 ms of wall time**. The first hypothesis — `Session::begin_frame()` — was **wrong**, measured
+  at ~0 ms. An end-to-end probe of the loop body found the gap in `capture_phase`: a staging copy, a
+  full `WaitForIdle` and a libpng encode, sitting between two timers and covered by neither.
+  Coverage 99.7% → **99.9%**, frames outside ±1% 4 → **1**. `frame_start` stays in the struct
+  despite reading ~0, because "measured and near zero" is a different statement from "not measured",
+  which is the whole lesson.
+- **A golden that contains an fps counter is holding still a picture of something that never holds
+  still.** Viewing a contact sheet of every capture — not reading its numbers — showed the ImGui
+  panel baked into all of them. `--no-overlay` dropped the run-to-run noise floor from **0.341% of
+  pixels to 0.000–0.134%**, an order of magnitude, and the golden thresholds now sit 11–200× above
+  it instead of 1.5×.
+- **A pose is a number that has to be right about a world it cannot see.** `walk_shoreline` was
+  authored at y = 30 where the ground is 48 m; the camera spawned eighteen metres inside a hill and
+  every capture was a flat grey square reading 0.0% contrast. `pose_ground <x,z> <yaw> <pitch>
+  <height>` resolves against `HeightmapGenerator::height_at` — and unlike an absolute pose it will
+  survive Prompt 006 replacing the terrain generator, which would otherwise have moved every pose in
+  the library underground on the day it landed. Replacement poses were read off
+  `svo_render --xz`, not guessed.
+- **Brace balance is not the same thing as parseable.** The hand-rolled JSON writer shipped with
+  `key()` calling `separate()` and then `value()`, which separates for itself — every key came out
+  preceded by a stray comma. The test passed, because it counted braces and searched for substrings.
+  It now runs a real recursive-descent grammar validator over the output, plus a guard on the guard.
+- **The golden metric's thresholds are the geometric midpoint of a measured floor and a measured
+  signal, not a round number.** Four cases at the same pose: vk-vs-vk with TAA on 0.996% of pixels;
+  TAA off **0.341%** (the floor); a deliberate `--grain 0.5` **7.190%** (the signal); vk-vs-d3d12
+  **12.764%**. Hence 1.5% and 1.2/255, `--no-taa` for capture scenarios, and per-backend goldens —
+  a different backend moves more pixels than a real shading change does.
+- **The honest negative, stated because the prompt asked for the opposite**: a one-pixel change
+  cannot be caught by any threshold over this metric. The floor is ~1,200 of 921,600 pixels; one
+  pixel is 0.0001%. `max_channel_difference` cannot rescue it — it reads 212–219 even on a clean
+  re-run, because anti-aliasing always moves *some* pixel on a high-contrast edge by most of its
+  range. What the metric does catch is a shading-term change, which is what a regression here looks
+  like.
+- **Two runs of the same scenario are not bit-identical, and the cause was isolated rather than
+  assumed.** A still pose with `--no-wind` differs by **0.000% of pixels** between runs (max channel
+  4). The residual 0.03–0.13% in every animated scenario is the wall-clock animation phase — the
+  water and the foliage at a different moment — not GPU nondeterminism. A tick-driven animation
+  clock would fix it; that changes what is drawn, so it is goal 218b rather than something done
+  quietly here.
+- **Per-pass GPU timing costs 0.16% of a frame, measured, and there is deliberately no "present"
+  range.** The four ranges sum to 99.9% (vk) / 97.6% (d3d12) of the whole-frame range. Their cost:
+  6.14 ms with them on vs 6.15 ms off, against a ±0.65 ms within-condition spread. Present is a
+  queue operation and timestamps cannot be compared across queues, so a pair around it would have
+  produced a number that looks like an answer and is not one.
+- **The throughput ramp found a crash, which is what a yardstick is for.** `--lod-radius 32` dies
+  with an access violation inside `Builder::build_node` on every worker thread at once: `build_tree`
+  has no memory bound. A rung that crashes also takes the harness with it, because the harness *is*
+  the app in-process (goal 219a).
 
 ## Honest "what problems does the code have now" (goal 103, re-examined after the redesign)
 

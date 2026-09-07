@@ -94,6 +94,12 @@ bool write_report(const std::string& path, const scenario::Scenario& sc, const O
 
         write_percentiles(json, "frame_ms", run.report.frame_ms());
         write_percentiles(json, "gpu_ms", run.report.gpu_ms());
+        write_percentiles(json, "gpu_frame_ms", run.report.gpu_frame_ms());
+        write_percentiles(json, "gpu_march_ms", run.report.gpu_pass_ms(0));
+        write_percentiles(json, "gpu_resolve_ms", run.report.gpu_pass_ms(1));
+        write_percentiles(json, "gpu_post_ms", run.report.gpu_pass_ms(2));
+        write_percentiles(json, "gpu_overlay_ms", run.report.gpu_pass_ms(3));
+        json.field("gpu_pass_coverage", run.report.gpu_pass_coverage());
 
         const telemetry::SlowFrameCounts slow = run.report.slow_frames();
         json.key("slow_frames");

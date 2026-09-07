@@ -79,6 +79,55 @@ Percentiles FrameReport::gpu_ms() const {
     return summarize(std::move(values));
 }
 
+Percentiles FrameReport::gpu_pass_ms(int index) const {
+    std::vector<double> values;
+    values.reserve(records_.size());
+    for (const FrameRecord& r : records_) {
+        if (r.counters.gpu_frame_ms <= 0.0) {
+            continue; // no valid query on this frame
+        }
+        switch (index) {
+        case 0:
+            values.push_back(r.counters.gpu_march_ms);
+            break;
+        case 1:
+            values.push_back(r.counters.gpu_resolve_ms);
+            break;
+        case 2:
+            values.push_back(r.counters.gpu_post_ms);
+            break;
+        default:
+            values.push_back(r.counters.gpu_overlay_ms);
+            break;
+        }
+    }
+    return summarize(std::move(values));
+}
+
+Percentiles FrameReport::gpu_frame_ms() const {
+    std::vector<double> values;
+    values.reserve(records_.size());
+    for (const FrameRecord& r : records_) {
+        if (r.counters.gpu_frame_ms > 0.0) {
+            values.push_back(r.counters.gpu_frame_ms);
+        }
+    }
+    return summarize(std::move(values));
+}
+
+double FrameReport::gpu_pass_coverage() const {
+    double total = 0.0;
+    std::size_t counted = 0;
+    for (const FrameRecord& r : records_) {
+        if (r.counters.gpu_frame_ms <= 0.0) {
+            continue;
+        }
+        total += r.counters.gpu_pass_sum() / r.counters.gpu_frame_ms;
+        ++counted;
+    }
+    return counted == 0 ? 0.0 : total / static_cast<double>(counted);
+}
+
 SlowFrameCounts FrameReport::slow_frames() const {
     SlowFrameCounts counts;
     for (const FrameRecord& r : records_) {
@@ -205,6 +254,14 @@ std::string FrameReport::summary() const {
 
     std::snprintf(line, sizeof(line), "phase coverage: %.1f%% of wall time, %zu frames outside +-1%%\n",
                   phase_coverage() * 100.0, frames_outside_phase_tolerance());
+    out += line;
+
+    // Goal 220: the four named ranges and how much of the whole-frame range they account for.
+    std::snprintf(line, sizeof(line),
+                  "gpu passes (median ms): march %.2f  resolve %.2f  post %.2f  overlay %.2f  |  whole "
+                  "frame %.2f  |  sum accounts for %.1f%%\n",
+                  gpu_pass_ms(0).median, gpu_pass_ms(1).median, gpu_pass_ms(2).median, gpu_pass_ms(3).median,
+                  gpu_frame_ms().median, gpu_pass_coverage() * 100.0);
     out += line;
 
     out += "worst five frames:\n";

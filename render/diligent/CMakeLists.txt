@@ -4,6 +4,7 @@ add_library(render_diligent STATIC
     src/terrain_renderer.cpp
     src/frustum_cull.cpp
     src/frame_verify.cpp
+    src/gpu_passes.cpp
     src/post_process.cpp
     src/vulkan_tools.cpp
     src/debug_overlay.cpp
@@ -36,6 +37,7 @@ target_sources(render_diligent PUBLIC
         include/render/diligent/frustum.hpp
         include/render/diligent/memory_tracking.hpp
         include/render/diligent/frame_verify.hpp
+        include/render/diligent/gpu_passes.hpp
         include/render/diligent/post_process.hpp
         include/render/diligent/gpu_tools.hpp
         include/render/diligent/debug_overlay.hpp

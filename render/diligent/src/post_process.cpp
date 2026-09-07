@@ -4,6 +4,8 @@
 
 #include "render/diligent/post_process.hpp"
 
+#include "render/diligent/gpu_passes.hpp"
+
 #include "engine/core/log.hpp"
 
 #include "detail/render_context_impl.hpp"
@@ -274,6 +276,9 @@ void PostProcessor::set_tonemap_enabled(bool enabled) noexcept {
 }
 
 void PostProcessor::execute(std::uint32_t frameIndex) {
+    // Goal 220: the post chain's GPU range (bloom + the tonemap composite).
+    const GpuPassScope postScope(*impl_->context, GpuPass::Post);
+
     auto& rc = impl_->context->impl();
     impl_->ensure_scene_target();
 

@@ -24,6 +24,7 @@
 #include "engine/jobs/thread_pool.hpp"
 #include "render/diligent/debug_overlay.hpp"
 #include "render/diligent/frame_verify.hpp"
+#include "render/diligent/gpu_passes.hpp"
 #include "render/diligent/gpu_tools.hpp"
 #include "render/diligent/post_process.hpp"
 #include "render/diligent/render_context.hpp"
@@ -427,6 +428,7 @@ Session::Session(const AppOptions& options, bool visible) : window(1280, 720, "v
         }
         render::diligent::attach_gpu_profiler(
             *context); // Tracy GPU zones (Vulkan only; safe no-op elsewhere)
+        render::diligent::set_gpu_timers_enabled(*context, options.gpu_timers);
 
         // The camera is an ordinary ECS entity (Phase 1 brief §6): Transform + CameraLens are
         // engine components, SpectatorCameraState is this app's movement policy. Starts above the
@@ -797,6 +799,10 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
         causes.swapped = adopt_finished();
         phases.upload = phase_ms(phaseClock);
 
+        // Goal 220's whole-frame range: the four per-pass ranges must sum inside it. Opened here
+        // and closed just before present, so it brackets exactly the GPU work of this frame.
+        std::optional<render::diligent::GpuPassScope> frameScope;
+        frameScope.emplace(*s.context, render::diligent::GpuPass::Frame);
         if (!renderer.has_tree()) {
             // Loading screen until the first tree lands: sky only, no camera control.
             renderer.render(render::interface::Camera{});
@@ -897,9 +903,11 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             }
         }
 
+        frameScope.reset(); // closes the whole-frame GPU range before Present
         phaseClock = std::chrono::steady_clock::now();
         s.context->present();
         phases.present = phase_ms(phaseClock);
+        render::diligent::gpu_passes_end_frame(*s.context);
         prevPhases = phases;
         prevCauses = causes;
 
@@ -924,6 +932,13 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             pending.counters.gpu_bytes = renderer.gpu_memory().allocated_bytes();
             pending.counters.uploads = uploads;
             pending.counters.gpu_ms = renderer.last_gpu_ms();
+            using render::diligent::gpu_pass_ms;
+            using render::diligent::GpuPass;
+            pending.counters.gpu_frame_ms = gpu_pass_ms(*s.context, GpuPass::Frame);
+            pending.counters.gpu_march_ms = gpu_pass_ms(*s.context, GpuPass::March);
+            pending.counters.gpu_resolve_ms = gpu_pass_ms(*s.context, GpuPass::Resolve);
+            pending.counters.gpu_post_ms = gpu_pass_ms(*s.context, GpuPass::Post);
+            pending.counters.gpu_overlay_ms = gpu_pass_ms(*s.context, GpuPass::Overlay);
             pendingReady = renderer.has_tree();
             pendingValid = true;
         }

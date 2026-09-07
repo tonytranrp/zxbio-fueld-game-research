@@ -1329,6 +1329,187 @@ would be speculative.
      breaking criteria, foam advection, currents (water research §5.3/§9). A pass of its own
      magnitude. **Check**: to be defined by that pass.
 
+## AI. The development harness (Prompt 002)
+
+`research/dev-harness-log.md` has the reasoning and every measurement; `docs/dev-harness.md` is the
+operational half. The four things measurement changed my mind about are in the log's §4 and §5.
+
+### AI-A. One option layer
+
+202. [x] `engine/cli`: an option is a `constexpr` row and parsing is one runtime loop over the
+     table. The whole of the type erasure is one function pointer per row, produced by
+     `bind<&Owner::member>()` (a PATH of member pointers, so a row can name
+     `svo_settings.wind.base_speed` without a flat mirror struct). **Check PERFORMED**: 14 test
+     cases, 80 assertions — every value kind round-trips; a Toggle row reaches one target from both
+     spellings and last-one-wins; all three diagnostics name the option; a duplicate long name is a
+     compile-time property (`has_unique_names`, `static_assert`ed at every real table, with the
+     predicate pinned by `STATIC_CHECK` over three bad tables). Decided against a
+     `std::variant`-per-row and against a template-parameter table — reasons in the log §1.
+203. [x] `--help`, generated from the table. **Check PERFORMED**: a test asserts all 43 pre-port
+     flag names appear (42 in a release build, where `--crash-test` is compiled out of the table by
+     an `#if` inside the initializer list), and a second asserts every row and every alias appears —
+     so an option cannot be added without documenting itself.
+204. [x] `voxel_app` ported; the parse chain deleted. **Check PERFORMED**: 10 test cases assert
+     `AppOptions` field-by-field against expectations written from the pre-port chain BEFORE
+     deleting it, including the three awkward ones the prompt named (`--crosshair` defaults to
+     `!verify_frame`, `--upload-budget 0` means unlimited, `--svo-threads 0` means three quarters of
+     the hardware threads). AND: `voxel_app --frames 8` on vk and d3d12, pre-port
+     (`C:/b/windows-release`, built 18:25 the same day) vs post-port — **the app's own log lines are
+     byte-identical on both backends**. One awkward pair survives, named rather than renamed:
+     `--grain` sets an amplitude, `--no-grain` removes the term.
+205. [x] `svo_render`, `mesh_dump`, `tree_dump` ported; the drift ended. `--root-log2` is an ALIAS
+     of `--region-log2` and `--verify` of `--verify-frame` — row properties, not second rows.
+     **Check PERFORMED**: 16 documented command lines re-run, all exit 0 (the `svo_render` ctest
+     line verbatim, `--lod-center`/`--view lit` from `research/lin-look-log.md`, `--xz`, all five
+     kill switches, both dump tools' positional forms, all four `--help`s); 2 deliberate negatives
+     exit 1; `mesh_dump`'s positional and named forms produce byte-identical `.obj`.
+206. [x] `@file` response files. **Check PERFORMED**: a 12-flag command line and the config file
+     that reproduces it yield a field-identical `AppOptions`; a nested `@file` is rejected naming
+     the file and line; a missing file names the path.
+207. [x] `SvoRenderer::Settings` independently constructible. **Check PERFORMED**:
+     `app::settings_from_response_file()` and the app's full table produce equal Settings across all
+     16 fields.
+
+### AI-B. Scenarios
+
+208. [x] `dev/scenario`: `Pose`, `InputFrame` (carrying `world::player::PlayerIntent`, NOT a second
+     input vocabulary), the four segment kinds, capture points, assertions. **Check PERFORMED**:
+     builds and tests under `-DVOXEL_BUILD_RENDERER=OFF`; a two-segment script produces the exact
+     6-frame `InputFrame` sequence at 60 Hz; `jump_pressed` fires on **exactly one** tick of a 1.0 s
+     `hold ... jump` (and twice for two such segments); a `look` lands exactly on its target through
+     the app's own sensitivity and takes the near way around 350°→10°; `goto` is closed-loop
+     (arrives in <100 ticks of a 600-tick budget) and gives up at its timeout.
+209. [x] The `.scn` format. Line-oriented, not JSON, not a scripting language — reasons in the log
+     §2. **Check PERFORMED**: every checked-in `.scn` parses, re-emits and re-parses to an EQUAL
+     model; 11 malformed lines each report file, line number and what was expected; `include`
+     resolves relative to the including file and rejects cycles **by resolved path** (a depth limit
+     would name the wrong file).
+210. [x] Self-registering built-ins. **Check PERFORMED**: a scenario registered from the test's own
+     translation unit appears in the registry with no central list touched; `--list-scenarios` prints
+     both kinds with their source; a file scenario shadows a built-in of the same name (the intended
+     way to iterate on one without rebuilding).
+211. [x] `voxel_harness`. `Session`, `run_svo` and `run_mesh` moved OUT of `main.cpp` into
+     `app/src/app_run.cpp`, which the harness compiles directly — it does not copy the loop. The
+     seam is `app::FrameInput`. **Check PERFORMED**: two runs of `spawn_stand` produce reports
+     identical with the timing keys removed except `contrast_percent` (17.3197 vs 17.3107); a
+     deliberately failing assertion exits 1 with metric, threshold and measured on one line.
+     **Two honest negatives**: capture PNGs are NOT bytewise identical between runs, and headless
+     and windowed captures are not either — isolated to the wall-clock ANIMATION phase, because two
+     runs of a still pose with `--no-wind` differ by **0.000% of pixels** (max channel 4). See 218b.
+212. [x] `--verify-frame`, `--autofly`, `--dump-every`, `--frames` all still work on `voxel_app`,
+     and the harness reaches the same readback through the same `capture_phase`. **Check
+     PERFORMED**: `voxel_app --frames 8` byte-identical pre/post (goal 204); the harness samples the
+     same LOCAL-CONTRAST metric and reads 14.2–52.7% across the library.
+213. [x] The starting library: ten `.scn` files, each with a paragraph saying what it is for.
+     **Check PERFORMED**: all ten pass on **both backends, headless**; 34 goldens promoted; reports
+     committed under `dev/baselines/2026-09-06-*.json`; the captures were VIEWED as a contact sheet
+     — and looking at them is what found two real defects (the overlay baked into every golden, and
+     `fly_transect` flying 1,920 m off the island).
+214. [x] `ctest -L scenario` registers the three cheap headless scenarios; plain `ctest` still runs
+     the unit tests and needs no GPU.
+
+### AI-C. Reports and goldens
+
+215. [x] `dev/telemetry`: `FramePhases` and the slow-frame attributor lifted out of `run_svo`'s
+     function body. **Check PERFORMED, and it found a real gap TWICE.** The first attempt was
+     circular (`wall_ms = phases.sum()`, coverage 100% by construction). With the clock's own number
+     the tree-swap frame read **19.2 ms of phases against 205.4 ms of wall time**. The first
+     hypothesis — `begin_frame` — was WRONG, measured ~0. An end-to-end probe of the loop body found
+     it in `capture_phase`: a staging copy, a full `WaitForIdle` and a libpng encode, between two
+     timers and covered by neither. Two phases added; coverage **99.7% → 99.9%**, frames outside
+     ±1% **4 → 1**. `voxel_app`'s 2-second stats line and the harness's report now derive from the
+     same object.
+216. [x] `--report <path.json>`, hand-rolled emitter (the written case is in `json.hpp`; what would
+     change the answer is named). **Check PERFORMED**: two runs differ only in timing fields — see
+     211. **And the writer shipped BROKEN**: `key()` separated twice, so every key carried a leading
+     comma, and the test passed because it checked brace balance and substrings. It now runs a real
+     recursive-descent grammar validator, plus a guard on the guard (eight inputs it must reject).
+217. [x] The golden metric, CALIBRATED. Mean absolute difference AND changed-pixel fraction — two
+     numbers, because a mean hides a localized error and a count drowns in driver noise.
+     **Check PERFORMED — the four measurements and the three conclusions:**
+
+     | case | mean/255 | changed % | max chan |
+     |---|---|---|---|
+     | vk vs vk, TAA **on** | 0.7376 | 0.99609 | 212 |
+     | vk vs vk, TAA **off** | 0.7226 | 0.34082 | 213 |
+     | vk vs vk, `--grain 0.5` | 1.8007 | 7.19032 | 216 |
+     | vk vs **d3d12** | 2.5481 | 12.76360 | 219 |
+
+     Thresholds are the geometric midpoint of floor and signal: **1.2/255 and 1.5%**. Capture
+     scenarios run `--no-taa`; per-backend goldens are mandatory (12.8% cross-backend is larger than
+     a deliberate shading change); a failure writes a magenta-on-grey diff image, which was viewed.
+     **Then the overlay came out** and the floor fell to **0.000–0.134%** — the thresholds now sit
+     11–200× above it, which is margin rather than slack.
+     **HONEST NEGATIVE, as the prompt anticipated**: a one-pixel change CANNOT be caught by any
+     threshold over this metric. The floor is ~1,200 of 921,600 pixels; one pixel is 0.0001%.
+     `max_channel_difference` cannot rescue it — it reads 212–219 even on a clean re-run.
+     Decided against FLIP (a new dependency for "did this change" rather than "how bad does it
+     look"); it is the thing to reach for if 218a is ever wanted.
+218. [x] `--accept-golden`. Goldens live in `dev/goldens/<scenario>/<vk|d3d12>/`. **Check
+     PERFORMED**: promoting and re-running gives PASS on all ten scenarios, both backends; a
+     promotion over an existing golden PRINTS the distance it is about to erase and requires the
+     flag.
+218a. [ ] Cross-backend image comparison, deferred with its number: 12.8% of pixels differ between
+     vk and d3d12 at the same pose. FLIP mean is the metric to try. **Check**: a threshold that
+     separates "a different backend" from "a regression", or a written finding that none exists.
+218b. [ ] A deterministic animation clock. `anim_seconds()` is wall-clock, so two runs of the same
+     scenario show the water and foliage at different phases — the whole of the residual 0.03–0.13%
+     run-to-run capture difference (isolated: `--no-wind` on a still pose gives 0.000%). Driving it
+     from the tick count would make captures bit-reproducible. NOT done here because it changes what
+     is drawn and Prompt 002 §6 puts renderer changes out of scope. **Check**: two runs of a moving
+     scenario produce bytewise-identical captures.
+
+### AI-D. Instrumentation that must not cost a frame
+
+219. [x] `--ramp NAME:v1,v2,...` and the `throughput_ramp` scenario. A rung is a REAL run of a real
+     scenario with one extra option, not a special measurement path. `mean_primary_steps` is read
+     back out of the `steps` debug view, so it is the marcher's own count. **Check PERFORMED**: the
+     table is in `research/dev-harness-log.md` §8b, with the monotonicity verdict and the first rung
+     under 150 fps and under 60 fps. **AND THE RAMP FOUND A CRASH**: `--lod-radius 32` dies with an
+     access violation inside `Builder::build_node` (`tree_builder_impl.hpp:166`) on every worker
+     thread at once — see goal 219a.
+219a. [ ] `build_tree` has no memory bound. At `--lod-radius 32` on a 512 m region it dies with an
+     access violation rather than a diagnosable failure. A rung that crashes also takes the harness
+     with it, because the harness IS the app in-process. **Check**: an out-of-memory build reports
+     what it needed and how much it had, and the ramp survives a failed rung.
+220. [x] Per-pass GPU ranges: march, TAA resolve, post, overlay, plus a whole-frame range. There is
+     deliberately NO "present" range — Present is a queue operation and the profiling research's
+     §5(b) is explicit that timestamps from different queues cannot be compared; a pair around it
+     would measure the CPU submit, which the frame report already carries as a phase. **Check
+     PERFORMED**: the ranges sum to **99.9% (vk) / 97.6% (d3d12)** of the whole-frame range on
+     `stress_pose` — inside the 10% the prompt asked for. Their COST, three runs each way: mean
+     frame time **6.14 ms with the timers on vs 6.15 ms off — 0.01 ms, 0.16%**, against a
+     within-condition median spread of ±0.65 ms. They stay on by default. (The prompt asked to
+     compare against 217's noise floor; that is an image metric, so the run-to-run frame-time spread
+     is the comparable number and is what is reported.) The march is essentially the whole GPU
+     frame: 5.00 of 5.11 ms on vk.
+221. [x] Tracy, measured three ways rather than asserted. `VOXEL_TRACY=OFF` exists so "compiled out"
+     is a real binary to compare against. **Check PERFORMED**: three median frame times in
+     `research/dev-harness-log.md` §9.
+222. [x] GPU counters: **Nsight Graphics, driven externally against a harness scenario — not the
+     Perf SDK in-app.** Four reasons, in `docs/gpu-counters.md`: timestamps already answer the
+     gating question; counter access is permission-gated on both machines that matter (the
+     `ERR_NVGPUCTRPERM` gate), which is the opposite of where a build dependency earns its keep; it
+     is a licensed dependency for a number read by one person on one machine; and occupancy is not
+     actionable until Prompt 004's AK-E/AK-F. What would change the answer is named. **Check
+     PERFORMED**: the reproducible recipe is in `docs/gpu-counters.md` with the exact `ngfx.exe`
+     invocation against `stress_pose`.
+
+### AI-E. CI and hygiene
+
+223. [x] The harness runs headless in the Windows renderer job under WARP, **with `--no-golden`,
+     deliberately**: WARP is a software rasteriser and the calibration measured 12.8% between two
+     real backends, so a software rasteriser is further away than that. Taking WARP-specific goldens
+     would mean a second reference set nobody looks at. The step asserts the non-image half — the
+     scenario runs, the script drives the simulation, captures are written, every declared assertion
+     holds — and a second step parses the report as JSON. **Check**: CI green with the step visible;
+     no `branches:` filter added.
+224. [x] Retired what the harness replaces. **Check PERFORMED**: `grep -rn "argv["` across
+     `app tools dev benchmarks` finds **zero**; the whole repo has **exactly one** argv-indexing
+     site, `engine/cli/src/parser.cpp:140`; hand-rolled `arg == "--..."` comparisons outside
+     `engine/cli` number **zero**. `run_svo`'s local `FramePhases` is gone into `dev/telemetry`.
+     `--verify-frame`/`--autofly`/`--dump-every` stay, as documented, as thin wrappers.
+
 ## Tooling defects found in passing (goal 101's standing expectation)
 
 200. [x] `--dump-every` wrote nothing and reported nothing — `dump_frame`'s result was

@@ -80,6 +80,7 @@ int run_one(const scenario::Scenario& sc, const Options& harnessOptions, render:
 // marcher's own step count, read back, not an estimate.
 struct RampRung {
     std::string value;
+    bool measured = false; // false = the rung produced no frames (a failed build, not a slow one)
     std::size_t bricks = 0;
     double resident_mb = 0.0;
     std::size_t node_words = 0;

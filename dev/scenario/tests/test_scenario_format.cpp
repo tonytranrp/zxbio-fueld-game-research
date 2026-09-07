@@ -21,8 +21,15 @@ namespace {
 // directory the test happens to be run from.
 const std::filesystem::path kScenarioDir{DEV_SCENARIO_DIR};
 
-std::filesystem::path temp_dir() {
-    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "dev_scenario_format_test";
+// A directory PER TEST CASE, not one shared by all of them. catch_discover_tests registers each
+// case as its own ctest test, `ctest -j 8` runs them concurrently, and the cycle case ends with
+// remove_all() -- so a shared directory made "include resolves relative to the including file"
+// fail in the renderer build while passing in the core build, which is exactly the shape of a
+// bug you chase in the wrong place. The name is the caller's, so a failure names its own directory.
+std::filesystem::path temp_dir(const char* caseName) {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "dev_scenario_format_test" / caseName;
+    std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     return dir;
 }
@@ -117,7 +124,7 @@ TEST_CASE("each directive's diagnostic names the directive", "[scenario]") {
 }
 
 TEST_CASE("include resolves relative to the including file", "[scenario]") {
-    const std::filesystem::path dir = temp_dir();
+    const std::filesystem::path dir = temp_dir("include_relative");
     const std::filesystem::path sub = dir / "shared";
     std::filesystem::create_directories(sub);
     write(sub / "common.scn", "option --no-taa\noption --frames 30\n");
@@ -137,7 +144,7 @@ TEST_CASE("include resolves relative to the including file", "[scenario]") {
 }
 
 TEST_CASE("an include cycle is rejected by name, not by a depth limit", "[scenario]") {
-    const std::filesystem::path dir = temp_dir();
+    const std::filesystem::path dir = temp_dir("include_cycle");
     write(dir / "a.scn", "name a\ninclude b.scn\n");
     write(dir / "b.scn", "include a.scn\n");
     const ParseResult result = load_scenario((dir / "a.scn").string());
@@ -148,7 +155,7 @@ TEST_CASE("an include cycle is rejected by name, not by a depth limit", "[scenar
 }
 
 TEST_CASE("a missing include names the path it could not open", "[scenario]") {
-    const std::filesystem::path dir = temp_dir();
+    const std::filesystem::path dir = temp_dir("include_missing");
     write(dir / "a.scn", "name a\ninclude nowhere.scn\n");
     const ParseResult result = load_scenario((dir / "a.scn").string());
     REQUIRE_FALSE(result.ok);

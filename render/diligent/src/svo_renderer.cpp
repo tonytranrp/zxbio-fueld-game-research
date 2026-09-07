@@ -23,6 +23,8 @@
 #include "Graphics/GraphicsEngine/interface/ShaderResourceBinding.h"
 #include "Graphics/GraphicsEngine/interface/Texture.h"
 #include "Graphics/GraphicsTools/interface/DurationQueryHelper.hpp"
+
+#include "render/diligent/gpu_passes.hpp"
 #include "Graphics/GraphicsTools/interface/MapHelper.hpp"
 
 #if defined(TRACY_ENABLE)
@@ -240,7 +242,9 @@ struct SvoRenderer::Impl {
     glm::vec3 prevCamera{0.0f};
     std::uint32_t frameCounter = 0;
 
-    // GPU timing.
+    // GPU timing. The whole march+resolve pair this renderer has always had is kept (every number
+    // in research/lin-look-log.md was taken with it); goal 220's narrower per-pass ranges go
+    // through the shared pools on `context`.
     std::optional<DurationQueryHelper> gpuTimer;
     double lastGpuMs = 0.0;
 
@@ -632,13 +636,20 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         cb->waveParams = glm::vec4(waveField.waves[0].steepness, 0.0f, 0.0f, 0.0f);
         cb->materials = detail::kMaterialRecords;
     }
-    ctx->SetPipelineState(impl_->pso);
-    ctx->CommitShaderResources(impl_->srb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    ctx->Draw({3, DRAW_FLAG_VERIFY_ALL, 1});
+    {
+        // Goal 220: the march range. The Begin above is the whole march+resolve pair this
+        // renderer has always had (kept, because every number in research/lin-look-log.md was
+        // taken with it); THIS is the narrower one that says how much of it is the march.
+        const GpuPassScope marchScope(*impl_->context, GpuPass::March);
+        ctx->SetPipelineState(impl_->pso);
+        ctx->CommitShaderResources(impl_->srb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ctx->Draw({3, DRAW_FLAG_VERIFY_ALL, 1});
+    }
 
     // Pass 2: temporal resolve into the final target + the next frame's history.
     if (taa) {
         ZoneScopedN("svo taa");
+        const GpuPassScope resolveScope(*impl_->context, GpuPass::Resolve);
         const std::uint32_t prev = impl_->historyIndex;
         const std::uint32_t cur = prev ^ 1u;
         ITextureView* rtvs[2] = {finalRtv, impl_->history[cur]->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET)};

@@ -11,6 +11,13 @@
 #include "Graphics/GraphicsEngine/interface/EngineFactory.h"
 #include "Graphics/GraphicsEngine/interface/RenderDevice.h"
 #include "Graphics/GraphicsEngine/interface/SwapChain.h"
+#include "Graphics/GraphicsTools/interface/DurationQueryHelper.hpp"
+
+#include <array>
+#include <cstddef>
+#include <optional>
+
+#include "render/diligent/gpu_passes.hpp"
 
 namespace render::diligent {
 
@@ -35,6 +42,23 @@ struct RenderContext::Impl {
     // frame and falls back to the swap chain when null). Owned/updated by PostProcessor::Impl;
     // lives here so the renderer needs no public-API change and no second plumbing path.
     Diligent::RefCntAutoPtr<Diligent::ITexture> sceneColor;
+
+    // Per-pass GPU timestamps (goal 220). One DurationQueryHelper per range; see
+    // render/diligent/gpu_passes.hpp for why there is no "present" range and why the first two
+    // frames are always skipped.
+    struct GpuPassTimers {
+        static constexpr std::size_t kCount = static_cast<std::size_t>(GpuPass::Count);
+        std::array<std::optional<Diligent::DurationQueryHelper>, kCount> timers;
+        std::array<double, kCount> lastMs{};
+        std::array<bool, kCount> open{};
+        std::uint32_t frameCounter = 0;
+        bool enabled = true;
+        bool supported = false;
+
+        // The two-frame skip: CLAUDE.md records a real crash inside the NVIDIA driver when a
+        // timestamp is the app's very first Vulkan command.
+        [[nodiscard]] bool active() const noexcept { return enabled && supported && frameCounter >= 2; }
+    } gpuPasses;
 };
 
 } // namespace render::diligent

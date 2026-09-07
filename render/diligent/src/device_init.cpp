@@ -1,5 +1,7 @@
 #include <stdexcept>
 
+#include "render/diligent/gpu_passes.hpp"
+
 #include "detail/render_context_impl.hpp"
 #include "engine/core/log.hpp"
 #include "render/diligent/gpu_tools.hpp"
@@ -119,6 +121,9 @@ RenderContext::RenderContext(const RenderContextCreateInfo& info) : impl_(std::m
     engine::core::log(engine::core::LogLevel::Info, "render device ready: {} on \"{}\" ({}x{})",
                       to_string(impl_->backend), adapter.Description, impl_->swapchain->GetDesc().Width,
                       impl_->swapchain->GetDesc().Height);
+
+    // Goal 220's per-pass query pools. After the device exists and before anything draws.
+    init_gpu_passes(*this);
 }
 
 RenderContext::~RenderContext() {

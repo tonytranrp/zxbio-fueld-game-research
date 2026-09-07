@@ -183,13 +183,18 @@ if(VOXEL_BUILD_RENDERER)
 # the client dormant (no event buffering) until a Tracy server actually connects -- the right
 # default for a dev app that is usually run without a profiler attached; the ~15ns/zone cost only
 # exists while profiling (Phase 1 completion brief §2.4).
+# VOXEL_TRACY exists so goal 221's three-way measurement is possible at all: "compiled out" is a
+# different binary, not a runtime flag, and a claim that an un-connected client costs nothing needs
+# that binary to compare against. ON by default -- the measurement, in
+# research/dev-harness-log.md, is what justifies leaving it on.
+option(VOXEL_TRACY "Compile the Tracy client in (TRACY_ON_DEMAND: dormant until a server connects)" ON)
 CPMAddPackage(
   NAME tracy
   GITHUB_REPOSITORY wolfpld/tracy
   GIT_TAG v0.14.1
   UPDATE_DISCONNECTED TRUE
   OPTIONS
-    "TRACY_ENABLE ON"
+    "TRACY_ENABLE ${VOXEL_TRACY}"
     "TRACY_ON_DEMAND ON"
 )
 
