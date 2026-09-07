@@ -522,3 +522,68 @@ first time I have caught it in code I had just written rather than in an instrum
 **The sharing primitive stays; the cache does not.** The distinction matters: sharing tiers *within*
 one rebuild across many cells is the mechanism that pays, and it is what §5's revised ordering
 called for. Caching them *across* rebuilds was a different idea that happens to be worthless here.
+
+---
+
+## 9. What the marcher actually does, and a premise that did not survive (goals 245, 269)
+
+### The step distribution, measured on the CPU reference
+
+`tools/svo_render` now histograms primary-ray steps and reports percentiles, because a mean hides
+exactly the tail these constants are supposed to bound. Three poses, 640×360, shipping geometry:
+
+| pose | mean | p50 | p95 | p99 | **max** |
+|---|---|---|---|---|---|
+| ground | 20.8 | 16 | 46 | 69 | **119** |
+| panoramic | 14.8 | 14 | 26 | 35 | **63** |
+| macro | 20.6 | 13 | 51 | 80 | **173** |
+
+**`kMaxIterations = 2048` against a measured worst case of 173** — a **12× margin**, and **26×**
+against the p99. The ceiling was chosen as a safety value and never checked; it is 12–26× the real
+requirement.
+
+Against the literature (research §2.1, §3.1): this engine traverses at **14–21 steps per primary
+ray**, which is what a well-formed octree DDA should cost at 16 levels. The marcher is not lost in
+the tree — goal 245's comparison says the traversal is *structurally* fine, and §2's finding stands:
+the cost is the *number* of traversals (six per shaded pixel), not the cost of each.
+
+### Sizing the constants from that data made it slower, on one backend only
+
+Goal 269's premise is *"with a shallow-grid tree both shrink... register pressure and occupancy are
+the mechanism"*. I sized both from the data and measured, isolating each:
+
+| `kMaxIterations` | `kMaxLevels` (stack) | vk march ms | d3d12 march ms |
+|---|---|---|---|
+| **2048** | **22** (shipping) | **4.97 / 4.96** | **5.10** |
+| 512 | 22 | 4.95 / 4.96 | — |
+| 256 | 22 | 4.96 / 4.96 | — |
+| 2048 | **14** | **5.74 / 5.76** | **5.04** |
+| 512 | 14 | 5.68 / 5.75 | — |
+
+Two findings, and the second is the one worth having:
+
+1. **`kMaxIterations` costs nothing at any value.** 2048, 512 and 256 are identical to three
+   significant figures. That is unsurprising in hindsight — it is a loop bound that rays exit long
+   before — but it is now measured rather than assumed, and it means the 12× margin is free. **Left
+   at 2048.**
+2. **Shrinking the stack from 22 to 14 costs 16% on Vulkan and nothing on D3D12.** 4.97 → 5.75 ms on
+   vk; 5.10 → 5.04 on d3d12, which is inside the spread. Consistent across repeated runs on both.
+
+**A 16% regression on one backend and a wash on the other is a shader-compiler artefact, not a
+hardware property** — the two paths compile the same HLSL through different toolchains, and only one
+of them dislikes the smaller array. Whatever the mechanism, the measured fact stands: **on the
+backend this project develops against, a smaller traversal stack is a penalty, not free register
+relief.**
+
+### This corrects §5's design
+
+§5 listed *"9 fewer stack registers"* among the cell grid's benefits, on goal 269's premise. **That
+benefit is measured as a 16% penalty on Vulkan.** The cell grid's case rests on the other two
+columns — a 25% shorter dependent-load chain and a ~256× cheaper rebuild — and the stack line should
+be struck from it rather than quietly kept. If the grid ships, `kMaxLevels` should stay at 22 unless
+a measurement on *that* structure says otherwise.
+
+This is the second time in this prompt that a cited mechanism failed to reproduce here (after §9.3's
+retracted persistent-threads result), and the pattern is worth naming: **published GPU optimisation
+mechanisms are architecture- and toolchain-bound, and this repo's rule of measuring both backends is
+what keeps catching it.** Neither would have been visible on vk alone.

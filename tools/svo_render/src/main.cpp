@@ -294,6 +294,12 @@ int run(int argc, char** argv) {
 
     std::vector<std::uint8_t> rgb(static_cast<std::size_t>(r.width) * r.height * 3u);
     std::atomic<std::uint64_t> totalSteps{0};
+    // Prompt 004 goals 245/269: the DISTRIBUTION of primary-ray steps, not just the mean. The
+    // shader's kMaxIterations = 2048 was chosen as a safety ceiling and never checked against data;
+    // sizing it from the 99th percentile is what 269 asks for, and a histogram is the only way to
+    // know whether 2048 is ever approached or is 30x the real worst case.
+    constexpr std::size_t kStepBuckets = 2049;
+    std::vector<std::atomic<std::uint32_t>> stepHistogram(kStepBuckets);
     std::atomic<std::uint64_t> secondarySteps{0};
     std::atomic<std::uint64_t> hits{0};
     std::atomic<std::uint64_t> shadowed{0};
@@ -315,6 +321,8 @@ int run(int argc, char** argv) {
                 ray.dir = glm::normalize(forward + right * (ndcX * tanHalf * aspect) + up * (ndcY * tanHalf));
                 const Hit hit = trace_ray(tree, ray, primary);
                 steps += hit.steps;
+                stepHistogram[std::min<std::size_t>(hit.steps, kStepBuckets - 1)].fetch_add(
+                    1, std::memory_order_relaxed);
                 glm::vec3 color;
                 if (!hit.hit) {
                     color = view.empty() ? sky_radiance(ray.dir) : glm::vec3{0.0f};
@@ -468,6 +476,40 @@ int run(int argc, char** argv) {
         static_cast<double>(totalSteps.load()) / pixels, static_cast<double>(secondarySteps.load()) / pixels,
         hits.load() > 0 ? 100.0 * static_cast<double>(shadowed.load()) / static_cast<double>(hits.load())
                         : 0.0);
+
+    // Goals 245/269: the percentiles the shader's constants should have been sized from.
+    {
+        std::uint64_t seen = 0;
+        std::uint32_t p50 = 0;
+        std::uint32_t p95 = 0;
+        std::uint32_t p99 = 0;
+        std::uint32_t worst = 0;
+        const auto total = static_cast<std::uint64_t>(pixels);
+        for (std::size_t i = 0; i < kStepBuckets; ++i) {
+            const std::uint32_t n = stepHistogram[i].load(std::memory_order_relaxed);
+            if (n == 0) {
+                continue;
+            }
+            worst = static_cast<std::uint32_t>(i);
+            const std::uint64_t before = seen;
+            seen += n;
+            const auto crossed = [&](double q) {
+                return static_cast<double>(before) < q * static_cast<double>(total) &&
+                       static_cast<double>(seen) >= q * static_cast<double>(total);
+            };
+            if (crossed(0.50)) {
+                p50 = static_cast<std::uint32_t>(i);
+            }
+            if (crossed(0.95)) {
+                p95 = static_cast<std::uint32_t>(i);
+            }
+            if (crossed(0.99)) {
+                p99 = static_cast<std::uint32_t>(i);
+            }
+        }
+        std::printf("primary steps: p50 %u  p95 %u  p99 %u  max %u  (shader ceiling 2048)\n", p50, p95, p99,
+                    worst);
+    }
 
     if (!svo_render::PngWriter::write(opt.out.c_str(), r.width, r.height, rgb.data())) {
         std::fprintf(stderr, "failed to write %s\n", opt.out.c_str());
