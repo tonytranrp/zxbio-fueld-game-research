@@ -1,0 +1,187 @@
+// Prompt 004 goal 261: the marking's two contracts.
+//
+//   1. IT IS IDEMPOTENT. The GPU does this with a plain store and no atomic, and that is only sound
+//      because every ray in a frame writes the SAME word for the same cell. The tests assert that
+//      directly, because the failure mode of getting it wrong is a race that produces
+//      plausible-looking numbers rather than a crash.
+//   2. THE REQUEST SET IS STABLE. Goal 261's Check is that a deliberately under-resident grid
+//      produces a request set whose size AND content match across two identical runs. A set that
+//      wobbled would make the producer chase its own tail.
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
+#include <memory>
+#include <random>
+
+#include "world/svo/cell_marks.hpp"
+#include "world/svo/resident_grid.hpp"
+#include "world/svo/tree_builder.hpp"
+
+#include "detail/tree_builder_impl.hpp"
+
+#include "test_samplers.hpp"
+
+using namespace world::svo;
+using svo_tests::SphereSampler;
+using world::chunk::MaterialID;
+
+namespace {
+
+struct Cells {
+    CellGrid grid;
+    std::vector<std::shared_ptr<const BrickTree>> trees;
+};
+
+Cells build_cells() {
+    const SphereSampler sampler{glm::vec3{32.0f}, 20.0f, MaterialID::Stone};
+    BuildParams params;
+    params.uniform_lod = true;
+    Cells out;
+    out.grid = CellGrid{glm::ivec3{0}, glm::ivec3{4}, 4, -2}; // 64 m of 16 m cells at 0.25 m
+    out.trees.resize(out.grid.cell_count());
+    for (std::size_t i = 0; i < out.grid.cell_count(); ++i) {
+        BrickTree cell =
+            build_tree(sampler, out.grid.geometry_for(out.grid.coord_of(i)), params, nullptr, nullptr);
+        if (!cell.empty()) {
+            out.trees[i] = std::make_shared<const BrickTree>(std::move(cell));
+        }
+    }
+    return out;
+}
+
+std::vector<Ray> fan(int count) {
+    std::vector<Ray> rays;
+    rays.reserve(static_cast<std::size_t>(count));
+    std::mt19937 rng(1234);
+    std::uniform_real_distribution<float> t(4.0f, 60.0f);
+    for (int i = 0; i < count; ++i) {
+        Ray ray;
+        ray.origin = glm::vec3{-20.0f, t(rng), t(rng)};
+        ray.dir = glm::normalize(glm::vec3{1.0f, 0.0f, 0.0f} +
+                                 glm::vec3{0.0f, t(rng) * 0.004f - 0.12f, t(rng) * 0.004f - 0.12f});
+        rays.push_back(ray);
+    }
+    return rays;
+}
+
+} // namespace
+
+TEST_CASE("the mark word round-trips its frame and its request bit", "[svo][marks]") {
+    CHECK(cell_mark_frame(make_cell_mark(0u, false)) == 0u);
+    CHECK_FALSE(cell_mark_requested(make_cell_mark(0u, false)));
+    CHECK(cell_mark_frame(make_cell_mark(123456u, true)) == 123456u);
+    CHECK(cell_mark_requested(make_cell_mark(123456u, true)));
+    // The frame occupies the low 31 bits, so the top one is never mistaken for a huge frame index.
+    CHECK(cell_mark_frame(make_cell_mark(kCellFrameMask, true)) == kCellFrameMask);
+    CHECK(cell_mark_requested(make_cell_mark(kCellFrameMask, true)));
+}
+
+TEST_CASE("marking the same cell many times writes the same word every time", "[svo][marks]") {
+    // THE PROPERTY THAT REMOVES THE ATOMIC. If this were not exact, the GPU's unsynchronised stores
+    // would be a data race rather than a set of agreeing writes.
+    CellMarks marks(16);
+    for (int i = 0; i < 1000; ++i) {
+        marks.mark(7, 99u, false);
+    }
+    CHECK(marks.at(7) == make_cell_mark(99u, false));
+    for (int i = 0; i < 1000; ++i) {
+        marks.mark(7, 99u, true);
+    }
+    CHECK(marks.at(7) == make_cell_mark(99u, true));
+
+    // Out of range is a no-op rather than a write past the end.
+    marks.mark(9999, 1u, true);
+    CHECK(marks.size() == 16);
+}
+
+TEST_CASE("a fully resident grid requests nothing", "[svo][marks]") {
+    const Cells c = build_cells();
+    std::size_t bricks = 0;
+    for (const auto& t : c.trees) {
+        if (t) {
+            bricks += t->brick_count();
+        }
+    }
+    ResidentGrid grid{c.grid, bricks + 32};
+    for (std::size_t i = 0; i < c.trees.size(); ++i) {
+        if (c.trees[i]) {
+            REQUIRE(grid.install(i, *c.trees[i]));
+        }
+    }
+    grid.repack_nodes();
+
+    CellMarks marks(c.grid.cell_count());
+    std::size_t hits = 0;
+    for (const Ray& ray : fan(3000)) {
+        hits += trace_ray_grid_marking(grid, ray, TraceParams{}, 5u, marks).hit ? 1u : 0u;
+    }
+    CHECK(hits > 500);
+    // Cells were used...
+    CHECK_FALSE(marks.used_on(5u).empty());
+    // ...and nothing was missing, EXCEPT the cells that hold no geometry at all -- those are
+    // genuinely absent and a ray stepping through one does request it. That is correct behaviour
+    // and worth stating: "not resident" and "empty" are the same thing to a marcher, and it is the
+    // producer's job to know that building an empty cell produces nothing.
+    for (const std::uint32_t index : marks.requests_on(5u)) {
+        CHECK(c.trees[index] == nullptr);
+    }
+}
+
+TEST_CASE("an under-resident grid produces a stable request set across identical runs", "[svo][marks]") {
+    // Goal 261's Check, verbatim: a deliberately under-resident state, and the request set's SIZE
+    // and CONTENT must match between two identical runs.
+    const Cells c = build_cells();
+    const auto run = [&](std::uint32_t frame) {
+        // A pool far too small for the world: most cells fail to install and stay absent.
+        ResidentGrid grid{c.grid, 400};
+        for (std::size_t i = 0; i < c.trees.size(); ++i) {
+            if (c.trees[i]) {
+                grid.install(i, *c.trees[i]); // may fail; that is the point
+            }
+        }
+        grid.repack_nodes();
+        // Against the trees that EXIST, not `c.grid.present_count()` -- the CellGrid in `Cells` is
+        // only a shape here and never had cells set on it, so that count is 0 and the comparison
+        // would pass vacuously in the wrong direction.
+        const std::size_t buildable = static_cast<std::size_t>(
+            std::count_if(c.trees.begin(), c.trees.end(), [](const auto& p) { return p != nullptr; }));
+        REQUIRE(grid.resident_cells() > 0);
+        REQUIRE(grid.resident_cells() < buildable);
+
+        CellMarks marks(c.grid.cell_count());
+        for (const Ray& ray : fan(3000)) {
+            (void)trace_ray_grid_marking(grid, ray, TraceParams{}, frame, marks);
+        }
+        return marks.requests_on(frame);
+    };
+
+    const std::vector<std::uint32_t> a = run(11u);
+    const std::vector<std::uint32_t> b = run(11u);
+    REQUIRE_FALSE(a.empty()); // a run that requested nothing would prove nothing
+    CHECK(a.size() == b.size());
+    CHECK(a == b);
+
+    // And the frame index is carried, not just the bit -- a request from an old frame must not be
+    // mistaken for a fresh one.
+    const std::vector<std::uint32_t> other = run(12u);
+    CHECK(other.size() == a.size());
+}
+
+TEST_CASE("used_on and requests_on ignore other frames", "[svo][marks]") {
+    CellMarks marks(8);
+    marks.mark(0, 10u, false);
+    marks.mark(1, 10u, true);
+    marks.mark(2, 11u, false);
+    marks.mark(3, 11u, true);
+
+    CHECK(marks.used_on(10u) == std::vector<std::uint32_t>{0u, 1u});
+    CHECK(marks.requests_on(10u) == std::vector<std::uint32_t>{1u});
+    CHECK(marks.used_on(11u) == std::vector<std::uint32_t>{2u, 3u});
+    CHECK(marks.requests_on(11u) == std::vector<std::uint32_t>{3u});
+    CHECK(marks.used_on(12u).empty());
+
+    marks.clear();
+    CHECK(marks.used_on(10u).empty());
+    CHECK(marks.requests_on(10u).empty());
+}

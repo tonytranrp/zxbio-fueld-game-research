@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "world/svo/brick_pool.hpp"
+#include "world/svo/cell_marks.hpp"
 #include "world/svo/brick_tree.hpp"
 #include "world/svo/cell_grid.hpp"
 #include "world/svo/tree_layout.hpp"
@@ -106,5 +107,17 @@ private:
 /// tracing different worlds.
 [[nodiscard]] Hit trace_ray_grid(const ResidentGrid& grid, const Ray& ray, const TraceParams& params = {},
                                  GridTraceStats* stats = nullptr) noexcept;
+
+/// Goal 261: the same march, marking every cell the ray steps into.
+///
+/// A cell the ray ENTERS is stamped with `frame`; a cell it steps into that is NOT resident is
+/// stamped with `frame` and the request bit. Both are plain stores of a value identical for every
+/// ray in the frame, which is the whole reason the GPU mirror needs no atomic -- see cell_marks.hpp
+/// for the argument.
+///
+/// This is the CPU reference the shader's `g_CellUsage` writes are checked against.
+[[nodiscard]] Hit trace_ray_grid_marking(const ResidentGrid& grid, const Ray& ray,
+                                         const TraceParams& params, std::uint32_t frame,
+                                         CellMarks& marks, GridTraceStats* stats = nullptr) noexcept;
 
 } // namespace world::svo

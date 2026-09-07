@@ -1629,3 +1629,76 @@ wiring `ResidentGrid` into `SvoRenderer`'s staged upload is the remaining step, 
 accounting it needs is already built and tested.
 
 322/322 tests.
+
+---
+
+## 22. The marcher marks usage, and it costs nothing measurable (goal 261)
+
+Research §1.4 describes this verbatim — during traversal each ray *"activates the usage stamps of
+the elements that are visited"* and *"we also set a flag that indicates whether or not a refinement
+or data upload is needed"* — and adds that *"it is possible to employ a strategy that allows us to
+avoid any atomic operations in this step."* The goal asks me to find that strategy **and check the
+reasoning rather than take it on faith.**
+
+### The strategy, argued rather than assumed
+
+One 32-bit word per cell: the frame index in the low 31 bits, bit 31 set when a ray wanted the cell
+and it was not resident. Thousands of rays touch the same cell in a frame and **every one of them
+writes the same word**, because:
+
+- the frame index is a per-frame constant, identical for every ray in the dispatch;
+- whether a cell is resident is a property of the *structure*, not of the ray.
+
+So the marking is a set of concurrent stores of one identical value to one address. Whatever order
+they land in — and they cannot tear, since every byte is the same in every writer — the result is
+that value. **A read-modify-write would need an atomic; a write of a constant does not.**
+
+That is also why the encoding deliberately has **no counter, no accumulation, and no "how many rays
+wanted it" field**. Any of those is a read-modify-write and puts the atomic straight back. The
+header says so, so the next person to want a ray count knows what it costs.
+
+`world/svo/cell_marks.hpp` is the CPU mirror; `g_CellUsage` is the `RWStructuredBuffer<uint>` the
+shader writes.
+
+### The Check, both halves
+
+**Stability.** Goal 261 asks for a deliberately under-resident grid whose request set matches in
+size *and content* across two identical runs. A `ResidentGrid` with a pool far too small for the
+world (400 slots) leaves most cells absent; 3,000 rays through it produce a request set that is
+**identical between runs**, and carries the frame index so a stale request cannot be mistaken for a
+fresh one. Asserted, not observed.
+
+**Cost.** `grid_stress` (the same worst pose as `stress_pose`, with `--cell-log2 5`), marking on
+against off, two runs each, both backends:
+
+| | run 1 | run 2 | mean |
+|---|---|---|---|
+| **vk**, marking on | 3.65 | 3.85 | **3.75** |
+| **vk**, marking off | 3.86 | 3.54 | **3.70** |
+| **d3d12**, marking on | 4.09 | 3.80 | **3.95** |
+| **d3d12**, marking off | 4.75 | 3.73 | **4.24** |
+
+**vk: +1.3%. d3d12: the marking-on runs were *faster*, which is noise.** The run-to-run spread here
+is 3.54–4.75, wider than the effect, so the honest statement is that **the marking's cost is below
+the measurement floor on both backends** — comfortably inside goal 261's *"if marking costs more
+than 5% of the march, the encoding is wrong"*. The encoding is right.
+
+`--verify-frame` reads **19.48–19.52%** across all eight runs: the image does not move.
+
+### And a bug that the static_assert could not catch
+
+Adding `g_MarkParams` put it **after** `gridOrigin` in the C++ struct and **between** `g_GridDims`
+and `g_GridOrigin` in the HLSL. The two were still the same *size*, so the `static_assert` that
+guards this mirror passed — and every field past the insertion point read the previous one's bytes.
+The grid origin became garbage and the whole world rendered as an empty frame: **0.0% on
+`--verify-frame` at a pose that had read 19.8% an hour before.**
+
+Worth recording for how it presented rather than for the fix. The obvious suspect was the new UAV
+write, and it was not: **turning the marking off still gave 0.0%**, and that is what pointed at the
+constants rather than at the code the change was about. **A cbuffer mirror is an ORDERED contract,
+not merely a sized one**, and the assert this repo relies on only checks the size. The note now
+lives beside the field.
+
+New: `dev/scenarios/grid_stress.scn` — `stress_pose`'s pose with the cell grid on, kept beside it
+rather than replacing it so both structures are measured at one pose and a regression in either is
+attributable.

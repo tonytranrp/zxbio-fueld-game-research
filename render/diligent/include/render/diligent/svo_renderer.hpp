@@ -65,6 +65,10 @@ public:
         // tree, a different GPU, or the reprojected variant that could overlap it with the march
         // can be re-measured by changing one number.
         int beam_tile = 0;
+        // Goal 261: the marcher stamps every cell it steps into with the frame index, and sets a
+        // request bit on the ones that were not resident. ON by default -- its cost is measured in
+        // research section 22 -- and switchable so that measurement has a zero to compare against.
+        bool mark_cell_usage = true;
         float lod_quality = 1.0f;   // 1 = stop at one pixel; <1 finer, >1 coarser
         float shadow_lod = 4.0f;    // shadow rays tolerate this much coarser LOD (from their origin)
         float ao_lod = 8.0f;        // AO rays likewise

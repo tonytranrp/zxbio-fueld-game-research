@@ -175,6 +175,21 @@ TreeView ResidentGrid::view_of(std::size_t index) const noexcept {
     return view;
 }
 
+Hit trace_ray_grid_marking(const ResidentGrid& grid, const Ray& ray, const TraceParams& params,
+                           std::uint32_t frame, CellMarks& marks, GridTraceStats* stats) noexcept {
+    return detail::trace_grid_with(grid.shape(), ray, params, stats, [&](glm::ivec3 coord) {
+        if (!grid.shape().contains(coord)) {
+            return TreeView{};
+        }
+        const std::size_t index = grid.shape().index_of(coord);
+        const TreeView view = grid.view_of(index);
+        // A plain store of a value every ray in this frame agrees on. No atomic, no accumulation --
+        // adding either would put the read-modify-write back and is why there is no ray counter.
+        marks.mark(index, frame, view.empty());
+        return view;
+    });
+}
+
 Hit trace_ray_grid(const ResidentGrid& grid, const Ray& ray, const TraceParams& params,
                    GridTraceStats* stats) noexcept {
     // Shares the owning/flat walk by construction: this is the same lambda shape those two use.

@@ -11,6 +11,7 @@ add_executable(world_svo_tests
     test_beam.cpp
     test_cell_grid.cpp
     test_brick_pool.cpp
+    test_cell_marks.cpp
     test_lod_bands.cpp
     test_resident_grid.cpp
 )
