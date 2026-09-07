@@ -49,6 +49,28 @@ void DebugOverlay::render(const OverlayStats& stats) {
     ImGui_ImplGlfw_NewFrame();
     impl_->imgui->NewFrame(scDesc.Width, scDesc.Height, scDesc.PreTransform);
 
+    // Crosshair (Prompt 001 A4). Drawn into ImGui's FOREGROUND draw list rather than into the
+    // stats window, so it is present whether or not that window is open, and drawn in the overlay
+    // pass -- which runs AFTER the TAA resolve -- so it stays a crisp pixel cross instead of being
+    // smeared into the history. That is why it needs no second fullscreen pass of its own: the
+    // brief's fallback existed to get it past TAA, and the overlay is already past TAA.
+    if (stats.crosshair) {
+        ImDrawList* fg = ImGui::GetForegroundDrawList();
+        const ImVec2 c{static_cast<float>(scDesc.Width) * 0.5f, static_cast<float>(scDesc.Height) * 0.5f};
+        constexpr float kGap = 3.0f; // left open at the centre so it never hides what it points at
+        constexpr float kArm = 7.0f;
+        const ImU32 ink = IM_COL32(255, 255, 255, 200);
+        const ImU32 shadow = IM_COL32(0, 0, 0, 140); // legible against sky AND snow
+        for (int pass = 0; pass < 2; ++pass) {
+            const float o = pass == 0 ? 1.0f : 0.0f; // shadow first, offset by a pixel
+            const ImU32 col = pass == 0 ? shadow : ink;
+            fg->AddLine(ImVec2(c.x - kArm + o, c.y + o), ImVec2(c.x - kGap + o, c.y + o), col);
+            fg->AddLine(ImVec2(c.x + kGap + o, c.y + o), ImVec2(c.x + kArm + o, c.y + o), col);
+            fg->AddLine(ImVec2(c.x + o, c.y - kArm + o), ImVec2(c.x + o, c.y - kGap + o), col);
+            fg->AddLine(ImVec2(c.x + o, c.y + kGap + o), ImVec2(c.x + o, c.y + kArm + o), col);
+        }
+    }
+
     constexpr double kMiB = 1024.0 * 1024.0;
     ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowBgAlpha(0.6f);

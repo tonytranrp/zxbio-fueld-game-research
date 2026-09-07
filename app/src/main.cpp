@@ -34,6 +34,8 @@
 #include "svo_world.hpp"
 #include "world/collision/aabb_sweep.hpp"
 #include "world/collision/terrain_collider.hpp"
+#include "world/player/fixed_step.hpp"
+#include "world/player/view_polish.hpp"
 #include "world/streaming/chunk_events.hpp"
 #include "world/streaming/world_bounds.hpp"
 #include "world_loader.hpp"
@@ -68,6 +70,14 @@ struct AppOptions {
     bool autofly = false; // Group D smoke check: fly +X automatically once the world has loaded
     bool walk = false;    // start in walk (gravity) mode; with --autofly, also asserts no fall-through
     bool noclip = false;  // Group AA: skip body-vs-world collision (the pre-collision spectator)
+    // Prompt 001 Group AD. The step allowance is a SMOOTHING BUDGET on the svo path (7.8 mm voxels
+    // make every slope a sub-cm staircase) and a real ledge climb on the mesh path (1 m blocks);
+    // unset takes each path's own default.
+    std::optional<float> step_height;
+    bool no_view_polish = false; // head-bob, landing dip, boost FOV kick off
+    // A4's crosshair. Default on, but suppressed under --verify-frame so a HUD cross cannot
+    // inflate the local-contrast metric; --crosshair forces it back on for a capture.
+    std::optional<bool> crosshair;
     std::size_t upload_budget = 4; // mesh commits per frame; 0 = unlimited (the pre-fix stutter behavior)
     std::uint32_t dump_every = 0;  // goal 7: write a numbered frame dump every N frames (0 = off)
     // Goal 52's per-pass kill switches: isolate a visual regression to one pass without reverts.
@@ -142,6 +152,14 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             options.walk = true;
         } else if (arg == "--noclip") {
             options.noclip = true;
+        } else if (arg == "--step-height") {
+            options.step_height = next_float(world::player::kSvoStepHeight);
+        } else if (arg == "--no-view-polish") {
+            options.no_view_polish = true;
+        } else if (arg == "--crosshair") {
+            options.crosshair = true;
+        } else if (arg == "--no-crosshair") {
+            options.crosshair = false;
         } else if (arg == "--upload-budget") {
             const char* value = next_value();
             options.upload_budget =
@@ -273,7 +291,8 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
                 "--lod-quality Q, --no-grain, --no-taa, --smooth-pixels N, --grain A, --ao-radius PX, "
                 "--shadow-lod M, --svo-threads N, --svo-upload-mb N, --debug-view NAME, --voxel-log2 N, "
                 "--region-log2 N, "
-                "--lod-radius M, --no-trees, --pos x,y,z, --yaw D, --pitch D)",
+                "--lod-radius M, --no-trees, --pos x,y,z, --yaw D, --pitch D, --step-height M, "
+                "--no-view-polish, --crosshair/--no-crosshair)",
                 arg);
             return std::nullopt;
         }
@@ -311,7 +330,8 @@ render::interface::Camera
 update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraEntity,
                     engine::input::GlfwInput& input, const world::generation::HeightmapGenerator& heightmap,
                     world::collision::TerrainCollider* collider, const engine::core::Clock& clock,
-                    const AppOptions& options, std::uint32_t& walkViolations) {
+                    const AppOptions& options, std::uint32_t& walkViolations,
+                    world::player::FixedStepper& stepper, float& viewOffsetY) {
     auto [transform, lens, spectator] =
         registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(
             cameraEntity);
@@ -319,56 +339,85 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
         // Deliberate transition handling (Group V task 25): position is untouched, vertical
         // velocity zeroed -- entering walk mid-air simply starts a clean fall; leaving it
         // freezes wherever you are. No snap in either direction.
-        spectator.mode =
-            spectator.mode == app::CameraMoveMode::Fly ? app::CameraMoveMode::Walk : app::CameraMoveMode::Fly;
-        spectator.vertical_velocity = 0.0f;
-        log(LogLevel::Info, "camera mode: {}", spectator.mode == app::CameraMoveMode::Walk ? "walk" : "fly");
+        spectator.physics.mode = spectator.physics.mode == app::CameraMoveMode::Fly
+                                     ? app::CameraMoveMode::Walk
+                                     : app::CameraMoveMode::Fly;
+        spectator.physics.vertical_velocity = 0.0f;
+        log(LogLevel::Info, "camera mode: {}",
+            spectator.physics.mode == app::CameraMoveMode::Walk ? "walk" : "fly");
     }
-    const float groundHeight = heightmap.height_at(transform.position.x, transform.position.z);
-    const bool walking = spectator.mode == app::CameraMoveMode::Walk;
-    if (collider != nullptr) {
-        collider->refresh(transform.position);
-        const app::SpectatorStep step =
-            app::compute_spectator_step(transform, spectator, input.state(), input.take_look_delta(),
-                                        static_cast<float>(clock.delta_seconds()), groundHeight);
-        const glm::vec3 feet = transform.position - glm::vec3{0.0f, app::kEyeHeight, 0.0f};
-        const world::collision::Aabb body =
-            world::collision::Aabb::upright(feet, app::kBodyHalfWidth, app::kBodyHeight);
-        world::collision::SweepParams sweep;
-        sweep.step_height = walking ? app::kStepHeight : 0.0f;
-        const world::collision::SweepResult moved =
-            world::collision::move_and_slide(*collider, body, step.delta, sweep);
-        transform.position += moved.delta;
-        if (walking && (moved.grounded || (moved.blocked_y && step.delta.y > 0.0f))) {
-            spectator.vertical_velocity = 0.0f; // landed, or bumped the head
+
+    // Mouse look runs at RENDER cadence: a 144 Hz mouse must not be sampled at the sim's 60 Hz.
+    app::apply_look(transform, spectator, input.take_look_delta());
+
+    const bool walking = spectator.physics.mode == app::CameraMoveMode::Walk;
+    // The jump press is an EDGE, taken once per frame and handed to exactly one fixed tick below
+    // (world/player's contract: holding Space must not re-arm the buffer every tick).
+    bool jumpEdge = input.take_jump();
+
+    // Prompt 001 A1: the simulation runs at a fixed 60 Hz regardless of frame rate, so the jump
+    // apex, the coyote window and the smoothing time constant mean the same thing on every machine.
+    const int ticks = stepper.begin_frame(clock.delta_seconds());
+    const float dt = stepper.step_seconds_f();
+    for (int i = 0; i < ticks; ++i) {
+        if (options.autofly) {
+            // Constant sideways travel (at boost speed in fly mode; ground-bound in walk mode) --
+            // goal 133's mechanical re-check: a static, fully-loaded world should show zero
+            // generation-driven frame spikes crossing it, unlike the pre-redesign log's collapse
+            // to 1-2 fps under the old per-tick streaming system.
+            //
+            // Applied INSIDE the tick, before the physics that has to answer for it. It used to be
+            // a per-frame teleport after the physics, which stopped being equivalent the moment the
+            // sim went fixed-step: at 150 fps most frames run zero ticks, so the body was shoved
+            // into a new column with nothing to settle it, and a 900-frame walk reported 74 ground
+            // violations that were the harness's, not the world's.
+            transform.position.x += (options.walk ? 20.0f : 160.0f) * dt;
         }
-        if (walking) {
-            app::clamp_to_ground(transform, spectator, groundHeight); // backstop; see spectator_camera.hpp
+        const float groundHeight = heightmap.height_at(transform.position.x, transform.position.z);
+        world::player::WorldSense sense;
+        sense.ground_height = groundHeight;
+        const world::player::PlayerIntent intent = app::to_intent(input.state(), jumpEdge);
+        jumpEdge = false; // consumed by the first tick of this frame
+
+        const glm::vec3 before = transform.position;
+        world::player::StepResult step;
+        if (collider != nullptr) {
+            collider->refresh(transform.position);
+            step = app::step_camera(transform, spectator, *collider, intent, sense, dt);
+        } else {
+            const app::OpenWorld open; // --noclip: nothing is solid, the backstop still applies
+            step = app::step_camera(transform, spectator, open, intent, sense, dt);
         }
-    } else {
-        app::update_spectator_camera(transform, spectator, input.state(), input.take_look_delta(),
-                                     static_cast<float>(clock.delta_seconds()), groundHeight);
-    }
-    if (options.autofly) {
-        // Constant sideways travel (at boost speed in fly mode; ground-bound in walk mode) --
-        // goal 133's mechanical re-check: a static, fully-loaded world should show zero
-        // generation-driven frame spikes crossing it, unlike the pre-redesign log's collapse to
-        // 1-2 fps under the old per-tick streaming system.
-        transform.position.x += (options.walk ? 20.0f : 160.0f) * static_cast<float>(clock.delta_seconds());
-    }
-    if (options.walk && walking) {
-        // Group V task 27's mechanical check, evaluated EVERY frame of a walk run: the camera
-        // must never end an update below the ground surface (fall-through at chunk seams or
-        // steep slopes is exactly the bug class this watches for).
-        if (transform.position.y < groundHeight + app::kEyeHeight - 0.01f) {
-            ++walkViolations;
+
+        // A6: render-only feel. Off under the mechanical checks so --autofly/--verify-frame keep
+        // measuring exactly the body the physics moved.
+        world::player::ViewPolishSense polish;
+        const glm::vec3 travelled = transform.position - before;
+        polish.horizontal_speed = glm::length(glm::vec2{travelled.x, travelled.z}) / dt;
+        polish.boosting = input.state().speed_boost;
+        const bool polishOn = !options.no_view_polish && !options.autofly && !options.verify_frame;
+        viewOffsetY = world::player::update_view_polish(spectator.physics, spectator.tuning, polish, step,
+                                                        polishOn, dt);
+
+        if (options.walk && walking) {
+            // Group V task 27's mechanical check, now evaluated every fixed TICK rather than every
+            // frame (strictly more often, and at a cadence that does not vary with load): the
+            // camera must never end an update below the ground surface.
+            if (transform.position.y < groundHeight + app::kEyeHeight - 0.01f) {
+                ++walkViolations;
+            }
         }
     }
+    // A frame shorter than one tick simply renders the pose (and the polish offset) it already had.
 
     render::interface::Camera camera;
     camera.position = transform.position;
+    // A3/A6: the rendered eye lags the physical one (voxel-stair smoothing) and carries the polish
+    // offset. The BODY is never moved by either -- the walk-violation counter above, --autofly and
+    // --verify-frame all measure transform.position, not this.
+    camera.position.y += spectator.physics.eye_smooth_offset + viewOffsetY;
     camera.orientation = transform.orientation;
-    camera.fov_y_radians = lens.fov_y_radians;
+    camera.fov_y_radians = lens.fov_y_radians + world::player::view_polish_fov_offset(spectator.physics);
     camera.near_plane = lens.near_plane;
     camera.far_plane = lens.far_plane;
     return camera;
@@ -429,7 +478,8 @@ struct FrameTelemetry {
 void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock,
                    render::diligent::RenderContext& context, render::diligent::TerrainRenderer& renderer,
                    app::WorldLoader& world, render::diligent::DebugOverlay& overlay,
-                   const ChunkEventCounters& chunkCounters, const render::interface::Camera& camera) {
+                   const ChunkEventCounters& chunkCounters, const render::interface::Camera& camera,
+                   const app::TreeLookup& trees, bool crosshair) {
     t.poll_budget(context);
     t.smooth(clock);
     render::diligent::OverlayStats stats;
@@ -443,17 +493,20 @@ void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock,
     stats.objects_round = objectCounts.round;
     stats.objects_conifer = objectCounts.conifer;
     stats.objects_shrub = objectCounts.shrub;
-    // Goal 84: what material the crosshair (view center) is aiming at -- analytic ray march.
+    // Goal 84 + Prompt 001 A4: what the crosshair (view center) is aiming at -- analytic ray march,
+    // now including trees and the hit distance.
     const glm::vec3 aimDir = camera.orientation * glm::vec3(0.0f, 0.0f, -1.0f);
-    const app::AimHit aim = app::query_aim(world.heightmap(), camera.position, aimDir);
+    const app::AimHit aim = app::query_aim(world.heightmap(), camera.position, aimDir, 300.0f, &trees);
     if (aim.hit) {
-        std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f",
+        std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f (%.0f m)",
                       app::material_name(aim.material), static_cast<double>(aim.position.x),
-                      static_cast<double>(aim.position.y), static_cast<double>(aim.position.z));
+                      static_cast<double>(aim.position.y), static_cast<double>(aim.position.z),
+                      static_cast<double>(aim.distance));
     }
     stats.gpu_self_bytes = renderer.gpu_memory().allocated_bytes();
     stats.gpu_self_peak_bytes = renderer.gpu_memory().peak_bytes();
     stats.budget = t.budget;
+    stats.crosshair = crosshair;
     overlay.render(stats);
 }
 
@@ -502,9 +555,29 @@ bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t f
             static_cast<double>(fraction) * 100.0, sceneReady);
     }
     if (options.dump_every > 0 && frame % options.dump_every == 0) {
-        char dumpPath[64];
-        std::snprintf(dumpPath, sizeof(dumpPath), "frame_%05u.png", frame);
-        (void)render::diligent::dump_frame(context, dumpPath);
+        // VOXEL_DUMP_FRAME, when set, gives the numbered dumps a DIRECTORY as well as a name.
+        // Without it these are bare relative paths resolved against whatever the process's working
+        // directory happens to be, and the write can fail there with nothing to show for it --
+        // which is how a --dump-every capture session produced no files at all and no message
+        // saying so. The result is logged now either way.
+        char dumpPath[512];
+        // getenv_s, not getenv: MSVC treats the latter as a deprecation error under /WX (the same
+        // reason frame_verify.cpp reads this variable the same way).
+        char base[256] = {};
+        std::size_t baseLen = 0;
+        const bool haveBase = getenv_s(&baseLen, base, sizeof(base), "VOXEL_DUMP_FRAME") == 0 && baseLen > 1;
+        if (haveBase) {
+            const std::string_view whole{base};
+            const std::size_t dot = whole.rfind('.');
+            const std::string_view stem = dot == std::string_view::npos ? whole : whole.substr(0, dot);
+            std::snprintf(dumpPath, sizeof(dumpPath), "%.*s_%05u.png", static_cast<int>(stem.size()),
+                          stem.data(), frame);
+        } else {
+            std::snprintf(dumpPath, sizeof(dumpPath), "frame_%05u.png", frame);
+        }
+        const bool dumped = render::diligent::dump_frame(context, dumpPath);
+        log(dumped ? LogLevel::Info : LogLevel::Error, "frame dump: {} ({})", dumpPath,
+            dumped ? "written" : "FAILED");
     }
     if (input.take_screenshot()) {
         char shotPath[64];
@@ -572,7 +645,14 @@ struct Session {
             spectator.pitch_radians = glm::radians(*options.start_pitch_deg);
         }
         if (options.walk) {
-            spectator.mode = app::CameraMoveMode::Walk; // starts mid-air and falls to the ground
+            spectator.physics.mode = app::CameraMoveMode::Walk; // starts mid-air and falls to the ground
+        }
+        // A3: the svo path's step allowance is a smoothing budget, not a ledge climb.
+        spectator.tuning.step_height = options.renderer == RendererKind::Svo
+                                           ? world::player::kSvoStepHeight
+                                           : world::player::kDefaultTuning.step_height;
+        if (options.step_height) {
+            spectator.tuning.step_height = *options.step_height;
         }
         spawnPosition = transform.position;
 
@@ -623,7 +703,16 @@ int run_mesh(Session& s, const AppOptions& options) {
     cap.verifyOk = !options.verify_frame;
     FrameTelemetry telemetry;
     std::uint32_t frame = 0;
-    std::uint32_t walkViolations = 0; // frames ending below the ground surface in walk mode
+    std::uint32_t walkViolations = 0; // ticks ending below the ground surface in walk mode
+    // Prompt 001 A1: the simulation's own clock, carried across frames (never a frame-loop
+    // local), plus the render-only view-polish offset it produces.
+    world::player::FixedStepper stepper;
+    float viewOffsetY = 0.0f;
+    // A4: the aim query's tree source, kept across frames so its per-column placement cache is
+    // built once rather than per frame. Off under the mechanical frame checks, along with the
+    // crosshair, so --verify-frame's contrast metric measures the world and not the HUD.
+    const app::TreeLookup aimTrees(world.heightmap(), options.seed);
+    const bool crosshairOn = options.crosshair.value_or(!options.verify_frame);
     bool loggedReady = false;
     const auto loadStart = std::chrono::steady_clock::now();
 
@@ -667,15 +756,16 @@ int run_mesh(Session& s, const AppOptions& options) {
                 world.log_timings();
                 loggedReady = true;
             }
-            const render::interface::Camera camera =
-                update_camera_phase(s.registry, s.cameraEntity, *s.input, world.heightmap(),
-                                    options.noclip ? nullptr : &collider, s.clock, options, walkViolations);
+            const render::interface::Camera camera = update_camera_phase(
+                s.registry, s.cameraEntity, *s.input, world.heightmap(), options.noclip ? nullptr : &collider,
+                s.clock, options, walkViolations, stepper, viewOffsetY);
 
             renderer.render(camera);
             if (s.postProcess) {
                 s.postProcess->execute(frame);
             }
-            overlay_phase(telemetry, s.clock, *s.context, renderer, world, *s.overlay, chunkCounters, camera);
+            overlay_phase(telemetry, s.clock, *s.context, renderer, world, *s.overlay, chunkCounters, camera,
+                          aimTrees, crosshairOn);
             capture_phase(cap, options, frame, *s.context, world.ready_chunk_count(), *s.input);
             report_phase(telemetry, s.clock, renderer, world, chunkCounters);
         }
@@ -739,6 +829,13 @@ int run_svo(Session& s, const AppOptions& options) {
     FrameTelemetry telemetry;
     std::uint32_t frame = 0;
     std::uint32_t walkViolations = 0;
+    world::player::FixedStepper stepper;
+    float viewOffsetY = 0.0f;
+    // A4: the aim query's tree source, kept across frames so its per-column placement cache is
+    // built once rather than per frame. Off under the mechanical frame checks, along with the
+    // crosshair, so --verify-frame's contrast metric measures the world and not the HUD.
+    const app::TreeLookup aimTrees(world.heightmap(), options.seed);
+    const bool crosshairOn = options.crosshair.value_or(!options.verify_frame);
     std::size_t uploads = 0;
     double lastUploadMs = 0.0;
     const auto loadStart = std::chrono::steady_clock::now();
@@ -857,9 +954,9 @@ int run_svo(Session& s, const AppOptions& options) {
             }
         } else {
             const double refreshBefore = collider.last_refresh_ms();
-            const render::interface::Camera camera =
-                update_camera_phase(s.registry, s.cameraEntity, *s.input, world.heightmap(),
-                                    options.noclip ? nullptr : &collider, s.clock, options, walkViolations);
+            const render::interface::Camera camera = update_camera_phase(
+                s.registry, s.cameraEntity, *s.input, world.heightmap(), options.noclip ? nullptr : &collider,
+                s.clock, options, walkViolations, stepper, viewOffsetY);
             phases.refreshed = collider.last_refresh_ms() != refreshBefore && !collider.refresh_pending();
             // Rebuild once the camera has left the inner half of the finest LOD ring: the tree is
             // still correct everywhere (coarser rings are conservative), just not at full detail
@@ -897,15 +994,18 @@ int run_svo(Session& s, const AppOptions& options) {
             stats.svo.trees = last.trees;
             stats.svo.uploads = uploads;
             const glm::vec3 aimDir = camera.orientation * glm::vec3(0.0f, 0.0f, -1.0f);
-            const app::AimHit aim = app::query_aim(world.heightmap(), camera.position, aimDir);
+            const app::AimHit aim =
+                app::query_aim(world.heightmap(), camera.position, aimDir, 300.0f, &aimTrees);
             if (aim.hit) {
-                std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f",
+                std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f (%.0f m)",
                               app::material_name(aim.material), static_cast<double>(aim.position.x),
-                              static_cast<double>(aim.position.y), static_cast<double>(aim.position.z));
+                              static_cast<double>(aim.position.y), static_cast<double>(aim.position.z),
+                              static_cast<double>(aim.distance));
             }
             stats.gpu_self_bytes = renderer.gpu_memory().allocated_bytes();
             stats.gpu_self_peak_bytes = renderer.gpu_memory().peak_bytes();
             stats.budget = telemetry.budget;
+            stats.crosshair = crosshairOn;
             s.overlay->render(stats);
             phases.overlay = phase_ms(phaseClock);
 

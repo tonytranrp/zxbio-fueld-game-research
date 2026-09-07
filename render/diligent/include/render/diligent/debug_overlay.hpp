@@ -28,6 +28,7 @@ struct OverlayStats {
     std::size_t objects_shrub = 0;
     // Goal 84: crosshair-aim readout ("Grass @ 12,34,56"); empty = no hit / not computed.
     char aim_line[64] = {};
+    bool crosshair = true;            // A4's screen-centre cross; off under the mechanical frame checks
     std::uint64_t gpu_self_bytes = 0; // §2.3 number 1: our own chunk buffers (GpuAllocationTracker)
     std::uint64_t gpu_self_peak_bytes = 0;
     GpuMemoryBudget budget; // §2.3 number 2: VK_EXT_memory_budget, machine-wide

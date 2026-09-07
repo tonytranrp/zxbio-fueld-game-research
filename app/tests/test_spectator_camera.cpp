@@ -106,7 +106,7 @@ TEST_CASE("Walk mode falls under gravity and rests exactly at ground plus eye he
     Transform transform;
     transform.position = {0.0f, 50.0f, 0.0f};
     SpectatorCameraState state;
-    state.mode = app::CameraMoveMode::Walk;
+    state.physics.mode = app::CameraMoveMode::Walk;
     constexpr float kGround = 12.5f;
 
     for (int i = 0; i < 600; ++i) { // 10 simulated seconds at 60Hz -- far beyond the fall time
@@ -114,7 +114,7 @@ TEST_CASE("Walk mode falls under gravity and rests exactly at ground plus eye he
         CHECK(transform.position.y >= kGround + app::kEyeHeight - 1e-3f); // never tunnels through
     }
     CHECK(std::abs(transform.position.y - (kGround + app::kEyeHeight)) < 1e-3f);
-    CHECK(state.vertical_velocity == 0.0f);
+    CHECK(state.physics.vertical_velocity == 0.0f);
 }
 
 TEST_CASE("Walk mode survives one huge dt step without tunneling", "[camera][walk]") {
@@ -124,11 +124,11 @@ TEST_CASE("Walk mode survives one huge dt step without tunneling", "[camera][wal
     Transform transform;
     transform.position = {0.0f, 5.0f, 0.0f};
     SpectatorCameraState state;
-    state.mode = app::CameraMoveMode::Walk;
+    state.physics.mode = app::CameraMoveMode::Walk;
 
     update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 0.5f, 0.0f);
     CHECK(transform.position.y >= app::kEyeHeight - 1e-3f);
-    CHECK(state.vertical_velocity == 0.0f);
+    CHECK(state.physics.vertical_velocity == 0.0f);
 }
 
 TEST_CASE("Walk mode moves along yaw only and ignores vertical inputs", "[camera][walk]") {
@@ -140,7 +140,7 @@ TEST_CASE("Walk mode moves along yaw only and ignores vertical inputs", "[camera
     Transform transform;
     transform.position = {0.0f, app::kEyeHeight, 0.0f}; // standing on flat ground at y=0
     SpectatorCameraState state;
-    state.mode = app::CameraMoveMode::Walk;
+    state.physics.mode = app::CameraMoveMode::Walk;
     state.pitch_radians = glm::radians(-80.0f); // staring at the ground must not slow walking
 
     update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f, 0.0f);
@@ -169,7 +169,7 @@ TEST_CASE("Walk mode dropped over deep water settles floating at the surface", "
     engine::ecs::Transform transform;
     transform.position = {0.0f, 30.0f, 0.0f};
     app::SpectatorCameraState state;
-    state.mode = app::CameraMoveMode::Walk;
+    state.physics.mode = app::CameraMoveMode::Walk;
     const engine::input::InputState idle;
 
     const float seabed = -20.0f; // deep-water column: real ground far below sea level

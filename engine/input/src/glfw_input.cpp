@@ -54,6 +54,10 @@ void GlfwInput::key_callback(GLFWwindow* window, int key, int /*scancode*/, int 
         break;
     case GLFW_KEY_SPACE:
         state.move_up = down;
+        // ...and, on the press only, the jump edge. Fly mode reads the level, walk mode the edge.
+        if (down) {
+            state.pending_jump = true;
+        }
         break;
     case GLFW_KEY_LEFT_CONTROL:
         state.move_down = down;

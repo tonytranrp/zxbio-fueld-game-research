@@ -27,6 +27,7 @@ public:
     [[nodiscard]] glm::vec2 take_look_delta() noexcept { return state_.take_look_delta(); }
     [[nodiscard]] bool take_walk_toggle() noexcept { return state_.take_walk_toggle(); }
     [[nodiscard]] bool take_screenshot() noexcept { return state_.take_screenshot(); }
+    [[nodiscard]] bool take_jump() noexcept { return state_.take_jump(); }
 
 private:
     static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);

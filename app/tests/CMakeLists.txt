@@ -14,6 +14,7 @@ test_aim_query.cpp
 )
 target_include_directories(app_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 target_link_libraries(app_tests PRIVATE engine_core engine_ecs engine_input world_generation world_meshing
+                                        world_player world_collision
                                         Catch2::Catch2WithMain project_warnings)
 
 include(Catch)

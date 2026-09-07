@@ -21,6 +21,7 @@ struct InputState {
     bool quit_requested = false;      // Escape -- reported here; whether to actually quit is app policy
     bool pending_walk_toggle = false; // G pressed since last take_walk_toggle() (edge, not level)
     bool pending_screenshot = false;  // F2 pressed since last take_screenshot() (edge, not level)
+    bool pending_jump = false;        // Space pressed since last take_jump() (edge, not level)
 
     // Cursor movement in pixels accumulated since the last take_look_delta(), only while
     // look_active. Accumulation + explicit take keeps callback cadence (per event) decoupled from
@@ -46,6 +47,15 @@ struct InputState {
         const bool requested = pending_screenshot;
         pending_screenshot = false;
         return requested;
+    }
+
+    // Jump (Prompt 001 A2). Space is BOTH a level (fly mode's vertical strafe, `move_up`) and an
+    // edge (walk mode's jump), so it needs both: the jump buffer must fire once per press, and
+    // holding the key must not re-arm it every tick.
+    [[nodiscard]] bool take_jump() noexcept {
+        const bool pressed = pending_jump;
+        pending_jump = false;
+        return pressed;
     }
 };
 
