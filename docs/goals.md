@@ -1791,11 +1791,67 @@ Reasoning and every measurement: `research/player-embodiment-log.md`.
 
 ### AJ-C. The head, per the vision research (237-240)
 
-237. [ ] Auto-exposure metered at the crosshair, pooled over ~6 degrees. **NOT DONE.** There is no
-     auto-exposure in this renderer at all -- no metering pass, no adaptation state, no exposure
-     input to the tonemap -- so this is a feature to build, not a term to re-point.
-238. [ ] Bloom scaled by the ratio of source to adaptation luminance. **NOT DONE**, and blocked on
-     237: it needs the adaptation level 237 produces.
+237. [x] **Auto-exposure, metered at the crosshair, pooled over ~6 degrees.** Built from nothing:
+     there was no metering pass, no adaptation state and no exposure input to the tone curve.
+     Reduction on the GPU (scene -> 64x64 -> 8x8), ADAPTATION on the CPU -- which looks backwards
+     until you notice this goal's own check wants the exposure TRACE in the report, so the number has
+     to reach the CPU regardless; doing the adaptation there removes a shader, removes a ping-pong
+     pair of targets, and makes the two-timescale rule ordinary testable C++. Readback runs three
+     frames behind through a fenced ring, so nothing stalls (~25 ms at 120 fps against 0.35-1.20 s
+     time constants).
+     **The mask is an ANGLE, not a pixel count** -- `tan(pooling half-angle)` and `tan(vFOV/2)` into
+     the shader, weight `exp(-(tan t / tan t0)^2)`. At 3 degrees and a 70 degree vFOV the pool is
+     7.5% of the half-height; a test pins that to a 5-10% band so a future FOV change cannot quietly
+     turn it into a frame average.
+     **Checks PERFORMED.** The asymmetry, from `exposure_sweep`'s trace: 2.1 s after a DARKENING step
+     the adapted value lags the measured one by **0.259 EV**; 1.7 s after a BRIGHTENING step of the
+     same size the lag is **0.001 EV**. Same magnitude, less time, already settled -- "fast up, slow
+     down" doing what it is for.
+     The A/B needed a sweep, because at the first pose the two metering modes differed by 0.037 EV --
+     nothing. By pitch: -5 deg 0.165 EV, **-15 deg 0.547 EV**, -40 deg 0.500, -70 deg **-0.183**
+     (crosshair BRIGHTER, the mask working the other way). At -15 -- half sky, crosshair on shadowed
+     ground -- the frame-average build under-exposes what you are looking at by more than half a
+     stop. Capture: `research/captures/aj_exposure_metering_ab.png`.
+     **A correction recorded**: I looked at that pair and called them "nearly identical". They differ
+     by 19% of mean level across 100% of pixels. A uniform level shift between side-by-side panels is
+     exactly what the eye cannot judge.
+     **THE KEY WAS A CATEGORY ERROR.** Shipped first at the photographic 0.18, which darkened every
+     scene 28% (mean 136 -> 98) at a pose whose exposure should have been neutral. This renderer's
+     values are authored artist colours near 0.5, not scaled radiance, so mapping them to an 18% grey
+     is a global REGRADE wearing an exposure's clothes. The key is **0.36** = 2^-1.47, what this
+     world's typical daylight pose actually meters at; the multiplier there is now **0.9857**, and
+     auto-exposure became what it should be -- nothing at the reference scene, a real correction on
+     departures. `macro_tree` (crosshair on sky at -0.541 EV) closes to 0.52x, golden moved 51/255
+     across 100% of pixels, VIEWED and correct: look at the sky and the sky stops being blown out.
+     Three bugs, each found by making something disagree: a startup crash with no stack from
+     `psoCI.pPS = createShader(...)` binding a TEMPORARY RefCntAutoPtr that released the shader
+     before PSO creation; a readback that silently never landed because the fence was signalled for
+     the slot about to be overwritten and then checked against that same just-enqueued value; and
+     `dt == 0` SNAPPING the exposure, caught by a test whose comment contradicted its own assertion
+     (a zero time CONSTANT means "instant", a zero time STEP means "nothing happened").
+238. [x] **Bloom behaves like veiling luminance.** Threshold becomes a fixed number of stops above
+     the ADAPTED level (`2^(adapted + 1.6)`) rather than an absolute scene value -- that one line is
+     the idea: the same absolute luminance blooms in a dark scene and not in a bright one. Intensity
+     x(1 + 1.5*darkness) and Radius x(1 + 0.8*darkness) over a 6-stop ramp; the research gives the
+     direction and the mechanism (a dilated pupil has a wider PSF) but not a coefficient, so both are
+     chosen and both are written down.
+     **The controlled experiment**: "the same bright source at two adaptation levels" cannot be
+     staged by moving the camera, because that moves the source too. `--exposure-pin-ev` paired with
+     `--exposure-key` holds the exposure MULTIPLIER constant (all four runs reported 0.1800) while
+     the adaptation bloom sees changes, and bloom's own contribution is the difference against a
+     `--no-bloom` run of the same configuration. Bright-adapted (0 EV): 0.274/255 energy over 0.26%
+     of pixels, peak 8. Dark-adapted (-4 EV): **40.233/255 over 100% of pixels, peak 62** -- 147x the
+     energy and a kernel that goes from a fringe to the whole frame.
+     **AND THE HONEST NEGATIVE**: across the adaptation range this world ACTUALLY produces (-0.96 to
+     -1.55 EV) the same measurement gives 0.258 and 0.170 with peaks of 5 and 2 -- both
+     indistinguishable from no bloom, and the difference between them is noise. The reason predates
+     this goal and is already in `post_process.cpp`: this renderer's HDR output rarely exceeds 1.0,
+     so there is nothing bright enough to bloom. **A correct mechanism with no subject**, waiting on
+     the water sun-glint that file already names as the intended first real emitter.
+     **Check PERFORMED**: `--verify-frame` local contrast 27.75 (exposure on) vs 27.76 (off) on vk
+     and 27.68 vs 27.69 on d3d12 -- 0.01 percentage points, far inside goal 217's noise floor. Not a
+     vacuous comparison: the same pair of runs differs by 28% of mean level, so the metric really is
+     insensitive to exposure rather than the toggle being ignored.
 239. [x] Motion blur, lens ghosts and the luminance vignette are DECIDED AGAINST, in writing, each
      with its research section. **Check PERFORMED**: three entries in `docs/progress.md`'s
      decided-against list. No code change, which is the point -- the value is that the next pass does

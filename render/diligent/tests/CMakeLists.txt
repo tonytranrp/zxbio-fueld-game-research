@@ -6,6 +6,7 @@ set(CMAKE_CXX_CLANG_TIDY "")
 add_executable(render_diligent_tests
     test_frustum.cpp
     test_memory_tracking.cpp
+    test_auto_exposure.cpp
 )
 target_link_libraries(render_diligent_tests PRIVATE render_diligent Catch2::Catch2WithMain project_warnings)
 

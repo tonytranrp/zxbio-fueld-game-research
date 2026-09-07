@@ -7,7 +7,7 @@ SamplerState g_SourceColor_sampler;
 
 cbuffer CompositeConstants
 {
-    float4 g_Params; // x: tonemap enabled (1/0); yzw unused
+    float4 g_Params; // x: tonemap enabled (1/0), y: exposure multiplier (goal 237); zw unused
 };
 
 struct PSInput
@@ -35,6 +35,9 @@ float3 SoftKnee(float3 x)
 
 void main(in PSInput PSIn, out PSOutput PSOut)
 {
-    const float3 hdr = g_SourceColor.Sample(g_SourceColor_sampler, PSIn.UV).rgb;
+    // Exposure is applied BEFORE the tone curve, which is the only place it can go: the curve's
+    // knee is at a fixed 0.75, so scaling after it would move highlights through a shoulder that
+    // had already decided where they sat. Goal 237.
+    const float3 hdr = g_SourceColor.Sample(g_SourceColor_sampler, PSIn.UV).rgb * g_Params.y;
     PSOut.Color = float4(g_Params.x > 0.5 ? SoftKnee(hdr) : saturate(hdr), 1.0);
 }

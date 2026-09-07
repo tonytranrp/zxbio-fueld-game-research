@@ -66,6 +66,18 @@ struct AppOptions {
     // (app::kAimResolvableRange, 34 m); the override exists because the 94-ppd young-observer
     // ceiling gives 54 m and a capture session may legitimately want it.
     std::optional<float> aim_range;
+    // Goal 237. `auto_exposure` is the master switch; `exposure_metering_crosshair` false is the
+    // flat frame average the goal's own A/B compares against, not a fallback.
+    bool auto_exposure = true;
+    bool exposure_metering_crosshair = true;
+    std::optional<float> exposure_key;
+    std::optional<float> exposure_pool_deg;
+    // Goal 238: bloom's threshold/intensity/radius follow the adaptation level. Off restores the
+    // fixed-threshold bloom, which is the A/B.
+    bool bloom_follows_exposure = true;
+    // Goal 238's controlled capture: pin the adapted level to a fixed EV so the SAME bright source
+    // can be photographed at two adaptation levels without changing what is on screen.
+    std::optional<float> exposure_pin_ev;
     // Prompt 002: these five were `no_*` members before the port, mirrored into a positive form at
     // every use site (`svo_settings.sky = !no_sky`). ValueKind::Toggle answers to BOTH --x and
     // --no-x from one row, so the negation now happens exactly once, in the spelling.

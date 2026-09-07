@@ -1,0 +1,31 @@
+name exposure_sweep
+describe Goal 237's check: look up at the bright sky, down into a shadowed valley, and back, capturing at both extremes. The crosshair-metered adaptation should follow the crosshair rather than the frame, and it should do so ASYMMETRICALLY -- fast when the view brightens, slow when it darkens, which is the light/dark adaptation asymmetry a two-timescale filter gets for free. The exposure trace at every capture is in the log, which is where this scenario's real output lives; the images are for eyeballing.
+backend both
+
+option --fly
+option --noclip
+option --no-taa
+
+pose_ground 48,0 -90 -6 24
+
+# Up into open sky: nothing but the gradient, so the metered region is the brightest the world has.
+look -90 60 1
+wait 3
+capture time 3.5 sky_adapted no-golden
+
+# Then down at the ground. DARKENING, so the slow constant applies and a capture two seconds in
+# should still be visibly mid-adaptation -- that lag IS the measurement.
+look -90 -75 1
+capture time 5.6 valley_entering no-golden
+wait 4
+capture time 9.5 valley_adapted no-golden
+
+# And back up. BRIGHTENING, so the fast constant applies and the same two seconds is nearly settled.
+look -90 60 1
+capture time 11.2 sky_returning no-golden
+wait 4
+
+capture end sky_readapted no-golden
+
+assert frames > 0
+assert contrast_percent > 6

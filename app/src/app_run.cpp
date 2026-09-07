@@ -22,6 +22,7 @@
 #include "engine/ecs/registry.hpp"
 #include "engine/input/glfw_input.hpp"
 #include "engine/jobs/thread_pool.hpp"
+#include "render/diligent/auto_exposure.hpp"
 #include "render/diligent/debug_overlay.hpp"
 #include "render/diligent/frame_verify.hpp"
 #include "render/diligent/gpu_passes.hpp"
@@ -467,6 +468,12 @@ struct CaptureState {
     // capture_phase already takes eight arguments and these are written once per frame.
     float viewOffsetY = 0.0f;
     float smoothOffsetY = 0.0f;
+    // Goal 237's exposure trace at the capture.
+    bool exposureValid = false;
+    bool exposureBrightening = false;
+    float exposureMeasured = 0.0f;
+    float exposureAdapted = 0.0f;
+    float exposureMultiplier = 1.0f;
     bool verifyOk = false;
     bool verifyRan = false;
     std::uint32_t screenshotCounter = 0; // F2 capture numbering (goal 9)
@@ -530,6 +537,15 @@ bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t f
             hooks.on_verify(render::diligent::sample_non_reference_pixel_fraction(context));
         }
         const bool written = render::diligent::dump_frame(context, path.c_str());
+        // Goal 237: the exposure state at the capture, so a scenario that looks from sky to shadow
+        // has its adaptation TRACE in the log rather than only in the pixels.
+        if (cap.exposureValid) {
+            log(LogLevel::Info,
+                "capture {}: exposure measured {:+.3f} EV, adapted {:+.3f} EV, multiplier {:.4f} ({})",
+                scenarioCapture, static_cast<double>(cap.exposureMeasured),
+                static_cast<double>(cap.exposureAdapted), static_cast<double>(cap.exposureMultiplier),
+                cap.exposureBrightening ? "brightening" : "darkening");
+        }
         // Goal 240: the render-only eye offset AT the capture, so a strip of stills can be read as
         // numbers as well as looked at. A 2 cm effect at a 0.12 s time constant is exactly the case
         // where a picture alone is not evidence -- which is the reason Prompt 001 shipped A6 without
@@ -571,6 +587,18 @@ Session::Session(const AppOptions& options, bool visible) : window(1280, 720, "v
             postProcess = std::make_unique<render::diligent::PostProcessor>(*context);
             postProcess->set_bloom_enabled(options.bloom);
             postProcess->set_tonemap_enabled(options.tonemap);
+            // Auto-exposure needs the HDR scene target, so it only exists when post does.
+            autoExposure = std::make_unique<render::diligent::AutoExposure>(*context);
+            render::diligent::ExposureSettings exposure;
+            exposure.enabled = options.auto_exposure;
+            exposure.crosshair_metering = options.exposure_metering_crosshair;
+            exposure.key = options.exposure_key.value_or(exposure.key);
+            exposure.pooling_half_angle_deg =
+                options.exposure_pool_deg.value_or(exposure.pooling_half_angle_deg);
+            if (options.exposure_pin_ev) {
+                exposure.pinned_log2 = *options.exposure_pin_ev;
+            }
+            autoExposure->set_settings(exposure);
         }
         render::diligent::attach_gpu_profiler(
             *context); // Tracy GPU zones (Vulkan only; safe no-op elsewhere)
@@ -754,6 +782,9 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
             // verify logic, none of that is meaningful before the world exists to look at.
             world.pump();
             renderer.render(render::interface::Camera{}); // sky-only backdrop; zero chunks uploaded yet
+            // No metering on a loading frame: there is no camera and no world, only the sky
+            // backdrop, and letting the adaptation seed itself off that would open every run with
+            // the exposure walking back from whatever the sky happened to be.
             if (s.postProcess) {
                 s.postProcess->execute(frame);
             }
@@ -789,12 +820,32 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
 
             renderer.render(camera);
             if (s.postProcess) {
+                // Meter BEFORE the composite: the composite is what consumes the exposure, and the
+                // scene target it reads is the same one the metering pass just measured.
+                if (s.autoExposure) {
+                    s.autoExposure->measure(camera.fov_y_radians,
+                                            static_cast<float>(s.clock.delta_seconds()));
+                    s.postProcess->set_exposure(s.autoExposure->exposure());
+                    // Goal 238: bloom follows the same adaptation the exposure does.
+                    const render::diligent::ExposureSample& e = s.autoExposure->last_sample();
+                    s.postProcess->set_adaptation_log2(e.valid && options.bloom_follows_exposure
+                                                           ? e.adapted_log2
+                                                           : std::numeric_limits<float>::quiet_NaN());
+                }
                 s.postProcess->execute(frame);
             }
             overlay_phase(telemetry, s.clock, *s.context, renderer, world, *s.overlay, chunkCounters, camera,
                           aimTrees, crosshairOn, options.overlay, options.svo_settings.wind, waveTime);
             cap.viewOffsetY = viewOffsetY;
             cap.smoothOffsetY = smoothOffsetY;
+            if (s.autoExposure) {
+                const render::diligent::ExposureSample& e = s.autoExposure->last_sample();
+                cap.exposureValid = e.valid;
+                cap.exposureBrightening = e.brightening;
+                cap.exposureMeasured = e.measured_log2;
+                cap.exposureAdapted = e.adapted_log2;
+                cap.exposureMultiplier = e.exposure;
+            }
             capture_phase(cap, options, frame, *s.context, world.ready_chunk_count(), input, hooks,
                           hooks.capture_name
                               ? hooks.capture_name(frame, input.script_seconds(), true, false, false,
@@ -1039,6 +1090,8 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
         if (!renderer.has_tree()) {
             // Loading screen until the first tree lands: sky only, no camera control.
             renderer.render(render::interface::Camera{});
+            // No metering on a loading frame -- see the mesh path's own note: sky only, no camera,
+            // and seeding the adaptation off that opens every run with the exposure walking back.
             if (s.postProcess) {
                 s.postProcess->execute(frame);
             }
@@ -1072,6 +1125,18 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             renderer.render(camera);
             phases.render = phase_ms(phaseClock);
             if (s.postProcess) {
+                // Meter BEFORE the composite: the composite is what consumes the exposure, and the
+                // scene target it reads is the same one the metering pass just measured.
+                if (s.autoExposure) {
+                    s.autoExposure->measure(camera.fov_y_radians,
+                                            static_cast<float>(s.clock.delta_seconds()));
+                    s.postProcess->set_exposure(s.autoExposure->exposure());
+                    // Goal 238: bloom follows the same adaptation the exposure does.
+                    const render::diligent::ExposureSample& e = s.autoExposure->last_sample();
+                    s.postProcess->set_adaptation_log2(e.valid && options.bloom_follows_exposure
+                                                           ? e.adapted_log2
+                                                           : std::numeric_limits<float>::quiet_NaN());
+                }
                 s.postProcess->execute(frame);
             }
             phases.post = phase_ms(phaseClock);
@@ -1128,6 +1193,14 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             phaseClock = std::chrono::steady_clock::now();
             cap.viewOffsetY = viewOffsetY;
             cap.smoothOffsetY = smoothOffsetY;
+            if (s.autoExposure) {
+                const render::diligent::ExposureSample& e = s.autoExposure->last_sample();
+                cap.exposureValid = e.valid;
+                cap.exposureBrightening = e.brightening;
+                cap.exposureMeasured = e.measured_log2;
+                cap.exposureAdapted = e.adapted_log2;
+                cap.exposureMultiplier = e.exposure;
+            }
             capture_phase(cap, options, frame, *s.context, 1, input, hooks,
                           hooks.capture_name
                               ? hooks.capture_name(frame, input.script_seconds(), true, causes.swapped,

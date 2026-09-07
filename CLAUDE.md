@@ -401,7 +401,20 @@ Full record: `research/player-embodiment-log.md`. Machine-relevant deltas ONLY:
   above), and `--accept-golden` will otherwise keep recreating goldens you deleted.
 - **Scenario ctest tests hold `RESOURCE_LOCK gpu`**: two driving one GPU at once moves frame timing
   enough to move a golden (`valley_far` failed under `-j 2`, passed three standalone runs at 0.002%).
-- **266/266 tests** (224 core). Goldens were re-taken for all ten scenarios on both backends: the
+- **Auto-exposure exists now** (`render/diligent/auto_exposure.hpp`), metered over a ~6 degree pool
+  at the CROSSHAIR, GPU reduction + CPU two-timescale adaptation, readback three frames behind a
+  fenced ring. Flags: `--auto-exposure`, `--exposure-crosshair` (off = frame average, the A/B),
+  `--exposure-key` (**0.36**, NOT the photographic 0.18 -- this renderer's values are authored
+  colours near 0.5, so 0.18 is a regrade, not an exposure), `--exposure-pool-deg`,
+  `--exposure-pin-ev` (dev: pin the adapted level for controlled captures).
+  **A Diligent trap worth knowing**: `psoCI.pPS = createShader(...)` binds a TEMPORARY
+  `RefCntAutoPtr` and releases the shader before PSO creation -- an access violation executing
+  address 0 at startup, with no stack. Hold it in a named variable.
+- **Bloom follows the adaptation** (`--bloom-follows-exposure`): threshold is stops above the adapted
+  level, intensity and radius widen as it darkens. Measured 147x energy at -4 EV vs 0 EV -- and
+  measured as doing essentially NOTHING over this world's real range, because the HDR output rarely
+  exceeds 1.0. Correct mechanism, no subject yet.
+- **271/271 tests** (224 core). Goldens were re-taken for all ten scenarios on both backends: the
   static poses had been stale since walk became the default, and the moving ones moved with the new
   speeds and gravity.
 

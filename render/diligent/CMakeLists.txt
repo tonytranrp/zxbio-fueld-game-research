@@ -6,6 +6,7 @@ add_library(render_diligent STATIC
     src/frame_verify.cpp
     src/gpu_passes.cpp
     src/post_process.cpp
+    src/auto_exposure.cpp
     src/vulkan_tools.cpp
     src/debug_overlay.cpp
     src/svo_renderer.cpp

@@ -1,7 +1,6 @@
 # Player embodiment — decision log
 
-Prompt 003, Group AJ (goals 225–243). **AJ-A, AJ-B and AJ-D are complete** (225–236, 241–243), AJ-C is complete except
-237 and 238 (see §14). What is here is written the same way
+Prompt 003, Group AJ (goals 225–243). **Group AJ is complete** (225–243). What is here is written the same way
 the rest of this repo's logs are — every measurement, every "decided against", and the things that
 turned out to be wrong.
 
@@ -810,15 +809,160 @@ than by reading it.
 
 ---
 
-## 14. What Group AJ did NOT do
+## 14. Auto-exposure, metered at the crosshair (goal 237)
+
+There was no auto-exposure in this renderer at all — no metering pass, no adaptation state, no
+exposure input to the tone curve — so this is a feature, not a re-point.
+
+**Where the work happens, and why it looks backwards.** The reduction is on the GPU (two passes,
+scene → 64×64 → 8×8) and the *adaptation* is on the CPU. A GPU ping-pong would avoid the readback
+entirely, but goal 237's own check wants the exposure **trace** in the report, which needs the
+number on the CPU regardless. Given that, doing the adaptation there too removes a shader, removes
+a ping-pong pair of targets, and makes the two-timescale rule ordinary testable C++. The readback
+runs three frames behind through a ring of staging textures with a fence per slot, so nothing ever
+stalls; at 120 fps that is ~25 ms against time constants of 0.35–1.20 s.
+
+**The mask is an angle, not a pixel count**, which is the part of this most likely to be silently
+wrong. The shader gets `tan(pooling half-angle)` and `tan(vFOV/2)`; a pixel at NDC (nx, ny) is at
+`tan θ = |(nx·aspect, ny)·tan(vFOV/2)|` from the axis, and the weight is `exp(−(tanθ/tanθ₀)²)`. At
+the shipped 3° half-angle and a 70° vertical FOV the pool is 7.5% of the half-height — a crosshair
+mask, not most of the frame. A test pins that fraction to the 5–10% band and pins the tangent
+against the closed form, so a future FOV or viewport change cannot quietly turn it into a frame
+average.
+
+**Three bugs, each found by making something disagree rather than by reading:**
+
+1. **A crash at startup with no stack**, access violation executing address 0. `psoCI.pPS =
+   createShader(...)` binds a *temporary* `RefCntAutoPtr`, whose destructor releases the shader at
+   the end of that statement — before `CreateGraphicsPipelineState` ever sees it. The neighbouring
+   `post_process.cpp` holds it in a named variable; I did not, and the difference is a null vtable.
+2. **The readback never landed**, silently, on a run whose assertions all passed. I signalled the
+   fence for the slot I was about to overwrite and *then* checked that same just-enqueued value,
+   which can never be complete. Read-before-write. (`exposureValid` false on every capture was the
+   only symptom, and it took a per-branch diagnostic to see which of four early-outs was firing.)
+3. **`dt == 0` snapped the exposure instead of holding it.** Caught by a test whose comment
+   contradicted its own assertion — "holds the state" above `CHECK(... == target)`. A zero *time
+   constant* means "instant"; a zero *time step* means "nothing happened", and the first draft gave
+   both the same answer, so a paused or first frame would have jumped the exposure.
+
+### The asymmetry, measured
+
+`exposure_sweep` looks up at open sky, down at shadowed ground, and back, logging the trace at each
+capture:
+
+| capture | measured | adapted | lag | direction |
+|---|---|---|---|---|
+| `sky_adapted` | −0.960 | −0.934 | 0.026 | settled |
+| `valley_entering` (2.1 s after a darkening step) | −1.443 | −1.184 | **0.259** | darkening, slow τ |
+| `valley_adapted` | −1.481 | −1.438 | 0.043 | settled |
+| `sky_returning` (1.7 s after a brightening step) | −0.960 | −0.961 | **0.001** | brightening, fast τ |
+
+Same magnitude of step, *less* elapsed time, and the brightening one is already there while the
+darkening one is a quarter-stop behind. That is 5.7(b)'s "fast up, slow down" doing what it is for.
+
+### Is the mask actually better? Only where the frame disagrees with the crosshair
+
+The honest answer needed a sweep, because at the first pose I tried the two metering modes differed
+by **0.037 EV** — nothing. Pitch matters, because it decides how much sky is in frame while the
+crosshair is on ground:
+
+| pitch | crosshair-metered | frame average | difference |
+|---|---|---|---|
+| −5° | −1.050 | −0.885 | 0.165 EV |
+| **−15°** | **−1.546** | **−0.999** | **0.547 EV** |
+| −40° | −1.860 | −1.360 | 0.500 EV |
+| −70° | −1.365 | −1.548 | **−0.183 EV** (crosshair *brighter*) |
+
+At −15° — half sky, crosshair on shadowed ground — the frame-average build under-exposes the thing
+you are looking at by **more than half a stop**, which is 5.7(b)'s complaint stated as a number. At
+−70° the sign flips, which is the mask working in the other direction rather than a bug.
+
+Capture: `research/captures/aj_exposure_metering_ab.png`. **And a correction worth recording: I
+looked at that pair and called them "nearly identical".** They are not — mean level 139.6 against
+117.2, a 19% difference, 100% of pixels changed. A uniform level shift between two panels side by
+side is precisely what the eye is bad at, and the numbers are what settled it. That is the same
+lesson as §13's, arriving from the opposite direction: there, a picture was needed because numbers
+were absent; here, numbers were needed because the picture lied.
+
+### The key was a category error, and fixing it is what makes this an exposure rather than a regrade
+
+Shipped first at the photographic **0.18**, and the result was that every scene got 28% darker
+(mean level 136 → 98) at a pose whose exposure should have been neutral. That is not a tuning
+miss, it is a category error: this renderer's scene values are **authored artist colours sitting
+near 0.5**, not physically scaled radiance, so mapping them to an 18% photographic grey is a global
+regrade wearing an exposure's clothes.
+
+The key is **0.36** — 2^−1.47, the luminance this world's typical daylight pose actually meters at.
+The multiplier at that pose is now **0.9857**, i.e. neutral, and auto-exposure does what it should:
+nothing at the reference scene, and a real correction on departures from it. `macro_tree`, whose
+crosshair sits on bright sky at −0.541 EV, closes down to 0.52× and its golden moved 51/255 across
+100% of pixels — viewed, and correct: look at the sky and the sky stops being blown out.
+
+---
+
+## 15. Bloom as veiling luminance (goal 238)
+
+`BloomAttribs` already exposed Threshold, Intensity and Radius; 238 is about making all three follow
+the adaptation instead of standing still. Per 5.7(c):
+
+- **Threshold** becomes a fixed number of stops *above what the eye is adapted to*
+  (`2^(adapted + 1.6)`) rather than an absolute scene value. This one line is the whole idea: the
+  same absolute luminance blooms in a dark scene and does not in a bright one.
+- **Intensity** ×(1 + 1.5·darkness) and **Radius** ×(1 + 0.8·darkness), where darkness ramps 0→1
+  over 6 stops below the reference. The research gives the direction and the mechanism (a
+  dark-adapted pupil is dilated, so its point-spread function is wider) but not a shipped
+  coefficient; both numbers are chosen, and both are written down so the next pass tunes something
+  it can see.
+
+### The controlled experiment
+
+"The same bright source at two adaptation levels" cannot be arranged by moving the camera, because
+moving it changes the source too. `--exposure-pin-ev` pins the adapted level, and pairing it with
+`--exposure-key` holds the *exposure multiplier* constant while the adaptation bloom sees changes —
+so the displayed brightness is identical and bloom is the only variable. All four runs reported
+`multiplier 0.1800`. Bloom's own contribution is then the difference against a `--no-bloom` run of
+the same configuration:
+
+| adapted level | bloom energy | spread | peak |
+|---|---|---|---|
+| 0 EV (bright-adapted) | 0.274/255 | 0.26% of pixels | 8 |
+| −4 EV (dark-adapted) | **40.233/255** | **100% of pixels** | 62 |
+
+**147× the energy and a kernel that goes from a fringe to the whole frame.** The mechanism works.
+
+### And the honest negative: it does almost nothing in this world today
+
+Repeating the same isolated measurement across the adaptation range this world *actually* produces
+(−0.96 EV looking at sky, −1.55 EV looking into shadow):
+
+| adapted level | bloom energy | spread | peak |
+|---|---|---|---|
+| −0.96 EV | 0.258/255 | 0.16% | 5 |
+| −1.55 EV | 0.170/255 | 0.00% | 2 |
+
+Both are indistinguishable from no bloom at all, and the difference between them is noise on peaks
+of 5 and 2. The reason is already written in `post_process.cpp` and predates this goal: **this
+renderer's HDR output rarely exceeds 1.0**, so there is nothing bright enough to bloom. The comment
+there names the intended first real emitter — the water sun-glint — and 238's machinery is what will
+make it behave correctly when it exists. Until then this is a correct mechanism with no subject.
+
+**Check performed**: `--verify-frame`'s local-contrast metric is **27.75 with auto-exposure on
+against 27.76 off (vk), 27.68 against 27.69 (d3d12)** — a difference of 0.01 percentage points,
+far inside Prompt 002 goal 217's noise floor. That comparison is not vacuous, which mattered given
+this pass's record: the same pair of runs differs by 28% of mean level (136.0 vs 97.6 at the
+original key), so the metric genuinely is insensitive to exposure rather than the toggle being
+ignored.
+
+---
+
+## 16. What Group AJ did NOT do
 
 Stated plainly rather than left to inference:
 
-- **AJ-C 237 (crosshair-metered auto-exposure) and 238 (adaptation-scaled bloom): NOT DONE.**
-  There is no auto-exposure in this renderer at all -- no metering pass, no adaptation state, no
-  exposure input to the tonemap -- so 237 is a feature to build rather than a term to re-point, and
-  238 depends on its output. Everything else in AJ-C and all of AJ-D is done (sections 12 and 13,
-  plus the decided-against entries in `docs/progress.md` for goals 239 and 243).
+- **Nothing. Group AJ (225-243) is complete.** The one result to carry forward is goal 238's honest
+  negative: adaptation-scaled bloom is a correct mechanism with no subject, because this renderer's
+  HDR output rarely exceeds 1.0. Prompt 005 owns the look and inherits both that and the
+  `--exposure-key` question section 14 leaves open.
 - **234's uphill-sprint slope relationship** (Minetti's polynomial at 0 / 15 / 30 degrees) is not
   asserted. It depends on slope-aware *speed*, which is a different thing from the slope *limit*
   goal 235 built, and nothing yet reads the polynomial.

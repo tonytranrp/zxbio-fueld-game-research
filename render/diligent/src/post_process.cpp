@@ -1,4 +1,7 @@
+#include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 
@@ -33,9 +36,9 @@ namespace {
 // Mirror of composite.psh.hlsl's cbuffer CompositeConstants -- update both together.
 struct CompositeConstantsCpu {
     float tonemapEnabled = 1.0f;
+    float exposure = 1.0f; // goal 237's auto-exposure multiplier; 1.0 when it is off
     float pad0 = 0.0f;
     float pad1 = 0.0f;
-    float pad2 = 0.0f;
 };
 static_assert(sizeof(CompositeConstantsCpu) == 16, "must match the 16-byte HLSL cbuffer");
 
@@ -56,6 +59,8 @@ struct PostProcessor::Impl {
 
     bool bloomEnabled = true;
     bool tonemapEnabled = true;
+    float exposure = 1.0f;
+    float adaptedLog2 = std::numeric_limits<float>::quiet_NaN(); // goal 238; NaN = fixed threshold
 
     void ensure_scene_target();
     void create_composite_pipeline();
@@ -178,6 +183,7 @@ void PostProcessor::Impl::composite(ITextureView* sourceSRV) {
     {
         MapHelper<CompositeConstantsCpu> constants(ctx, compositeConstants, MAP_WRITE, MAP_FLAG_DISCARD);
         constants->tonemapEnabled = tonemapEnabled ? 1.0f : 0.0f;
+        constants->exposure = exposure;
     }
 
     ITextureView* rtv = rc.swapchain->GetCurrentBackBufferRTV();
@@ -271,6 +277,14 @@ PostProcessor::~PostProcessor() {
 void PostProcessor::set_bloom_enabled(bool enabled) noexcept {
     impl_->bloomEnabled = enabled;
 }
+void PostProcessor::set_exposure(float exposure) noexcept {
+    impl_->exposure = exposure;
+}
+
+void PostProcessor::set_adaptation_log2(float adaptedLog2) noexcept {
+    impl_->adaptedLog2 = adaptedLog2;
+}
+
 void PostProcessor::set_tonemap_enabled(bool enabled) noexcept {
     impl_->tonemapEnabled = enabled;
 }
@@ -308,6 +322,32 @@ void PostProcessor::execute(std::uint32_t frameIndex) {
         attribs.Threshold = 0.80f;
         attribs.SoftTreshold = 0.25f; // [sic] -- DiligentFX's own field spelling
         attribs.Radius = 0.65f;
+
+        // Goal 238: make the three numbers above follow the ADAPTATION rather than stand still.
+        // 5.7(c): game bloom should behave like the eye's veiling luminance, L_v = 10E/theta^2 --
+        // intensity proportional to source luminance RELATIVE TO the adaptation level, and the
+        // spatial extent growing as the eye dark-adapts (a dilated pupil has a wider PSF), so that
+        // a torch in a cave blooms the way the sun does outdoors.
+        if (!std::isnan(impl_->adaptedLog2)) {
+            // The threshold becomes a fixed number of STOPS above what the eye is adapted to,
+            // instead of an absolute scene value. This is the whole idea in one line: the same
+            // absolute luminance blooms in a dark scene and does not in a bright one.
+            constexpr float kThresholdStops = 1.6f;
+            attribs.Threshold = std::exp2(impl_->adaptedLog2 + kThresholdStops);
+
+            // How far dark-adapted we are, 0 at the reference level and 1 at kDarkSpan stops below.
+            // Referenced to 0 EV because that is where this renderer's daylight scenes sit; the
+            // span is 6 stops, roughly the range between open sky and deep shadow here.
+            constexpr float kReferenceLog2 = 0.0f;
+            constexpr float kDarkSpan = 6.0f;
+            const float darkness = std::clamp((kReferenceLog2 - impl_->adaptedLog2) / kDarkSpan, 0.0f, 1.0f);
+            // Up to 2.5x the energy and 1.8x the radius when fully dark-adapted. Both are chosen
+            // rather than derived -- the research gives the DIRECTION and the mechanism, not a
+            // shipped coefficient -- and both are stated here so the next pass tunes a number it
+            // can see instead of rediscovering the idea.
+            attribs.Intensity *= 1.0f + 1.5f * darkness;
+            attribs.Radius *= 1.0f + 0.8f * darkness;
+        }
         attribs.AlphaInterpolation = 1.0f; // no fade-in: deterministic captures for --verify-frame
 
         Bloom::RenderAttributes bloomAttribs;

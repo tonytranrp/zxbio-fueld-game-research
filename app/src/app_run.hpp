@@ -22,6 +22,7 @@ class GlfwInput;
 }
 namespace render::diligent {
 class RenderContext;
+class AutoExposure;
 class PostProcessor;
 class DebugOverlay;
 } // namespace render::diligent
@@ -69,6 +70,9 @@ struct Session {
     GlfwWindow window;
     std::unique_ptr<render::diligent::RenderContext> context;
     std::unique_ptr<render::diligent::PostProcessor> postProcess;
+    // Goal 237. Lives beside the post-processor because it reads the same HDR scene target and
+    // feeds the same composite pass; separate from it because it is a measurement, not an effect.
+    std::unique_ptr<render::diligent::AutoExposure> autoExposure;
     engine::ecs::Registry registry;
     engine::ecs::Entity cameraEntity{};
     std::unique_ptr<render::diligent::DebugOverlay> overlay;

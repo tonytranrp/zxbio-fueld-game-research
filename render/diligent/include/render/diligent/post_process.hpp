@@ -31,6 +31,14 @@ public:
     // Per-pass kill switches (goal 52): isolate a regression to one pass without reverting code.
     void set_bloom_enabled(bool enabled) noexcept;
     void set_tonemap_enabled(bool enabled) noexcept;
+    // Goal 237: the auto-exposure multiplier, applied BEFORE the tone curve. 1.0 disables it.
+    void set_exposure(float exposure) noexcept;
+    // Goal 238: the adapted log2 luminance from goal 237's metering. Bloom behaves like VEILING
+    // LUMINANCE rather than like a fixed threshold -- what blooms is what is bright RELATIVE TO
+    // WHAT THE EYE IS ADAPTED TO, and the kernel widens as adaptation drops (a dark-adapted pupil
+    // is dilated and its point-spread function is wider), so a torch in a cave blooms like the sun
+    // outdoors. Pass NaN, or never call this, to keep the fixed-threshold behaviour.
+    void set_adaptation_log2(float adaptedLog2) noexcept;
 
     // Runs bloom + tonemap-composite for the frame the renderer just drew into the scene target.
     // Call after TerrainRenderer::render and before overlay/present.
