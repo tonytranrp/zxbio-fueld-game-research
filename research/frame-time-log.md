@@ -412,3 +412,70 @@ thread).
 **`CMakePresets.json` is unchanged.** The chosen shipping configuration stays `windows-release`
 (`/O2`, no LTCG), and the reason is now measured rather than inherited. Adding an LTO preset would
 advertise a 2.5× build-time cost for a benefit this project has demonstrated it does not receive.
+
+---
+
+## 7. The payload: palette compression has a 2.7× headroom, measured (goal 258 / goal 157)
+
+A brick is **576 bytes for 512 voxels** — 16 mask words (64 B) plus **128 material words (512 B),
+one byte per voxel**, with no palette and no deduplication. Goal 157 has been open since the pivot
+on the theory that "most bricks contain two or three materials". That is a theory, so I measured it
+before implementing anything (`tools/palette_probe`, a real 64 m build at the shipping voxel size,
+seed 1337, trees on):
+
+| distinct materials in a brick | bricks | share | cumulative |
+|---|---|---|---|
+| **2** | 18,398 | **55.2%** | 55.2% |
+| **3** | 14,456 | **43.4%** | **98.6%** |
+| 4 | 466 | 1.4% | 100.0% |
+| 5 | 14 | 0.04% | 100.0% |
+| ≥6 | **0** | — | — |
+
+**The theory is right and stronger than stated: 98.6% of bricks hold three materials or fewer, and
+nothing in a real build exceeds five.** (Note there is no 1-material row — a uniform brick is
+already collapsed to a solid leaf by the builder, so every brick that exists holds a boundary.)
+
+### What that buys, arithmetically
+
+| encoding | material bytes per brick | brick total | ratio |
+|---|---|---|---|
+| today: 1 byte/voxel | 512 | **576 B** | 1.00× |
+| **2-bit index + 4-entry palette** | 128 + 4 | **196 B** | **2.94×** |
+| 3-bit index + 8-entry palette | 192 + 8 | 264 B | 2.18× |
+
+**The right design is the 2-bit one with a fallback**: a 4-entry palette covers 98.6% of bricks, and
+the 1.4% that need more keep today's byte-per-voxel encoding behind a kind bit. Chasing the last
+1.4% with a 3-bit index costs 35% more memory on the other 98.6%, which is a bad trade by a wide
+margin.
+
+Applied to the measured shipping tree — 710 K bricks × 576 B = **409 MB of the 431 MB total is the
+brick array** — a 2.94× cut on 98.6% of it takes the tree to roughly **161 MB**, i.e. **431 → 161 MB,
+2.7× overall**. That is the single largest memory lever identified in this prompt, it is independent
+of the cell grid, and it directly reduces the upload traffic that AK-B could only make less frequent.
+
+### The cost, and what must be measured before it ships
+
+Decoding a 2-bit index plus a palette fetch is **one extra dependent load per voxel hit** in the
+marcher, against a saving of ~2/3 of the brick bandwidth. Goal 258's own instruction is the right
+one and I have not yet paid it: *"if a lever costs more tracing time than it saves in bandwidth, say
+so with both numbers and leave it off."* The march is currently **4.9 ms and GPU-bound** (§1), so
+this is not free money — the measurement to make is march ms before and after at the same pose, both
+backends, with the oracle at 0/7,000.
+
+**Status: the headroom is measured and the encoding is chosen; the implementation and its
+before/after march number are not done.** Recorded as the specific next step rather than claimed.
+
+### DAG deduplication (goal 163): not attempted, and the reason is ordering
+
+SVDAG's published figures are large (§3.1: *"19 billion voxels in 945 MB"*). But dedup interns
+identical subtrees, and its payoff depends on how much of the tree is identical — which the palette
+change alters, because two bricks differing only in palette order are not bit-identical today but
+would be after canonicalisation. **Measuring dedup before the payload is settled would measure the
+wrong tree.** Palette first, then dedup on the result.
+
+### And the apron, decided against as instructed
+
+Research §1.3 is unambiguous and this prompt restates it: a one-voxel apron on an 8³ brick is a
+**1.95× memory blow-up** — it would take the post-palette 161 MB back to ~314 MB, undoing the entire
+lever above and then some. **No apron.** If Prompt 005 wants filtered brick sampling, the
+corner-centred 3³ trick or explicit neighbour fetches are the published alternatives.
