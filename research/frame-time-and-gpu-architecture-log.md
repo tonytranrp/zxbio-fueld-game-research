@@ -1204,3 +1204,98 @@ is a **local, pre-push** instrument on this machine, and the numbers in the tabl
 Goal 273's own text anticipates this — *"if the runner has no GPU, say so and gate only the CPU-side
 numbers"* — and the CPU-side assertions (`walk_violations`, `inside_solid`, `frames`,
 `stance_changes`) do run in the no-GPU jobs and are untouched by this work.
+
+---
+
+## 17. The throughput answer (goal 274) — the number Prompt 007 derives its view distance from
+
+`voxel_harness --scenario throughput_ramp --ramp lod-radius:1,2,4,8,16`, RelWithDebInfo, pose held
+fixed. `mean steps` is read out of the marcher's own `steps` debug view, so it is an iteration count
+and not an estimate.
+
+### Before and after this whole prompt, Vulkan
+
+| `--lod-radius` | bricks | resident MB | mean steps | **gpu ms p50** | **gpu ms p95** |
+|---|---|---|---|---|---|
+| | before → after | before → after | before → after | before → after | before → after |
+| 1 | 58,266 → 56,364 | 35.3 → 34.2 | 83.4 → 80.8 | 2.99 → **2.22** (−26%) | 3.52 → **2.70** (−23%) |
+| 2 | 229,454 → 224,139 | 139.5 → 136.3 | 86.6 → 88.4 | 3.53 → **2.78** (−21%) | 4.28 → **3.03** (−29%) |
+| **4** (shipping) | 903,469 → 892,655 | 550.4 → 543.7 | 89.2 → 91.9 | 4.60 → **3.54** (−23%) | 6.21 → **3.83** (−38%) |
+| 8 | 3,412,367 → 3,387,265 | 2,082.2 → 2,066.8 | 91.3 → 95.0 | 5.87 → **4.62** (−21%) | 6.17 → **4.92** (−20%) |
+| 16 | FAILED | FAILED | — | — | — |
+
+**21–26% faster at every rung, and the p95 improved more than the p50 (20–38%)** — the second number
+is AK-B's rebuild-storm work appearing as reduced variance rather than as a lower median. The small
+brick-count differences (58,266 → 56,364) are goal 161's `std::floor` terrain fix moving the surface
+by a voxel in places, not a measurement artefact.
+
+D3D12 at the same rungs: 2.75 / 3.49 / 4.65 / **6.19** ms p50.
+
+### The answer, in the form goal 274 asks for
+
+**How many voxels can this GPU render, at what detail, at 150+ fps?**
+
+150 fps is a 6.67 ms frame. Everything outside the march measured 0.10 ms (post) plus present.
+
+| | **Vulkan** | **D3D12** |
+|---|---|---|
+| Highest rung inside the budget | **`--lod-radius 8`** | **`--lod-radius 4`** |
+| Resident bricks | 3,387,265 | 892,655 |
+| **Voxels represented** (bricks × 512) | **1.73 billion** | **457 million** |
+| Resident MB | 2,066.8 | 543.7 |
+| Finest voxel | 7.812 mm | 7.812 mm |
+| GPU march p50 / p95 | 4.62 / 4.92 ms | 4.65 / 5.01 ms |
+| Headroom in the 6.67 ms budget | 1.75 ms | 1.92 ms |
+
+**The conservative, both-backends answer for Prompt 007: 457 million voxels at 7.8 mm, 544 MB
+resident, `--lod-radius 4`, comfortably inside 150 fps on vk AND d3d12. Vulkan alone reaches 1.73
+billion voxels and 2.07 GB at the same frame rate.**
+
+D3D12's rung 8 is the boundary case and it fails honestly: 6.19 ms p50 and 6.68 ms p95 consume the
+entire 6.67 ms budget on the march alone.
+
+### Traversals per second, and the literature
+
+At the shipping default on vk (3.54 ms, 1280×720):
+
+- **260 M primary rays/s** — 921,600 rays / 3.54 ms.
+- **23.9 G traversal steps/s** — 91.9 steps × 921,600 / 3.54 ms.
+- **937 M rays/s counting every ray cast** — each of the 52% of pixels that hit also casts one
+  shadow ray and four AO rays.
+
+Against the published figures, with the comparison's own caveats stated rather than buried:
+
+| system | figure | hardware |
+|---|---|---|
+| ESVO (Laine & Karras) | 60.9 M primary rays/s at 5 mm | GTX 285 |
+| SVDAG (Kämpe et al.) | 170 / 240 MRays/s | GTX 680 |
+| Aokana | ~6 ms/frame at 64K `[UNVERIFIED]` | RTX 3060 Ti |
+| **this engine** | **260 M primary rays/s at 7.8 mm** | RTX 4070 Laptop |
+
+**This is a modest result for the hardware gap, and saying so is the point.** An RTX 4070 Laptop is
+many generations past a GTX 680, and 260 against SVDAG's 240 is not the margin that gap would
+suggest. Two honest reasons: this marcher shades as it goes (albedo mottle, grain, fog, water
+fresnel, a smoothed normal) where those figures are traversal-only, and §14 measured that **only two
+thirds of the march is traversal at all**. The primary-ray figure therefore understates the work by
+roughly the same factor it flatters the comparison. Treat the row as "same order of magnitude", not
+as a ranking.
+
+### Rung 16 is a BUILDER wall, not a GPU wall — and it does not crash
+
+Prompt 002 recorded rung 16 as `FAILED, no frames`, and `CLAUDE.md` separately records
+`--lod-radius 32` crashing in `Builder::build_node`. Rung 16 is neither of those:
+
+```
+voxel_app --renderer svo --lod-radius 16 --frames 120 --mode vk    ->  25 s, 0 slow frames, exit 0
+voxel_app --renderer svo --lod-radius  8 --frames 120 --mode vk    ->   7 s, 0 slow frames, exit 0
+```
+
+**It builds, it renders, and it exits cleanly.** What it does not do is finish building inside the
+harness's frame ceiling — the initial build is roughly 20 s against 5 s at rung 8, and loading-screen
+frames do not advance the script, so the run hits its ceiling with the script unstarted. The
+harness's message (*"the build did not complete"*) is literally correct and was worth confirming
+rather than inheriting.
+
+**So the ceiling this ramp finds is the build path's throughput, not the GPU's.** That matters for
+Prompt 007: the limit on view distance today is how fast a region can be BUILT, which is exactly
+what AK-C's per-cell rebuild exists to change and what §5 of this log's design section costed.
