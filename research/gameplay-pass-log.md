@@ -157,6 +157,15 @@ Goals 186-188 landed after the main pass: space-colonization skeletons, pipe-mod
 mass. Goals 190-192 (the sway oscillator, skeleton voxelization into the svo tree, geometric canopy
 motion) did not. Grass (AG) was not started at all.
 
+**A third bug, and the only one in this whole pass that no local check could have found.** CI's
+UBSan job caught **signed integer overflow** in the species hash: the standard spatial-hash
+constants (73856093, 19349663) exceed int32 for any coordinate past about 29, so a tree at x = 12
+was already undefined behaviour. The hash *wants* wraparound; it simply has to ask for it legally,
+in unsigned arithmetic. Worth recording precisely because **MSVC has no UBSan at all** (CLAUDE.md's
+sanitizer note covers ASan only) — this class of defect is invisible on this machine and can only
+ever be caught by the Linux CI job, which is a concrete argument for pushing early rather than
+batching. There is now a test walking coordinates to ±40,000 so a signed formulation must overflow.
+
 **Two calibration errors, both caught by tests rather than by reading the code**, and both worth
 recording because the *shape* of the mistake repeats:
 
@@ -282,7 +291,7 @@ it anyway.
 
 | measure | before | after |
 |---|---|---|
-| tests | 119 | **176** |
+| tests | 119 | **177** |
 | `--autofly --walk` 900 frames, ground violations | 0 | **0** (74 mid-pass, §3) |
 | slow frames (>20 ms) in that run | 1 (tree swap) | **1 (tree swap)** |
 | `--verify-frame`, Vulkan | 34.0% | **34.7%** |

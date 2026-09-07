@@ -292,3 +292,28 @@ TEST_CASE("A v1 placement grows a v2 skeleton in the space it occupied", "[trees
     REQUIRE(std::memcmp(tree.segments.data(), again.segments.data(),
                         tree.segments.size() * sizeof(SkeletonSegment)) == 0);
 }
+
+TEST_CASE("Species selection is defined at world coordinates, not just near the origin",
+          "[trees][skeleton]") {
+    // UBSan caught signed integer overflow in the species hash: the spatial-hash constants exceed
+    // int32 for any coordinate past about 29, so a tree at x = 12 was already undefined behaviour.
+    // MSVC has no UBSan, so nothing local could see it -- only CI. This case walks coordinates far
+    // enough out that a signed formulation must overflow, so a regression is caught there again.
+    for (float x = -40000.0f; x <= 40000.0f; x += 1237.0f) {
+        for (float z = -40000.0f; z <= 40000.0f; z += 3719.0f) {
+            TreePlacement p;
+            p.world_x = x;
+            p.world_z = z;
+            p.shape = TreeShape::Round;
+            const TreeSpecies s = species_of(p);
+            REQUIRE((s == TreeSpecies::RoundBroadleaf || s == TreeSpecies::Aspen));
+        }
+    }
+    // The non-round shapes are not hashed at all -- they map straight through.
+    TreePlacement conifer;
+    conifer.shape = TreeShape::Conifer;
+    REQUIRE(species_of(conifer) == TreeSpecies::Conifer);
+    TreePlacement shrub;
+    shrub.shape = TreeShape::Shrub;
+    REQUIRE(species_of(shrub) == TreeSpecies::Shrub);
+}

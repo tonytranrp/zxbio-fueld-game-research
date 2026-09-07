@@ -53,5 +53,5 @@ the unit test asserts the stronger claim), and E3 applies its shore fade only on
 depth probe needs a water-skipping traversal variant the 7,000-ray oracle guards, and because this
 implementation displaces normals rather than geometry, the artefact E3 prevents cannot occur).
 
-176/176 tests, `--verify-frame` 34.7%/34.6% on both backends, `--autofly --walk` 0 violations.
+177/177 tests, `--verify-frame` 34.7%/34.6% on both backends, `--autofly --walk` 0 violations.
 

@@ -135,8 +135,13 @@ TreeSpecies species_of(const TreePlacement& tree) noexcept {
     }
     // A deterministic minority of round broadleaves are aspens, so the high-flutter species exists
     // in the world without being placed by a separate rule.
-    const auto key = static_cast<std::uint32_t>(static_cast<std::int32_t>(tree.world_x * 4.0f) * 73856093 ^
-                                                static_cast<std::int32_t>(tree.world_z * 4.0f) * 19349663);
+    // Both multiplies happen in UNSIGNED arithmetic, where wraparound is defined. Doing them in
+    // int is the classic spatial-hash mistake: these constants overflow int32 for any coordinate
+    // past ~29, so `48 * 73856093` is undefined behaviour -- which is exactly what UBSan caught
+    // here, on a tree at x = 12. The hash wants wraparound; it just has to ask for it legally.
+    const auto gx = static_cast<std::uint32_t>(static_cast<std::int32_t>(tree.world_x * 4.0f));
+    const auto gz = static_cast<std::uint32_t>(static_cast<std::int32_t>(tree.world_z * 4.0f));
+    const std::uint32_t key = (gx * 73856093U) ^ (gz * 19349663U);
     return (mix(key) % 5u) == 0u ? TreeSpecies::Aspen : TreeSpecies::RoundBroadleaf;
 }
 
@@ -282,7 +287,6 @@ TreeSkeleton grow_skeleton_for(int seed, const TreePlacement& tree) {
     const glm::vec3 base{tree.world_x, tree.base_height, tree.world_z};
     return grow_skeleton(seed, base, params);
 }
-
 
 std::vector<std::size_t> leaf_segments(const TreeSkeleton& skeleton) {
     std::vector<bool> hasChild(skeleton.segments.size(), false);
