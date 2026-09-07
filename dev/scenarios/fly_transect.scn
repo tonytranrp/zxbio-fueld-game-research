@@ -35,19 +35,22 @@ assert frames > 0
 assert contrast_percent > 6
 assert inside_solid == 0
 
-# ------------------------------------------------------------------ goal 273: the regression gate
-# A PERCENTILE of the GPU timestamp range across this fixed camera path, per research section 6.8 --
-# never a mean (one hitch moves it) and above all never fps, which this machine's 165 Hz
-# FIFO_RELAXED panel caps at 155-159 and which therefore cannot express a regression at all.
+# ------------------------------------------------------------------ goal 273: NOT GATED, and why
+# This scenario carried a gpu_ms_p95 gate and it has been REMOVED, because a moving scenario's GPU
+# time is not reproducible enough on this engine to gate anything.
 #
-# PER BACKEND, because vk and d3d12 differ by 30-35% here and `ctest -L scenario` runs vk ONLY. A
-# single threshold would have to be set by the slower backend, leaving the faster one 35% of slack
-# -- a 30% vk regression would sail straight through the gate that CI actually runs.
+# Measured, seven runs, vk, same build, ~1,570 frames each:
 #
-# Each number is ~1.2x the worst of three runs on THAT backend: the smallest margin that survives
-# run-to-run noise and still fails when the budget is tightened by 20%, which is goal 273's own
-# Check and is demonstrated in the log.
-#   vk    ~1592 frames, p95 3.93 3.95 3.88 (1.8% spread)
-#   d3d12             p95 4.86 4.86 4.89 4.97 (2% spread)
-assert gpu_ms_p95 < 4.5 vk
-assert gpu_ms_p95 < 5.7 d3d12
+#   p95     4.515 4.352 4.024 4.082 4.178 4.091 4.100   -> 12.2% spread
+#   median  3.290 3.273 2.809 2.817 2.949 2.817 2.817   -> 17.1% spread, and BIMODAL
+#
+# Neither statistic is stable, and the median is worse than the p95 -- the numbers cluster into two
+# regimes depending on whether an extra whole-region rebuild lands during the flight. That is the
+# same non-reproducibility this file's golden policy already documents for CAPTURES, now shown to
+# apply to TIMING as well.
+#
+# A gate that fires on run-to-run variance is worse than no gate: it teaches people to ignore it.
+# stress_pose and valley_far are stationary and are gated (3% and 7% spread respectively); this one
+# is measured and reported, not asserted. It becomes gateable when a rebuild's timing stops being a
+# coin flip -- goal 257 made the rebuild 10x cheaper, which is a start, but the trigger is still
+# distance-driven and so still lands wherever the flight happens to put it.

@@ -1779,3 +1779,39 @@ it is — a 9% margin against 2% noise still catches a real regression — and t
 rather than papered over by widening the budget.
 
 330/330 tests.
+
+---
+
+## 24. A moving scenario is not gateable, measured (goal 273, revised)
+
+§16 put the frame-time gate on three scenarios. One of them was wrong, and the gate itself is what
+showed it: `fly_transect` began failing, and the cause was not a regression.
+
+Seven runs, vk, same build, ~1,570 frames each:
+
+| statistic | runs | spread |
+|---|---|---|
+| `gpu_ms_p95` | 4.515, 4.352, 4.024, 4.082, 4.178, 4.091, 4.100 | **12.2%** |
+| `gpu_ms_median` | 3.290, 3.273, 2.809, 2.817, 2.949, 2.817, 2.817 | **17.1%**, and bimodal |
+
+**Neither statistic is stable, and the median is worse than the p95.** The numbers cluster into two
+regimes — 2.81 in five runs and 3.28 in two — depending on whether an extra whole-region rebuild
+lands during the flight.
+
+That is the same non-reproducibility `fly_transect`'s own golden policy has documented since Prompt
+002 for **captures**, now shown to apply to **timing** as well. §16's mistake was assuming the
+frame-count rule was the only one that mattered: 1,570 frames is plenty, and it does not help,
+because the variance is not sampling noise — it is a different amount of work being done.
+
+**`fly_transect`'s gate is removed and the reason is written into the scenario.** A gate that fires
+on run-to-run variance is worse than no gate: it teaches people to ignore it, and this one would
+have been ignored on its second false alarm. `stress_pose` (3% spread) and `valley_far` (7% on its
+median) remain gated; `fly_transect` is measured and reported rather than asserted.
+
+**It becomes gateable when a rebuild's timing stops being a coin flip.** Goal 257 made the rebuild
+10.4× cheaper, which narrows the window but does not close it — the trigger is still distance-driven,
+so a rebuild still lands wherever the flight happens to put it.
+
+**The rule this adds to §16's table, stated for the next author:** a scenario is gateable when its
+statistic is stable, and a *stationary* pose is what makes it stable. Frame count decides *which*
+statistic (p95 above ~800 frames, median below); motion decides whether **any** statistic works.
