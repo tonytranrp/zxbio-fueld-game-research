@@ -28,6 +28,7 @@
 #include "world/materials/materials.hpp"
 #include "world/svo/brick_tree.hpp"
 #include "world/svo/ray_trace.hpp"
+#include "world/svo/warp_divergence.hpp"
 #include "world/svo/terrain_sampler.hpp"
 #include "world/svo/tree_builder.hpp"
 
@@ -301,6 +302,10 @@ int run(int argc, char** argv) {
     constexpr std::size_t kStepBuckets = 2049;
     std::vector<std::atomic<std::uint32_t>> stepHistogram(kStepBuckets);
     std::atomic<std::uint64_t> secondarySteps{0};
+    // Prompt 004 goal 271: the per-pixel TOTAL step count (primary + every secondary ray), kept as
+    // a map rather than a histogram, so warp-tile divergence can be computed from it below. Each
+    // element is written by exactly one row task, so no atomic is needed.
+    std::vector<std::uint32_t> stepMap(static_cast<std::size_t>(r.width) * r.height, 0u);
     std::atomic<std::uint64_t> hits{0};
     std::atomic<std::uint64_t> shadowed{0};
     const auto renderStart = std::chrono::steady_clock::now();
@@ -316,6 +321,7 @@ int run(int argc, char** argv) {
                 const float ndcX = (static_cast<float>(x) + 0.5f) / static_cast<float>(r.width) * 2.0f - 1.0f;
                 const float ndcY =
                     1.0f - (static_cast<float>(y) + 0.5f) / static_cast<float>(r.height) * 2.0f;
+                const std::uint64_t steps2Before = steps2;
                 Ray ray;
                 ray.origin = r.pos;
                 ray.dir = glm::normalize(forward + right * (ndcX * tanHalf * aspect) + up * (ndcY * tanHalf));
@@ -459,7 +465,9 @@ int run(int argc, char** argv) {
                 }
                 // Debug views are written raw (the app disables its post chain for them too).
                 const glm::vec3 mapped = view.empty() ? tonemap(color) : color;
-                const std::size_t i = (static_cast<std::size_t>(y) * r.width + x) * 3u;
+                const std::size_t pixel = static_cast<std::size_t>(y) * r.width + x;
+                stepMap[pixel] = static_cast<std::uint32_t>(hit.steps + (steps2 - steps2Before));
+                const std::size_t i = pixel * 3u;
                 rgb[i + 0] = to_srgb8(mapped.x);
                 rgb[i + 1] = to_srgb8(mapped.y);
                 rgb[i + 2] = to_srgb8(mapped.z);
@@ -517,6 +525,35 @@ int run(int argc, char** argv) {
         }
         std::printf("primary steps: p50 %u  p95 %u  p99 %u  max %u  (shader ceiling 2048)\n", p50, p95, p99,
                     worst);
+    }
+
+    // Prompt 004 goal 271: WARP DIVERGENCE, measured rather than assumed.
+    //
+    // This machine's NVIDIA driver does not expose VK_KHR_performance_query (only the Intel iGPU
+    // does -- see research/frame-time-log.md section 12), so the warp-occupancy and stall-reason
+    // counters goals 267 and 269 wanted are not collectable here without the Nsight Perf SDK and an
+    // admin-only registry change. This is the cheap instrument that measures the SAME underlying
+    // quantity from the CPU reference, deterministically and with no driver dependency at all.
+    //
+    // A warp executes until its SLOWEST lane finishes, so a warp's cost is max(steps) over its
+    // pixels while its useful work is sum(steps). The ratio over the whole frame,
+    //
+    //     efficiency = sum over warps of sum(steps) / sum over warps of (lanes * max(steps))
+    //
+    // is the fraction of issued warp slots doing real traversal, and 1 - efficiency is the
+    // theoretical ceiling on ANY work-redistribution scheme -- persistent threads, ray reordering,
+    // SER. That number is what goals 267 and 275 need in order to be decisions rather than guesses.
+    //
+    // The pixel-to-warp mapping on NVIDIA is not publicly documented; a 32-thread pixel-shader warp
+    // is eight 2x2 quads, and 8x4 is the commonly cited arrangement. Four tilings are printed so the
+    // conclusion can be seen not to depend on picking the right one.
+    {
+        const auto pct = [&](std::uint32_t tw, std::uint32_t th) {
+            return 100.0 * world::svo::warp_divergence(stepMap, r.width, r.height, tw, th).efficiency();
+        };
+        std::printf("warp divergence (efficiency = useful lane-steps / issued lane-steps):\n"
+                    "  8x4 tile %.1f%%   4x8 tile %.1f%%   16x2 tile %.1f%%   2x2 quad %.1f%%\n",
+                    pct(8, 4), pct(4, 8), pct(16, 2), pct(2, 2));
     }
 
     if (!svo_render::PngWriter::write(opt.out.c_str(), r.width, r.height, rgb.data())) {

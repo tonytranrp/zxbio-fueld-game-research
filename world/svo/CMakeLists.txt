@@ -19,6 +19,7 @@ target_sources(world_svo PUBLIC
         include/world/svo/terrain_sampler.hpp
         include/world/svo/tree_builder.hpp
         include/world/svo/ray_trace.hpp
+        include/world/svo/warp_divergence.hpp
 )
 
 # detail/ holds the build_tree template body: this module's own src/ instantiates it for the

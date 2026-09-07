@@ -717,3 +717,129 @@ port buys nothing this pass has not already taken.
 | after goal 268 (AO) | 4.02 | 4.42 |
 | **after goal 267 (no `SV_Depth`)** | **3.33** | **3.93** |
 | **total** | **−32%** | **−23%** |
+
+---
+
+## 12. The counters, the answer to both open measurement questions, and a decisive negative for 267 (goal 271)
+
+### §8.4's question: does this NVIDIA driver expose `VK_KHR_performance_query`? **No.**
+
+The research section could not answer this because the database page truncated before the NVIDIA
+entries and every implementation hit was Mesa. `vulkaninfo` on this machine answers it outright:
+
+| device | driver | device extensions | `VK_KHR_performance_query` |
+|---|---|---|---|
+| **NVIDIA GeForce RTX 4070 Laptop GPU** | NVIDIA 610.47 | 278 | **absent** |
+| Intel(R) UHD Graphics | Intel 101.6790 | 148 | present (plus `VK_INTEL_performance_query`) |
+
+So the Mesa-only pattern the research noticed is real, and it extends to NVIDIA's Windows driver:
+**the GPU this engine renders on does not implement the extension.** The iGPU that does is not the
+one being measured. Recorded so nobody spends another pass looking for it.
+
+### §8.5's question: the first-timestamp fault. Still no primary source; recorded as folklore.
+
+No primary source was found for the `vkCmdWriteTimestamp`-as-first-command fault. The workaround —
+`gpu march+resolve` skipping the first two frames — stands **because it was reproduced here**, not
+because it is documented. Written down explicitly, in the code and here, so a later reader does not
+"clean up" a two-frame skip that looks arbitrary and get a driver fault back.
+
+### The counter decision: Nsight Perf SDK is out on this machine, and here is exactly why
+
+Prompt 002 goal 222 left the counter path open. Resolving it:
+
+- **Nsight Perf SDK / Nsight Graphics: not installed.** `C:\Program Files\NVIDIA Corporation` holds
+  only `FrameViewSDK`, `NvContainer`, `NVIDIA App`, `NvTelemetry`, `Installer2` — no Nsight, and no
+  CUDA toolkit.
+- **And it would need an admin change even after installing.** The counter permission lives at
+  `HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak\RmProfilingAdminOnly`; on this
+  machine the key exists and the value is **unset**, so the driver default (admin-only) applies —
+  the `ERR_NVGPUCTRPERM` case the research names.
+
+**Decision: no counter SDK this pass.** It is an install plus a privileged registry write on the
+owner's daily-driver machine, for data that turns out — see below — not to change any decision in
+this prompt. Recorded as a goal rather than done.
+
+### What IS available on this GPU, checked and written down so the next pass does not re-derive it
+
+`vulkaninfo`'s NVIDIA device list does contain three extensions that reach some of the same data
+without Nsight and without admin:
+
+| extension | what it would give | cost to use here |
+|---|---|---|
+| `VK_KHR_pipeline_executable_properties` | **registers per thread**, spill counts, per-stage stats straight from the driver — goal 269's exact question | the pipeline must be created with `VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR`, which Diligent does not set and does not expose a hook for; needs a standalone Vulkan probe |
+| `VK_KHR_shader_clock` | per-lane cycle counts inside the real shader — direct latency variance | DXC's `vk::ReadClock` is SPIR-V only, so vk-path only, and Diligent must be made to enable the device extension |
+| `VK_NV_shader_sm_builtins` | `gl_SMIDNV` / `gl_WarpIDNV` — which SM and warp slot each pixel ran on, i.e. real occupancy | same DXC/Diligent plumbing |
+
+Also present and relevant to goal 275: **`VK_KHR_ray_query` and `VK_KHR_ray_tracing_pipeline`** — the
+hardware RT path this pass declines is available on this device, not merely hypothetical.
+
+### The measurement that actually mattered, taken a cheaper way
+
+Goals 267 and 269 both rest on one claim: that this marcher's warps finish at very different times,
+so redistributing their work would win a lot. The counters would have measured that. **So does the
+CPU reference, for free, deterministically, and in CI** — because a warp runs until its *slowest*
+lane finishes, so it costs `lanes × max(steps)` issue slots while doing only `sum(steps)` useful
+work. Over a frame:
+
+> **efficiency = Σ over warps of sum(steps) ⁄ Σ over warps of (lanes × max(steps))**
+
+and **1 − efficiency is the theoretical ceiling on any work-redistribution scheme** — persistent
+threads, ray reordering, SER — whatever its published figure on other content.
+
+`tools/svo_render` now keeps a per-pixel total-step map and prints this. The metric itself lives in
+`world/svo/warp_divergence.hpp` with **7 test cases / 817 assertions**, written *before* its number
+was quoted, because this pass has already found six instruments that reported a number while
+measuring nothing. The cases are chosen so a plausible bug in each direction fails one: taking the
+peak per pixel instead of per warp (reports a perfect 1.0), forgetting a clipped tile has fewer
+lanes, striding only in x, or returning 0 rather than 1 for an empty frame.
+
+**Six poses, 1280×720, the shipping tree:**
+
+| pose | primary steps p50/p99/max | 8×4 | 4×8 | 16×2 | 2×2 quad |
+|---|---|---|---|---|---|
+| `stress_pose` (hilltop, ground) | 26 / 76 / 130 | **93.4%** | 92.9% | 92.4% | 97.6% |
+| `valley_far` | 27 / 76 / 130 | **93.3%** | 93.0% | 92.4% | 97.5% |
+| `macro_ground` (99.5% terrain) | 27 / 84 / 175 | **92.7%** | 92.2% | 92.0% | 97.0% |
+| `macro_tree` | 22 / 75 / 122 | **94.1%** | 93.4% | 93.5% | 97.8% |
+| `fly_transect` (32.3% shadowed) | 18 / 96 / 173 | **93.8%** | 93.9% | 92.4% | 97.7% |
+| grazing (−1° pitch) | 24 / 75 / 129 | **93.4%** | 93.0% | 92.4% | 97.6% |
+
+**Warp efficiency is 92.0–94.1% on every pose and every tiling.** The exact pixel-to-warp mapping on
+NVIDIA is undocumented, which is why four tilings are printed — the conclusion does not depend on
+guessing it right.
+
+### So: work redistribution has at most 6–8% of headroom on this content
+
+Aila & Laine's 1.92× came from **incoherent** rays over sharply varying geometry. This engine's rays
+are the opposite: a pinhole camera over a height field, plus shadow rays that all point at the same
+sun. Adjacent pixels traverse nearly the same nodes, so lanes finish together.
+
+**The instrument was falsified before it was trusted** — it moves in the predicted direction when
+ray coherence changes, and the sizes make physical sense:
+
+| workload at `stress_pose` | secondary steps/px | 8×4 efficiency |
+|---|---|---|
+| primary rays only | 0.0 | **94.0%** |
+| + shadow rays (all one sun direction — *coherent*) | 7.5 | **94.2%** |
+| + 4 AO rays (per-pixel random rotation — *incoherent*) | 12.8 | **93.4%** |
+
+Coherent shadow rays add **no** divergence; incoherent AO rays cost **0.8 points**. An instrument
+that reported a constant, or moved the wrong way, would have failed here.
+
+**This closes goal 267 as a measured negative, and it agrees with the mechanism result in §11.** Two
+independent measurements, of two different things, telling one consistent story:
+
+- **Step divergence is ~7%** — the lanes do nearly the same amount of *work*.
+- **Removing ordered ROP export won 17%** (§11) — larger than 7%, so the remainder is **memory
+  latency variance, not work imbalance**. And that part has already been captured, by a change that
+  kept the pixel shader.
+
+A compute port's remaining prize is thread-group swizzling, whose 47% figure requires being
+VRAM-latency-bound; the persistent-thread half of the argument is now measured at a **6–8% ceiling
+on this content**, on top of being retracted by its own authors (§9.3). **Recommendation stands and
+is now evidence-backed: keep the pixel shader.**
+
+*Caveat, stated plainly:* this measures divergence in traversal **steps**, not in time. Two lanes
+taking equal steps still finish apart if one misses cache. The number is therefore a **lower bound**
+on total latency variance — which is exactly why §11's 17% is the complementary measurement and why
+both are reported together rather than either alone.
