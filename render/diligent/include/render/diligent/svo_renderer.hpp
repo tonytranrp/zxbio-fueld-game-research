@@ -9,6 +9,7 @@
 #include "world/wind/wind_field.hpp"
 #include "render/interface/camera.hpp"
 #include "world/svo/brick_tree.hpp"
+#include "world/svo/cell_grid.hpp"
 
 namespace render::diligent {
 
@@ -104,6 +105,11 @@ public:
     // one const object is what shared_ptr is for; two owners of a mutable one would be a bug, and
     // BrickTree has been immutable-after-construction since the pivot.
     void begin_upload(std::shared_ptr<const world::svo::BrickTree> tree);
+
+    // Prompt 004 goal 256: the same staged replacement for a grid of cells. The slicing machinery
+    // is shared -- a grid is still two word arrays -- and the per-cell records ride along as one
+    // small extra buffer (4,096 cells is 64 KB, so it is uploaded whole rather than sliced).
+    void begin_upload(std::shared_ptr<const world::svo::FlatCellGrid> grid);
     bool pump_upload();
     [[nodiscard]] bool upload_pending() const noexcept;
     [[nodiscard]] double last_upload_ms() const noexcept;            // wall-clock from begin to swap

@@ -326,23 +326,30 @@ Hit TraceGrid(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffse
         invd[a] = abs(d[a]) > 1.0e-20 ? 1.0 / d[a] : (d[a] >= 0.0 ? 1.0e30 : -1.0e30);
 
     // Slab test against the whole grid, in cell units, so a ray that meets nothing costs one test.
+    //
+    // NO `continue` AND NO `return` INSIDE THE UNROLLED LOOPS HERE, and that is not style. FXC
+    // refuses to unroll a loop containing them ("X3511: forced to unroll loop, but unrolling
+    // failed"), and once the loop is not unrolled the vector component writes below become
+    // RUNTIME-INDEXED, which FXC also rejects ("X3500: array reference cannot be used as an
+    // l-value"). Vulkan's compiler accepts both, so this shader compiled and ran correctly on vk
+    // and failed outright on d3d12 -- exactly the trap CLAUDE.md documents. Both branches are
+    // therefore expressed as values, and the early-outs happen after the loop.
     float tEnter = max(tStart, 0.0);
     float tExit = maxT;
+    bool outsideOnParallelAxis = false;
     [unroll]
     for (int b = 0; b < 3; ++b)
     {
-        if (abs(d[b]) < 1.0e-20)
-        {
-            if (o[b] < 0.0 || o[b] >= float(dims[b]))
-                return miss;
-            continue;
-        }
+        const bool degenerate = abs(d[b]) < 1.0e-20;
+        // Parallel to this axis: constrained only by already being inside the slab.
+        outsideOnParallelAxis =
+            outsideOnParallelAxis || (degenerate && (o[b] < 0.0 || o[b] >= float(dims[b])));
         const float t0 = (0.0 - o[b]) * invd[b];
         const float t1 = (float(dims[b]) - o[b]) * invd[b];
-        tEnter = max(tEnter, min(t0, t1));
-        tExit = min(tExit, max(t0, t1));
+        tEnter = degenerate ? tEnter : max(tEnter, min(t0, t1));
+        tExit = degenerate ? tExit : min(tExit, max(t0, t1));
     }
-    if (tExit < tEnter)
+    if (outsideOnParallelAxis || tExit < tEnter)
         return miss;
 
     int3 cellCoord;
@@ -356,17 +363,13 @@ Hit TraceGrid(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffse
         // Clamped: a ray entering exactly on a face can land one cell out through float rounding,
         // and clamping is cheaper and more robust than making the arithmetic exact.
         cellCoord[c] = clamp(int(floor(entry[c])), 0, dims[c] - 1);
-        if (abs(d[c]) < 1.0e-20)
-        {
-            stepDir[c] = 0;
-            tMax[c] = 1.0e30;
-            tDelta[c] = 1.0e30;
-            continue;
-        }
-        stepDir[c] = d[c] > 0.0 ? 1 : -1;
+        // Branch-free for the FXC reason above: an axis the ray does not travel along gets a step
+        // of 0 and a boundary at infinity, which the walk below never selects.
+        const bool degenerate = abs(d[c]) < 1.0e-20;
+        stepDir[c] = degenerate ? 0 : (d[c] > 0.0 ? 1 : -1);
         const float boundary = float(cellCoord[c] + (stepDir[c] > 0 ? 1 : 0));
-        tMax[c] = (boundary - o[c]) * invd[c];
-        tDelta[c] = abs(invd[c]);
+        tMax[c] = degenerate ? 1.0e30 : (boundary - o[c]) * invd[c];
+        tDelta[c] = degenerate ? 1.0e30 : abs(invd[c]);
     }
 
     [loop]

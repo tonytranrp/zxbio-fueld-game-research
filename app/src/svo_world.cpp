@@ -135,6 +135,14 @@ void SvoWorld::build_job(glm::vec3 camera) {
         bp.lod_center = camera;
         bp.lod_radius = options_.lod_radius;
         world::svo::BuildStats stats;
+
+        // ---- the cell-grid path (goals 254-256) -------------------------------------------------
+        if (options_.cell_size_log2 > 0) {
+            build_grid_job(g, sp, bp, sampler, samplerSeconds);
+            building_.store(false);
+            return;
+        }
+
         world::svo::BrickTree tree = world::svo::build_tree(sampler, g, bp, &pool_, &stats);
 
         LastBuild last;
@@ -153,6 +161,98 @@ void SvoWorld::build_job(glm::vec3 camera) {
         log(LogLevel::Error, "svo build failed: {}", e.what());
     }
     building_.store(false);
+}
+
+std::shared_ptr<const world::svo::FlatCellGrid> SvoWorld::take_finished_grid() {
+    const std::lock_guard guard(mutex_);
+    std::shared_ptr<const world::svo::FlatCellGrid> out;
+    if (finishedGrid_) {
+        out = finishedGrid_;
+        finishedGrid_.reset();
+    }
+    return out;
+}
+
+// Goal 256: the same region as a grid of cells, built with the SAME sampler parameters so the
+// world is identical -- only its container changes.
+//
+// Two things here are the whole reason this is not simply a loop:
+//
+//   1. THE FOCUS TIERS ARE BUILT ONCE AND SHARED. `set_focus` samples ~1.3 M noise points and the
+//      cost does not shrink with the region, so paying it per cell would make every cell cost what
+//      a region costs -- measured, and the reason goal 251 built `focus_keys`/`make_focus_tier`/
+//      `adopt_focus` at all. The sampler above already built them for this camera; every cell
+//      adopts those.
+//   2. THE PARALLELISM IS BETWEEN CELLS, not inside one. A 32 m cell has almost nothing for
+//      `build_tree`'s own subtree split to divide, so handing it the pool and building cells one at
+//      a time measures a serial grid against a parallel region -- which reported the grid 6.1x
+//      slower before the mistake was caught (research section 18).
+void SvoWorld::build_grid_job(const world::svo::TreeGeometry& g,
+                              const world::svo::TerrainSamplerParams& sp,
+                              const world::svo::BuildParams& bp, const world::svo::TerrainSampler& seeded,
+                              double samplerSeconds) {
+    const int cellLog2 = options_.cell_size_log2;
+    const auto cellEdge = static_cast<float>(std::ldexp(1.0, cellLog2));
+    const int perAxis = 1 << (options_.root_size_log2 - cellLog2);
+    const glm::ivec3 originCell{static_cast<int>(std::floor(g.origin.x / cellEdge)),
+                                static_cast<int>(std::floor(g.origin.y / cellEdge)),
+                                static_cast<int>(std::floor(g.origin.z / cellEdge))};
+    world::svo::CellGrid grid{originCell, glm::ivec3{perAxis}, cellLog2, options_.voxel_size_log2};
+
+    const world::svo::TerrainSampler::FocusTiers tiers = seeded.focus_tiers();
+
+    const auto buildStart = std::chrono::steady_clock::now();
+    const std::size_t count = grid.cell_count();
+    std::vector<std::shared_ptr<const world::svo::BrickTree>> built(count);
+    std::vector<std::future<void>> jobs;
+    jobs.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        jobs.push_back(pool_.submit([&, i] {
+            const world::svo::TreeGeometry cg = grid.geometry_for(grid.coord_of(i));
+            world::svo::TerrainSampler cellSampler(heightmap_, sp,
+                                                   world::svo::Box{cg.origin, cg.max_corner()});
+            cellSampler.adopt_focus(tiers);
+            world::svo::BrickTree cell = world::svo::build_tree(cellSampler, cg, bp, nullptr, nullptr);
+            if (!cell.empty()) {
+                built[i] = std::make_shared<const world::svo::BrickTree>(std::move(cell));
+            }
+        }));
+    }
+    for (std::future<void>& f : jobs) {
+        f.get();
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        if (built[i]) {
+            grid.set(grid.coord_of(i), built[i]);
+        }
+    }
+    auto flat = std::make_shared<const world::svo::FlatCellGrid>(grid);
+
+    LastBuild last;
+    last.stats.seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - buildStart).count();
+    // Summed across cells rather than left at zero: the log line prints these, and "0 internal,
+    // 0 solid leaves" on a 543 MB world reads as a broken build rather than as an unfilled field.
+    for (const std::shared_ptr<const world::svo::BrickTree>& cell : built) {
+        if (!cell) {
+            continue;
+        }
+        const world::svo::BrickTree::Stats s = cell->stats();
+        last.tree.internal_nodes += s.internal_nodes;
+        last.tree.brick_leaves += s.brick_leaves;
+        last.tree.solid_leaves += s.solid_leaves;
+        last.tree.deepest_level = std::max(last.tree.deepest_level, s.deepest_level);
+    }
+    last.bricks = flat->bricks().size() / world::svo::kBrickWords;
+    last.memory_bytes = static_cast<std::size_t>(flat->memory_bytes());
+    last.trees = seeded.trees().size();
+    last.sampler_seconds = samplerSeconds;
+    last.cells = grid.present_count();
+    last.valid = true;
+
+    const std::lock_guard guard(mutex_);
+    finishedGrid_ = std::move(flat);
+    lastBuild_ = last;
 }
 
 std::shared_ptr<const world::svo::BrickTree> SvoWorld::take_finished() {

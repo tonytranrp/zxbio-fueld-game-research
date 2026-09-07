@@ -12,6 +12,7 @@
 #include "world/generation/heightmap_generator.hpp"
 #include "world/svo/brick_tree.hpp"
 #include "world/svo/terrain_sampler.hpp"
+#include "world/svo/cell_grid.hpp"
 #include "world/svo/tree_builder.hpp"
 
 #include <vector>
@@ -23,6 +24,11 @@ struct SvoWorldOptions {
     int voxel_size_log2 = -7; // 7.8 mm: sub-centimeter, the pivot's whole point
     int root_size_log2 = 9;   // 512 m region around the camera
     float lod_radius = 4.0f;  // full resolution within this distance, halving per doubling beyond
+    // Prompt 004 goals 254-256: build the region as a GRID of cells this size instead of one tree.
+    // 0 keeps the single tree. 5 is 32 m, the size goal 254's arithmetic settled on: 12 levels per
+    // cell against 16 for a 512 m region, which measured 21.7 -> 10.5 octree steps per ray on the
+    // CPU reference. A cell is an ordinary BrickTree, so nothing about the encoding changes.
+    int cell_size_log2 = 0;
     bool trees = true;
     std::size_t worker_threads = 0; // 0 = three quarters of the hardware threads (goal 170)
 
@@ -104,6 +110,11 @@ public:
     // (Prompt 003 goal 227). BrickTree has been immutable-after-construction since the pivot, so
     // this is a shared_ptr and nothing else -- no copy of 400 MB, no synchronisation.
     [[nodiscard]] std::shared_ptr<const world::svo::BrickTree> take_finished();
+
+    // Prompt 004 goal 256/257: the same handoff for the cell grid. Exactly one of these two is
+    // ever non-null for a given build -- `Options::cell_size_log2` decides which, and 0 means the
+    // single-tree path this engine shipped with.
+    [[nodiscard]] std::shared_ptr<const world::svo::FlatCellGrid> take_finished_grid();
     // True while a finished tree is waiting to be taken (diagnostics: the frame that takes it
     // pays for the GPU buffer creation).
     [[nodiscard]] bool take_finished_pending() const {
@@ -132,6 +143,7 @@ public:
     struct LastBuild {
         world::svo::BuildStats stats;
         world::svo::BrickTree::Stats tree;
+    std::size_t cells = 0; // goal 256: present cells, 0 on the single-tree path
         std::size_t bricks = 0;
         std::size_t memory_bytes = 0;
         std::size_t trees = 0;
@@ -155,6 +167,11 @@ private:
 
     mutable std::mutex mutex_;
     std::shared_ptr<const world::svo::BrickTree> finished_;
+    std::shared_ptr<const world::svo::FlatCellGrid> finishedGrid_;
+
+    void build_grid_job(const world::svo::TreeGeometry& g,
+                        const world::svo::TerrainSamplerParams& sp, const world::svo::BuildParams& bp,
+                        const world::svo::TerrainSampler& seeded, double samplerSeconds);
     LastBuild lastBuild_;
     std::atomic<bool> building_{false};
     bool requested_ = false;

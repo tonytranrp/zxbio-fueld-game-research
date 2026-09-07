@@ -299,6 +299,12 @@ struct SvoRenderer::Impl {
         // Kept alive until every slice has been copied. A shared handle: the simulation holds
         // the same object for collision (goal 227), and neither owner can mutate it.
         std::shared_ptr<const world::svo::BrickTree> tree;
+        // Goal 256: exactly one of these is set. The staging machinery below is identical either
+        // way -- it copies two word arrays in slices -- so the only thing that branches is where
+        // those arrays come from and what gets bound when the last slice lands.
+        std::shared_ptr<const world::svo::FlatCellGrid> grid;
+        RefCntAutoPtr<IBuffer> cells;
+        std::size_t cellCount = 0;
         RefCntAutoPtr<IBuffer> nodes;
         RefCntAutoPtr<IBuffer> bricks;
         std::size_t nodesCapacity = 0;
@@ -314,6 +320,11 @@ struct SvoRenderer::Impl {
 
     world::svo::TreeGeometry geometry;
     std::uint32_t rootOffset = 0;
+    // Goal 256: the resident grid's shape, zero when the single tree is resident. gridDims.x <= 0
+    // is what tells the shader to march the whole region as one cell.
+    glm::vec3 gridDims{0.0f};
+    glm::vec3 gridOrigin{0.0f};
+    float gridCellEdge = 0.0f;
     std::chrono::steady_clock::time_point animStart = std::chrono::steady_clock::now();
 
     void create_pipelines();
@@ -624,6 +635,65 @@ void SvoRenderer::begin_upload(std::shared_ptr<const world::svo::BrickTree> tree
     im.pendingFrames = 0;
 }
 
+void SvoRenderer::begin_upload(std::shared_ptr<const world::svo::FlatCellGrid> grid) {
+    ZoneScopedN("svo begin grid upload");
+    auto& rc = impl_->context->impl();
+    Impl& im = *impl_;
+
+    auto pending = std::make_unique<Impl::Pending>();
+    pending->start = std::chrono::steady_clock::now();
+
+    const std::size_t nodeWords = grid->nodes().size();
+    const std::size_t brickWords = grid->bricks().size();
+    if (im.spareNodes && im.spareBricks && im.spareNodesCapacity >= nodeWords &&
+        im.spareBricksCapacity >= brickWords) {
+        pending->nodes = im.spareNodes;
+        pending->bricks = im.spareBricks;
+        pending->nodesCapacity = im.spareNodesCapacity;
+        pending->bricksCapacity = im.spareBricksCapacity;
+        im.spareNodes.Release();
+        im.spareBricks.Release();
+        im.spareNodesCapacity = 0;
+        im.spareBricksCapacity = 0;
+    } else {
+        if (im.spareNodes || im.spareBricks) {
+            im.tracker.on_free(static_cast<std::uint64_t>(im.spareNodesCapacity + im.spareBricksCapacity) *
+                               sizeof(std::uint32_t));
+            im.spareNodes.Release();
+            im.spareBricks.Release();
+            im.spareNodesCapacity = 0;
+            im.spareBricksCapacity = 0;
+        }
+        pending->nodesCapacity = nodeWords + nodeWords / 4;
+        pending->bricksCapacity = brickWords + brickWords / 4;
+        pending->nodes = create_word_buffer(rc.device, "SVO nodes", pending->nodesCapacity);
+        pending->bricks = create_word_buffer(rc.device, "SVO bricks", pending->bricksCapacity);
+        im.tracker.on_allocate(static_cast<std::uint64_t>(pending->nodesCapacity + pending->bricksCapacity) *
+                               sizeof(std::uint32_t));
+    }
+
+    // The cell records go up in one shot: 4,096 cells is 64 KB, three orders of magnitude below the
+    // per-frame slice budget, so slicing them would be machinery with no subject.
+    pending->cellCount = grid->cells().size();
+    pending->cells = create_cell_buffer(rc.device, "SVO cells", pending->cellCount);
+    im.tracker.on_allocate(static_cast<std::uint64_t>(pending->cellCount) * 4u * sizeof(std::uint32_t));
+    if (pending->cellCount > 0) {
+        rc.context->UpdateBuffer(pending->cells, 0,
+                                 static_cast<Uint64>(pending->cellCount) * 4u * sizeof(std::uint32_t),
+                                 grid->cells().data(), RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    }
+
+    pending->grid = std::move(grid);
+    if (im.pending) {
+        im.spareNodes = im.pending->nodes;
+        im.spareBricks = im.pending->bricks;
+        im.spareNodesCapacity = im.pending->nodesCapacity;
+        im.spareBricksCapacity = im.pending->bricksCapacity;
+    }
+    im.pending = std::move(pending);
+    im.pendingFrames = 0;
+}
+
 bool SvoRenderer::pump_upload() {
     if (!impl_->pending) {
         return false;
@@ -631,11 +701,13 @@ bool SvoRenderer::pump_upload() {
     ZoneScopedN("svo upload slice");
     Impl::Pending& p = *impl_->pending;
     IDeviceContext* ctx = impl_->context->impl().context;
+    const std::vector<std::uint32_t>& srcNodes = p.grid ? p.grid->nodes() : p.tree->nodes;
+    const std::vector<std::uint32_t>& srcBricks = p.grid ? p.grid->bricks() : p.tree->bricks;
     std::size_t budget = impl_->settings.upload_bytes_per_frame;
-    budget -= upload_slice(ctx, p.nodes, p.tree->nodes, p.nodesDone, budget);
-    (void)upload_slice(ctx, p.bricks, p.tree->bricks, p.bricksDone, budget);
+    budget -= upload_slice(ctx, p.nodes, srcNodes, p.nodesDone, budget);
+    (void)upload_slice(ctx, p.bricks, srcBricks, p.bricksDone, budget);
     ++impl_->pendingFrames;
-    if (p.nodesDone < p.tree->nodes.size() || p.bricksDone < p.tree->bricks.size()) {
+    if (p.nodesDone < srcNodes.size() || p.bricksDone < srcBricks.size()) {
         return false;
     }
 
@@ -652,10 +724,27 @@ bool SvoRenderer::pump_upload() {
     impl_->bricks = p.bricks;
     impl_->nodesCapacity = p.nodesCapacity;
     impl_->bricksCapacity = p.bricksCapacity;
-    impl_->treeBytes = static_cast<std::uint64_t>(p.tree->memory_bytes());
-    impl_->geometry = p.tree->geometry;
-    impl_->rootOffset = p.tree->root;
-    impl_->hasTree = !p.tree->empty();
+    if (p.grid) {
+        const world::svo::CellGrid& g = p.grid->grid();
+        impl_->cellRecords = p.cells;
+        impl_->cellRecordsCapacity = p.cellCount;
+        impl_->treeBytes = p.grid->memory_bytes();
+        // The geometry a cell is built with -- root edge and voxel size -- so the shader's V and the
+        // finest-voxel constant are the CELL's, not the region's.
+        impl_->geometry = g.geometry_for(g.origin_cell());
+        impl_->rootOffset = 0;
+        impl_->gridDims = glm::vec3{g.dims()};
+        impl_->gridOrigin = g.world_min();
+        impl_->gridCellEdge = g.cell_edge();
+        impl_->hasTree = g.present_count() > 0;
+    } else {
+        impl_->treeBytes = static_cast<std::uint64_t>(p.tree->memory_bytes());
+        impl_->geometry = p.tree->geometry;
+        impl_->rootOffset = p.tree->root;
+        impl_->gridDims = glm::vec3{0.0f};
+        impl_->gridCellEdge = 0.0f;
+        impl_->hasTree = !p.tree->empty();
+    }
     impl_->bind_tree_buffers();
     impl_->lastUploadMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - p.start).count();
@@ -805,10 +894,8 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         }
         // .y is goal 266's beam tile size (0 = no seed), taking one of the spare slots this
         // vector was reserved with rather than growing the cbuffer for a single float.
-        // Grid off for now: the shader reads this as "one cell, the whole region", which is the
-        // pre-grid behaviour bit for bit. Goal 257 is what fills it in.
-        cb->gridDims = glm::vec4(0.0f);
-        cb->gridOrigin = glm::vec4(0.0f);
+        cb->gridDims = glm::vec4(impl_->gridDims, impl_->gridCellEdge);
+        cb->gridOrigin = glm::vec4(impl_->gridOrigin, 0.0f);
         cb->waveParams = glm::vec4(waveField.waves[0].steepness,
                                    beam ? static_cast<float>(beamTile) : 0.0f, 0.0f, 0.0f);
         cb->materials = detail::kMaterialRecords;

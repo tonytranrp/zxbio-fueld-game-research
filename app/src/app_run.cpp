@@ -1005,7 +1005,16 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     // frame; logs the tree the frame it lands.
     glm::vec3 lastCameraPos{0.0f};
     const auto adopt_finished = [&]() {
-        if (std::shared_ptr<const world::svo::BrickTree> tree = world.take_finished()) {
+        // Goal 256: the grid path, first, because a build produces exactly one of the two. Same
+        // shape as the tree path below -- both owners take the SAME immutable structure in one
+        // statement, which is what makes "you cannot pass through anything the renderer draws"
+        // true by construction rather than by a tolerance.
+        if (std::shared_ptr<const world::svo::FlatCellGrid> grid = world.take_finished_grid()) {
+            world.note_adopted(s.clock.elapsed_seconds(), lastCameraPos);
+            collider.set_grid(grid);
+            collider.bump_generation();
+            renderer.begin_upload(std::move(grid));
+        } else if (std::shared_ptr<const world::svo::BrickTree> tree = world.take_finished()) {
             world.note_adopted(s.clock.elapsed_seconds(), lastCameraPos);
             // Both owners take the handle in the same statement: the renderer stages it onto the
             // GPU across frames, the simulation queries it. One immutable object, two owners.
@@ -1184,9 +1193,12 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             // seconds before the first tree lands, and nothing else.
             const float aimRange = options.aim_range.value_or(app::kAimResolvableRange);
             const app::AimHit aim =
-                collider.has_tree()
-                    ? app::query_aim_octree(*collider.tree(), camera.position, aimDir, aimRange)
-                    : app::query_aim(world.heightmap(), camera.position, aimDir, aimRange, &aimTrees);
+                collider.grid() != nullptr
+                    ? app::query_aim_octree(*collider.grid(), camera.position, aimDir, aimRange)
+                    : (collider.tree() != nullptr
+                           ? app::query_aim_octree(*collider.tree(), camera.position, aimDir, aimRange)
+                           : app::query_aim(world.heightmap(), camera.position, aimDir, aimRange,
+                                            &aimTrees));
             if (aim.hit) {
                 std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f (%.0f m)",
                               app::material_name(aim.material), static_cast<double>(aim.position.x),

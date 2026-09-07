@@ -89,6 +89,10 @@ public:
     // Adopt prebuilt tiers instead of sampling them. Finest first, as set_focus orders them.
     void adopt_focus(FocusTiers tiers);
 
+    /// The tiers this sampler holds, so a caller that has already paid for them can hand them to
+    /// every cell of a grid instead of each cell sampling 1.3 M noise points of its own.
+    [[nodiscard]] const FocusTiers& focus_tiers() const noexcept { return focusFields_; }
+
     // Pointwise reference: the material of the voxel of edge `voxelEdge` whose min corner is `p`.
     [[nodiscard]] world::chunk::MaterialID material_at(const glm::vec3& voxelMin, float voxelEdge) const;
 

@@ -7,6 +7,7 @@
 #include "world/chunk/material.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/generation/tree_placement.hpp"
+#include "world/svo/cell_grid.hpp"
 #include "world/svo/brick_tree.hpp"
 
 namespace app {
@@ -96,6 +97,13 @@ private:
 // that want an analytic ground truth to compare against -- which is exactly what the goal's own
 // check does with it.
 [[nodiscard]] AimHit query_aim_octree(const world::svo::BrickTree& tree, glm::vec3 origin,
+                                      glm::vec3 direction, float maxDistance = kAimResolvableRange);
+
+// Prompt 004 goal 256: the same query over the cell grid. The crosshair has to ask the structure
+// the renderer is actually marching -- that is this function's whole reason for existing over
+// `query_aim`, and a grid resident with a null tree would otherwise silently fall back to the
+// height function, which is the disagreement goal 178 removed.
+[[nodiscard]] AimHit query_aim_octree(const world::svo::FlatCellGrid& grid, glm::vec3 origin,
                                       glm::vec3 direction, float maxDistance = kAimResolvableRange);
 
 [[nodiscard]] const char* material_name(world::chunk::MaterialID material) noexcept;

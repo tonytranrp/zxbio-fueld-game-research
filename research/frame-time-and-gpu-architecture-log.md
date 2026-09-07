@@ -1393,3 +1393,89 @@ This section's running total is now **ten** for the pass, and all three were min
 Every one of them produced a plausible number. The pattern this pass keeps re-learning: **a
 measurement that confirms what you expected is exactly as likely to be broken as one that does not**
 — the serial-build error looked like a real refutation of the design, and it was an artefact.
+
+---
+
+## 19. The grid on the GPU: 22% on d3d12, nothing on vk, and the backends converge (goal 256)
+
+§18 built the grid on the CPU and passed the oracle. This is the shader mirror, the app integration,
+and the number.
+
+### What had to move, and why the collider and the crosshair were not optional
+
+The renderer was the easy third of it. `OctreeCollider` had to follow because **its entire
+justification is that it answers from the same structure the renderer marches** — leaving it on a
+single tree would have silently reintroduced the clipping bug Prompt 003 built it to remove — and
+`query_aim_octree` for the same reason, which the crash handler demonstrated immediately by catching
+a null-tree dereference on the first grid run.
+
+The shader change is smaller than it sounds because the CPU groundwork was right: `TraceRay` became
+`TraceCell(Cell, ...)` where `Cell` mirrors `TreeView`, and **`MakeWholeCell()` turns the old
+single-tree globals into a grid of exactly one cell**, so the pre-grid path is not a separate code
+path and cannot drift. With `g_GridDims.x <= 0` the shader is bit-for-bit what it was: the checkpoint
+commit confirmed it at 0.0470% of pixels against the shipping golden.
+
+### FXC rejected what Vulkan accepted, exactly as CLAUDE.md warns
+
+The grid shipped working on vk and failed to compile on d3d12:
+
+```
+X3500: array reference cannot be used as an l-value; not natively addressable
+X3511: forced to unroll loop, but unrolling failed
+```
+
+The cause is worth writing down because it is a *second* face of the documented X3500 trap: my
+`[unroll]` loops contained `continue` and `return`. FXC will not unroll a loop containing them, and
+once the loop is not unrolled the `cellCoord[c]` / `tMax[c]` writes become **runtime-indexed vector
+component writes**, which FXC also rejects. Both loops are now branch-free with the early-outs
+hoisted after them. **Had I only tested vk, this would have shipped broken on d3d12.**
+
+### The measurement
+
+`stress_pose`, interleaved rungs (`0,5,0,5`) so clock drift cannot fake it:
+
+| | bricks | resident MB | octree steps/ray | **march ms (vk)** | **march ms (d3d12)** |
+|---|---|---|---|---|---|
+| one 512 m tree, 16 levels | 892,655 | 543.7 | **91.9** | 3.62 / 3.71 | 4.59 / 4.59 |
+| grid of 32 m cells, 12 levels | 891,811 | 543.1 | **33.7** | 3.62 / 3.59 | **3.58 / 3.59** |
+| | −0.09% | −0.1% | **−63%** | **unchanged** | **−22%** |
+
+**Same world (0.09% fewer bricks, the LOD-level difference §18 explains), 63% fewer octree steps, and
+a 22% faster march on d3d12 while vk does not move at all.**
+
+### The interesting part is the split, not the average
+
+Before the grid, d3d12's march was **27% slower than vk's** (4.59 against 3.62) on identical work.
+After it, they are the same (3.58 against 3.62). **The grid did not make the marcher faster in
+general — it removed a penalty that only d3d12 was paying.**
+
+The honest reading, and it is a hypothesis rather than a measurement: the deep tree's chain of
+dependent, cache-missing loads costs more under one backend's compiler and scheduler than the
+other's, and shortening the chain from 16 levels to 12 removes exactly that. Vulkan was evidently
+not bound by the chain at this pose, which is consistent with §14's finding that only about two
+thirds of this march is traversal at all.
+
+Note also that the 63% step cut is **not** comparable to §14's 29% cut: `mean steps` is the octree
+iteration count *inside a cell* and does not count the grid DDA that replaces the removed levels.
+The grid walk is not free — each step fetches a cell record and does a slab test — and vk's flat
+result is what that costs when the chain was not the bottleneck.
+
+### Verified by looking, on both backends
+
+`research/captures/akc_cell_grid_vs_tree.png` — the single tree on vk, the grid on vk, the grid on
+d3d12, same pose. **The same world in all three.** A ×10-amplified difference image against the
+single tree shows fine banding on the terrain surface and nothing else, which is the LOD-level
+difference §18 proved on the CPU: with `--uniform-lod` the two structures are identical and agree on
+100.0% of 20,000 rays.
+
+Both configurations report **23.7%** on `--verify-frame` — the same number to the tenth.
+
+### Build cost in the app, and where 257 stands
+
+The app's own build log, same seed and pose, 128 m region: **1.20 s as one tree, 1.28 s as a grid**
+(+7%), 488,061 bricks against 487,621. At 512 m the controlled probe in §18 measured 2.354 s against
+2.630 s (+12%). Building as a grid is not the problem; §18's finding stands that **per-cell rebuild
+(goal 257) needs per-cell LOD quantisation first**, because with a continuous distance LOD every
+cell's content still depends on the camera.
+
+`--cell-log2 N` selects it (0 = the single tree, and the default). 304/304 tests.

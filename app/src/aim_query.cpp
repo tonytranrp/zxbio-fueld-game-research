@@ -140,6 +140,44 @@ AimHit query_aim(const world::generation::HeightmapGenerator& heightmap, glm::ve
     return result;
 }
 
+namespace {
+
+// The shared tail: a Hit becomes an AimHit. Split out when goal 256 added the grid overload, so the
+// two paths differ ONLY in which traversal they call and cannot drift in what they report.
+[[nodiscard]] AimHit aim_from_hit(const world::svo::Hit& hit) noexcept {
+    AimHit result;
+    if (!hit.hit) {
+        return result;
+    }
+    result.hit = true;
+    result.material = hit.material;
+    result.position = hit.position;
+    result.distance = hit.t;
+    return result;
+}
+
+// The traversal both overloads use: no LOD early-out and no smoothing, deliberately -- the readout
+// wants the VOXEL that is there, not the cube a distant pixel would be shaded with.
+[[nodiscard]] world::svo::TraceParams aim_params(float maxDistance) noexcept {
+    world::svo::TraceParams params;
+    params.max_t = maxDistance;
+    return params;
+}
+
+} // namespace
+
+AimHit query_aim_octree(const world::svo::FlatCellGrid& grid, glm::vec3 origin, glm::vec3 direction,
+                        float maxDistance) {
+    const float dirLength = glm::length(direction);
+    if (dirLength <= 0.0f || grid.empty()) {
+        return AimHit{};
+    }
+    world::svo::Ray ray;
+    ray.origin = origin;
+    ray.dir = direction / dirLength;
+    return aim_from_hit(world::svo::trace_ray_grid(grid, ray, aim_params(maxDistance)));
+}
+
 AimHit query_aim_octree(const world::svo::BrickTree& tree, glm::vec3 origin, glm::vec3 direction,
                         float maxDistance) {
     AimHit result;
