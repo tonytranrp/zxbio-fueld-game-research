@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "render/diligent/memory_tracking.hpp"
 #include "render/diligent/render_context.hpp"
@@ -114,6 +115,21 @@ public:
     // is shared -- a grid is still two word arrays -- and the per-cell records ride along as one
     // small extra buffer (4,096 cells is 64 KB, so it is uploaded whole rather than sliced).
     void begin_upload(std::shared_ptr<const world::svo::FlatCellGrid> grid);
+
+    // Prompt 004 goal 262: the marcher's per-cell usage words, read back from the GPU.
+    //
+    // Fenced and pipelined over three frames -- the copy for frame N is read on frame N+3, so the
+    // CPU never waits on the GPU. Returns false until a slot's copy has actually completed, which is
+    // the difference between a readback and a stall.
+    //
+    // The size is the whole point and it is why there is no GPU-side compaction here: one uint per
+    // CELL, so 4,096 cells is 16 KB per frame. GigaVoxels compacts because it has millions of
+    // elements to report; this grid has thousands, and compacting 16 KB to reduce a 16 KB transfer
+    // would be machinery with no subject. See research section 23 for the measured cost.
+    [[nodiscard]] bool read_cell_usage(std::vector<std::uint32_t>& out);
+    /// Bytes the last readback moved, and how long the copy itself cost on the GPU.
+    [[nodiscard]] std::uint64_t last_usage_readback_bytes() const noexcept;
+    [[nodiscard]] double last_usage_readback_ms() const noexcept;
     bool pump_upload();
     [[nodiscard]] bool upload_pending() const noexcept;
     [[nodiscard]] double last_upload_ms() const noexcept;            // wall-clock from begin to swap

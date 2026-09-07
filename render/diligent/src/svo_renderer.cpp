@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstring>
 #include <cmath>
 #include <optional>
 #include <stdexcept>
@@ -121,12 +122,17 @@ glm::vec2 halton_jitter(std::uint32_t index) noexcept {
 }
 
 RefCntAutoPtr<IShader> create_shader(RenderContext::Impl& rc, IShaderSourceInputStreamFactory* factory,
-                                     SHADER_TYPE type, const char* file, const char* name) {
+                                     SHADER_TYPE type, const char* file, const char* name,
+                                     bool markUsage = false) {
     // The material registry's shader macros (MATERIAL_COUNT, MAT_SHADING_*); the helper owns the
     // array CreateShader reads, so it lives until the call returns.
     ShaderMacroHelper macros;
     detail::add_material_macros(macros);
     detail::add_wind_macros(macros);
+    // Goal 261/262: compiles the usage UAV in or out. Out is not an optimisation of the marking --
+    // it is what keeps a bound pixel-shader UAV off the legacy path, which measured ~30% of the
+    // march on vk purely for being bound.
+    macros.Add("SVO_MARK_USAGE", markUsage ? 1 : 0);
 
     ShaderCreateInfo ci;
     ci.pShaderSourceStreamFactory = factory;
@@ -261,6 +267,9 @@ struct SvoRenderer::Impl {
     // March pass.
     RefCntAutoPtr<IPipelineState> pso;
     RefCntAutoPtr<IShaderResourceBinding> srb;
+    // Goal 261: the same march compiled WITH the usage UAV, used only when the cell grid is on.
+    RefCntAutoPtr<IPipelineState> psoMark;
+    RefCntAutoPtr<IShaderResourceBinding> srbMark;
     RefCntAutoPtr<IBuffer> constants;
     // The current tree's buffers and their capacities (words); the spare pair is the previous
     // tree's, kept for the next upload so a steady-state swap allocates nothing (goal 170: the
@@ -276,6 +285,17 @@ struct SvoRenderer::Impl {
     // than riding along with the read-only cell records.
     RefCntAutoPtr<IBuffer> cellUsage;
     std::size_t cellUsageCapacity = 0;
+    // Goal 262: a three-deep fenced readback ring for the usage words. Three because that is the
+    // depth at which the CPU never waits -- the same reasoning (and the same bug, read-before-write,
+    // fixed once already) as the auto-exposure ring in auto_exposure.cpp.
+    static constexpr std::size_t kUsageReadbackLatency = 3;
+    std::array<RefCntAutoPtr<IBuffer>, kUsageReadbackLatency> usageStaging;
+    std::array<RefCntAutoPtr<IFence>, kUsageReadbackLatency> usageFences;
+    std::array<Uint64, kUsageReadbackLatency> usageFenceValues{};
+    std::size_t usageStagingCells = 0;
+    std::uint64_t lastUsageBytes = 0;
+    double lastUsageMs = 0.0;
+    std::uint32_t usageFrames = 0;
     std::size_t nodesCapacity = 0;
     std::size_t bricksCapacity = 0;
     RefCntAutoPtr<IBuffer> spareNodes;
@@ -372,12 +392,14 @@ void SvoRenderer::Impl::create_pipelines() {
 
     RefCntAutoPtr<IShader> vs =
         create_shader(rc, factory, SHADER_TYPE_VERTEX, "fullscreen.vsh.hlsl", "SVO fullscreen VS");
-    {
+    const auto makeMarchPso = [&](bool markUsage, RefCntAutoPtr<IPipelineState>& outPso,
+                                 RefCntAutoPtr<IShaderResourceBinding>& outSrb) {
         RefCntAutoPtr<IShader> ps =
-            create_shader(rc, factory, SHADER_TYPE_PIXEL, "svo_march.psh.hlsl", "SVO march PS");
+            create_shader(rc, factory, SHADER_TYPE_PIXEL, "svo_march.psh.hlsl",
+                          markUsage ? "SVO march PS (marking)" : "SVO march PS", markUsage);
 
         GraphicsPipelineStateCreateInfo psoCI;
-        psoCI.PSODesc.Name = "SVO march PSO";
+        psoCI.PSODesc.Name = markUsage ? "SVO march PSO (marking)" : "SVO march PSO";
         psoCI.pVS = vs;
         psoCI.pPS = ps;
         psoCI.GraphicsPipeline.NumRenderTargets = 2;
@@ -408,24 +430,31 @@ void SvoRenderer::Impl::create_pipelines() {
             {SHADER_TYPE_PIXEL, "g_CellUsage", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
         };
         psoCI.PSODesc.ResourceLayout.Variables = vars;
-        psoCI.PSODesc.ResourceLayout.NumVariables = 6;
+        // The UAV variable exists only in the marking build -- declaring it on the plain one would
+        // reintroduce exactly the binding this split exists to avoid.
+        psoCI.PSODesc.ResourceLayout.NumVariables = markUsage ? 6 : 5;
 
-        rc.device->CreateGraphicsPipelineState(psoCI, &pso);
-        if (!pso) {
+        rc.device->CreateGraphicsPipelineState(psoCI, &outPso);
+        if (!outPso) {
             throw std::runtime_error("svo march PSO creation failed");
         }
-        constants = create_constant_buffer(rc.device, "SVO MarchConstants CB", sizeof(MarchConstantsCpu));
+        if (!constants) {
+            constants =
+                create_constant_buffer(rc.device, "SVO MarchConstants CB", sizeof(MarchConstantsCpu));
+        }
         if (IShaderResourceVariable* var =
-                pso->GetStaticVariableByName(SHADER_TYPE_PIXEL, "MarchConstants")) {
+                outPso->GetStaticVariableByName(SHADER_TYPE_PIXEL, "MarchConstants")) {
             var->Set(constants);
         } else {
             throw std::runtime_error("svo shader variable not found: MarchConstants");
         }
-        pso->CreateShaderResourceBinding(&srb, true);
-        if (!srb) {
+        outPso->CreateShaderResourceBinding(&outSrb, true);
+        if (!outSrb) {
             throw std::runtime_error("svo SRB creation failed");
         }
-    }
+    };
+    makeMarchPso(false, pso, srb);
+    makeMarchPso(true, psoMark, srbMark);
     {
         RefCntAutoPtr<IShader> ps =
             create_shader(rc, factory, SHADER_TYPE_PIXEL, "svo_beam.psh.hlsl", "SVO beam PS");
@@ -556,16 +585,26 @@ void SvoRenderer::Impl::bind_tree_buffers() {
 
     // Goal 266: the beam pass walks the same nodes. Bound here rather than at draw time for the
     // same reason as above -- one rebind per tree, not one per frame.
-    if (IShaderResourceVariable* usageVar = srb->GetVariableByName(SHADER_TYPE_PIXEL, "g_CellUsage")) {
-        usageVar->Set(cellUsage->GetDefaultView(BUFFER_VIEW_UNORDERED_ACCESS));
-    } else {
-        throw std::runtime_error("svo shader variable g_CellUsage not found");
-    }
-
-    if (IShaderResourceVariable* cellsVar = srb->GetVariableByName(SHADER_TYPE_PIXEL, "g_Cells")) {
-        cellsVar->Set(cellRecords->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
-    } else {
-        throw std::runtime_error("svo shader variable g_Cells not found");
+    // Both march SRBs get the read-only resources; only the marking one has the usage UAV, because
+    // only its PSO declares it (goal 261: a bound PS UAV costs ~30% of the march even unused).
+    for (IShaderResourceBinding* target : {srb.RawPtr(), srbMark.RawPtr()}) {
+        if (target == nullptr) {
+            continue;
+        }
+        if (IShaderResourceVariable* v = target->GetVariableByName(SHADER_TYPE_PIXEL, "g_Cells")) {
+            v->Set(cellRecords->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+        } else {
+            throw std::runtime_error("svo shader variable g_Cells not found");
+        }
+        if (IShaderResourceVariable* v = target->GetVariableByName(SHADER_TYPE_PIXEL, "g_Nodes")) {
+            v->Set(nodes->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+        }
+        if (IShaderResourceVariable* v = target->GetVariableByName(SHADER_TYPE_PIXEL, "g_Bricks")) {
+            v->Set(bricks->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+        }
+        if (IShaderResourceVariable* v = target->GetVariableByName(SHADER_TYPE_PIXEL, "g_CellUsage")) {
+            v->Set(cellUsage->GetDefaultView(BUFFER_VIEW_UNORDERED_ACCESS));
+        }
     }
 
     if (IShaderResourceVariable* beamNodes =
@@ -799,6 +838,77 @@ bool SvoRenderer::pump_upload() {
     return true;
 }
 
+bool SvoRenderer::read_cell_usage(std::vector<std::uint32_t>& out) {
+    Impl& im = *impl_;
+    if (im.cellUsageCapacity == 0 || im.gridDims.x <= 0.0f) {
+        return false;
+    }
+    auto& rc = im.context->impl();
+
+    // (Re)create the ring when the grid's size changes. Sized once per grid, never per frame.
+    if (im.usageStagingCells != im.cellUsageCapacity) {
+        for (std::size_t i = 0; i < Impl::kUsageReadbackLatency; ++i) {
+            BufferDesc desc;
+            desc.Name = "SVO cell usage readback";
+            desc.Size = static_cast<Uint64>(im.cellUsageCapacity) * sizeof(std::uint32_t);
+            desc.Usage = USAGE_STAGING;
+            desc.CPUAccessFlags = CPU_ACCESS_READ;
+            desc.BindFlags = BIND_NONE;
+            im.usageStaging[i].Release();
+            rc.device->CreateBuffer(desc, nullptr, &im.usageStaging[i]);
+            if (!im.usageStaging[i]) {
+                return false;
+            }
+            if (!im.usageFences[i]) {
+                FenceDesc fd;
+                fd.Name = "SVO usage readback fence";
+                rc.device->CreateFence(fd, &im.usageFences[i]);
+            }
+            im.usageFenceValues[i] = 0;
+        }
+        im.usageStagingCells = im.cellUsageCapacity;
+        im.usageFrames = 0;
+    }
+
+    const std::size_t slot = im.usageFrames % Impl::kUsageReadbackLatency;
+
+    // READ BEFORE WRITE. The slot about to be overwritten is the one whose fence we check, so the
+    // check has to happen BEFORE the copy is enqueued -- signalling first and then testing against
+    // the value just signalled is the bug that made the auto-exposure readback never land.
+    bool got = false;
+    if (im.usageFrames >= Impl::kUsageReadbackLatency &&
+        im.usageFences[slot]->GetCompletedValue() >= im.usageFenceValues[slot]) {
+        void* mapped = nullptr;
+        rc.context->MapBuffer(im.usageStaging[slot], MAP_READ, MAP_FLAG_DO_NOT_WAIT, mapped);
+        if (mapped != nullptr) {
+            out.resize(im.cellUsageCapacity);
+            std::memcpy(out.data(), mapped, out.size() * sizeof(std::uint32_t));
+            rc.context->UnmapBuffer(im.usageStaging[slot], MAP_READ);
+            got = true;
+        }
+    }
+
+    const auto start = std::chrono::steady_clock::now();
+    rc.context->CopyBuffer(im.cellUsage, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                           im.usageStaging[slot], 0,
+                           static_cast<Uint64>(im.cellUsageCapacity) * sizeof(std::uint32_t),
+                           RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    im.usageFenceValues[slot] = static_cast<Uint64>(im.usageFrames) + 1;
+    rc.context->EnqueueSignal(im.usageFences[slot], im.usageFenceValues[slot]);
+    im.lastUsageMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    im.lastUsageBytes = static_cast<std::uint64_t>(im.cellUsageCapacity) * sizeof(std::uint32_t);
+    ++im.usageFrames;
+    return got;
+}
+
+std::uint64_t SvoRenderer::last_usage_readback_bytes() const noexcept {
+    return impl_->lastUsageBytes;
+}
+
+double SvoRenderer::last_usage_readback_ms() const noexcept {
+    return impl_->lastUsageMs;
+}
+
 bool SvoRenderer::upload_pending() const noexcept {
     return impl_->pending != nullptr;
 }
@@ -954,10 +1064,15 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         // renderer has always had (kept, because every number in research/lin-look-log.md was
         // taken with it); THIS is the narrower one that says how much of it is the march.
         const GpuPassScope marchScope(*impl_->context, GpuPass::March);
-        impl_->srb->GetVariableByName(SHADER_TYPE_PIXEL, "g_BeamStart")
+        // Goal 261: the marking build only when the grid is on AND marking is wanted. On the
+        // legacy single-tree path this is the PSO with no UAV declared at all.
+        const bool marking = s.mark_cell_usage && impl_->gridDims.x > 0.0f;
+        IPipelineState* marchPso = marking ? impl_->psoMark.RawPtr() : impl_->pso.RawPtr();
+        IShaderResourceBinding* marchSrb = marking ? impl_->srbMark.RawPtr() : impl_->srb.RawPtr();
+        marchSrb->GetVariableByName(SHADER_TYPE_PIXEL, "g_BeamStart")
             ->Set(impl_->beamStart->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE));
-        ctx->SetPipelineState(impl_->pso);
-        ctx->CommitShaderResources(impl_->srb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ctx->SetPipelineState(marchPso);
+        ctx->CommitShaderResources(marchSrb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         ctx->Draw({3, DRAW_FLAG_VERIFY_ALL, 1});
     }
 

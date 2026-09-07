@@ -185,3 +185,94 @@ TEST_CASE("used_on and requests_on ignore other frames", "[svo][marks]") {
     CHECK(marks.used_on(10u).empty());
     CHECK(marks.requests_on(10u).empty());
 }
+
+
+TEST_CASE("the compaction separates used from unused, oldest first", "[svo][marks][compact]") {
+    // Goal 262's structure, on a hand-built case where the right answer can be read off.
+    CellMarks marks(6);
+    marks.mark(0, 3u, false);  // old
+    marks.mark(1, 9u, false);  // current
+    marks.mark(2, 1u, false);  // oldest
+    marks.mark(3, 9u, true);   // current, and requested
+    marks.mark(4, 7u, false);  // old
+    // cell 5 never marked at all: stamp 0, the oldest possible
+
+    const CellMarks::Compaction c = marks.compact(9u);
+    REQUIRE(c.order.size() == 6);
+    // Evictable first, oldest stamp first: 5 (0), 2 (1), 0 (3), 4 (7).
+    CHECK(c.first_used_this_frame == 4);
+    CHECK(c.order[0] == 5u);
+    CHECK(c.order[1] == 2u);
+    CHECK(c.order[2] == 0u);
+    CHECK(c.order[3] == 4u);
+    // Then the ones used this frame, in index order.
+    CHECK(c.order[4] == 1u);
+    CHECK(c.order[5] == 3u);
+    CHECK(c.requested == 1);
+}
+
+TEST_CASE("the compaction is correct over 10,000 random usage patterns", "[svo][marks][compact]") {
+    // Goal 262's Check verbatim: a unit test against a CPU reference over 10,000 random patterns.
+    // The reference here is the DEFINITION rather than a second implementation -- for each pattern
+    // the invariants are re-derived from the marks directly, which is what makes this a check on
+    // the compaction and not two copies of the same mistake.
+    std::mt19937 rng(20260907u);
+    for (int trial = 0; trial < 10000; ++trial) {
+        const std::size_t n = 1 + rng() % 64u;
+        const std::uint32_t frame = 1u + rng() % 20u;
+        CellMarks marks(n);
+        std::vector<std::uint32_t> stamp(n, 0u);
+        std::vector<bool> requested(n, false);
+        for (std::size_t i = 0; i < n; ++i) {
+            if ((rng() % 4u) != 0u) { // some cells are never marked at all
+                stamp[i] = rng() % 22u;
+                requested[i] = (rng() % 3u) == 0u;
+                marks.mark(i, stamp[i], requested[i]);
+            }
+        }
+
+        const CellMarks::Compaction c = marks.compact(frame);
+
+        // 1. It is a PERMUTATION of every cell -- nothing lost, nothing duplicated.
+        REQUIRE(c.order.size() == n);
+        std::vector<std::uint32_t> sorted = c.order;
+        std::sort(sorted.begin(), sorted.end());
+        for (std::size_t i = 0; i < n; ++i) {
+            REQUIRE(sorted[i] == static_cast<std::uint32_t>(i));
+        }
+
+        // 2. The boundary is exact: everything before it was NOT used this frame, everything from
+        //    it on WAS. This is the property eviction safety rests on.
+        for (std::size_t i = 0; i < c.order.size(); ++i) {
+            const bool usedNow = cell_mark_frame(marks.at(c.order[i])) == frame;
+            REQUIRE(usedNow == (i >= c.first_used_this_frame));
+        }
+
+        // 3. The evictable half is ordered oldest first.
+        for (std::size_t i = 1; i < c.first_used_this_frame; ++i) {
+            REQUIRE(cell_mark_frame(marks.at(c.order[i - 1])) <= cell_mark_frame(marks.at(c.order[i])));
+        }
+
+        // 4. The request count matches the marks.
+        std::size_t expected = 0;
+        for (std::size_t i = 0; i < n; ++i) {
+            if (cell_mark_frame(marks.at(i)) == frame && cell_mark_requested(marks.at(i))) {
+                ++expected;
+            }
+        }
+        REQUIRE(c.requested == expected);
+    }
+}
+
+TEST_CASE("a frame nothing was used on leaves everything evictable", "[svo][marks][compact]") {
+    CellMarks marks(5);
+    marks.mark(0, 1u, false);
+    marks.mark(1, 2u, false);
+    const CellMarks::Compaction c = marks.compact(99u);
+    CHECK(c.first_used_this_frame == 5);
+    CHECK(c.requested == 0);
+    // And an empty grid compacts to nothing rather than misbehaving.
+    const CellMarks none(0);
+    CHECK(none.compact(1u).order.empty());
+    CHECK(none.compact(1u).first_used_this_frame == 0);
+}

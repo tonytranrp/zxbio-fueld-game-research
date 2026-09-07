@@ -76,6 +76,21 @@ public:
 
     void clear() noexcept { std::fill(marks_.begin(), marks_.end(), 0u); }
 
+    /// Goal 262: the compaction, as GigaVoxels §1.4 describes it -- "two stream reductions, to
+    /// separate all elements in the usage list that were used in the current frame from the
+    /// others", concatenated so the least recently used land at the FRONT.
+    ///
+    /// The result is one compact list: `[evictable, oldest first ... | used this frame ...]`, with
+    /// `first_used_this_frame` marking the boundary. A caller evicts from index 0 and stops when it
+    /// reaches that boundary, which is what makes "never evict something this frame is marching
+    /// through" structural rather than a rule someone has to remember.
+    struct Compaction {
+        std::vector<std::uint32_t> order;          ///< cell indices, LRU first
+        std::size_t first_used_this_frame = 0;     ///< everything before this is evictable
+        std::size_t requested = 0;                 ///< of the used ones, how many were absent
+    };
+    [[nodiscard]] Compaction compact(std::uint32_t frame) const;
+
 private:
     std::vector<std::uint32_t> marks_;
 };

@@ -96,7 +96,15 @@ StructuredBuffer<uint4> g_Cells;
 // land in. An InterlockedOr, a counter, or "how many rays wanted it" would each be a
 // read-modify-write and would put the atomic straight back -- which is why none of them is here.
 // world/svo/cell_marks.hpp carries the argument in full and the CPU mirror it is checked against.
+//
+// COMPILED OUT WHEN THE GRID IS OFF, and that is not tidiness. A bound pixel-shader UAV costs this
+// march ~30% on vk even when nothing writes to it -- measured, because the goal 273 regression gate
+// caught it on the grid-OFF path where the marking never runs. The mechanism is the same family as
+// the SV_Depth finding in research section 11: a UAV on a pixel shader disables ROP and early-Z
+// optimisations whether or not it is used. Two PSOs, one macro, and the legacy path pays nothing.
+#if SVO_MARK_USAGE
 RWStructuredBuffer<uint> g_CellUsage;
+#endif
 
 struct PSInput
 {
@@ -397,6 +405,7 @@ Hit TraceGrid(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffse
     for (uint walked = 0u; walked < kMaxGridSteps; ++walked)
     {
         const Cell cell = FetchCell(cellCoord);
+#if SVO_MARK_USAGE
         if (g_MarkParams.y != 0.0)
         {
             // A plain store, once per cell entered. See the note on g_CellUsage above for why this
@@ -405,6 +414,7 @@ Hit TraceGrid(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffse
             const uint index = uint(cellCoord.x + dims.x * (cellCoord.y + dims.y * cellCoord.z));
             g_CellUsage[index] = (uint(g_MarkParams.x) & 0x7FFFFFFFu) | (cell.present ? 0u : 0x80000000u);
         }
+#endif
         if (cell.present)
         {
             const Hit hit = TraceCell(cell, rayOrigin, rayDir, lodPixelAngle, tOffset, maxT,

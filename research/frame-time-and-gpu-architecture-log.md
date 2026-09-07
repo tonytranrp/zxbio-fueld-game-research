@@ -1702,3 +1702,80 @@ lives beside the field.
 New: `dev/scenarios/grid_stress.scn` — `stress_pose`'s pose with the cell grid on, kept beside it
 rather than replacing it so both structures are measured at one pose and a regression in either is
 attributable.
+
+---
+
+## 23. The LRU, the readback, and a 30% regression the gate caught (goal 262)
+
+### The compaction, and the 10,000-pattern Check
+
+`CellMarks::compact` is GigaVoxels §1.4's structure — *"two stream reductions, to separate all
+elements in the usage list that were used in the current frame from the others"*, concatenated so
+the least recently used land at the front. One list, `[evictable oldest-first | used this frame]`,
+with `first_used_this_frame` as the boundary. **A caller evicts from index 0 and stops at the
+boundary, which makes "never evict what this frame is marching through" structural rather than a
+rule someone has to remember.**
+
+Goal 262's Check asks for a unit test against a CPU reference over 10,000 random patterns.
+**971,952 assertions**, and the reference is the *definition* re-derived from the marks for each
+pattern rather than a second implementation — two copies of the same mistake would agree. Four
+invariants per pattern: it is a permutation of every cell (nothing lost or duplicated); the boundary
+is exact in both directions; the evictable half is ordered oldest-first; and the request count
+matches the marks.
+
+### The readback, measured
+
+Fenced and three-deep, so the CPU never waits — the same ring shape as `auto_exposure.cpp`, and
+deliberately with the same read-**before**-write ordering, because signalling a slot and then testing
+against the value just signalled is the bug that made the exposure readback never land.
+
+| | measured |
+|---|---|
+| **bytes per frame** | **16,384 (16.0 KB)** — one `uint` per cell, 4,096 cells |
+| enqueue cost | **0.010–0.026 ms** |
+| readbacks landed | 624–870 over 1,200–1,500 frames |
+
+**Against the architecture this replaces — a 400 MB upload per 2 m of camera motion — the feedback
+channel that decides what to stream costs 16 KB per frame and 0.02 ms.** At 165 fps that is
+2.6 MB/s, in the opposite direction, to control a 400 MB transfer. That ratio is what goal 262 calls
+the headline number of the prompt, and it is measured rather than derived.
+
+### And there is no GPU-side compaction, for a measured reason
+
+GigaVoxels compacts on the GPU because it reports on **millions** of nodes and bricks and must not
+send that to the CPU. This grid has **4,096 cells**, and the uncompacted buffer is already 16 KB.
+**Compacting 16 KB on the GPU to reduce a 16 KB transfer would be machinery with no subject** — a
+compute dispatch, a work-efficient prefix sum, and a second buffer, to save nothing measurable.
+
+The compaction therefore runs on the CPU, on the words that come back, and is tested there. The
+threshold at which the GPU version starts to matter is worth writing down: this readback is 4 bytes
+per element, so it stays under a megabyte until **~256,000 elements**. If a future design reports per
+*brick* rather than per cell — 902,616 of them — that is 3.6 MB per frame and the compute path
+becomes the right answer. Recorded as the condition rather than as a maybe.
+
+### The 30% regression, and the gate that caught it
+
+Adding the usage UAV made `stress_pose` fail its own budget: **`gpu_ms_p95` 4.966 against 4.4** on
+vk — **on the grid-OFF path, where the marking never runs at all.**
+
+The cause is the *binding*, not the writing. **A bound pixel-shader UAV costs this march roughly 30%
+even when nothing writes to it**, which is the same family as §11's `SV_Depth` finding: a UAV on a
+pixel shader disables ROP and early-Z optimisations whether or not it is used. Turning the marking
+off did not help, because the UAV was still declared and bound.
+
+**The fix is two PSOs from one shader**, split by an `SVO_MARK_USAGE` macro, chosen per frame by
+whether the grid is on. The legacy single-tree path now declares no UAV at all.
+
+| `stress_pose`, vk | `gpu_ms_p95` |
+|---|---|
+| before the UAV | 3.80 |
+| UAV bound, marking off | **4.97** (gate FAILS) |
+| two PSOs, UAV only when marking | **4.01, 4.04, 4.01, 4.09** (gate passes) |
+
+**This is what goal 273's gate exists for, and it earned its place on its first real regression.**
+It is worth being precise about the residue: the p95 settles at ~4.04 against the 3.80 it was set
+from, so the margin has narrowed from 15% to 9% while the run-to-run spread is 2%. The gate stays as
+it is — a 9% margin against 2% noise still catches a real regression — and the narrowing is recorded
+rather than papered over by widening the budget.
+
+330/330 tests.

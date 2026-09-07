@@ -35,6 +35,8 @@
 #include "render/interface/camera.hpp"
 #include "spectator_camera.hpp"
 #include "svo_world.hpp"
+
+#include "world/svo/cell_marks.hpp"
 #include "world/collision/aabb_sweep.hpp"
 #include "world/collision/octree_collider.hpp"
 #include "world/collision/terrain_collider.hpp"
@@ -1005,6 +1007,10 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     // Hands a finished build to the renderer's staged upload, and pumps that upload one slice per
     // frame; logs the tree the frame it lands.
     glm::vec3 lastCameraPos{0.0f};
+    // Goal 262: the words the marcher wrote, read back three frames later.
+    std::vector<std::uint32_t> usageWords;
+    world::svo::CellMarks usageMarks;
+    std::uint64_t usageReadbacks = 0;
     const auto adopt_finished = [&]() {
         // Goal 256: the grid path, first, because a build produces exactly one of the two. Same
         // shape as the tree path below -- both owners take the SAME immutable structure in one
@@ -1269,6 +1275,13 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
         // goal 215's phase-coverage check circular -- it would have read 100% by construction and
         // proved nothing. It is emitted honestly instead, and the gap between the two is the
         // finding (research/dev-harness-log.md).
+        // Goal 262: the usage readback, pipelined three frames deep so it never stalls. OUTSIDE
+        // the hooks.on_frame block on purpose -- that block only runs under the harness, and a
+        // readback that only happens when something is watching is not a readback.
+        if (renderer.read_cell_usage(usageWords)) {
+            usageMarks = world::svo::CellMarks(usageWords.size());
+            ++usageReadbacks;
+        }
         if (hooks.on_frame) {
             pending.index = frame;
             pending.wall_ms = 0.0; // filled in at the top of the next frame
@@ -1359,6 +1372,14 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     }
     if (hooks.on_invariants) {
         hooks.on_invariants(walkViolations, insideSolidEvents, stanceChanges);
+    }
+    if (usageReadbacks > 0) {
+        // Goal 262's headline: bytes per frame from GPU to CPU, against the 400 MB per 2 m of the
+        // architecture this replaces.
+        log(LogLevel::Info, "cell usage readback: {} landed, {} bytes/frame ({:.1f} KB), enqueue {:.3f} ms",
+            usageReadbacks, renderer.last_usage_readback_bytes(),
+            static_cast<double>(renderer.last_usage_readback_bytes()) / 1024.0,
+            renderer.last_usage_readback_ms());
     }
     log(LogLevel::Info, "exiting after {} frames on {}", frame,
         render::diligent::to_string(s.context->backend()));
