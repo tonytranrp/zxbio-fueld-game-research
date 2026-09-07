@@ -58,6 +58,12 @@ struct PlayerIntent {
     // it on the first sub-tick of the frame that saw the press and clears it for the rest --
     // holding Space must not re-arm the buffer every tick.
     bool jump_pressed = false;
+
+    // Memberwise. Needed because dev::scenario::InputFrame compares whole frames (its test asserts
+    // an exact tick sequence), and a defaulted == on a struct whose member has none is IMPLICITLY
+    // DELETED -- which MSVC accepted silently and clang's -Wdefaulted-function-deleted caught on
+    // the Linux CI leg. An intent is a bag of bools; memberwise is what it means.
+    [[nodiscard]] friend bool operator==(const PlayerIntent&, const PlayerIntent&) noexcept = default;
 };
 
 // What the world says about the column the body is standing in. `water_surface_y` is a parameter
