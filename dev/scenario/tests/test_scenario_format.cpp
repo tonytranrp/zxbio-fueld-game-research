@@ -229,6 +229,48 @@ TEST_CASE("a capture can declare itself ungoldened, and it round-trips", "[scena
     CHECK(second.scenario.captures == first.scenario.captures);
 }
 
+TEST_CASE("an assertion can be narrowed to one backend, and it round-trips", "[scenario][assert]") {
+    // Goal 273. A performance budget that must hold on BOTH backends is set by the slower one, and
+    // vk and d3d12 differ by 30-35% on this machine -- so one threshold hands the faster backend
+    // that much slack, and `ctest -L scenario` runs vk only. Per-backend thresholds are what make
+    // the gate gate.
+    const ParseResult first = parse_scenario("name t\n"
+                                             "pose 0,0,0 0 0\n"
+                                             "assert frames > 0\n"
+                                             "assert gpu_ms_p95 < 4.4 vk\n"
+                                             "assert gpu_ms_p95 < 6 d3d12\n",
+                                             "t.scn");
+    REQUIRE(first.ok);
+    REQUIRE(first.scenario.assertions.size() == 3);
+    CHECK(first.scenario.assertions[0].backend == BackendSelection::Both);
+    CHECK(first.scenario.assertions[1].backend == BackendSelection::Vulkan);
+    CHECK(first.scenario.assertions[2].backend == BackendSelection::D3D12);
+
+    // The unqualified one applies everywhere; the qualified ones apply to exactly one backend.
+    CHECK(applies_to(first.scenario.assertions[0], BackendSelection::Vulkan));
+    CHECK(applies_to(first.scenario.assertions[0], BackendSelection::D3D12));
+    CHECK(applies_to(first.scenario.assertions[1], BackendSelection::Vulkan));
+    CHECK_FALSE(applies_to(first.scenario.assertions[1], BackendSelection::D3D12));
+    CHECK_FALSE(applies_to(first.scenario.assertions[2], BackendSelection::Vulkan));
+    CHECK(applies_to(first.scenario.assertions[2], BackendSelection::D3D12));
+
+    // Emit and re-parse: a qualifier that did not survive the round trip would silently widen every
+    // gate back to both backends, which is exactly the failure this feature exists to prevent.
+    const ParseResult second = parse_scenario(emit_scenario(first.scenario), "t.scn");
+    REQUIRE(second.ok);
+    CHECK(second.scenario.assertions == first.scenario.assertions);
+}
+
+TEST_CASE("an assertion rejects a trailing word that is not a single backend", "[scenario][assert]") {
+    for (const char* bad : {"assert frames > 0 vulkan\n", "assert frames > 0 both\n",
+                            "assert frames > 0 gpu\n"}) {
+        const ParseResult result =
+            parse_scenario(std::string{"name t\npose 0,0,0 0 0\n"} + bad, "t.scn");
+        CHECK_FALSE(result.ok);
+        CHECK(result.message.find("vk or d3d12") != std::string::npos);
+    }
+}
+
 TEST_CASE("a capture rejects a trailing word that is not no-golden", "[scenario][capture]") {
     const ParseResult result =
         parse_scenario("name t\npose 0,0,0 0 0\ncapture end settled nogolden\n", "t.scn");

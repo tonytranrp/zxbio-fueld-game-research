@@ -82,7 +82,10 @@ if(BUILD_TESTING)
   # They stay registered because on a machine WITH a GPU a plain `ctest` running them is exactly
   # what caught seven stale goldens this pass. The working directory is the repo root so
   # dev/scenarios and dev/goldens resolve.
-  foreach(scenario_name spawn_stand macro_ground valley_far clip_stress walk_cliff)
+  # stress_pose and fly_transect joined this list for goal 273: they carry the frame-time regression
+  # gate, and a gate that is not in `ctest` is a number in a log file. They are the two most
+  # expensive scenarios here (11 s and 13 s on vk) and that is the price of the gate.
+  foreach(scenario_name spawn_stand macro_ground valley_far clip_stress walk_cliff stress_pose fly_transect)
     add_test(NAME "scenario.${scenario_name}"
              COMMAND voxel_harness --scenario ${scenario_name} --headless --backend vk
                      --out-dir "${CMAKE_CURRENT_BINARY_DIR}/scenario-out"

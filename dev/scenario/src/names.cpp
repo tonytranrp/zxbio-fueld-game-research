@@ -30,6 +30,7 @@ constexpr std::array kMetrics{
     Named<Metric>{"slow_frames_uploading", Metric::SlowFramesUploading},
     Named<Metric>{"slow_frames_building", Metric::SlowFramesBuilding},
     Named<Metric>{"gpu_ms_mean", Metric::GpuMsMean},
+    Named<Metric>{"gpu_ms_median", Metric::GpuMsMedian},
     Named<Metric>{"gpu_ms_p95", Metric::GpuMsP95},
     Named<Metric>{"gpu_ms_max", Metric::GpuMsMax},
     Named<Metric>{"gpu_memory_mb", Metric::GpuMemoryMb},

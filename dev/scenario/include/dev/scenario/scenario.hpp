@@ -6,13 +6,12 @@
 #include <vector>
 
 #include "dev/scenario/assertion.hpp"
+#include "dev/scenario/backend.hpp"
 #include "dev/scenario/capture.hpp"
 #include "dev/scenario/motion_script.hpp"
 #include "dev/scenario/pose.hpp"
 
 namespace dev::scenario {
-
-enum class BackendSelection : std::uint8_t { Vulkan, D3D12, Both };
 
 // A named, versioned, deterministic description of "put the camera here, drive these inputs for
 // this long, capture at these moments, assert these budgets".
@@ -43,8 +42,5 @@ struct Scenario {
                assertions == other.assertions && backend == other.backend && golden_dir == other.golden_dir;
     }
 };
-
-[[nodiscard]] bool parse_backend(std::string_view text, BackendSelection& out) noexcept;
-[[nodiscard]] std::string_view backend_name(BackendSelection backend) noexcept;
 
 } // namespace dev::scenario

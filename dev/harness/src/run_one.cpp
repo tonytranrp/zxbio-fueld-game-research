@@ -308,7 +308,16 @@ int run_one(const scenario::Scenario& sc, const Options& harnessOptions, render:
     }
 
     // ---- assertions ------------------------------------------------------------------------------
+    const scenario::BackendSelection running = backend == render::diligent::Backend::Vulkan
+                                                   ? scenario::BackendSelection::Vulkan
+                                                   : scenario::BackendSelection::D3D12;
     for (const scenario::Assertion& assertion : sc.assertions) {
+        // Goal 273: an assertion narrowed to the other backend is not this run's business. It is
+        // SKIPPED silently rather than passed, so a per-backend budget cannot be mistaken for one
+        // that held everywhere.
+        if (!scenario::applies_to(assertion, running)) {
+            continue;
+        }
         AssertionResult result;
         result.assertion = assertion;
         result.measured = measure(assertion.metric, out);
@@ -320,8 +329,11 @@ int run_one(const scenario::Scenario& sc, const Options& harnessOptions, render:
                 result.measured);
             out.passed = false;
         } else {
-            log(LogLevel::Info, "assert {} {} {}: measured {:.4g} PASS",
+            log(LogLevel::Info, "assert {} {} {}{}: measured {:.4g} PASS",
                 scenario::metric_name(assertion.metric), scenario::op_name(assertion.op), assertion.value,
+                assertion.backend == scenario::BackendSelection::Both
+                    ? std::string{}
+                    : " [" + std::string{scenario::backend_name(assertion.backend)} + "]",
                 result.measured);
         }
         out.assertions.push_back(result);

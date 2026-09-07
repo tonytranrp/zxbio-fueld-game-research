@@ -14,3 +14,28 @@ capture end valley_far
 
 assert frames > 0
 assert contrast_percent > 6
+
+# ------------------------------------------------------------------ goal 273: the regression gate
+# A PERCENTILE of the GPU timestamp range across this fixed camera path, per research section 6.8 --
+# never a mean (one hitch moves it) and above all never fps, which this machine's 165 Hz
+# FIFO_RELAXED panel caps at 155-159 and which therefore cannot express a regression at all.
+#
+# PER BACKEND, because vk and d3d12 differ by 30-35% here and `ctest -L scenario` runs vk ONLY. A
+# single threshold would have to be set by the slower backend, leaving the faster one 35% of slack
+# -- a 30% vk regression would sail straight through the gate that CI actually runs.
+#
+# Each number is ~1.2x the worst of three runs on THAT backend: the smallest margin that survives
+# run-to-run noise and still fails when the budget is tightened by 20%, which is goal 273's own
+# Check and is demonstrated in the log.
+#
+# AND THE MEDIAN HERE, not the p95. This scenario runs ~320 frames, where the 95th percentile is the
+# sixteenth-worst frame and therefore one hitch away from anything. Measured on BOTH backends:
+#
+#   vk    p95 4.76 3.68 3.53 (35% spread)  |  median 2.93 3.02 3.00 (3%)
+#   d3d12 p95 4.45 4.93 5.92 6.46 (45%)    |  median 3.78 3.95 3.98 4.03 (7%)
+#
+# The long scenarios above gate on p95, where it holds to 2%. A p95 needs roughly 800 frames on this
+# machine before it is a statistic rather than a coin flip -- the table lives in
+# dev/scenario/include/dev/scenario/assertion.hpp.
+assert gpu_ms_median < 3.6 vk
+assert gpu_ms_median < 4.6 d3d12

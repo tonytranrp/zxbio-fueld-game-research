@@ -13,6 +13,7 @@ target_sources(dev_scenario PUBLIC
     BASE_DIRS include
     FILES
         include/dev/scenario/assertion.hpp
+        include/dev/scenario/backend.hpp
         include/dev/scenario/capture.hpp
         include/dev/scenario/input_frame.hpp
         include/dev/scenario/motion_script.hpp

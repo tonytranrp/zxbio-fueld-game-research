@@ -38,6 +38,8 @@ double measure(scenario::Metric metric, const RunResult& run) {
         return slow.while_building;
     case scenario::Metric::GpuMsMean:
         return gpu.mean;
+    case scenario::Metric::GpuMsMedian:
+        return gpu.median;
     case scenario::Metric::GpuMsP95:
         return gpu.p95;
     case scenario::Metric::GpuMsMax:

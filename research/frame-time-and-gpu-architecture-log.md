@@ -1116,3 +1116,91 @@ number while measuring something else.)
 > One caution: the softening measured here is at **7°/s**. Prompt 005's grain and normal work will
 > change what there is to smear, and fast motion was not tested. Re-measure at the pan rate the look
 > is actually judged at.
+
+---
+
+## 16. The frame-time regression gate, and the two things that had to be measured to make it real (goal 273)
+
+Research §6.8's prescription: assert on a **percentile across a fixed camera path from GPU
+timestamps**, not a mean and not fps — this machine's 165 Hz FIFO_RELAXED panel caps fps at 155–159,
+so fps cannot express a regression at all. The harness already had `gpu_ms_p95` as an assertable
+metric. Writing three thresholds and calling it done would have produced a gate that does not gate,
+for two separate reasons, and both had to be measured before a number could be written.
+
+### Reason one: a p95 needs about 800 frames before it is a statistic
+
+Four runs each, same machine, same build, d3d12:
+
+| scenario | frames | `gpu_ms_p95` across runs | spread | median across the same runs |
+|---|---|---|---|---|
+| `stress_pose` | ~800 | 5.05, 5.09, 5.14, 5.21 | **3%** | 4.70–4.72 (0.4%) |
+| `valley_far` | ~320 | 4.45, 4.93, 5.92, 6.46 | **45%** | 3.78–4.03 (7%) |
+
+And it is not a d3d12 quirk — vk shows the same shape (`valley_far` p95 4.76 / 3.68 / 3.53, a 35%
+spread, against `stress_pose`'s 3.80 / 3.80 / 3.82 at 0.5%).
+
+**At 320 frames the 95th percentile is the sixteenth-worst frame, which is one hitch away from
+anything.** The median of the same short run is stable. So `gpu_ms_median` was added as a metric,
+`valley_far` gates on it, and the long scenarios gate on p95 — with the table written into
+`assertion.hpp` beside the enum so the next author picks correctly instead of re-deriving this.
+
+The first cut of this gate had `valley_far` on p95 at a threshold taken from two runs. It failed on
+its third run. That is the whole reason this section exists.
+
+### Reason two: one threshold for two backends is not a gate
+
+vk and d3d12 differ by **30–35%** here, so a threshold that must hold on both is set by d3d12 and
+hands vk that much slack. And `ctest -L scenario` runs **vk only** (the Windows CI runner has no
+Vulkan ICD, so CI excludes these entirely — see the note below). **A 30% vk regression would have
+sailed straight through the gate that is actually run.**
+
+So the scenario grammar gained an optional trailing backend on `assert`, the same shape as
+`capture ... no-golden`:
+
+```
+assert gpu_ms_p95 < 4.4 vk
+assert gpu_ms_p95 < 6.0 d3d12
+```
+
+An assertion narrowed to the other backend is **skipped**, not passed, so a per-backend budget can
+never be mistaken for one that held everywhere. Round-trips through `emit_scenario`, and is tested —
+including that `vulkan`, `both` and `gpu` are all rejected, because a typo that silently widened
+every gate back to both backends is precisely the failure this feature exists to prevent.
+
+### The gate as it ships
+
+| scenario | metric | vk | d3d12 |
+|---|---|---|---|
+| `stress_pose` | `gpu_ms_p95` | **< 4.4** | **< 6.0** |
+| `fly_transect` | `gpu_ms_p95` | **< 4.5** | **< 5.7** |
+| `valley_far` | `gpu_ms_median` | **< 3.6** | **< 4.6** |
+
+Each is ~1.2× the worst of three or four runs on that backend — the smallest margin that survives
+run-to-run noise and still fails a 20% tightening.
+
+### The Check, performed on both backends
+
+| | at the shipping budget | at 20% tighter |
+|---|---|---|
+| `stress_pose` vk | 3.794 **PASS** | 3.804 vs < 3.52 **FAIL** |
+| `stress_pose` d3d12 | 4.988 **PASS** | 5.011 vs < 4.80 **FAIL** |
+| `valley_far` vk | 2.957 **PASS** | 2.921 vs < 2.88 **FAIL** |
+| `valley_far` d3d12 | 3.958 **PASS** | 4.009 vs < 3.68 **FAIL** |
+| `fly_transect` vk | 3.906 **PASS** | 4.014 vs < 3.60 **FAIL** |
+| `fly_transect` d3d12 | 4.754 **PASS** | 4.807 vs < 4.56 **FAIL** |
+
+**Six of six pass at the budget; six of six fail at 20% tighter.**
+
+`stress_pose` and `fly_transect` are now registered in `ctest -L scenario` alongside the five that
+were already there — a gate that is not in `ctest` is a number in a log file. They are the two most
+expensive scenarios (11 s and 13 s on vk), which took the labelled suite from 74 s to 102 s. That is
+the price of the gate. **292/292 tests pass.**
+
+### Where this does NOT run, stated plainly
+
+**CI does not run it.** The GitHub Windows runner has no Vulkan ICD, which is why the workflow
+already excludes the whole label with `-LE scenario` (Prompt 002's finding, not a new one). The gate
+is a **local, pre-push** instrument on this machine, and the numbers in the table are this GPU's.
+Goal 273's own text anticipates this — *"if the runner has no GPU, say so and gate only the CPU-side
+numbers"* — and the CPU-side assertions (`walk_violations`, `inside_solid`, `frames`,
+`stance_changes`) do run in the no-GPU jobs and are untouched by this work.

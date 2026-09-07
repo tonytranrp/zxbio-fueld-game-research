@@ -344,6 +344,16 @@ bool parse_into(std::string_view text, std::string_view path, Scenario& scenario
                 return false;
             }
             assertion.value = static_cast<double>(value);
+            // Optional trailing backend, the same shape as `capture ... no-golden`.
+            if (words.size() >= 5) {
+                if (!parse_backend(words[4], assertion.backend) ||
+                    assertion.backend == BackendSelection::Both) {
+                    ctx.message = where(path, lineNumber) +
+                                  "assert's optional 4th word is a single backend, vk or d3d12 (got \"" +
+                                  std::string{words[4]} + "\")";
+                    return false;
+                }
+            }
             scenario.assertions.push_back(assertion);
         } else if (directive == "backend") {
             if (!need(2, "<vk|d3d12|both>")) {
@@ -460,7 +470,11 @@ std::string emit_scenario(const Scenario& scenario) {
     }
     for (const Assertion& assertion : scenario.assertions) {
         out += "assert " + std::string{metric_name(assertion.metric)} + " " +
-               std::string{op_name(assertion.op)} + " " + format_number(assertion.value) + "\n";
+               std::string{op_name(assertion.op)} + " " + format_number(assertion.value) +
+               (assertion.backend == BackendSelection::Both
+                    ? std::string{}
+                    : " " + std::string{backend_name(assertion.backend)}) +
+               "\n";
     }
     return out;
 }

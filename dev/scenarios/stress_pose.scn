@@ -14,3 +14,20 @@ capture end stress_pose
 
 assert frames > 0
 assert contrast_percent > 6
+
+# ------------------------------------------------------------------ goal 273: the regression gate
+# A PERCENTILE of the GPU timestamp range across this fixed camera path, per research section 6.8 --
+# never a mean (one hitch moves it) and above all never fps, which this machine's 165 Hz
+# FIFO_RELAXED panel caps at 155-159 and which therefore cannot express a regression at all.
+#
+# PER BACKEND, because vk and d3d12 differ by 30-35% here and `ctest -L scenario` runs vk ONLY. A
+# single threshold would have to be set by the slower backend, leaving the faster one 35% of slack
+# -- a 30% vk regression would sail straight through the gate that CI actually runs.
+#
+# Each number is ~1.2x the worst of four runs on THAT backend: the smallest margin that survives
+# run-to-run noise and still fails when the budget is tightened by 20%, which is goal 273's own
+# Check and is demonstrated in the log.
+#   vk    ~817 frames, p95 3.80 3.80 3.82   (0.5% spread)
+#   d3d12 ~800 frames, p95 5.05 5.09 5.14 5.21 (3% spread)
+assert gpu_ms_p95 < 4.4 vk
+assert gpu_ms_p95 < 6.0 d3d12
