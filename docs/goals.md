@@ -1510,6 +1510,102 @@ operational half. The four things measurement changed my mind about are in the l
      `engine/cli` number **zero**. `run_svo`'s local `FramePhases` is gone into `dev/telemetry`.
      `--verify-frame`/`--autofly`/`--dump-every` stay, as documented, as thin wrappers.
 
+## AJ. Player embodiment (Prompt 003) -- IN PROGRESS
+
+Reasoning and every measurement: `research/player-embodiment-log.md`.
+
+### AJ-A. Collision that has no edge -- closes goal 173
+
+225. [x] The CPU-side truth is a `shared_ptr<const BrickTree>` shared between the renderer's staged
+     upload and the simulation -- option (a), and I ranked it first for the same reason the prompt
+     did: it is the only option under which collision agrees with WHAT IS DRAWN, and BrickTree has
+     been immutable-after-construction since the pivot, so sharing it is a shared_ptr and nothing
+     else. (b) querying the sampler is kept as the tests' reference and IS more accurate near the
+     camera, but it re-derives rather than shares, so a future sampler/tree divergence would become
+     a collision bug. (c) keeping the analytic collider loses outright: a height field cannot answer
+     for a cave, an overhang, or an edited voxel, and it is the thing that already failed.
+     **Check PERFORMED**: implemented; the ranking and the losers' reasons are in the log §1.
+226. [x] `world/collision/octree_collider`: `overlaps_solid(Aabb)` as an O(depth) octree walk with
+     early-out, plus a genuinely 3D `voxel_top(x, z, yStart)`. Solidity is asked of `world/materials`
+     (`is_solid()`), never by ID comparison. **Check PERFORMED**: 8 test cases -- exact answers on a
+     single voxel (face-sharing, one-voxel-miss, half-open boundaries), an OVERHANG answered
+     correctly from above and below (no one-surface-per-column assumption, so Prompt 006's caves
+     cannot break it), water and leaves not solid because their components say so, and the walk
+     visits **7 nodes inside solid / 1 in open air** rather than point-sampling.
+     **The cross-check, with its direction:** at uniform LOD, **0 disagreements in 10,000 voxel
+     boxes, both directions** -- the query IS the sampler. At the shipping distance LOD the
+     disagreement is NOT merely conservative as I expected; there are genuine HOLES (tree says air,
+     sampler says solid) at **0.41% over the whole region**. Binned by distance from the LOD centre:
+
+     | distance | samples | holes | rate |
+     |---|---|---|---|
+     | 0-4 m | 54 | **0** | 0.000% |
+     | 4-8 m | 410 | **0** | 0.000% |
+     | 8-12 m | 1068 | 1 | 0.094% |
+     | 12-16 m | 1978 | 5 | 0.253% |
+     | 20-24 m | 4084 | 13 | 0.318% |
+     | 28-32 m | 24224 | 116 | 0.479% |
+
+     **Zero holes inside 8 m of the LOD centre**, which is where the body always is (the LOD centre
+     IS the camera, and a rebuild is requested every 2 m). The consequence is recorded rather than
+     left implicit: **the LOD centre must track the body**, and if a future change ever separates
+     them this guarantee is gone.
+227. [x] `SvoWorld::take_finished()` yields `shared_ptr<const BrickTree>`; `SvoRenderer::begin_upload`
+     takes the handle; the app hands the same handle to the collider and bumps a generation counter.
+     The swap is a plain member assignment on the main thread between ticks -- stated as such rather
+     than reaching for an atomic that would advertise a contract that does not exist.
+     `update_camera_phase` is now TEMPLATED on the query, so the mesh path keeps the analytic
+     collider and the svo path gets the octree, both at zero overhead.
+     **Check PERFORMED**: `fly_transect` (1483 frames of continuous motion across several rebuilds)
+     reports 0 inside-solid events; 235/235 tests.
+228. [x] The analytic backstop is GONE from `step_player`, and its replacement is a counter that
+     logs the first offender with its position. The backstop now survives only for a query that
+     declares itself an open world (`OpenWorld::open_world_tag`) -- `--noclip` and the
+     collision-free tests, which would otherwise fall forever.
+     **Check PERFORMED, AND THE COUNTER FIRED IMMEDIATELY**, which is the outcome this goal exists
+     to produce. It found THREE distinct real bugs in a row, none of which had ever been visible:
+     (1) `pose_ground` resolved against the ANALYTIC height while the body collides against the
+     VOXELISED surface one voxel higher; (2) a point height cannot place a 0.6 m BOX -- on the
+     31 degree slope at (48, 0) the uphill corner sits 0.19 m above the centre column; (3) even the
+     footprint max misses by exactly one voxel, because the sampler samples each voxel's OWN min
+     corner, so no point sample of `height_at` can predict a neighbouring column's voxel top
+     (measured: feet 66.3438, uphill corner voxel top 66.3516, edge 0.0078). Spawning snapped up
+     plus two voxels of clearance, with the body settling under gravity, takes `spawn_stand` from
+     **181 of 181 ticks inside solid to 0**.
+229. [ ] `clip_stress` at 1x/4x/10x/40x, and the sweep's sub-step derived from the body's smallest
+     half-extent rather than the constant 0.25 m. NOT DONE.
+229a. [ ] **A REAL BUG, FOUND AND NOT YET FIXED.** With the backstop gone and the counter in,
+     `walk_hillside` reports **253** and `walk_shoreline` **236** ticks with the body inside solid,
+     while walking into slopes. `spawn_stand` (still) and `fly_transect` (1483 frames of motion)
+     are clean, so it is specific to walking into a slope, not to motion or to rebuilds. Both
+     scenarios now `assert inside_solid == 0` and therefore FAIL -- deliberately, per the prompt's
+     own instruction that if removing the backstop makes something fall through, that is the bug
+     the group exists to find and the backstop does not go back. Prime suspects, in order: the
+     `started_inside` escape in `move_and_slide` (once inside, motion is unblocked, so one bad tick
+     becomes many), and `kSvoStepHeight = 0.04 m` against a slope that rises more than that per
+     tick. **Check**: both scenarios green with the assertion in place.
+230. [ ] Collision cost budgeted at <= 0.20 ms/tick. NOT MEASURED. The node-visit counts (7 / 1)
+     say the walk is cheap, but that is not the same as a microsecond number.
+
+### AJ-B. One body, always
+
+231. [x] `PlayerState::mode` defaults to `MoveMode::Walk`. `--walk` is a documented no-op alias;
+     `--fly`, `--noclip` and the `G` toggle sit behind ONE `--dev` door, as the prompt recommended.
+     **Check PERFORMED**: `voxel_app --fly` without `--dev` REFUSES by name and exits non-zero
+     rather than silently ignoring the flag. The harness sets `dev` itself, because a scenario is a
+     developer context by definition. Six `test_spectator_camera` cases failed the moment the
+     default changed and now state `mode = Fly` explicitly -- the change being visible rather than
+     silent, which is the point.
+232. [ ] Walking speed re-derived from the locomotion research. NOT DONE -- it is still
+     `move_speed 40 x walk_speed_factor 0.25 = 10 m/s`, which the prompt correctly calls a number
+     nobody chose. The research bands are read and quoted in the log for whoever does it.
+233. [ ] Gravity/jump decision recorded. NOT DONE.
+234. [ ] Sprint with an acceleration ramp. NOT DONE.
+235. [ ] Slope limits. NOT DONE -- and 229a is probably a symptom of their absence.
+236. [ ] Swimming re-checked against the moving surface. NOT DONE.
+
+### AJ-C / AJ-D (237-243) -- NOT STARTED
+
 ## Tooling defects found in passing (goal 101's standing expectation)
 
 200. [x] `--dump-every` wrote nothing and reported nothing — `dump_frame`'s result was

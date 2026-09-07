@@ -19,7 +19,10 @@ enum class Stance : std::uint8_t { Grounded, Airborne, Swimming };
 // The player's own persistent physics state. Everything the fixed-step simulation carries between
 // ticks lives here -- deliberately NOT in the render loop's locals (A1), so a test can drive it.
 struct PlayerState {
-    MoveMode mode = MoveMode::Fly;
+    // WALK, not Fly (Prompt 003 goal 231). The free camera is a TOOL, and tools belong to the
+    // harness and to --dev; shipping it as the default is why the owner played a spectator for
+    // three passes. --fly and --noclip still exist, behind --dev.
+    MoveMode mode = MoveMode::Walk;
     Stance stance = Stance::Airborne;
     float vertical_velocity = 0.0f; // world units/s, negative = falling
 

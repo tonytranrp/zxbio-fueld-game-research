@@ -42,8 +42,15 @@ struct AppOptions {
     bool verify_frame = false; // Group B smoke check: read the frame back, fail on an empty one
     bool validation = false;
     bool autofly = false; // Group D smoke check: fly +X automatically once the world has loaded
-    bool walk = false;    // start in walk (gravity) mode; with --autofly, also asserts no fall-through
-    bool noclip = false;  // Group AA: skip body-vs-world collision (the pre-collision spectator)
+    // Prompt 003 goal 231. Walk is the default now, so --walk is a documented NO-OP alias kept
+    // because it is in CLAUDE.md and a dozen research logs; --fly is the opt-in, and it, --noclip
+    // and the G toggle all sit behind ONE door rather than four.
+    bool walk = false; // no-op alias; the body walks by default
+    bool fly = false;  // dev only: the free camera
+    bool noclip = false; // dev only: skip body-vs-world collision entirely
+    bool dev = false;  // unlocks fly/noclip/G together. OFF for the app; the harness sets it,
+                       // because a scenario IS a dev context and says so once rather than
+                       // repeating --dev in every .scn.
     // Prompt 001 Group AD. The step allowance is a SMOOTHING BUDGET on the svo path (7.8 mm voxels
     // make every slope a sub-cm staircase) and a real ledge climb on the mesh path (1 m blocks);
     // unset takes each path's own default.

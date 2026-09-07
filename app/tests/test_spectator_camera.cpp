@@ -1,3 +1,8 @@
+// NOTE (Prompt 003 goal 231): every case here sets `physics.mode = Fly` explicitly. It used to be
+// the default; the body walks by default now, and these cases are about the FLY camera's movement
+// basis and pitch clamp -- so they say so. Six of them failed the moment the default changed,
+// which is the change being visible rather than silent.
+
 #include <cmath>
 
 #include <catch2/catch_test_macros.hpp>
@@ -26,10 +31,12 @@ TEST_CASE("Movement integrates against delta time, so speed does not couple to f
     // Same wall-clock second as 1x1.0s vs 60x(1/60)s must land within float noise of each other.
     Transform oneStep;
     SpectatorCameraState stateOne;
+    stateOne.physics.mode = world::player::MoveMode::Fly;
     update_spectator_camera(oneStep, stateOne, input, {0.0f, 0.0f}, 1.0f);
 
     Transform manySteps;
     SpectatorCameraState stateMany;
+    stateMany.physics.mode = world::player::MoveMode::Fly;
     for (int i = 0; i < 60; ++i) {
         update_spectator_camera(manySteps, stateMany, input, {0.0f, 0.0f}, 1.0f / 60.0f);
     }
@@ -45,6 +52,7 @@ TEST_CASE("Yaw turns the movement basis; 180 degrees of cursor-right reverses fo
 
     Transform transform;
     SpectatorCameraState state;
+    state.physics.mode = world::player::MoveMode::Fly;
     state.look_sensitivity = glm::radians(1.0f); // 1 degree per pixel: pixel counts become degrees
     update_spectator_camera(transform, state, input, {180.0f, 0.0f}, 0.0f); // look only, no time
     update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f);   // then move
@@ -56,6 +64,7 @@ TEST_CASE("Looking straight up cannot pass the pitch clamp and forward stays wel
     InputState input;
     Transform transform;
     SpectatorCameraState state;
+    state.physics.mode = world::player::MoveMode::Fly;
     state.look_sensitivity = glm::radians(1.0f);
 
     // Drag the cursor up (negative y) by far more than 90 degrees' worth.
@@ -78,12 +87,14 @@ TEST_CASE("Diagonal movement is normalized and boost multiplies speed", "[camera
 
     Transform diagonal;
     SpectatorCameraState state;
+    state.physics.mode = world::player::MoveMode::Fly;
     update_spectator_camera(diagonal, state, input, {0.0f, 0.0f}, 1.0f);
     CHECK(std::abs(glm::length(diagonal.position) - state.move_speed) < kEps); // not sqrt(2) * speed
 
     input.speed_boost = true;
     Transform boosted;
     SpectatorCameraState boostedState;
+    boostedState.physics.mode = world::player::MoveMode::Fly;
     update_spectator_camera(boosted, boostedState, input, {0.0f, 0.0f}, 1.0f);
     CHECK(std::abs(glm::length(boosted.position) - state.move_speed * app::kSpectatorBoostFactor) < 1e-3f);
 }
@@ -95,6 +106,7 @@ TEST_CASE("Opposed inputs cancel to no movement without dividing by zero", "[cam
 
     Transform transform;
     SpectatorCameraState state;
+    state.physics.mode = world::player::MoveMode::Fly;
     update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f);
     CHECK(approx(transform.position, {0.0f, 0.0f, 0.0f}));
 }
@@ -106,6 +118,7 @@ TEST_CASE("Walk mode falls under gravity and rests exactly at ground plus eye he
     Transform transform;
     transform.position = {0.0f, 50.0f, 0.0f};
     SpectatorCameraState state;
+    state.physics.mode = world::player::MoveMode::Fly;
     state.physics.mode = app::CameraMoveMode::Walk;
     constexpr float kGround = 12.5f;
 
@@ -124,6 +137,7 @@ TEST_CASE("Walk mode survives one huge dt step without tunneling", "[camera][wal
     Transform transform;
     transform.position = {0.0f, 5.0f, 0.0f};
     SpectatorCameraState state;
+    state.physics.mode = world::player::MoveMode::Fly;
     state.physics.mode = app::CameraMoveMode::Walk;
 
     update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 0.5f, 0.0f);
@@ -140,6 +154,7 @@ TEST_CASE("Walk mode moves along yaw only and ignores vertical inputs", "[camera
     Transform transform;
     transform.position = {0.0f, app::kEyeHeight, 0.0f}; // standing on flat ground at y=0
     SpectatorCameraState state;
+    state.physics.mode = world::player::MoveMode::Fly;
     state.physics.mode = app::CameraMoveMode::Walk;
     state.pitch_radians = glm::radians(-80.0f); // staring at the ground must not slow walking
 
@@ -158,6 +173,7 @@ TEST_CASE("Fly mode is untouched by the walk fields", "[camera][walk]") {
     Transform transform;
     transform.position = {0.0f, 1.0f, 0.0f};
     SpectatorCameraState state;
+    state.physics.mode = world::player::MoveMode::Fly;
 
     update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f, 1000.0f);
     CHECK(std::abs(transform.position.y - (1.0f - state.move_speed)) < 1e-3f); // flew straight down
@@ -169,6 +185,7 @@ TEST_CASE("Walk mode dropped over deep water settles floating at the surface", "
     engine::ecs::Transform transform;
     transform.position = {0.0f, 30.0f, 0.0f};
     app::SpectatorCameraState state;
+state.physics.mode = world::player::MoveMode::Fly;
     state.physics.mode = app::CameraMoveMode::Walk;
     const engine::input::InputState idle;
 

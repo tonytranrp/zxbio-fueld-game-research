@@ -34,6 +34,7 @@
 #include "spectator_camera.hpp"
 #include "svo_world.hpp"
 #include "world/collision/aabb_sweep.hpp"
+#include "world/collision/octree_collider.hpp"
 #include "world/collision/terrain_collider.hpp"
 #include "world/player/fixed_step.hpp"
 #include "world/player/view_polish.hpp"
@@ -95,19 +96,29 @@ struct ChunkEventCounters {
 // Input handling + camera movement + walk-mode invariant accounting. Returns the camera snapshot
 // the render pass consumes. `heightmap` is whichever world's analytic ground function is live --
 // both world representations sample the same one, so walk mode is representation-agnostic.
-// `collider` (Group AA) sweeps the camera's body against the world in BOTH modes -- fly mode
-// stops at mountains and trunks too, walk mode additionally climbs ledges; null = --noclip.
+// `query` sweeps the camera's body against the world in BOTH modes -- fly mode stops at mountains
+// and trunks too, walk mode additionally climbs ledges; null = --noclip.
+//
+// TEMPLATED on the query (Prompt 003 goal 227), because the two renderer paths now collide against
+// two different worlds: the mesh path against the analytic TerrainCollider's 1 m voxel columns, and
+// the svo path against the OctreeCollider -- the SAME immutable tree the marcher is drawing, which
+// is what removes the cache edge a fast camera used to outrun. Two instantiations in one TU, both
+// zero-overhead; a virtual BodyQuery would have put a call in the sweep's innermost loop for no
+// benefit, since the set of query types is closed and known here.
+template <world::collision::SolidQuery Q>
 render::interface::Camera
 update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraEntity, FrameInput& input,
-                    const world::generation::HeightmapGenerator& heightmap,
-                    world::collision::TerrainCollider* collider, const engine::core::Clock& clock,
+                    const world::generation::HeightmapGenerator& heightmap, Q* query,
+                    const engine::core::Clock& clock,
                     const AppOptions& options, std::uint32_t& walkViolations,
                     world::player::FixedStepper& stepper, float& viewOffsetY,
-                    const world::water::WaveField& waveField, float waveTime) {
+                    const world::water::WaveField& waveField, float waveTime,
+                    std::uint32_t& insideSolidEvents) {
     auto [transform, lens, spectator] =
         registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(
             cameraEntity);
-    if (input.take_walk_toggle()) {
+    // The G toggle is a DEV tool now (goal 231): one door, not four.
+    if (options.dev && input.take_walk_toggle()) {
         // Deliberate transition handling (Group V task 25): position is untouched, vertical
         // velocity zeroed -- entering walk mid-air simply starts a clean fall; leaving it
         // freezes wherever you are. No snap in either direction.
@@ -145,7 +156,8 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
             // sim went fixed-step: at 150 fps most frames run zero ticks, so the body was shoved
             // into a new column with nothing to settle it, and a 900-frame walk reported 74 ground
             // violations that were the harness's, not the world's.
-            transform.position.x += (options.walk ? 20.0f : 160.0f) * dt;
+            transform.position.x +=
+                (spectator.physics.mode == app::CameraMoveMode::Walk ? 20.0f : 160.0f) * dt;
         }
         const float groundHeight = heightmap.height_at(transform.position.x, transform.position.z);
         world::player::WorldSense sense;
@@ -169,11 +181,41 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
 
         const glm::vec3 before = transform.position;
         world::player::StepResult step;
-        if (collider != nullptr) {
-            collider->refresh(transform.position);
-            step = app::step_camera(transform, spectator, *collider, intent, sense, dt);
+        if (query != nullptr) {
+            // A query that maintains a cache gets told where the body is; one that does not (the
+            // octree) has nothing to refresh, and `if constexpr` says so at compile time rather
+            // than by a virtual no-op.
+            if constexpr (requires(Q& q, glm::vec3 p) { q.refresh(p); }) {
+                query->refresh(transform.position);
+            }
+            step = app::step_camera(transform, spectator, *query, intent, sense, dt);
+            // Goal 228: the analytic backstop in step_player is gone, so a body that ends a tick
+            // inside solid is now VISIBLE instead of silently lifted. This is the counter that
+            // makes it visible; clip_stress asserts it stays zero.
+            const world::collision::Aabb body = world::collision::Aabb::upright(
+                transform.position - glm::vec3{0.0f, spectator.tuning.eye_height, 0.0f},
+                spectator.tuning.body_half_width, spectator.tuning.body_height);
+            if (query->overlaps_solid(body)) {
+                ++insideSolidEvents;
+                if (insideSolidEvents == 1) {
+                    log(LogLevel::Error,
+                        "body ended a tick INSIDE solid: eye ({:.4f}, {:.4f}, {:.4f}), feet y {:.4f}, "
+                        "box y [{:.4f}, {:.4f}], stance {}",
+                        transform.position.x, transform.position.y, transform.position.z, body.min.y,
+                        body.min.y, body.max.y, static_cast<int>(spectator.physics.stance));
+                    if constexpr (requires(const Q& q, float a) { q.voxel_top(a, a, a); }) {
+                        log(LogLevel::Error,
+                            "  voxel_top under the body: centre {:.4f}, corners {:.4f} {:.4f} {:.4f} {:.4f}",
+                            query->voxel_top(transform.position.x, transform.position.z, body.max.y),
+                            query->voxel_top(body.min.x, body.min.z, body.max.y),
+                            query->voxel_top(body.max.x, body.min.z, body.max.y),
+                            query->voxel_top(body.min.x, body.max.z, body.max.y),
+                            query->voxel_top(body.max.x, body.max.z, body.max.y));
+                    }
+                }
+            }
         } else {
-            const app::OpenWorld open; // --noclip: nothing is solid, the backstop still applies
+            const app::OpenWorld open; // --noclip: nothing is solid
             step = app::step_camera(transform, spectator, open, intent, sense, dt);
         }
 
@@ -187,7 +229,7 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
         viewOffsetY = world::player::update_view_polish(spectator.physics, spectator.tuning, polish, step,
                                                         polishOn, dt);
 
-        if (options.walk && walking) {
+        if (walking) {
             // Group V task 27's mechanical check, now evaluated every fixed TICK rather than every
             // frame (strictly more often, and at a cadence that does not vary with load): the
             // camera must never end an update below the ground surface.
@@ -454,8 +496,10 @@ Session::Session(const AppOptions& options, bool visible) : window(1280, 720, "v
         if (options.start_pitch_deg) {
             spectator.pitch_radians = glm::radians(*options.start_pitch_deg);
         }
-        if (options.walk) {
-            spectator.physics.mode = app::CameraMoveMode::Walk; // starts mid-air and falls to the ground
+        // Walk is PlayerState's own default now; --fly is the dev opt-in and needs --dev to have
+        // been given, which main() has already checked.
+        if (options.fly) {
+            spectator.physics.mode = app::CameraMoveMode::Fly;
         }
         // A3: the svo path's step allowance is a smoothing budget, not a ledge climb.
         spectator.tuning.step_height = options.renderer == RendererKind::Svo
@@ -545,6 +589,7 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
     FrameTelemetry telemetry;
     std::uint32_t frame = 0;
     std::uint32_t walkViolations = 0; // ticks ending below the ground surface in walk mode
+    std::uint32_t insideSolidEvents = 0; // goal 228: ticks that ended with the body in solid
     // Prompt 001 A1: the simulation's own clock, carried across frames (never a frame-loop
     // local), plus the render-only view-polish offset it produces.
     world::player::FixedStepper stepper;
@@ -604,7 +649,8 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
             const float waveTime = static_cast<float>(s.clock.elapsed_seconds());
             const render::interface::Camera camera = update_camera_phase(
                 s.registry, s.cameraEntity, input, world.heightmap(), options.noclip ? nullptr : &collider,
-                s.clock, options, walkViolations, stepper, viewOffsetY, waveField, waveTime);
+                s.clock, options, walkViolations, stepper, viewOffsetY, waveField, waveTime,
+                insideSolidEvents);
 
             renderer.render(camera);
             if (s.postProcess) {
@@ -632,7 +678,7 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
     }
 
     bool walkOk = true;
-    if (options.walk) {
+    {
         walkOk = walkViolations == 0;
         log(walkOk ? LogLevel::Info : LogLevel::Error,
             "walk mode: {} frames ended below the ground surface (0 required)", walkViolations);
@@ -654,6 +700,13 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
             static_cast<double>(renderer.gpu_memory().peak_bytes()) / (1024.0 * 1024.0));
     }
 
+    if (insideSolidEvents > 0) {
+        log(LogLevel::Error, "collision: {} ticks ended with the body INSIDE solid (0 required)",
+            insideSolidEvents);
+    }
+    if (hooks.on_invariants) {
+        hooks.on_invariants(walkViolations, insideSolidEvents);
+    }
     log(LogLevel::Info, "exiting after {} frames on {}", frame,
         render::diligent::to_string(s.context->backend()));
     return cap.verifyOk && autoflyOk && walkOk ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -665,20 +718,20 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     render::diligent::SvoRenderer renderer(*s.context);
     renderer.set_settings(options.svo_settings);
     app::SvoWorld world(options.svo);
-    // Group AA: the body collides against the same voxelization rule the tree is sampled with, at
-    // the tree's finest voxel, over a cached height grid -- independent of the renderer's LOD.
-    world::collision::TerrainColliderParams colliderParams;
-    colliderParams.seed = options.seed;
-    colliderParams.voxel_edge = world.geometry_for(s.spawnPosition).finest_voxel_edge();
-    colliderParams.trees = options.svo.trees;
-    world::collision::TerrainCollider collider(world.heightmap(), colliderParams);
-    collider.refresh(s.spawnPosition); // the first cache is built synchronously: pay it here, not mid-frame
+    // Prompt 003 goals 226/227, closing goal 173: the body collides against the SAME immutable
+    // octree the marcher is drawing, not against a 16 m cached height grid a fast camera outruns.
+    // There is no cache to refresh and no edge to cross. Measured: inside the finest LOD ring the
+    // tree and the sampler agree exactly (0 disagreements in 10,000 voxel boxes), and the body is
+    // always inside that ring because the LOD centre IS the camera -- see
+    // research/player-embodiment-log.md for the hole rate binned by distance.
+    world::collision::OctreeCollider collider;
 
     CaptureState cap;
     cap.verifyOk = !options.verify_frame;
     FrameTelemetry telemetry;
     std::uint32_t frame = 0;
     std::uint32_t walkViolations = 0;
+    std::uint32_t insideSolidEvents = 0; // goal 228
     world::player::FixedStepper stepper;
     float viewOffsetY = 0.0f;
     // A4: the aim query's tree source, kept across frames so its per-column placement cache is
@@ -725,8 +778,14 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     // Hands a finished build to the renderer's staged upload, and pumps that upload one slice per
     // frame; logs the tree the frame it lands.
     const auto adopt_finished = [&]() {
-        if (std::optional<world::svo::BrickTree> tree = world.take_finished()) {
-            renderer.begin_upload(std::move(*tree));
+        if (std::shared_ptr<const world::svo::BrickTree> tree = world.take_finished()) {
+            // Both owners take the handle in the same statement: the renderer stages it onto the
+            // GPU across frames, the simulation queries it. One immutable object, two owners.
+            // The swap happens on the main thread between ticks, so a plain assignment is correct
+            // and an atomic would advertise a contract that does not exist.
+            collider.set_tree(tree);
+            collider.bump_generation();
+            renderer.begin_upload(std::move(tree));
         }
         if (!renderer.pump_upload()) {
             return false;
@@ -818,14 +877,13 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
                 break;
             }
         } else {
-            const double refreshBefore = collider.last_refresh_ms();
             // The renderer's OWN animation clock, so the swimmer rides the surface being drawn
             // rather than one that agrees with it only approximately.
             const float waveTime = renderer.anim_seconds();
             const render::interface::Camera camera = update_camera_phase(
-                s.registry, s.cameraEntity, input, world.heightmap(), options.noclip ? nullptr : &collider,
-                s.clock, options, walkViolations, stepper, viewOffsetY, waveField, waveTime);
-            causes.refreshed = collider.last_refresh_ms() != refreshBefore && !collider.refresh_pending();
+                s.registry, s.cameraEntity, input, world.heightmap(),
+                options.noclip || !collider.has_tree() ? nullptr : &collider, s.clock, options,
+                walkViolations, stepper, viewOffsetY, waveField, waveTime, insideSolidEvents);
             // Rebuild once the camera has left the inner half of the finest LOD ring: the tree is
             // still correct everywhere (coarser rings are conservative), just not at full detail
             // right around the camera until the new one lands.
@@ -952,7 +1010,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     }
 
     bool walkOk = true;
-    if (options.walk) {
+    {
         walkOk = walkViolations == 0;
         log(walkOk ? LogLevel::Info : LogLevel::Error,
             "walk mode: {} frames ended below the ground surface (0 required)", walkViolations);
@@ -971,6 +1029,13 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
         "building, {} other",
         kSlowFrameMs, slow.total, frame, slow.on_swap, slow.while_uploading, slow.while_building,
         slow.other);
+    if (insideSolidEvents > 0) {
+        log(LogLevel::Error, "collision: {} ticks ended with the body INSIDE solid (0 required)",
+            insideSolidEvents);
+    }
+    if (hooks.on_invariants) {
+        hooks.on_invariants(walkViolations, insideSolidEvents);
+    }
     log(LogLevel::Info, "exiting after {} frames on {}", frame,
         render::diligent::to_string(s.context->backend()));
     return cap.verifyOk && autoflyOk && walkOk ? EXIT_SUCCESS : EXIT_FAILURE;

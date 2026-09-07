@@ -67,6 +67,11 @@ world::player::StepResult step_camera(engine::ecs::Transform& transform, Spectat
 // A world in which nothing is solid: the --noclip path and the collision-free tests, expressed as
 // a query instead of as a second copy of the physics.
 struct OpenWorld {
+    // The marker step_player looks for (Prompt 003 goal 228): this is the one query that still
+    // gets the analytic ground floor, because with nothing solid anywhere the body would otherwise
+    // fall forever. Every other query is expected to answer for the ground itself.
+    using open_world_tag = void;
+
     [[nodiscard]] bool overlaps_solid(const world::collision::Aabb&) const noexcept { return false; }
 };
 static_assert(world::collision::SolidQuery<OpenWorld>);

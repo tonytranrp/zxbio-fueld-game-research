@@ -41,6 +41,7 @@ struct RunResult {
     std::vector<AssertionResult> assertions;
     float contrast_percent = 0.0f;
     std::uint32_t walk_violations = 0;
+    std::uint32_t inside_solid_events = 0;
     bool passed = true;
 };
 

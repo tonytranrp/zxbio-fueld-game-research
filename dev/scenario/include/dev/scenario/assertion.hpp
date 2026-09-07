@@ -28,6 +28,7 @@ enum class Metric : std::uint8_t {
     ContrastPercent, // frame_verify's LOCAL-CONTRAST metric: is there a scene at all
     GoldenDistance,  // the regression metric of goal 217, worst over the run's captures
     WalkViolations,  // ticks that ended below the ground surface
+    InsideSolid,     // goal 228: ticks that ended with the body inside solid geometry
     Uploads,         // tree uploads completed
 };
 

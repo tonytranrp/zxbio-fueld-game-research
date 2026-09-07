@@ -85,7 +85,12 @@ public:
     // returns true on the frame the whole tree has landed and been swapped in -- the previous tree
     // keeps rendering until then, and its buffers are released only once the GPU is done with them
     // (Diligent defers the destruction). An empty tree renders sky only.
-    void begin_upload(world::svo::BrickTree tree);
+    // Takes a SHARED handle, not the object (Prompt 003 goal 227). The simulation queries the same
+    // immutable tree the marcher is drawing -- which is what makes "you cannot pass through
+    // anything the renderer draws" true by construction rather than by a tolerance. Two owners of
+    // one const object is what shared_ptr is for; two owners of a mutable one would be a bug, and
+    // BrickTree has been immutable-after-construction since the pivot.
+    void begin_upload(std::shared_ptr<const world::svo::BrickTree> tree);
     bool pump_upload();
     [[nodiscard]] bool upload_pending() const noexcept;
     [[nodiscard]] double last_upload_ms() const noexcept;            // wall-clock from begin to swap

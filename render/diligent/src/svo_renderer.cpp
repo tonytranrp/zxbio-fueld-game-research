@@ -250,7 +250,9 @@ struct SvoRenderer::Impl {
 
     // A tree being staged onto the GPU across frames (begin_upload / pump_upload).
     struct Pending {
-        world::svo::BrickTree tree; // kept alive until every slice has been copied
+        // Kept alive until every slice has been copied. A shared handle: the simulation holds
+        // the same object for collision (goal 227), and neither owner can mutate it.
+        std::shared_ptr<const world::svo::BrickTree> tree;
         RefCntAutoPtr<IBuffer> nodes;
         RefCntAutoPtr<IBuffer> bricks;
         std::size_t nodesCapacity = 0;
@@ -446,7 +448,7 @@ SvoRenderer::SvoRenderer(RenderContext& context) : impl_(std::make_unique<Impl>(
 
 SvoRenderer::~SvoRenderer() = default;
 
-void SvoRenderer::begin_upload(world::svo::BrickTree tree) {
+void SvoRenderer::begin_upload(std::shared_ptr<const world::svo::BrickTree> tree) {
     ZoneScopedN("svo begin upload");
     auto& rc = impl_->context->impl();
     auto pending = std::make_unique<Impl::Pending>();
@@ -456,8 +458,8 @@ void SvoRenderer::begin_upload(world::svo::BrickTree tree) {
     // before the current one) is reused when it is big enough; otherwise new buffers are created
     // with headroom so the next few growths reuse them too.
     Impl& im = *impl_;
-    if (im.spareNodes && im.spareBricks && im.spareNodesCapacity >= tree.nodes.size() &&
-        im.spareBricksCapacity >= tree.bricks.size()) {
+    if (im.spareNodes && im.spareBricks && im.spareNodesCapacity >= tree->nodes.size() &&
+        im.spareBricksCapacity >= tree->bricks.size()) {
         pending->nodes = im.spareNodes;
         pending->bricks = im.spareBricks;
         pending->nodesCapacity = im.spareNodesCapacity;
@@ -475,8 +477,8 @@ void SvoRenderer::begin_upload(world::svo::BrickTree tree) {
             im.spareNodesCapacity = 0;
             im.spareBricksCapacity = 0;
         }
-        pending->nodesCapacity = tree.nodes.size() + tree.nodes.size() / 4;
-        pending->bricksCapacity = tree.bricks.size() + tree.bricks.size() / 4;
+        pending->nodesCapacity = tree->nodes.size() + tree->nodes.size() / 4;
+        pending->bricksCapacity = tree->bricks.size() + tree->bricks.size() / 4;
         pending->nodes = create_word_buffer(rc.device, "SVO nodes", pending->nodesCapacity);
         pending->bricks = create_word_buffer(rc.device, "SVO bricks", pending->bricksCapacity);
         im.tracker.on_allocate(static_cast<std::uint64_t>(pending->nodesCapacity + pending->bricksCapacity) *
@@ -502,10 +504,10 @@ bool SvoRenderer::pump_upload() {
     Impl::Pending& p = *impl_->pending;
     IDeviceContext* ctx = impl_->context->impl().context;
     std::size_t budget = impl_->settings.upload_bytes_per_frame;
-    budget -= upload_slice(ctx, p.nodes, p.tree.nodes, p.nodesDone, budget);
-    (void)upload_slice(ctx, p.bricks, p.tree.bricks, p.bricksDone, budget);
+    budget -= upload_slice(ctx, p.nodes, p.tree->nodes, p.nodesDone, budget);
+    (void)upload_slice(ctx, p.bricks, p.tree->bricks, p.bricksDone, budget);
     ++impl_->pendingFrames;
-    if (p.nodesDone < p.tree.nodes.size() || p.bricksDone < p.tree.bricks.size()) {
+    if (p.nodesDone < p.tree->nodes.size() || p.bricksDone < p.tree->bricks.size()) {
         return false;
     }
 
@@ -522,10 +524,10 @@ bool SvoRenderer::pump_upload() {
     impl_->bricks = p.bricks;
     impl_->nodesCapacity = p.nodesCapacity;
     impl_->bricksCapacity = p.bricksCapacity;
-    impl_->treeBytes = static_cast<std::uint64_t>(p.tree.memory_bytes());
-    impl_->geometry = p.tree.geometry;
-    impl_->rootOffset = p.tree.root;
-    impl_->hasTree = !p.tree.empty();
+    impl_->treeBytes = static_cast<std::uint64_t>(p.tree->memory_bytes());
+    impl_->geometry = p.tree->geometry;
+    impl_->rootOffset = p.tree->root;
+    impl_->hasTree = !p.tree->empty();
     impl_->bind_tree_buffers();
     impl_->lastUploadMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - p.start).count();

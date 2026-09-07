@@ -26,3 +26,4 @@ capture end final
 
 assert frames > 0
 assert contrast_percent > 6
+assert inside_solid == 0

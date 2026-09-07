@@ -24,4 +24,5 @@ capture event grounded on_ground
 capture end final
 
 assert walk_violations == 0
+assert inside_solid == 0
 assert contrast_percent > 6

@@ -33,6 +33,10 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
     StepResult result;
     const float previousEyeY = eyePosition.y;
     const Stance previousStance = state.stance;
+    // A query that declares itself an open world (nothing is solid, anywhere) is the --noclip and
+    // collision-free-test path, and it is the ONLY case that still gets the analytic floor below.
+    // See the note at that floor for why every other case lost it.
+    constexpr bool query_is_open_world = requires { typename Q::open_world_tag; };
 
     glm::vec3 delta = wish_velocity(intent, tuning, state.mode, yawRadians, pitchRadians, moveSpeed) * dt;
 
@@ -120,20 +124,39 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
         state.stance = Stance::Airborne;
     }
 
-    // --- analytic backstop -------------------------------------------------------------------------
-    // With collision on, the voxel top the sweep lands on is at or above the analytic surface, so
-    // this should never fire. It is the whole ground model under --noclip-adjacent paths and the
-    // one thing standing between a query gap and a fall through the world.
-    const float standingEyeY = sense.ground_height + tuning.eye_height;
-    if (eyePosition.y <= standingEyeY) {
-        eyePosition.y = standingEyeY;
-        state.vertical_velocity = 0.0f;
-        if (state.stance != Stance::Swimming) {
-            if (previousStance == Stance::Airborne) {
-                result.landed = true;
+    // --- the analytic backstop, and why it is gone --------------------------------------------------
+    // There used to be a clamp here: eyePosition.y >= sense.ground_height + eye_height, with a
+    // comment saying it "should never fire" with collision on and that it was "the one thing
+    // standing between a query gap and a fall through the world."
+    //
+    // Both halves of that were true, and together they made it a liability. A save that should
+    // never fire, firing silently, is a bug detector wired to a mute button: with the old 16 m
+    // cached collider, a fast camera left the cache, the query said air, and the clamp quietly
+    // put the body back on the analytic surface -- so the query gap that IS the "I clip through
+    // blocks" complaint never showed up as anything at all.
+    //
+    // Prompt 003 goal 228 removes it. The octree query has no edge (world/collision/
+    // octree_collider.hpp), so a gap provably cannot come from running out of cache; and the
+    // caller now COUNTS ticks that end with the body inside solid and logs the first one with its
+    // position. A hidden save became a visible bug, which is the only form in which it can be
+    // fixed.
+    //
+    // `sense.ground_height` is still used above -- it is what tells the swimmer whether the column
+    // is genuinely submerged -- it just no longer teleports the body.
+    if (query_is_open_world) {
+        // --noclip and the collision-free tests still need a floor, or the body falls forever.
+        // This is the ONLY remaining use, and it is explicitly the no-collision path.
+        const float standingEyeY = sense.ground_height + tuning.eye_height;
+        if (eyePosition.y <= standingEyeY) {
+            eyePosition.y = standingEyeY;
+            state.vertical_velocity = 0.0f;
+            if (state.stance != Stance::Swimming) {
+                if (previousStance == Stance::Airborne) {
+                    result.landed = true;
+                }
+                state.stance = Stance::Grounded;
+                state.coyote_remaining = tuning.coyote_time;
             }
-            state.stance = Stance::Grounded;
-            state.coyote_remaining = tuning.coyote_time;
         }
     }
 

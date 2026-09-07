@@ -16,3 +16,4 @@ capture end final
 assert frames > 0
 assert contrast_percent > 6
 assert walk_violations == 0
+assert inside_solid == 0

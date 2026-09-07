@@ -97,7 +97,7 @@ void SvoWorld::build_job(glm::vec3 camera) {
         last.valid = true;
 
         const std::lock_guard guard(mutex_);
-        finished_ = std::move(tree);
+        finished_ = std::make_shared<const world::svo::BrickTree>(std::move(tree));
         lastBuild_ = last;
     } catch (const std::exception& e) {
         log(LogLevel::Error, "svo build failed: {}", e.what());
@@ -105,9 +105,9 @@ void SvoWorld::build_job(glm::vec3 camera) {
     building_.store(false);
 }
 
-std::optional<world::svo::BrickTree> SvoWorld::take_finished() {
+std::shared_ptr<const world::svo::BrickTree> SvoWorld::take_finished() {
     const std::lock_guard guard(mutex_);
-    std::optional<world::svo::BrickTree> out;
+    std::shared_ptr<const world::svo::BrickTree> out;
     if (finished_) {
         out = std::move(finished_);
         finished_.reset();

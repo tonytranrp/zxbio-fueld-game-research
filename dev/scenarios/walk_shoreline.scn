@@ -28,5 +28,6 @@ capture event world-ready first_light
 capture end final
 
 assert walk_violations == 0
+assert inside_solid == 0
 assert frames > 0
 assert contrast_percent > 6

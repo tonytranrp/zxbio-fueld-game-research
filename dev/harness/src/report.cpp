@@ -91,6 +91,7 @@ bool write_report(const std::string& path, const scenario::Scenario& sc, const O
         json.field("warmup_seconds", run.report.warmup_seconds());
         json.field("contrast_percent", static_cast<double>(run.contrast_percent) * 100.0);
         json.field("walk_violations", run.walk_violations);
+        json.field("inside_solid_events", run.inside_solid_events);
 
         write_percentiles(json, "frame_ms", run.report.frame_ms());
         write_percentiles(json, "gpu_ms", run.report.gpu_ms());

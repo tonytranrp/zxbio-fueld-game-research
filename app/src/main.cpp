@@ -41,6 +41,15 @@ int main(int argc, char** argv) {
             std::fputs(app::app_help_text().c_str(), stdout);
             return EXIT_SUCCESS;
         }
+        // Goal 231: a flag that is silently ignored is how you lose an afternoon. --fly and
+        // --noclip are dev tools; without --dev they REFUSE, naming the flag that unlocks them.
+        if ((options.fly || options.noclip) && !options.dev) {
+            log(LogLevel::Error,
+                "{} is a developer tool -- pass --dev to unlock fly, noclip and the G toggle "
+                "together. The body walks by default now (Prompt 003 goal 231).",
+                options.fly ? "--fly" : "--noclip");
+            return EXIT_FAILURE;
+        }
 #ifndef NDEBUG
         // Group J task 20's check: deliberately exercise each crash-handler hook. Debug-only by
         // construction -- the flag does not exist in a release build's table. It fires AFTER the

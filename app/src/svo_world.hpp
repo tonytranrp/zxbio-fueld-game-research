@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstddef>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <thread>
 
@@ -41,13 +42,16 @@ public:
     // build is already running.
     bool request_build(glm::vec3 camera);
 
-    // Hands over the most recently finished tree, once.
-    [[nodiscard]] std::optional<world::svo::BrickTree> take_finished();
+    // Hands over the most recently finished tree, once, as a SHARED handle: the renderer's staged
+    // upload and the simulation's collision query are two owners of one immutable object
+    // (Prompt 003 goal 227). BrickTree has been immutable-after-construction since the pivot, so
+    // this is a shared_ptr and nothing else -- no copy of 400 MB, no synchronisation.
+    [[nodiscard]] std::shared_ptr<const world::svo::BrickTree> take_finished();
     // True while a finished tree is waiting to be taken (diagnostics: the frame that takes it
     // pays for the GPU buffer creation).
     [[nodiscard]] bool take_finished_pending() const {
         const std::lock_guard guard(mutex_);
-        return finished_.has_value();
+        return finished_ != nullptr;
     }
 
     [[nodiscard]] bool building() const noexcept { return building_.load(); }
@@ -86,7 +90,7 @@ private:
     world::generation::HeightmapGenerator heightmap_;
 
     mutable std::mutex mutex_;
-    std::optional<world::svo::BrickTree> finished_;
+    std::shared_ptr<const world::svo::BrickTree> finished_;
     LastBuild lastBuild_;
     std::atomic<bool> building_{false};
     bool requested_ = false;
