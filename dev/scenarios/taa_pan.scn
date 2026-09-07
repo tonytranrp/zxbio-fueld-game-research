@@ -1,0 +1,41 @@
+name taa_pan
+describe A deliberately SLOW pan across the hilltop with TAA left ON -- the pose class where a longer temporal history helps (more stability on sharp voxel edges) and hurts (more ghosting behind moving contrast) at the same time. Built for Prompt 004 goal 270, whose question is whether this engine should keep its eight-frame history or lengthen it; the aesthetic call belongs to Prompt 005, so this scenario exists to make that call from images rather than from the literature.
+backend both
+
+# TAA ON, unlike every golden-comparing scenario. That is the entire point: goal 270 is about the
+# temporal resolve, so turning it off would measure nothing. The captures below therefore carry
+# no-golden -- a TAA frame taken during motion is not reproducible run to run, which
+# dev/scenarios/fly_orbit.scn's own golden policy note measures at 5.3-35.5% of pixels.
+option --taa
+
+pose_ground 48,0 -90 -6 1.7
+
+# Settle first, so the history is full before the pan starts and the first capture is not just
+# measuring convergence from a cold buffer.
+wait 3
+capture frame 200 rest no-golden
+
+# ~7 degrees per second: slow enough that reprojection succeeds almost everywhere, which is the
+# regime where a longer history actually accumulates rather than being rejected every frame.
+look -60 -6 4
+capture frame 380 panning no-golden
+
+# And the settle afterwards: ghosting is most visible in the frames just AFTER motion stops, when
+# a long history is still carrying samples from where the camera used to be looking.
+wait 1
+capture frame 450 just_stopped no-golden
+wait 3
+capture end settled no-golden
+
+assert frames > 0
+assert contrast_percent > 6
+
+# HOW TO COMPARE TWO RUNS OF THIS SCENARIO, learned the hard way in goal 270.
+#
+# `capture frame N` fires on a FRAME INDEX, but this script's motion is timed in SECONDS -- so two
+# runs at different frame rates reach frame N at different yaws. Measured: 1644 frames in one run
+# against 1635 in the other, which is enough that a pixel diff of the `panning` capture reports
+# 14.8% of pixels changed when almost all of it is the CAMERA having moved, not the setting under
+# test. Compare the captures taken while the camera is HELD (rest, just_stopped, settled) -- those
+# are at a pose the script pins, so both runs agree on it. `panning` is for looking at, not for
+# diffing.

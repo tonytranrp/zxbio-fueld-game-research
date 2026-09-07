@@ -1039,3 +1039,80 @@ speeds — a bounded, cheap subtraction that keeps the bound conservative), make
 independent and lets the GPU overlap them. That is what Teardown's and Aokana's Hi-Z variants
 effectively do. If the overlap were free the result flips from a 0.01 ms wash to a 0.68 ms win, or
 19% of the march. Opened as a goal rather than guessed at.
+
+---
+
+## 15. TAA history length: free to lengthen, and the decision is Prompt 005's (goal 270)
+
+`taa_blend = 0.125` is an eight-frame exponential history. Research §3.5 has NAADF (2026) retaining
+**32** frames for exactly this content class and exactly this engine's artefacts (*"flickering,
+blurring, ghosting, and aliasing ... especially important in voxel worlds with sharp edges"*). Goal
+270 is explicitly a probe, not a commitment.
+
+New: `--taa-blend F` on every executable, and `dev/scenarios/taa_pan.scn` — a deliberately slow
+(~7°/s) pan with **TAA left ON**, unlike every golden-comparing scenario, capturing at rest, mid-pan,
+one second after the pan stops, and four seconds after.
+
+### The cost question is settled, and the answer is zero
+
+| | resolve ms | history memory |
+|---|---|---|
+| `--taa-blend 0.125` (8 frames) | **0.37** | 2 × RGBA16F full-res |
+| `--taa-blend 0.03125` (32 frames) | **0.37** | 2 × RGBA16F full-res |
+
+**Identical, and necessarily so.** An exponential history is not a ring of N frames — it is the same
+two buffers with a different blend weight, so "32 frames" costs exactly what "8 frames" costs. NAADF's
+figure comes from a different, deeper scheme (quantised positions and normals of ray bounces); the
+cheap version of its idea is one constant, and this engine can have it for nothing.
+
+That disposes of the half of goal 270 that is a performance question. What remains is quality.
+
+### The quality question, measured only where the measurement is valid
+
+| capture (both runs at the same pinned pose) | local contrast @1/8 | @1/32 | mean diff | % changed |
+|---|---|---|---|---|
+| `rest` (static, before the pan) | 16.64% | 16.62% | 3.02/255 | 9.40% |
+| `just_stopped` (1 s after motion) | 9.43% | **7.64%** | 1.49/255 | 9.86% |
+| `settled` (4 s after motion) | 2.81% | **1.83%** | 0.68/255 | 2.29% |
+
+Two things follow:
+
+- **At rest the two are indistinguishable** (16.64% vs 16.62%). With the camera still, an eight-frame
+  history has already converged — the only per-frame variation left is the jitter pattern — so a
+  longer one buys nothing there. That is worth knowing: the case people imagine TAA history helping
+  most is the case where this engine gets nothing from it.
+- **After motion the longer history is measurably softer** — 19% less local contrast one second after
+  the pan stops, 35% less four seconds after. That is the trade appearing exactly where theory says
+  it should.
+
+**And the viewed capture** (`research/captures/ake_taa_history_8_vs_32.png`, mid-pan and one second
+after, both settings, 2× crop): at 7°/s the difference is **subtle**. The 1/32 pan is slightly
+smearier on the ridge banding; neither shows the obvious doubled-edge ghosting a much longer history
+would produce on fast motion.
+
+### One vacuous measurement caught, and written into the scenario
+
+The mid-pan pair was going to be quoted at "14.8% of pixels changed". It is not a TAA number.
+`capture frame N` fires on a **frame index** while the script's motion is timed in **seconds**, so
+two runs at slightly different frame rates — 1644 frames against 1635 — reach frame 380 at different
+yaws, and almost all of that 14.8% is the camera having moved. Only the captures taken while the
+camera is **held** are comparable across runs. That is now a comment in `taa_pan.scn` so the next
+person does not quote it either. (Running total for this pass: **seven** instruments that reported a
+number while measuring something else.)
+
+### Handoff to Prompt 005, as goal 270 requires
+
+> **Lengthening this engine's TAA history is free.** Cost: 0.37 ms either way. Memory: identical.
+> One flag: `--taa-blend`. There is no performance argument on either side, so the choice is purely
+> aesthetic and it is yours.
+>
+> What the measurements say you would be choosing between: **at rest, nothing changes** — 1/8 has
+> already converged. **After motion, 1/32 is softer** — 19% less local contrast one second on, 35%
+> four seconds on. Whether that reads as welcome anti-aliasing on this engine's sharp voxel edges or
+> as mush is the question §5 of your own brief is better placed to answer, and
+> `voxel_harness --scenario taa_pan --ramp taa-blend:0.125,0.03125` puts both in front of you in one
+> command.
+>
+> One caution: the softening measured here is at **7°/s**. Prompt 005's grain and normal work will
+> change what there is to smear, and fast motion was not tested. Re-measure at the pan rate the look
+> is actually judged at.
