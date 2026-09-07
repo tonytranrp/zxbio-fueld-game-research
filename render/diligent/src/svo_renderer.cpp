@@ -15,6 +15,7 @@
 
 #include "detail/material_macros.hpp"
 #include "detail/render_context_impl.hpp"
+#include "detail/wind_macros.hpp"
 
 #include "Graphics/GraphicsEngine/interface/Buffer.h"
 #include "Graphics/GraphicsEngine/interface/PipelineState.h"
@@ -50,9 +51,13 @@ struct MarchConstantsCpu {
     glm::uvec4 treeInts;      // V, max brick level, root offset, flags | view << 8
     glm::vec4 shadeParams;    // smooth pixels, grain amplitude, AO lod multiplier, raw pixel angle
     glm::vec4 jitter;         // xy pixels, zw 1/size
+    // The ONE wind field (world/wind), as tuning rather than shape: the wave constants are shader
+    // macros (detail/wind_macros.hpp), these are the numbers --wind-speed/--no-wind move at runtime.
+    glm::vec4 windDirSpeed;    // xy = horizontal direction, z = base speed, w = gust amplitude
+    glm::vec4 windGustFlutter; // x = gust frequency, y = gust scroll, z = flutter Hz, w = flutter freq
     std::array<detail::MaterialRecord, kMaterialCount> materials;
 };
-static_assert(sizeof(MarchConstantsCpu) == 64 + 64 + 16 * 6 + 16 * kMaterialCount,
+static_assert(sizeof(MarchConstantsCpu) == 64 + 64 + 16 * 8 + 16 * kMaterialCount,
               "must match the HLSL cbuffer exactly");
 
 // Mirror of svo_taa.psh.hlsl's cbuffer TaaConstants -- update both together.
@@ -96,6 +101,7 @@ RefCntAutoPtr<IShader> create_shader(RenderContext::Impl& rc, IShaderSourceInput
     // array CreateShader reads, so it lives until the call returns.
     ShaderMacroHelper macros;
     detail::add_material_macros(macros);
+    detail::add_wind_macros(macros);
 
     ShaderCreateInfo ci;
     ci.pShaderSourceStreamFactory = factory;
@@ -585,8 +591,7 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
             impl_->gpuTimer->Begin(ctx);
         }
 
-        const float animSeconds =
-            std::chrono::duration<float>(std::chrono::steady_clock::now() - impl_->animStart).count();
+        const float animSeconds = anim_seconds();
         MapHelper<MarchConstantsCpu> cb(ctx, impl_->constants, MAP_WRITE, MAP_FLAG_DISCARD);
         cb->invViewProj = invViewProj;
         cb->viewProj = viewProj;
@@ -607,6 +612,10 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
                                   static_cast<std::uint32_t>(g.max_brick_level()), impl_->rootOffset, flags);
         cb->shadeParams = glm::vec4(s.smooth_pixels, s.grain_amplitude, s.ao_lod, rawPixelAngle);
         cb->jitter = jitter;
+        const glm::vec3 windDir = world::wind::wind_direction(s.wind);
+        cb->windDirSpeed = glm::vec4(windDir.x, windDir.z, s.wind.base_speed, s.wind.gust_amplitude);
+        cb->windGustFlutter =
+            glm::vec4(s.wind.gust_frequency, s.wind.gust_scroll, s.wind.flutter_hz, s.wind.flutter_frequency);
         cb->materials = detail::kMaterialRecords;
     }
     ctx->SetPipelineState(impl_->pso);
@@ -663,6 +672,10 @@ const GpuAllocationTracker& SvoRenderer::gpu_memory() const noexcept {
 
 bool SvoRenderer::has_tree() const noexcept {
     return impl_->hasTree;
+}
+
+float SvoRenderer::anim_seconds() const noexcept {
+    return std::chrono::duration<float>(std::chrono::steady_clock::now() - impl_->animStart).count();
 }
 
 } // namespace render::diligent

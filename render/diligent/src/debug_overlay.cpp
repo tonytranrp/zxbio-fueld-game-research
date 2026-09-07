@@ -94,6 +94,10 @@ void DebugOverlay::render(const OverlayStats& stats) {
             ImGui::Text("objects: %zu (%zu round / %zu conifer / %zu shrub)", stats.objects,
                         stats.objects_round, stats.objects_conifer, stats.objects_shrub);
         }
+        // B2: the ONE wind field, sampled at the player. Watching this number move with the gusts
+        // is how you tell a wind bug from a consumer bug.
+        ImGui::Text("wind: %.1f m/s from %.0f deg (gust %+.2f)", static_cast<double>(stats.wind_speed),
+                    static_cast<double>(stats.wind_angle_deg), static_cast<double>(stats.wind_gust));
         if (stats.aim_line[0] != '\0') {
             ImGui::Text("aim: %s", stats.aim_line);
         }

@@ -28,7 +28,12 @@ struct OverlayStats {
     std::size_t objects_shrub = 0;
     // Goal 84: crosshair-aim readout ("Grass @ 12,34,56"); empty = no hit / not computed.
     char aim_line[64] = {};
-    bool crosshair = true;            // A4's screen-centre cross; off under the mechanical frame checks
+    bool crosshair = true; // A4's screen-centre cross; off under the mechanical frame checks
+    // B2: the ONE wind field (world/wind), sampled at the player on the renderer's own animation
+    // clock. Watching this move with the gusts is how you tell a wind bug from a consumer bug.
+    float wind_speed = 0.0f;
+    float wind_gust = 0.0f;
+    float wind_angle_deg = 0.0f;
     std::uint64_t gpu_self_bytes = 0; // §2.3 number 1: our own chunk buffers (GpuAllocationTracker)
     std::uint64_t gpu_self_peak_bytes = 0;
     GpuMemoryBudget budget; // §2.3 number 2: VK_EXT_memory_budget, machine-wide

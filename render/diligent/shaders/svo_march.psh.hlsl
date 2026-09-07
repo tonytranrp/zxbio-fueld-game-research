@@ -15,6 +15,7 @@
 // distance from THEIR OWN origin, never the eye's (goal 164: the shadow rings).
 
 #include "sky_common.fxh"
+#include "wind.fxh"
 
 cbuffer MarchConstants
 {
@@ -30,6 +31,11 @@ cbuffer MarchConstants
     float4 g_ShadeParams;      // x = smooth-normal span (pixels), y = grain amplitude,
                                // z = AO lod multiplier, w = raw pixel angle (radians, unscaled)
     float4 g_Jitter;           // xy = sub-pixel jitter (pixels), zw = 1 / viewport size
+    // The ONE wind field's per-run tuning (world/wind). The wave SHAPE is compiled in as WIND_*
+    // macros by detail/wind_macros.hpp, straight from world/wind's own header -- these are only the
+    // numbers --wind-speed / --no-wind move without a recompile.
+    float4 g_WindDirSpeed;     // xy = horizontal wind direction, z = base speed, w = gust amplitude
+    float4 g_WindGustFlutter;  // x = gust frequency, y = gust scroll, z = flutter Hz, w = flutter freq
     // One record per material (render/diligent/detail/material_macros.hpp's material_record):
     // rgb = linear albedo, w = shading model. MATERIAL_COUNT and MAT_SHADING_* are macros the C++
     // side passes at shader creation from the material registry -- no material literal lives here.
@@ -556,7 +562,7 @@ void main(in PSInput PSIn, out PSOutput PSOut)
         const float amplitude = g_ShadeParams.y * saturate((cubePixels - 1.5) / 2.5);
         grain = 1.0 + amplitude * (Hash3(cell) * 2.0 - 1.0);
     }
-    const float3 albedo = albedoBase * mottle * grain;
+    float3 albedo = albedoBase * mottle * grain;
 
     const float diffuse = saturate(dot(normal, -kSunDirection));
     // Secondary-ray origins: half a finest voxel off the hit FACE (into the cell the primary ray
@@ -589,6 +595,23 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const float3 skyAmbient    = float3(0.34, 0.33, 0.30);
     const float3 groundAmbient = float3(0.14, 0.15, 0.19);
     const float3 ambient = lerp(groundAmbient, skyAmbient, normal.y * 0.5 + 0.5);
+    // Wind, shading domain (Prompt 001 C6.1 / D3). Foliage does not MOVE here -- the voxels it is
+    // made of are stored, and nothing published animates stored ray-marched geometry -- but its
+    // brightness does, at the flutter band that reads as individual leaves catching the light
+    // (research/tree-motion-growth-and-appearance.md §6.2). Gust and flutter together: the gust
+    // sweeps whole canopies light and dark as it crosses them, the flutter shimmers their surface.
+    // At distance, with TAA, this is what makes a valley read as alive at zero geometry cost.
+    if (MaterialShading(hit.material) == MAT_SHADING_FOLIAGE && g_WindDirSpeed.z > 0.0)
+    {
+        const float t = g_CameraPosWorld.w;
+        const float gust = WindGust(p, g_WindDirSpeed.xy, t, g_WindGustFlutter.x, g_WindGustFlutter.y);
+        const float flutter = WindFlutter(p, t, g_WindGustFlutter.z, g_WindGustFlutter.w);
+        // Scaled by the wind's own strength, so --wind-speed 0.5 is genuinely calmer and
+        // --no-wind (base speed 0) is bit-for-bit the pre-wind image.
+        const float strength = saturate(g_WindDirSpeed.z / 6.0);
+        albedo *= 1.0 + strength * (0.10 * flutter + 0.06 * gust);
+    }
+
     float3 color = albedo * (ambient * ao + kSunColor * diffuse * lit);
     if (MaterialShading(hit.material) == MAT_SHADING_WATER)
     {

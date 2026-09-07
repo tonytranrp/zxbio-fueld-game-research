@@ -6,6 +6,7 @@
 
 #include "render/diligent/memory_tracking.hpp"
 #include "render/diligent/render_context.hpp"
+#include "world/wind/wind_field.hpp"
 #include "render/interface/camera.hpp"
 #include "world/svo/brick_tree.hpp"
 
@@ -58,10 +59,19 @@ public:
         float grain_amplitude = 0.10f; // +-10% brightness per cube at full size
         float taa_blend = 0.125f;      // weight of the new frame (1/8 = eight-frame history)
         SvoDebugView debug_view = SvoDebugView::None;
+        // The ONE wind field (world/wind, Prompt 001 Group B). Everything that moves reads it;
+        // --no-wind sets still_wind(), which zeroes the field itself rather than making each
+        // consumer test a flag.
+        world::wind::WindParams wind;
         // Staged upload budget per frame. A whole tree is 200-400 MB at the shipping default;
         // one synchronous CreateBuffer of that size was the 45-61 ms worst frame in every run.
         std::size_t upload_bytes_per_frame = std::size_t{32} * 1024 * 1024;
     };
+
+    // The animation clock the shaders are given (water phase, wind time). Exposed so the overlay
+    // can sample the SAME wind the marcher is drawing, rather than a second clock that agrees only
+    // approximately -- the whole point of Group B is one field, read consistently.
+    [[nodiscard]] float anim_seconds() const noexcept;
 
     // Throws std::runtime_error on shader/PSO failure. `context` must outlive the renderer.
     explicit SvoRenderer(RenderContext& context);

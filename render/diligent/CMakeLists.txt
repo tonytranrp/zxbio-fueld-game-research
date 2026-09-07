@@ -55,7 +55,7 @@ target_include_directories(render_diligent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
 # Group B) -- the bundled libpng was already in the dependency tree, so PNG output costs zero new
 # dependencies. DiligentFX carries the Bloom/PostFXContext post-process modules (Group D).
 target_link_libraries(render_diligent
-    PUBLIC project_warnings engine_core world_chunk world_meshing world_svo render_interface
+    PUBLIC project_warnings engine_core world_chunk world_meshing world_svo world_wind render_interface
     PRIVATE Diligent-GraphicsEngineVk-static Diligent-Imgui Diligent-TextureLoader DiligentFX glfw
     PRIVATE Tracy::TracyClient
 )

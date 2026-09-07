@@ -36,6 +36,7 @@
 #include "world/collision/terrain_collider.hpp"
 #include "world/player/fixed_step.hpp"
 #include "world/player/view_polish.hpp"
+#include "world/wind/wind_field.hpp"
 #include "world/streaming/chunk_events.hpp"
 #include "world/streaming/world_bounds.hpp"
 #include "world_loader.hpp"
@@ -156,6 +157,10 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
             options.step_height = next_float(world::player::kSvoStepHeight);
         } else if (arg == "--no-view-polish") {
             options.no_view_polish = true;
+        } else if (arg == "--wind-speed") {
+            options.svo_settings.wind.base_speed = next_float(options.svo_settings.wind.base_speed);
+        } else if (arg == "--no-wind") {
+            options.svo_settings.wind = world::wind::still_wind();
         } else if (arg == "--crosshair") {
             options.crosshair = true;
         } else if (arg == "--no-crosshair") {
@@ -292,7 +297,7 @@ std::optional<AppOptions> parse_args(std::span<char*> args) {
                 "--shadow-lod M, --svo-threads N, --svo-upload-mb N, --debug-view NAME, --voxel-log2 N, "
                 "--region-log2 N, "
                 "--lod-radius M, --no-trees, --pos x,y,z, --yaw D, --pitch D, --step-height M, "
-                "--no-view-polish, --crosshair/--no-crosshair)",
+                "--no-view-polish, --crosshair/--no-crosshair, --wind-speed M, --no-wind)",
                 arg);
             return std::nullopt;
         }
@@ -1006,6 +1011,11 @@ int run_svo(Session& s, const AppOptions& options) {
             stats.gpu_self_peak_bytes = renderer.gpu_memory().peak_bytes();
             stats.budget = telemetry.budget;
             stats.crosshair = crosshairOn;
+            const world::wind::WindSample windHere =
+                world::wind::sample_wind(options.svo_settings.wind, camera.position, renderer.anim_seconds());
+            stats.wind_speed = windHere.speed;
+            stats.wind_gust = windHere.gust;
+            stats.wind_angle_deg = glm::degrees(options.svo_settings.wind.base_angle_radians);
             s.overlay->render(stats);
             phases.overlay = phase_ms(phaseClock);
 
