@@ -1,8 +1,9 @@
 # Gameplay, wind and water pass — decision log
 
 Prompt: `Prompts/001-2026-09-07-gameplay-physics-world-life.md`. Groups AD (player physics), AE
-(wind), AH (water motion) and C7 (mesh-path wind parity) landed; groups AF (trees v2) and AG
-(grass) did not — §8 says exactly where they stand and why, which is the point of this file.
+(wind), AH (water motion) and C7 (mesh-path wind parity) landed, and AF partially (skeletons, pipe
+model, leaf mass — not the sway or the voxelizer); group AG (grass) did not start — §8 and §8b say
+exactly where they stand and why, which is the point of this file.
 
 Same style as `research/lin-look-log.md`: what was measured, what was decided against, and the
 numbers behind both.
@@ -150,7 +151,38 @@ displacement was not happening.
 This technique is worth reaching for before a capture sequence whenever the question is "does X
 affect Y and only Y".
 
-## 8. Trees v2 (AF) and grass (AG): not done, and what stands
+## 8. Trees v2 (AF): the skeleton is done; the sway and the voxelizer are not
+
+Goals 186-188 landed after the main pass: space-colonization skeletons, pipe-model radii, and leaf
+mass. Goals 190-192 (the sway oscillator, skeleton voxelization into the svo tree, geometric canopy
+motion) did not. Grass (AG) was not started at all.
+
+**Two calibration errors, both caught by tests rather than by reading the code**, and both worth
+recording because the *shape* of the mistake repeats:
+
+1. `area_per_leaf_unit` was set to 6e-5 m² of sapwood per m² of leaf, an order of magnitude under a
+   real tree's Huber value (~5.7e-4, from an oak at 0.6 m DBH carrying ~500 m² of leaf). Every
+   radius in the tree then fell under the 1 cm twig floor, so the floor *became* the model — and the
+   pipe-model test failed by reporting a trunk exactly as thick as a twig. A constant that produces
+   a plausible-looking picture can still be an order of magnitude wrong; only a test that asserts a
+   RATIO catches it.
+2. Leaf area was first hung on each tip as a fixed amount. The single-seed test passed. Strengthening
+   it to twelve seeds killed it immediately: tip count varies about **sevenfold** between seeds (34
+   at one, 245 at another), so the same species came out at LAI 0.3 or 8.7 depending on the seed.
+   The fix is conceptual, not numeric — leaf area is a property of the **crown** (LAI × footprint,
+   shared over whatever tips grew), and tip count is only how finely the crown is subdivided. LAI is
+   now exact by construction.
+
+The second one is the more useful lesson: **a single-seed test of a stochastic generator tells you
+almost nothing**, and the version that passes is the one that hides the variance.
+
+`tools/tree_dump` writes a skeleton as .obj line elements so it can be looked at before anything
+voxelizes it — a skeleton bug is obvious in a picture and nearly invisible in a voxel field.
+`research/captures/gp_af_skeletons.png` shows all four species: a dome on a bare stem, a cone, a
+trunkless spreading shrub, and a tall narrow aspen, with a metre scale bar. The round broadleaf ends
+up 8.4 m tall on a 16 cm trunk, which is the right order for a real tree of that size.
+
+## 8b. Grass (AG): not done, and what stands
 
 Neither group was started. This is a scope outcome, not a discovery — the pass ran out of budget
 after A, B, E and C7, and the honest thing is to say where the line is rather than land half a tree
@@ -250,7 +282,7 @@ it anyway.
 
 | measure | before | after |
 |---|---|---|
-| tests | 119 | **164** |
+| tests | 119 | **176** |
 | `--autofly --walk` 900 frames, ground violations | 0 | **0** (74 mid-pass, §3) |
 | slow frames (>20 ms) in that run | 1 (tree swap) | **1 (tree swap)** |
 | `--verify-frame`, Vulkan | 34.0% | **34.7%** |

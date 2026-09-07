@@ -27,7 +27,7 @@ This repo has two working sessions:
 
 | # | File | Status | Scope |
 |---|------|--------|-------|
-| 001 | `001-2026-09-07-gameplay-physics-world-life.md` | **partial (A, B, C7, E done; C1-C6, D not started)** | Player physics (walking/jump/swim, fixed timestep, micro-step smoothing), crosshair + aim UX, global wind system, trees v2 (space-colonization skeletons + pipe model + sway), grass (voxel blades + wind, overlay stretch), water surface dynamics (Gerstner visual layer) |
+| 001 | `001-2026-09-07-gameplay-physics-world-life.md` | **partial (A, B, C1-C3, C7, E done; C4-C6, D not started)** | Player physics (walking/jump/swim, fixed timestep, micro-step smoothing), crosshair + aim UX, global wind system, trees v2 (space-colonization skeletons + pipe model + sway), grass (voxel blades + wind, overlay stretch), water surface dynamics (Gerstner visual layer) |
 
 ## How to request the next prompt (for the human)
 
@@ -40,9 +40,12 @@ needs, and drop `NNN-….md` here with the same structure.
 
 Groups **A** (player physics), **B** (wind), **E** (water motion) and **C7** (mesh-path wind
 parity) are complete with their Checks recorded in `docs/goals.md` groups AD/AE/AH and goal 189.
-Groups **C1-C6** (trees v2) and **D** (grass) were **not started** — the pass ran out of budget,
-and `research/gameplay-pass-log.md` §8 records what they build on rather than leaving half a tree
-system behind. Their goals are in `docs/goals.md` as AF (186-192) and AG (193-195), unchecked.
+Group **C** is partial: **C1-C3** (space-colonization skeletons, pipe-model radii, leaf mass) are
+done and tested, with a viewed skeleton dump via the new `tools/tree_dump`. **C4-C6** (the sway
+oscillator, skeleton voxelization, geometric canopy motion) and all of **D** (grass) were not
+started — the pass ran out of budget, and `research/gameplay-pass-log.md` §8/§8b record what they
+build on rather than leaving half a tree system behind. Goals: `docs/goals.md` AF (186-188 done,
+190-192 open) and AG (193-195 open).
 
 Two Checks are knowingly weaker than the prompt asked, both with the reason written down: A3 has no
 capture sequence (a 4 cm effect at a 0.1 s time constant is not something a still shows honestly;
@@ -50,5 +53,5 @@ the unit test asserts the stronger claim), and E3 applies its shore fade only on
 depth probe needs a water-skipping traversal variant the 7,000-ray oracle guards, and because this
 implementation displaces normals rather than geometry, the artefact E3 prevents cannot occur).
 
-164/164 tests, `--verify-frame` 34.7%/34.6% on both backends, `--autofly --walk` 0 violations.
+176/176 tests, `--verify-frame` 34.7%/34.6% on both backends, `--autofly --walk` 0 violations.
 

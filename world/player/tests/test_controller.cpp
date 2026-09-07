@@ -118,7 +118,7 @@ TEST_CASE("Walking off a ledge still jumps inside the coyote window", "[player][
 }
 
 TEST_CASE("The step budget climbs a 4 cm lip but not a 40 cm one", "[player][controller][step]") {
-    const PlayerIntent forwardIsNegZ; // yaw 0 looks down -Z; walk +X instead
+    // Yaw 0 looks down -Z, so "right" is the +X direction the wall below sits in.
     PlayerIntent right;
     right.right = true;
 

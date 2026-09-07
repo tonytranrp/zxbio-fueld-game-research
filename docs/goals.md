@@ -1131,7 +1131,8 @@ sub-centimetre world you were a *spectator with a body* in: fly by default, walk
 jump, no crosshair, no wind, static water. Decision log with every measurement:
 `research/gameplay-pass-log.md`.
 
-Groups AD, AE, AH and goal 189 are DONE. Groups AF (trees v2) and AG (grass) are NOT started —
+Groups AD, AE, AH and goal 189 are DONE; AF is PARTIAL (skeleton, pipe model and leaf mass in;
+sway and voxelizer not). Group AG (grass) is NOT started —
 `research/gameplay-pass-log.md` §8 says exactly where the line is and what they build on, and their
 goals below are left unchecked on purpose rather than descoped.
 
@@ -1216,20 +1217,42 @@ goals below are left unchecked on purpose rather than descoped.
      `--no-wind` frames diffed — 18,018 pixels change and **98.2% of them are foliage green**, so
      the effect lands on leaves and nothing else and `--no-wind` is provably static.
 
-## AF. Trees v2: skeletons, pipe model, sway — NOT STARTED
+## AF. Trees v2: skeletons, pipe model, sway — PARTIAL (186-188 done; 190-192 not started)
 
-Deliberately unstarted, not descoped: the pass ran out of budget after AD/AE/AH and goal 189.
+PARTIAL, not descoped: the skeleton, the pipe model and leaf mass (186-188) are in and tested; the
+sway oscillator, the skeleton voxelizer and the geometric canopy motion (190-192) are not started.
 `research/gameplay-pass-log.md` §8 records what they build on (the wind field is complete and is
 what they were going to consume) and the one non-obvious design question waiting for them.
 
-186. [ ] Space-colonization skeletons (`world/generation/tree_skeleton`), deterministic per
+186. [x] Space-colonization skeletons (`world/generation/tree_skeleton`), deterministic per
      (seed, position), with the existing three silhouettes plus a high-flutter aspen variant.
-     **Check**: determinism, connectivity, bounds, tip spacing, and a viewed debug dump of three
-     skeletons before any voxelization.
-187. [ ] Pipe-model radii from accumulated distal leaf count. **Check**: a hand-built skeleton gets
-     exactly the expected radii; branch junctions satisfy da Vinci within 15% over N random trees.
-188. [ ] Leaf mass distributed from sapwood area, feeding radii, sway mass and canopy density.
-     **Check**: total leaf area ≈ LAI × crown footprint in the 0.5–3.0 band; denser at tips.
+     Runions et al.: scatter attractors through the crown volume, let every tip with attractors near
+     it grow one segment toward their average direction, consume the ones it reaches. Branching is
+     not scripted -- it emerges when a tip's attractors pull in genuinely different directions, which
+     is why the result looks grown rather than recursed. A bare stem is grown FIRST, because
+     colonizing from the ground up branches at ground level and the tree has no trunk at all.
+     **Check**: byte-identical skeletons for the same (seed, position, species) and different ones
+     for a different seed; exactly one root with every parent earlier in the list (the invariant the
+     pipe model's single backward pass depends on); segments one growth step long and joined
+     end-to-start; the skeleton fits the crown volume it was given; tips spread rather than piled.
+     Viewed dump of all four species before any voxelization, via the new `tools/tree_dump` (.obj
+     line elements, rendered to `research/captures/gp_af_skeletons.png`): dome on a bare stem, cone,
+     trunkless spreading shrub, tall narrow aspen -- each recognisably its species.
+187. [x] Pipe-model radii from accumulated distal leaf area, in ONE tip-to-root pass. **Check**: a
+     hand-built two-tip skeleton gets exactly the radius the model asks for and a root whose
+     cross-sectional AREA is the sum of its children's; branch junctions satisfy da Vinci within 15%
+     over 6 grown trees, excluding junctions where the twig floor clamped any participant. A
+     calibration error was caught by the test rather than by inspection: `area_per_leaf_unit` was
+     first set an order of magnitude too small (6e-5 against a real tree's ~5.7e-4 Huber value), so
+     every radius fell under `min_radius`, the floor became the whole model, and the test reported a
+     trunk exactly as thick as a twig.
+188. [x] Leaf mass as LAI x crown footprint, shared over whatever tips grew, with the footprint
+     measured from the skeleton's OWN horizontal extent. **Check**: LAI is exact by construction
+     across 12 seeds, and the grown crown stays within 0.3-1.6x the crown it was asked for. This
+     replaced a fixed-area-per-tip formulation that a strengthened test killed: tip count varies ~7x
+     between seeds (34 at one, 245 at another), so the same species came out at LAI 0.3 or 8.7
+     depending on the seed, and the original single-seed test had simply been lucky. Leaf area is a
+     property of the crown; tip count is only how finely it is subdivided.
 190. [ ] Hierarchical spring sway (trunk fundamental from the cantilever formula, branches
      semi-independent so multiple-resonance damping emerges structurally). **Check**: step response
      and resonance near the predicted f0 ≈ 0.26 Hz for sycamore-scale parameters; determinism;
