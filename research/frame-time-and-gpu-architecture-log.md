@@ -1299,3 +1299,97 @@ rather than inheriting.
 **So the ceiling this ramp finds is the build path's throughput, not the GPU's.** That matters for
 Prompt 007: the limit on view distance today is how fast a region can be BUILT, which is exactly
 what AK-C's per-cell rebuild exists to change and what §5 of this log's design section costed.
+
+---
+
+## 18. The grid of shallow trees: correct, 52% fewer traversal steps, and goal 254's cost model was wrong (goal 255)
+
+Goal 254 designed it; this built it on the CPU and put it in front of the oracle.
+
+### What it turned out to be: very little code, exactly as the design predicted
+
+The design's central claim was that a grid needs **no encoding change**, and that held completely.
+`world/svo/cell_grid.hpp` is a `vector<GridCell>` plus an Amanatides–Woo DDA. A cell is today's
+`BrickTree` built with `root_size_log2 = 5`; `tree_layout.hpp` is untouched; `trace_ray` already
+normalises by `tree.geometry.origin`, so a **world-space ray goes straight into a cell with no
+transform at all**. There are no cross-cell pointers, so ESVO's `far` bit and per-block far-pointer
+table are not second-ranked here — they are moot, exactly as §5 argued.
+
+### Correctness: three independent checks, and the last one separates two questions
+
+1. **The oracle, 7,000 rays: 0 mismatches**, 4,888 of them hits. A 64 m world as one tree against the
+   same world as 4×4×4 cells of 16 m — compared not to a hand-rolled expectation but to the shipping
+   `trace_ray` on the single tree, which pins the grid to the behaviour the renderer already has.
+2. **Real terrain at 512 m, distance LOD: 902,616 bricks and 549.8 MB in BOTH structures.** The same
+   world, to the brick.
+3. **Real terrain, uniform LOD: 4,439 bricks, 2.7 MB, 3,633 hits, and 100.0% ray agreement over
+   20,000 rays** in both.
+
+Check 3 exists because check 2 came with **87.4%** ray agreement, and 87.4% needed explaining rather
+than excusing. The hypothesis was that a 512 m root and a 32 m root compute *different LOD levels for
+the same point* — the level is relative to the root edge and the two roots are four levels apart — so
+the structures hold genuinely different geometry and rays are entitled to disagree. Turning LOD off
+makes the two structures hold identical geometry, and then they agree **100.0%**. **The traversal is
+correct; the 12.6% is the LOD model.** `--uniform-lod` is now a flag on the probe so the two
+questions can never be confused again.
+
+### The traversal claim: confirmed, and it is large
+
+Real terrain, 512 m region, 20,000 rays from a ground-level camera:
+
+| | octree steps/ray | grid steps/ray |
+|---|---|---|
+| one 512 m tree (16 levels) | **21.7** | — |
+| grid of 32 m cells (12 levels) | **10.5** | 2.6 |
+
+**A 52% reduction in octree steps**, for 2.6 DDA steps that touch a flat array instead of chasing
+pointers. Costed at §14's measured exchange rate — a 29% step cut bought 19% of march time, so
+roughly 0.65× — that is worth about **a third of the march**, which would be the largest single win
+identified in this prompt. It is not banked: goal 256's shader mirror is what would bank it.
+
+### The build-cost claim: wrong as stated, and the reason is worth more than the number
+
+Goal 254 predicted **7–14 ms per cell** from an area argument: terrain is a surface, one 32 m cell is
+1/256 of a 512 m footprint. Measured, 512 m region, real terrain, cells built in parallel with
+goal 251's shared focus tiers:
+
+| | measured |
+|---|---|
+| whole region, one tree | **2.354 s** |
+| whole region, as 4,096 cells | **2.630 s** (+12%) |
+| per cell, p50 | **0.6 ms** |
+| per cell, p95 | **21.3 ms** |
+| **the camera's own cell, alone** | **255.6 ms** — 87,450 bricks, 9.7% of the region's total |
+
+**Building the world as a grid costs 12% more, not 6× more, and most cells are free.** But the cost
+is not uniform and the area argument does not describe it: **cost follows DETAIL, and distance LOD
+concentrates detail at the camera.** One cell holds a tenth of the region's bricks and costs 255 ms
+on its own — 400× the median cell and 18× goal 254's prediction.
+
+### What that means for goal 257, stated as the blocker it is
+
+Per-cell rebuild is cheap for the 4,000 cells that cost 0.6 ms and viable for the ones that cost
+21 ms. It is **not** viable for the LOD-centre cell at 255 ms — and worse, with a *continuous*
+distance LOD **every cell's content depends on the camera position**, so moving the camera dirties
+the whole grid rather than a ring of it. The grid does not fix that on its own.
+
+**The specific prerequisite, now named: per-cell LOD quantisation.** A cell's level must be a
+function of its distance BAND, not a continuous function of camera distance, so that a camera move
+re-levels only the cells that crossed a band. That is a change to the build's LOD model, not to the
+grid, and it is what goal 257 actually needs. Recorded as a goal rather than attempted here.
+
+### Three more instruments caught measuring nothing
+
+This section's running total is now **ten** for the pass, and all three were mine, in one tool:
+
+- **The camera was inside the hill.** Hard-coded `y = 20`; all 20,000 rays reported 1.0 steps and a
+  hit. The eye height is now derived from the heightmap.
+- **A serial grid against a parallel region.** Cells were built one at a time, each handing the pool
+  to `build_tree` — but a 32 m cell has almost nothing to split. That reported the grid **6.1×
+  slower**. The parallelism in a grid is *between* cells; measured that way it is 12% slower.
+- **Two different worlds.** The region snapped its origin to 8 m and the grid to 32 m, so they were
+  offset by 16 m and the grid "missed" two thirds of the hits. Both snap to the cell edge now.
+
+Every one of them produced a plausible number. The pattern this pass keeps re-learning: **a
+measurement that confirms what you expected is exactly as likely to be broken as one that does not**
+— the serial-build error looked like a real refutation of the design, and it was an artefact.
