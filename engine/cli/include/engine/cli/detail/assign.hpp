@@ -188,9 +188,11 @@ template <class T>
         }
         dst = static_cast<T>(value);
         return Status::Ok;
-    } else if constexpr (std::integral<T>) {
-        return from_text(token, dst) ? Status::Ok : Status::BadValue;
-    } else if constexpr (std::floating_point<T>) {
+    } else if constexpr (std::integral<T> || std::floating_point<T>) {
+        // One branch, not two: from_text is overloaded on the constraint, so the integral and
+        // floating-point cases have the same BODY and differ only in which overload it resolves
+        // to. Written as two branches this was a clang-tidy bugprone-branch-clone error on the
+        // Linux CI leg -- and it was right, the duplication carried no information.
         return from_text(token, dst) ? Status::Ok : Status::BadValue;
     } else if constexpr (std::same_as<T, std::string>) {
         dst.assign(token);
