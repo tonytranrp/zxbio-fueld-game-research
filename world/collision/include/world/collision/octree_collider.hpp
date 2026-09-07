@@ -26,6 +26,7 @@
 #include "engine/core/math.hpp"
 #include "world/collision/solid_query.hpp"
 #include "world/svo/brick_tree.hpp"
+#include "world/svo/cell_grid.hpp"
 
 namespace world::collision {
 
@@ -40,8 +41,25 @@ public:
     // same thread that adopts a finished build. No atomic, deliberately: an atomic here would
     // advertise a cross-thread contract that does not exist and would invite someone to rely on it.
     void set_tree(std::shared_ptr<const world::svo::BrickTree> tree) noexcept { tree_ = std::move(tree); }
+
+    // Prompt 004 goal 256: the same query, over the cell grid.
+    //
+    // The renderer's structural change had to reach here, and the prompt says so explicitly -- this
+    // collider's whole justification is that it answers from the SAME structure the renderer
+    // marches, so leaving it on a single tree while the renderer moved to a grid would quietly
+    // reintroduce the "the world you collide with is not the world you see" bug that Prompt 003
+    // built it to remove.
+    //
+    // A grid takes precedence over a tree when both are set. Nothing else changes: the per-cell
+    // descent is the SAME code, because a cell is a `TreeView` and the helpers already take one.
+    void set_grid(std::shared_ptr<const world::svo::FlatCellGrid> grid) noexcept {
+        grid_ = std::move(grid);
+    }
+    [[nodiscard]] const world::svo::FlatCellGrid* grid() const noexcept { return grid_.get(); }
     [[nodiscard]] const world::svo::BrickTree* tree() const noexcept { return tree_.get(); }
-    [[nodiscard]] bool has_tree() const noexcept { return tree_ != nullptr && !tree_->empty(); }
+    [[nodiscard]] bool has_tree() const noexcept {
+        return (grid_ != nullptr && !grid_->empty()) || (tree_ != nullptr && !tree_->empty());
+    }
     // How many trees this collider has been handed. The harness asserts the simulation never runs
     // more than one generation behind the renderer.
     [[nodiscard]] std::uint64_t generation() const noexcept { return generation_; }
@@ -79,6 +97,7 @@ public:
 
 private:
     std::shared_ptr<const world::svo::BrickTree> tree_;
+    std::shared_ptr<const world::svo::FlatCellGrid> grid_;
     std::uint64_t generation_ = 0;
     mutable std::size_t lastNodesVisited_ = 0;
     mutable std::size_t queryCount_ = 0;

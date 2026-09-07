@@ -4,6 +4,7 @@ add_executable(world_collision_tests
     test_aabb_sweep.cpp
     test_terrain_collider.cpp
     test_octree_collider.cpp
+    test_grid_collider.cpp
 )
 target_link_libraries(world_collision_tests PRIVATE world_collision world_generation world_svo
                                                    world_materials Catch2::Catch2WithMain project_warnings)

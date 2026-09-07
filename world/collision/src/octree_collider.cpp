@@ -54,7 +54,7 @@ struct VoxelBox {
 // The recursive descent. `node` is a word offset; the node covers voxel cube
 // [origin, origin + size)^3 where size = 1 << (V - level). Returns true on the first solid voxel
 // that overlaps `box` -- an O(depth) walk with early-out, not an n^3 point sample.
-bool node_overlaps(const BrickTree& tree, std::uint32_t node, int level, const std::int64_t origin[3],
+bool node_overlaps(const world::svo::TreeView& tree, std::uint32_t node, int level, const std::int64_t origin[3],
                    const VoxelBox& box, int V, std::size_t& visited) {
     ++visited;
     const std::uint32_t header = tree.nodes[node];
@@ -136,7 +136,7 @@ bool node_overlaps(const BrickTree& tree, std::uint32_t node, int level, const s
 // first hit, which is why it is O(depth) rather than a scan of the column.
 constexpr std::int64_t kNoVoxel = std::numeric_limits<std::int64_t>::min();
 
-std::int64_t column_top(const BrickTree& tree, std::uint32_t node, int level, const std::int64_t origin[3],
+std::int64_t column_top(const world::svo::TreeView& tree, std::uint32_t node, int level, const std::int64_t origin[3],
                         std::int64_t cx, std::int64_t cz, std::int64_t yLimit, int V) {
     const std::uint32_t header = tree.nodes[node];
     const std::uint32_t kind = world::svo::node_kind(header);
@@ -201,6 +201,45 @@ std::int64_t column_top(const BrickTree& tree, std::uint32_t node, int level, co
 bool OctreeCollider::overlaps_solid(const Aabb& box) const noexcept {
     lastNodesVisited_ = 0;
     ++queryCount_;
+
+    // Goal 256: the grid path. A player box is 0.6 m across against a 32 m cell, so this visits one
+    // cell almost always and at most eight when the body straddles a corner. Each cell's descent is
+    // the SAME `node_overlaps` -- a cell is a TreeView and so is a whole tree.
+    if (grid_ != nullptr && !grid_->empty()) {
+        const world::svo::CellGrid& g = grid_->grid();
+        const float edge = g.cell_edge();
+        const glm::ivec3 lo{static_cast<int>(std::floor(box.min.x / edge)),
+                            static_cast<int>(std::floor(box.min.y / edge)),
+                            static_cast<int>(std::floor(box.min.z / edge))};
+        const glm::ivec3 hi{static_cast<int>(std::floor(box.max.x / edge)),
+                            static_cast<int>(std::floor(box.max.y / edge)),
+                            static_cast<int>(std::floor(box.max.z / edge))};
+        bool hit = false;
+        for (int z = lo.z; z <= hi.z && !hit; ++z) {
+            for (int y = lo.y; y <= hi.y && !hit; ++y) {
+                for (int x = lo.x; x <= hi.x && !hit; ++x) {
+                    const glm::ivec3 coord{x, y, z};
+                    if (!g.contains(coord)) {
+                        continue;
+                    }
+                    const world::svo::TreeView view = grid_->view_of(g.index_of(coord));
+                    if (view.empty()) {
+                        continue;
+                    }
+                    const VoxelBox vb = to_voxel_box(view.geometry, box);
+                    if (vb.empty()) {
+                        continue;
+                    }
+                    const std::int64_t origin[3]{0, 0, 0};
+                    hit = node_overlaps(view, view.root, 0, origin, vb, view.geometry.voxel_bits(),
+                                        lastNodesVisited_);
+                }
+            }
+        }
+        nodeVisitTotal_ += lastNodesVisited_;
+        return hit;
+    }
+
     if (tree_ == nullptr || tree_->empty()) {
         return false;
     }
@@ -209,23 +248,29 @@ bool OctreeCollider::overlaps_solid(const Aabb& box) const noexcept {
         return false; // wholly outside the tree
     }
     const std::int64_t origin[3]{0, 0, 0};
-    const bool hit =
-        node_overlaps(*tree_, tree_->root, 0, origin, vb, tree_->geometry.voxel_bits(), lastNodesVisited_);
+    const bool hit = node_overlaps(tree_->view(), tree_->root, 0, origin, vb,
+                                   tree_->geometry.voxel_bits(), lastNodesVisited_);
     nodeVisitTotal_ += lastNodesVisited_;
     return hit;
 }
 
-float OctreeCollider::voxel_top(float x, float z, float yStart) const noexcept {
-    if (tree_ == nullptr || tree_->empty()) {
-        return -std::numeric_limits<float>::infinity();
-    }
-    const TreeGeometry& g = tree_->geometry;
+namespace {
+
+// The per-tree column query, shared by the single-tree and grid paths so neither can drift.
+[[nodiscard]] float column_top_world(const world::svo::TreeView& view, float x, float z,
+                                     float yStart) noexcept {
+    const TreeGeometry& g = view.geometry;
     const float edge = g.finest_voxel_edge();
     const std::int64_t span = std::int64_t{1} << g.voxel_bits();
     const auto cell = [&](float world, float originAxis) {
         const auto v = static_cast<std::int64_t>(std::floor((world - originAxis) / edge));
         return std::clamp<std::int64_t>(v, 0, span - 1);
     };
+    // Outside this tree horizontally, there is nothing to find -- and unlike the vertical case a
+    // clamp would be a LIE, answering with the column at the edge of the cell instead of "not here".
+    if (x < g.origin.x || x >= g.max_corner().x || z < g.origin.z || z >= g.max_corner().z) {
+        return -std::numeric_limits<float>::infinity();
+    }
     const std::int64_t cx = cell(x, g.origin.x);
     const std::int64_t cz = cell(z, g.origin.z);
     // The limit is the voxel containing yStart: a body standing ON a surface must find the voxel
@@ -236,12 +281,49 @@ float OctreeCollider::voxel_top(float x, float z, float yStart) const noexcept {
         return -std::numeric_limits<float>::infinity();
     }
     const std::int64_t origin[3]{0, 0, 0};
-    const std::int64_t top = column_top(*tree_, tree_->root, 0, origin, cx, cz, yLimit, g.voxel_bits());
+    const std::int64_t top = column_top(view, view.root, 0, origin, cx, cz, yLimit, g.voxel_bits());
     if (top == kNoVoxel) {
         return -std::numeric_limits<float>::infinity();
     }
-    // The TOP of that voxel, in world metres.
     return g.origin.y + static_cast<float>(top + 1) * edge;
+}
+
+} // namespace
+
+float OctreeCollider::voxel_top(float x, float z, float yStart) const noexcept {
+    // Goal 256: the grid path walks the column of cells DOWNWARD from the one containing yStart and
+    // returns the first surface it finds. Downward order is what makes the first answer the right
+    // one -- exactly the reason the per-node descent visits +y octants first.
+    if (grid_ != nullptr && !grid_->empty()) {
+        const world::svo::CellGrid& gr = grid_->grid();
+        const float edge = gr.cell_edge();
+        const int cx = static_cast<int>(std::floor(x / edge));
+        const int cz = static_cast<int>(std::floor(z / edge));
+        const int top = static_cast<int>(std::floor(yStart / edge));
+        const int bottom = gr.origin_cell().y;
+        for (int cy = std::min(top, gr.origin_cell().y + gr.dims().y - 1); cy >= bottom; --cy) {
+            const glm::ivec3 coord{cx, cy, cz};
+            if (!gr.contains(coord)) {
+                continue;
+            }
+            const world::svo::TreeView view = grid_->view_of(gr.index_of(coord));
+            if (view.empty()) {
+                continue;
+            }
+            // Below the starting cell the limit is that cell's own top, not yStart.
+            const float limit = cy == top ? yStart : view.geometry.max_corner().y;
+            const float found = column_top_world(view, x, z, limit);
+            if (std::isfinite(found)) {
+                return found;
+            }
+        }
+        return -std::numeric_limits<float>::infinity();
+    }
+
+    if (tree_ == nullptr || tree_->empty()) {
+        return -std::numeric_limits<float>::infinity();
+    }
+    return column_top_world(tree_->view(), x, z, yStart);
 }
 
 } // namespace world::collision
