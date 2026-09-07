@@ -1479,3 +1479,73 @@ The app's own build log, same seed and pose, 128 m region: **1.20 s as one tree,
 cell's content still depends on the camera.
 
 `--cell-log2 N` selects it (0 = the single tree, and the default). 304/304 tests.
+
+---
+
+## 20. Per-cell rebuild: 10.4× faster, and the blocker §18 named was real (goal 257, closes goal 158)
+
+§18 ended by naming the prerequisite rather than guessing at it: *"with a continuous distance LOD
+every cell's content depends on the camera position, so moving the camera dirties the whole grid
+rather than a ring of it."* This built the fix and measured what it bought.
+
+### The fix: quantise detail to a distance BAND
+
+`world/svo/lod_bands.hpp`. Band 0 is full resolution; each band beyond doubles the voxel edge, with
+boundaries at `lod_radius`, 2×, 4×, … A cell's content becomes a **step function** of camera
+distance — it does not change at all until the camera crosses a boundary. `BuildParams` gained
+`quantized_voxel_edge`, which replaces the distance ramp with one target for the whole cell, so a
+cell's build depends only on its band and not on where the camera is.
+
+Two details that are correctness, not taste, and are asserted:
+
+- **Distance is to the cell's NEAREST point, not its centre.** A cell the camera is standing inside
+  must be band 0 however large it is, and its centre can be 16 m away.
+- **A NaN distance must be band 0.** The test writes it as `!(d > r)` rather than `d <= r` precisely
+  so a NaN cannot become a band that asks for a voxel the size of the world.
+
+### What it bought, measured on the shipping configuration
+
+Same seed, same pose, 512 m region, 32 m cells, 4,096 cells:
+
+| build | cells rebuilt | cells reused | **time** | bricks | MB |
+|---|---|---|---|---|---|
+| #1, cold | 4,096 | 0 | **4.07 s** | 464,456 | 283.6 |
+| #2, after the camera moved | **138** | **3,958** | **0.39 s** | 479,891 | 292.9 |
+
+**96.6% of the grid carried over, and the rebuild is 10.4× faster than the cold build** — and 3–8×
+faster than the single-tree rebuild it replaces (1.20–3.25 s measured in §19). On a longer flight
+the second build reused 3,430 of 4,096 (84%) after a larger move, which is the same story at a
+different step size.
+
+The band function's own property is tested directly rather than inferred: an 8 m camera move — the
+rebuild trigger goal 249 settled on — re-levels **under 35%** of a 16³ grid, against **100%** under
+the continuous rule. Standing still re-levels nothing.
+
+### What it costs, stated plainly
+
+**The cold build is slower: 4.07 s against ~2.4 s for one tree.** The reason is structural rather
+than a bug: a band-0 cell is built at the finest voxel across its *whole* 32 m extent, where the
+continuous ramp would have coarsened the far side of that same cell. So the shell of cells near the
+camera is more expensive than it was. That is the price of making their content independent of the
+camera, and it is paid once per session rather than once per 8 m of motion.
+
+**And the detail ramp becomes a staircase.** `research/captures/akc_banded_lod.png` puts the three
+side by side at one pose — one tree with the continuous ramp, the grid with it, and the grid with
+bands. **All three are the same world, and the banded one is if anything crisper near the camera**,
+for the same reason it is more expensive to build. `--verify-frame` reads **19.8%** against the
+continuous rule's **23.7%**, which is the far terrain being one band coarser and is the only visible
+difference at this pose.
+
+### The half that is NOT done, and it is AK-D's
+
+Goal 257's Check asks for **MB uploaded per second of flight, before and after**. The build is now
+incremental; **the upload is not.** `FlatCellGrid` concatenates every cell into one node array and
+one brick array, so rebuilding 138 of 4,096 cells still re-uploads all **292.9 MB**.
+
+That is not an oversight in this goal — it is exactly what AK-D's fixed-capacity node and brick
+**pools with slot allocation** exist to fix. A cell that did not change must keep its slots and not
+be re-sent, and that requires the pools (goal 260), which requires the residency flags the
+`FlatCell` record already carries a bit for. **Goal 158 ("incremental rebuild") is closed on the
+build side and its upload side is goal 260's.**
+
+309/309 tests.

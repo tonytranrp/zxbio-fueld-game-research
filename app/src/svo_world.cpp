@@ -1,5 +1,7 @@
 #include "svo_world.hpp"
 
+#include "world/svo/lod_bands.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -203,16 +205,59 @@ void SvoWorld::build_grid_job(const world::svo::TreeGeometry& g,
 
     const auto buildStart = std::chrono::steady_clock::now();
     const std::size_t count = grid.cell_count();
-    std::vector<std::shared_ptr<const world::svo::BrickTree>> built(count);
-    std::vector<std::future<void>> jobs;
-    jobs.reserve(count);
+    const float finest = static_cast<float>(std::ldexp(1.0, options_.voxel_size_log2));
+
+    // Goal 257: each cell's DETAIL BAND, quantised so it is a step function of camera distance.
+    // This is what makes the rebuild incremental at all -- see world/svo/lod_bands.hpp for why the
+    // continuous rule made "rebuild what changed" mean "rebuild everything".
+    std::vector<int> bands(count);
     for (std::size_t i = 0; i < count; ++i) {
+        bands[i] = world::svo::cell_band(bp.lod_center, grid.coord_of(i), cellEdge, options_.lod_radius);
+    }
+
+    // A cell can be carried over when the previous grid had it AND its band is unchanged AND the
+    // grid has not shifted underneath it. The origin check matters: cell coordinates are absolute,
+    // so a grid that moved still names the same cubes -- but only for the coordinates both grids
+    // contain, which is what the index remap below handles.
+    const bool canReuse = haveLastGrid_ && lastCells_.size() == count && lastBands_.size() == count;
+
+    std::vector<std::shared_ptr<const world::svo::BrickTree>> built(count);
+    std::size_t reused = 0;
+    std::vector<std::size_t> toBuild;
+    toBuild.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const glm::ivec3 coord = grid.coord_of(i);
+        if (canReuse) {
+            const glm::ivec3 local = coord - lastOriginCell_;
+            const glm::ivec3 dims = grid.dims();
+            if (local.x >= 0 && local.y >= 0 && local.z >= 0 && local.x < dims.x && local.y < dims.y &&
+                local.z < dims.z) {
+                const auto old = static_cast<std::size_t>(local.x) +
+                                 static_cast<std::size_t>(dims.x) *
+                                     (static_cast<std::size_t>(local.y) +
+                                      static_cast<std::size_t>(dims.y) * static_cast<std::size_t>(local.z));
+                if (lastBands_[old] == bands[i]) {
+                    built[i] = lastCells_[old]; // may be null: an EMPTY cell is a valid answer to reuse
+                    ++reused;
+                    continue;
+                }
+            }
+        }
+        toBuild.push_back(i);
+    }
+
+    std::vector<std::future<void>> jobs;
+    jobs.reserve(toBuild.size());
+    for (const std::size_t i : toBuild) {
         jobs.push_back(pool_.submit([&, i] {
             const world::svo::TreeGeometry cg = grid.geometry_for(grid.coord_of(i));
             world::svo::TerrainSampler cellSampler(heightmap_, sp,
                                                    world::svo::Box{cg.origin, cg.max_corner()});
             cellSampler.adopt_focus(tiers);
-            world::svo::BrickTree cell = world::svo::build_tree(cellSampler, cg, bp, nullptr, nullptr);
+            world::svo::BuildParams cellParams = bp;
+            cellParams.quantized_voxel_edge = world::svo::band_voxel_edge(bands[i], finest, cellEdge);
+            world::svo::BrickTree cell =
+                world::svo::build_tree(cellSampler, cg, cellParams, nullptr, nullptr);
             if (!cell.empty()) {
                 built[i] = std::make_shared<const world::svo::BrickTree>(std::move(cell));
             }
@@ -248,7 +293,14 @@ void SvoWorld::build_grid_job(const world::svo::TreeGeometry& g,
     last.trees = seeded.trees().size();
     last.sampler_seconds = samplerSeconds;
     last.cells = grid.present_count();
+    last.cells_rebuilt = toBuild.size();
+    last.cells_reused = reused;
     last.valid = true;
+
+    lastCells_ = built;
+    lastBands_ = bands;
+    lastOriginCell_ = grid.origin_cell();
+    haveLastGrid_ = true;
 
     const std::lock_guard guard(mutex_);
     finishedGrid_ = std::move(flat);

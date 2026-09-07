@@ -13,6 +13,7 @@
 #include "world/svo/brick_tree.hpp"
 #include "world/svo/terrain_sampler.hpp"
 #include "world/svo/cell_grid.hpp"
+#include "world/svo/lod_bands.hpp"
 #include "world/svo/tree_builder.hpp"
 
 #include <vector>
@@ -143,7 +144,9 @@ public:
     struct LastBuild {
         world::svo::BuildStats stats;
         world::svo::BrickTree::Stats tree;
-    std::size_t cells = 0; // goal 256: present cells, 0 on the single-tree path
+    std::size_t cells = 0;         // goal 256: present cells, 0 on the single-tree path
+    std::size_t cells_rebuilt = 0; // goal 257: of those, the ones this build actually rebuilt
+    std::size_t cells_reused = 0;  // and the ones carried over from the previous grid
         std::size_t bricks = 0;
         std::size_t memory_bytes = 0;
         std::size_t trees = 0;
@@ -168,6 +171,13 @@ private:
     mutable std::mutex mutex_;
     std::shared_ptr<const world::svo::BrickTree> finished_;
     std::shared_ptr<const world::svo::FlatCellGrid> finishedGrid_;
+    // Goal 257: what the LAST grid build produced, so the next one can reuse the cells whose band
+    // did not change. Touched only on the build thread between builds (one at a time, enforced by
+    // `building_`), so it needs no lock of its own.
+    std::vector<std::shared_ptr<const world::svo::BrickTree>> lastCells_;
+    std::vector<int> lastBands_;
+    glm::ivec3 lastOriginCell_{0};
+    bool haveLastGrid_ = false;
 
     void build_grid_job(const world::svo::TreeGeometry& g,
                         const world::svo::TerrainSamplerParams& sp, const world::svo::BuildParams& bp,

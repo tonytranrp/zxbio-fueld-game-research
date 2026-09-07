@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <cstdlib>
 #include <memory>
 #include <optional>
@@ -1033,11 +1034,16 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
         log(LogLevel::Info,
             "svo tree #{}: {} bricks, {} internal, {} solid leaves, {:.1f} MB, build {:.2f}s (sampler "
             "{:.2f}s, {} classified, {} bricks sampled), staged upload {:.1f} ms over {} frames, {} trees"
-            ", adopt lag {:.1f} m",
+            ", adopt lag {:.1f} m{}",
             uploads, last.bricks, last.tree.internal_nodes, last.tree.solid_leaves,
             static_cast<double>(last.memory_bytes) / 1.0e6, last.stats.seconds, last.sampler_seconds,
             last.stats.boxes_classified, last.stats.bricks_sampled, lastUploadMs,
-            renderer.last_upload_frames(), last.trees, world.last_adopt_lag_metres());
+            renderer.last_upload_frames(), last.trees, world.last_adopt_lag_metres(),
+            // Goal 257: what the incremental rebuild actually saved. Empty on the single-tree path,
+            // where there is nothing to reuse and printing "0 reused" would imply there was.
+            last.cells > 0 ? std::format(", cells {} rebuilt / {} reused", last.cells_rebuilt,
+                                         last.cells_reused)
+                           : std::string{});
         return true;
     };
 

@@ -24,6 +24,18 @@ struct BuildParams {
     glm::vec3 lod_center{0.0f};
     float lod_radius = 4.0f;
     bool uniform_lod = false; // full resolution everywhere (tests, tiny regions)
+    // Prompt 004 goal 257: build at ONE voxel size instead of a distance ramp. > 0 replaces the
+    // distance rule entirely, so the result depends only on this number and not on where the
+    // camera is.
+    //
+    // WHY THIS EXISTS, and it is the whole reason per-cell rebuild is possible at all. With the
+    // continuous rule below, a node's level is a function of its distance from `lod_center`, so
+    // moving the camera by a metre changes the correct content of EVERY cell in the grid and
+    // "rebuild only what changed" means "rebuild everything" (research section 18). Quantising a
+    // cell's detail to its distance BAND -- finest * 2^band, bands at lod_radius, 2x, 4x ... --
+    // makes a cell's content a step function of camera distance, so a camera move re-levels only
+    // the thin shell of cells that crossed a boundary.
+    float quantized_voxel_edge = 0.0f;
     // Subtrees at this level become independent pool jobs. 8^5 = 32768 of them: with distance LOD
     // nearly all the work sits in the handful of subtrees around the camera, so a coarser split
     // (512 jobs at level 3, the first version) left ~4 jobs running for seconds while the rest

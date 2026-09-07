@@ -231,9 +231,14 @@ private:
         if (params_.uniform_lod) {
             return false;
         }
+        const float finest = geometry_.finest_voxel_edge();
+        // Goal 257: a quantised build has ONE target for the whole cell, so its content does not
+        // depend on where the camera is -- only on which distance band the caller put it in.
+        if (params_.quantized_voxel_edge > 0.0f) {
+            return geometry_.level_voxel_edge(level) <= std::max(finest, params_.quantized_voxel_edge);
+        }
         const glm::vec3 nearest = glm::clamp(params_.lod_center, box.min, box.max);
         const float distance = glm::length(nearest - params_.lod_center);
-        const float finest = geometry_.finest_voxel_edge();
         const float target = std::max(finest, distance * finest / std::max(params_.lod_radius, 1.0e-3f));
         return geometry_.level_voxel_edge(level) <= target;
     }
