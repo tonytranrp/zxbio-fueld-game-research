@@ -126,6 +126,18 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
         tr.o.x >= 0.0f && tr.o.y >= 0.0f && tr.o.z >= 0.0f && tr.o.x < 1.0f && tr.o.y < 1.0f && tr.o.z < 1.0f;
     float t = inside ? 0.0f : tEnter;
     int lastAxis = inside ? -1 : enterAxis;
+    // Goal 266: a beam seed jumps the ray past the root entry. Once it has, the ray no longer
+    // starts ON a root face, so the entry-axis snap below would put the cell in the wrong place --
+    // the coordinate has to come from the seeded position alone. lastAxis goes to -1 for the same
+    // reason, which is exactly how a ray starting inside the root is already handled.
+    const bool seeded = params.t_start > t;
+    if (seeded) {
+        t = params.t_start;
+        lastAxis = -1;
+        if (t > tExit) {
+            return miss;
+        }
+    }
     const auto n = static_cast<std::int32_t>(tr.cells);
     glm::ivec3 c;
     {
@@ -133,7 +145,7 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
         for (int a = 0; a < 3; ++a) {
             c[a] = std::clamp(static_cast<std::int32_t>(std::floor(p[a] * tr.cells)), 0, n - 1);
         }
-        if (!inside) {
+        if (!inside && !seeded) {
             c[enterAxis] = tr.step[enterAxis] > 0 ? 0 : n - 1;
         }
     }

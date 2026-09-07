@@ -55,6 +55,10 @@ struct Options {
     std::string view;
     std::string out = "svo_render.png";
     int threads = 0; // 0 = hardware_concurrency, clamped to >= 1 by threads_or_default()
+    // Prompt 004 goal 266: measure the ORACLE BEAM at this tile size -- the ceiling on any coarse
+    // start-t pre-pass, since the seed used is the tile minimum of the TRUE hit distances and no
+    // conservative bound can be looser than that. 0 = off.
+    int beam_tile = 0;
 
     [[nodiscard]] glm::vec3 default_pos() const noexcept { return glm::vec3{12.0f, 82.0f, 24.0f}; }
     [[nodiscard]] unsigned threads_or_default() const noexcept {

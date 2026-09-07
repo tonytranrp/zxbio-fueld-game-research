@@ -37,6 +37,17 @@ struct TraceParams {
     // node's worth of shadow (goal 171: the blocky shadow patches in the `lit` debug view).
     float lod_coverage_threshold = 0.0f;
     float max_t = std::numeric_limits<float>::infinity();
+    // Prompt 004 goal 266: a conservative start distance from a coarse pre-pass (ESVO's beam
+    // optimization, Teardown's per-object linear-depth early-out, Aokana's Hi-Z, GigaVoxels'
+    // Early-Z proxy -- four names for the same idea, research section 4.7). The ray skips straight
+    // to this distance instead of entering at the root face, so every traversal step that would
+    // have crossed known-empty space is never taken. 0 = start at the root entry, the shipping
+    // behaviour and what every test uses.
+    //
+    // MUST BE CONSERVATIVE. A seed larger than the true first intersection skips real geometry and
+    // the ray reports a miss or a farther hit. It is the caller's job to prove its bound, not this
+    // function's to check it.
+    float t_start = 0.0f;
 };
 
 struct Hit {

@@ -5,6 +5,7 @@ add_library(world_svo STATIC
     src/terrain_sampler.cpp
     src/tree_builder.cpp
     src/ray_trace.cpp
+    src/beam.cpp
 )
 
 target_sources(world_svo PUBLIC
@@ -19,6 +20,7 @@ target_sources(world_svo PUBLIC
         include/world/svo/terrain_sampler.hpp
         include/world/svo/tree_builder.hpp
         include/world/svo/ray_trace.hpp
+        include/world/svo/beam.hpp
         include/world/svo/warp_divergence.hpp
 )
 

@@ -8,6 +8,7 @@ add_executable(world_svo_tests
     test_ray_trace.cpp
     test_terrain_sampler.cpp
     test_warp_divergence.cpp
+    test_beam.cpp
 )
 # detail/tree_builder_impl.hpp: the tests instantiate build_tree for their own analytic samplers.
 target_include_directories(world_svo_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")

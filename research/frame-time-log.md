@@ -843,3 +843,101 @@ is now evidence-backed: keep the pixel shader.**
 taking equal steps still finish apart if one misses cache. The number is therefore a **lower bound**
 on total latency variance — which is exactly why §11's 17% is the complementary measurement and why
 both are reported together rather than either alone.
+
+---
+
+## 13. The beam pre-pass: 40–53% of primary traversal steps, and the CPU reference proves it (goal 266)
+
+### First: `tOffset` is not the hook the prompt hoped it was
+
+The prompt suggests `TraceRay`'s existing `tOffset` may be "exactly the hook you need". It is not.
+`tOffset` is goal 164's **LOD distance bias** — added to `t` before the *LOD test only*, so a
+secondary ray can judge detail from a different origin. It never moves where the ray starts. A real
+start-`t` needed new machinery: `TraceParams::t_start` on the CPU, and with it a subtlety worth
+naming, because it is the kind of thing that produces a wrong image three passes later — a seeded
+ray no longer starts **on** a root face, so the entry-axis snap that fixes the first cell's
+coordinate has to be skipped and the cell derived from the seeded position alone. `lastAxis` goes
+to −1 for the same reason, which is exactly how a ray starting *inside* the root was already
+handled.
+
+### Measure the ceiling before building the thing (`--beam-tile`)
+
+Research §4.7 lists four shipped or published systems doing this under four names — ESVO's beam
+optimization, Teardown's per-object linear-depth early-out, Aokana's Hi-Z, GigaVoxels' Early-Z
+proxy — and the prompt is explicit that **ESVO's own beam resolution and speedup could not be
+confirmed from primary sources**, with two contradictory figures circulating. So no borrowed number.
+
+The **oracle beam** measures the ceiling: seed each ray with the tile minimum of the *true* per-pixel
+hit distances. No conservative bound can be looser than that, so whatever it saves is an upper limit.
+
+| tile | primary steps/px | saved |
+|---|---|---|
+| baseline | 27.4 | — |
+| 4×4 | 10.1 | **63.0%** |
+| 8×8 | 10.7 | **60.9%** |
+| 16×16 | 11.8 | **57.1%** |
+| 32×32 | 13.0 | **52.5%** |
+
+Two things are notable. The ceiling is **large**, and it is **barely sensitive to tile size** — a
+32×32 pre-pass, at 1/1024 the pixels, still reaches 52.5%. That is what made this worth building.
+
+### Then build the real one, and prove it conservative
+
+`world/svo/beam.hpp` over-approximates a tile's frustum as a **cone** and descends the octree,
+expanding each node's AABB by the cone's radius at that node's farthest reach before slab-testing
+the centre ray. The proof is in the header: for any ray R in the cone and any point P of geometry in
+node N, t_R ≤ tFar because P is in N's box, and the centre ray at t_R is within t_R·tan θ of P — so
+the centre ray at t_R lies inside the expanded box, hence tNear ≤ t_R. Children are visited
+nearest-first and pruned against the running best, which is what keeps it cheap.
+
+**Tests first, again: 8 cases / 8,189 assertions**, and the property under test is the only one that
+matters — *for every ray inside the cone, `beam_start_t` ≤ `trace_ray(ray).t`* — asserted over
+thousands of real rays through a real tree at four cone widths and four view directions including a
+grazing one, plus monotonicity in cone width (the property a pruning bug breaks), an apex inside
+geometry, `max_t`, an empty tree, and an end-to-end check that seeding a trace changes neither the
+hit, its distance, its material, nor its normal.
+
+### The result, six poses, 16×16 tiles
+
+| pose | steps/px | oracle (ceiling) | **conservative (real)** | pixels changed |
+|---|---|---|---|---|
+| `stress_pose` | 27.4 | 57.1% | **44.5%** | **0** |
+| `valley_far` | 28.1 | 58.5% | **45.7%** | **0** |
+| `macro_ground` | 28.8 | 79.4% | **53.2%** | **0** |
+| `macro_tree` | 25.1 | 45.1% | **35.1%** | **0** |
+| `fly_transect` | 23.8 | 58.5% | **44.6%** | **0** |
+| grazing (−1°) | 25.8 | 53.9% | **42.1%** | **0** |
+| skyward (+25°) | 16.3 | 19.9% | **20.9%** | **0** |
+
+**The correct, provably-conservative bound reaches about 80% of the oracle ceiling, and changes zero
+pixels at every pose.** The bound's own cost at 1280×720, on 16 CPU threads: 24.1 ms for 14,400
+tiles at 8×8, **5.9 ms for 3,600 at 16×16**, 2.5 ms for 920 at 32×32.
+
+(`skyward` beats its own oracle by one point. The oracle is a bound on the *seed*, not on the *step
+count*, and starting later can put a ray on a slightly different cell path; at a pose that is mostly
+sky the two are within noise of each other anyway. Recorded rather than smoothed over.)
+
+### What limits the bound — and it is not the code
+
+Two separate hours went into chasing a bound that came back at the root's own entry face before the
+cause turned out not to be a bug. **The bound is the entry distance of the first node that contains
+geometry, so its slack is that node's own extent.** In the test tree the sphere's near face is
+represented by a 16 m brick leaf whose front face is the root boundary: the bound is 20 for geometry
+at 34, and that is as tight as that tree allows.
+
+Which states the general rule, now written into the test that found it: **a beam pre-pass buys
+exactly as much as the tree is fine along the ray.** This engine's tree is deliberately coarse at
+distance, and the measured 35–53% is what that coarseness leaves on the table.
+
+One real robustness fix came out of the same hunt: an axis-aligned ray (`dir[a] == 0`) with the apex
+exactly on a node face made `(hi − o) · 1e30` evaluate to `0` and reported the node as entered at
+t = 0. Conservative, but it collapses the bound to the root entry for the very common case of a
+camera looking straight down an axis. That axis is now handled explicitly — no constraint unless the
+apex is outside the slab.
+
+### Status
+
+**CPU reference done, tested, and measured; the shader mirror is the remaining work.** The saving is
+32% of *all* traversal steps at `stress_pose` (primary is 27.4 of 40.2), which on a 3.33 ms march
+that is dominated by traversal predicts roughly a 1 ms cut — the largest single item still open in
+this prompt. 283/283 tests pass.

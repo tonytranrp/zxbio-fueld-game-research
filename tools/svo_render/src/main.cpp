@@ -28,6 +28,7 @@
 #include "world/materials/materials.hpp"
 #include "world/svo/brick_tree.hpp"
 #include "world/svo/ray_trace.hpp"
+#include "world/svo/beam.hpp"
 #include "world/svo/warp_divergence.hpp"
 #include "world/svo/terrain_sampler.hpp"
 #include "world/svo/tree_builder.hpp"
@@ -306,6 +307,10 @@ int run(int argc, char** argv) {
     // a map rather than a histogram, so warp-tile divergence can be computed from it below. Each
     // element is written by exactly one row task, so no atomic is needed.
     std::vector<std::uint32_t> stepMap(static_cast<std::size_t>(r.width) * r.height, 0u);
+    // Prompt 004 goal 266: the primary hit distance per pixel, for the ORACLE BEAM measurement
+    // below. A miss records infinity, which a tile minimum then ignores.
+    std::vector<float> hitT(static_cast<std::size_t>(r.width) * r.height,
+                            std::numeric_limits<float>::infinity());
     std::atomic<std::uint64_t> hits{0};
     std::atomic<std::uint64_t> shadowed{0};
     const auto renderStart = std::chrono::steady_clock::now();
@@ -467,6 +472,7 @@ int run(int argc, char** argv) {
                 const glm::vec3 mapped = view.empty() ? tonemap(color) : color;
                 const std::size_t pixel = static_cast<std::size_t>(y) * r.width + x;
                 stepMap[pixel] = static_cast<std::uint32_t>(hit.steps + (steps2 - steps2Before));
+                hitT[pixel] = hit.hit ? hit.t : std::numeric_limits<float>::infinity();
                 const std::size_t i = pixel * 3u;
                 rgb[i + 0] = to_srgb8(mapped.x);
                 rgb[i + 1] = to_srgb8(mapped.y);
@@ -554,6 +560,180 @@ int run(int argc, char** argv) {
         std::printf("warp divergence (efficiency = useful lane-steps / issued lane-steps):\n"
                     "  8x4 tile %.1f%%   4x8 tile %.1f%%   16x2 tile %.1f%%   2x2 quad %.1f%%\n",
                     pct(8, 4), pct(4, 8), pct(16, 2), pct(2, 2));
+    }
+
+    // Prompt 004 goal 266: the ORACLE BEAM -- the ceiling on a coarse start-t pre-pass, measured
+    // before any pre-pass is built.
+    //
+    // Research section 4.7 lists four shipped or published systems doing this under four names
+    // (ESVO's beam optimization, Teardown's per-object linear-depth early-out, Aokana's Hi-Z,
+    // GigaVoxels' Early-Z proxy). None of them publishes a speedup this engine can borrow -- the
+    // prompt is explicit that ESVO's own beam resolution and speedup could not be confirmed from
+    // primary sources and that two contradictory numbers circulate -- so the number has to be
+    // measured here.
+    //
+    // A real pre-pass produces a CONSERVATIVE per-tile start distance: no larger than the nearest
+    // intersection of any ray in the tile. This measures something deliberately BETTER than any
+    // real pre-pass can be: the tile minimum of the TRUE per-pixel hit distances, which no
+    // conservative bound can exceed (geometry can poke between the rays, only pulling it lower).
+    // Whatever this saves is therefore an upper bound. If the ceiling is small, the feature is dead
+    // without writing a frustum traversal, an extra render target, and a shader mirror for it.
+    if (opt.beam_tile > 0) {
+        const auto tile = static_cast<std::uint32_t>(opt.beam_tile);
+        std::vector<float> seed(static_cast<std::size_t>(r.width) * r.height, 0.0f);
+        for (std::uint32_t ty = 0; ty < r.height; ty += tile) {
+            for (std::uint32_t tx = 0; tx < r.width; tx += tile) {
+                float nearest = std::numeric_limits<float>::infinity();
+                for (std::uint32_t dy = 0; dy < tile && ty + dy < r.height; ++dy) {
+                    for (std::uint32_t dx = 0; dx < tile && tx + dx < r.width; ++dx) {
+                        nearest = std::min(nearest,
+                                           hitT[static_cast<std::size_t>(ty + dy) * r.width + (tx + dx)]);
+                    }
+                }
+                // An all-sky tile has no bound to offer; those rays start where they always did.
+                const float start = std::isfinite(nearest) ? nearest : 0.0f;
+                for (std::uint32_t dy = 0; dy < tile && ty + dy < r.height; ++dy) {
+                    for (std::uint32_t dx = 0; dx < tile && tx + dx < r.width; ++dx) {
+                        seed[static_cast<std::size_t>(ty + dy) * r.width + (tx + dx)] = start;
+                    }
+                }
+            }
+        }
+
+        std::atomic<std::uint64_t> seededSteps{0};
+        std::atomic<std::uint64_t> changed{0};
+        std::vector<std::future<void>> beamRows;
+        beamRows.reserve(r.height);
+        for (std::uint32_t y = 0; y < r.height; ++y) {
+            beamRows.push_back(pool.submit([&, y] {
+                std::uint64_t rowSteps = 0;
+                std::uint64_t rowChanged = 0;
+                for (std::uint32_t x = 0; x < r.width; ++x) {
+                    const float ndcX =
+                        (static_cast<float>(x) + 0.5f) / static_cast<float>(r.width) * 2.0f - 1.0f;
+                    const float ndcY =
+                        1.0f - (static_cast<float>(y) + 0.5f) / static_cast<float>(r.height) * 2.0f;
+                    Ray ray;
+                    ray.origin = r.pos;
+                    ray.dir =
+                        glm::normalize(forward + right * (ndcX * tanHalf * aspect) + up * (ndcY * tanHalf));
+                    TraceParams seeded = primary;
+                    const std::size_t pixel = static_cast<std::size_t>(y) * r.width + x;
+                    seeded.t_start = seed[pixel];
+                    const Hit h = trace_ray(tree, ray, seeded);
+                    rowSteps += h.steps;
+                    // The seeded trace must agree with the unseeded one -- same hit, same surface.
+                    // A disagreement means the bound was not conservative, and that is the whole
+                    // correctness risk of this optimisation.
+                    const float wasT = hitT[pixel];
+                    const bool wasHit = std::isfinite(wasT);
+                    if (h.hit != wasHit || (wasHit && std::fabs(h.t - wasT) > 1.0e-3f)) {
+                        ++rowChanged;
+                    }
+                }
+                seededSteps.fetch_add(rowSteps, std::memory_order_relaxed);
+                changed.fetch_add(rowChanged, std::memory_order_relaxed);
+            }));
+        }
+        for (std::future<void>& f : beamRows) {
+            f.get();
+        }
+
+        const auto before = static_cast<double>(totalSteps.load());
+        const auto after = static_cast<double>(seededSteps.load());
+        std::printf("oracle beam (tile %ux%u, an UPPER BOUND -- tile min of true hit t):\n"
+                    "  primary steps %.1f -> %.1f per pixel (%.1f%% saved), %llu pixels changed\n",
+                    tile, tile, before / pixels, after / pixels,
+                    before > 0.0 ? 100.0 * (before - after) / before : 0.0,
+                    static_cast<unsigned long long>(changed.load()));
+    }
+
+    // And the REAL bound: `beam_start_t`'s conservative cone descent, the thing that would actually
+    // ship. Reported beside the oracle above so the gap between "the ceiling" and "what a correct
+    // implementation reaches" is visible in one run rather than argued about.
+    if (opt.beam_tile > 0) {
+        const auto tile = static_cast<std::uint32_t>(opt.beam_tile);
+        const float pixelAngle = 2.0f * tanHalf / static_cast<float>(r.height);
+        const float tanHalfCone =
+            world::svo::tile_tan_half_angle(pixelAngle, static_cast<float>(tile), static_cast<float>(tile));
+
+        const auto beamStart = std::chrono::steady_clock::now();
+        const std::uint32_t tilesX = (r.width + tile - 1u) / tile;
+        const std::uint32_t tilesY = (r.height + tile - 1u) / tile;
+        std::vector<float> tileStart(static_cast<std::size_t>(tilesX) * tilesY, 0.0f);
+        std::vector<std::future<void>> tileRows;
+        tileRows.reserve(tilesY);
+        for (std::uint32_t tyi = 0; tyi < tilesY; ++tyi) {
+            tileRows.push_back(pool.submit([&, tyi] {
+                for (std::uint32_t txi = 0; txi < tilesX; ++txi) {
+                    // The cone's axis is the ray through the tile's centre.
+                    const float cx = (static_cast<float>(txi * tile) + 0.5f * static_cast<float>(tile));
+                    const float cy = (static_cast<float>(tyi * tile) + 0.5f * static_cast<float>(tile));
+                    const float ndcX = cx / static_cast<float>(r.width) * 2.0f - 1.0f;
+                    const float ndcY = 1.0f - cy / static_cast<float>(r.height) * 2.0f;
+                    world::svo::Beam beam;
+                    beam.origin = r.pos;
+                    beam.dir = glm::normalize(forward + right * (ndcX * tanHalf * aspect) +
+                                              up * (ndcY * tanHalf));
+                    beam.tan_half_angle = tanHalfCone;
+                    const float bound = world::svo::beam_start_t(tree, beam);
+                    tileStart[static_cast<std::size_t>(tyi) * tilesX + txi] =
+                        std::isfinite(bound) ? bound : 0.0f;
+                }
+            }));
+        }
+        for (std::future<void>& f : tileRows) {
+            f.get();
+        }
+        const double beamSeconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - beamStart).count();
+
+        std::atomic<std::uint64_t> realSteps{0};
+        std::atomic<std::uint64_t> realChanged{0};
+        std::vector<std::future<void>> realRows;
+        realRows.reserve(r.height);
+        for (std::uint32_t y = 0; y < r.height; ++y) {
+            realRows.push_back(pool.submit([&, y] {
+                std::uint64_t rowSteps = 0;
+                std::uint64_t rowChanged = 0;
+                for (std::uint32_t x = 0; x < r.width; ++x) {
+                    const float ndcX =
+                        (static_cast<float>(x) + 0.5f) / static_cast<float>(r.width) * 2.0f - 1.0f;
+                    const float ndcY =
+                        1.0f - (static_cast<float>(y) + 0.5f) / static_cast<float>(r.height) * 2.0f;
+                    Ray ray;
+                    ray.origin = r.pos;
+                    ray.dir =
+                        glm::normalize(forward + right * (ndcX * tanHalf * aspect) + up * (ndcY * tanHalf));
+                    TraceParams seeded = primary;
+                    seeded.t_start =
+                        tileStart[static_cast<std::size_t>(y / tile) * tilesX + (x / tile)];
+                    const Hit h = trace_ray(tree, ray, seeded);
+                    rowSteps += h.steps;
+                    const std::size_t pixel = static_cast<std::size_t>(y) * r.width + x;
+                    const float wasT = hitT[pixel];
+                    const bool wasHit = std::isfinite(wasT);
+                    if (h.hit != wasHit || (wasHit && std::fabs(h.t - wasT) > 1.0e-3f)) {
+                        ++rowChanged;
+                    }
+                }
+                realSteps.fetch_add(rowSteps, std::memory_order_relaxed);
+                realChanged.fetch_add(rowChanged, std::memory_order_relaxed);
+            }));
+        }
+        for (std::future<void>& f : realRows) {
+            f.get();
+        }
+
+        const auto before = static_cast<double>(totalSteps.load());
+        const auto after = static_cast<double>(realSteps.load());
+        std::printf("conservative beam (tile %ux%u, cone half-angle %.4f rad):\n"
+                    "  primary steps %.1f -> %.1f per pixel (%.1f%% saved), %llu pixels changed\n"
+                    "  %u tile bounds cost %.1f ms on %u CPU threads\n",
+                    tile, tile, std::atan(tanHalfCone), before / pixels, after / pixels,
+                    before > 0.0 ? 100.0 * (before - after) / before : 0.0,
+                    static_cast<unsigned long long>(realChanged.load()), tilesX * tilesY,
+                    beamSeconds * 1000.0, opt.threads_or_default());
     }
 
     if (!svo_render::PngWriter::write(opt.out.c_str(), r.width, r.height, rgb.data())) {
