@@ -70,7 +70,15 @@ struct PSOutput
 {
     float4 Color : SV_TARGET0;
     float  Dist  : SV_TARGET1; // hit distance in meters (sky: kSkyDistance)
-    float  Depth : SV_Depth;
+    // Goal 267: NO SV_Depth. Writing it cost 17% of the march on vk (4.03 -> 3.35 ms) and 10% on
+    // d3d12 (4.39 -> 3.95), because a shader-written depth forces the ROP to export in submission
+    // order -- the exact mechanism research section 9.1 identifies as the one real argument for
+    // moving this pass to compute, and here it is measurable without moving anything.
+    //
+    // The old comment said the write was "for the overlay". It was not: every pass after the march
+    // on this path (TAA resolve, composite, ImGui) has DepthEnable = False, so nothing ever read
+    // it. Verified by capturing a frame WITH the overlay and crosshair on, both configurations --
+    // identical but for the overlay's own changing digits.
 };
 
 static const uint kFlagShadows = 1u;
@@ -585,7 +593,6 @@ void main(in PSInput PSIn, out PSOutput PSOut)
         else if (view != kViewNone)
             PSOut.Color = float4(0.0, 0.0, 0.0, 1.0);
         PSOut.Dist = kSkyDistance;
-        PSOut.Depth = 1.0;
         return;
     }
 
@@ -707,5 +714,4 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const float4 clip = mul(g_ViewProj, float4(p, 1.0));
     PSOut.Color = float4(color, 1.0);
     PSOut.Dist = hit.t;
-    PSOut.Depth = clip.z / clip.w;
 }

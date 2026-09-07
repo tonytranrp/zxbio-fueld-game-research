@@ -654,3 +654,66 @@ cheap — grep the file for the change before trusting the number — and it is 
   performance one; **handed to Prompt 005** with this note.
 - **Reusing one traversal's stack for the next ray.** The two-ray AO loop no longer has enough rays
   for the bookkeeping to pay, and the shadow ray starts from a different origin and direction.
+
+---
+
+## 11. `SV_Depth` was costing 17% of the march, and nothing was reading it (goal 267)
+
+Goal 267 asks for the march to be ported to compute, on the strength of two claims. §9.3 already
+retired one of them (persistent threads, retracted by its own authors). §9.1 kept the other, and it
+is specific: **a pixel shader's ROP exports retire in submission order**, so a shader with a cheap
+fast path and an expensive slow path stalls its finished pixels behind unfinished ones — Aaltonen
+measured 1.5–3.4× moving exactly that shape to compute, and NVIDIA's own guidance is *"consider
+converting your full screen pass to a compute shader if there's a large difference in latency between
+warps."* An SVO marcher over sparse terrain is precisely that shape.
+
+**Before building the port, I measured the mechanism.** A shader that writes `SV_Depth` forces the
+ROP to order its exports; one that does not, does not. So: comment out the depth write and see.
+
+| | vk march | d3d12 march |
+|---|---|---|
+| writing `SV_Depth` (shipping) | 4.03 / 4.00 | 4.39 |
+| **not writing it** | **3.35 / 3.37** | **3.95** |
+
+**17% of the march on vk, 10% on d3d12** — the ROP-ordering mechanism, measured on this hardware,
+without moving a line of traversal code.
+
+### And nothing was reading it
+
+The shader's own comment said the write existed *"so the existing post chain / overlay see a real
+depth"*, and the PSO comment said *"what matters is that the WRITE lands, for the overlay."* Both
+are wrong, and checking took one grep: on the svo path **every pass after the march has
+`DepthEnable = False`** — the TAA resolve, the composite, and ImGui. The TAA is *distance*-reprojected
+and reads the R32_FLOAT `Dist` target, not depth. Nothing sampled the depth buffer at all.
+
+Verified rather than argued: a frame captured **with the overlay and crosshair on**, both
+configurations (`research/captures/ak_no_sv_depth.png`). Identical but for the overlay's own changing
+digits — and the overlay's own `gpu march+resolve` readout moved **2.28 → 1.95 ms** in the shot,
+independently agreeing with the harness. All 273 tests pass including every golden, so the image is
+unchanged within the 1.5% gate.
+
+The DSV stays **bound** (the format is still declared) because ImGui's PSO is created against it and
+the attachment must exist; only the write and the depth state are gone.
+
+### What this means for the compute port
+
+**The port's main justification is now already banked.** §9.1's argument was that compute escapes
+ordered ROP export; this pass escapes it *while remaining a pixel shader*, by not writing the thing
+that forced the ordering. What compute would add on top is thread-group-ID swizzling (§9.2, up to
+47% — but only under three preconditions this frame has not been shown to meet, since it is not
+VRAM-latency-bound), against the cost of re-plumbing colour + distance to UAVs and losing `SV_Depth`
+entirely — which is now free anyway.
+
+**Recommendation, recorded rather than acted on: do not port to compute yet.** Measure Bavoil's
+three preconditions first (VRAM as top-throughput unit, L2 hit rate under 80%, overlapping
+footprints between adjacent groups) — that is goal 271's counter access. If they do not hold, the
+port buys nothing this pass has not already taken.
+
+### The running total on `stress_pose`
+
+| | vk march | d3d12 march |
+|---|---|---|
+| start of this prompt | 4.90 | 5.12 |
+| after goal 268 (AO) | 4.02 | 4.42 |
+| **after goal 267 (no `SV_Depth`)** | **3.33** | **3.93** |
+| **total** | **−32%** | **−23%** |

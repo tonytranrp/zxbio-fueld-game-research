@@ -302,11 +302,13 @@ void SvoRenderer::Impl::create_pipelines() {
         psoCI.GraphicsPipeline.DSVFormat = scDesc.DepthBufferFormat;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
-        // The pass writes SV_Depth for every pixel (hits and far-plane sky) into a freshly cleared
-        // depth buffer, so the test is ALWAYS; what matters is that the WRITE lands, for the overlay.
-        psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = True;
-        psoCI.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = True;
-        psoCI.GraphicsPipeline.DepthStencilDesc.DepthFunc = COMPARISON_FUNC_ALWAYS;
+        // Goal 267: the march does NOT write depth any more, and the state says so. It used to
+        // write SV_Depth for every pixel "for the overlay", which cost 17% of the march on vk and
+        // 10% on d3d12 -- a shader-written depth forces ordered ROP export. Nothing read it: every
+        // pass after the march on this path has DepthEnable = False. The DSV stays BOUND (the
+        // format below) because ImGui's PSO is created against it and the attachment has to exist.
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = False;
 
         // DYNAMIC, not MUTABLE: Diligent's mutable variables accept a resource exactly once per SRB,
         // and the tree buffers are replaced on every rebuild. (First run: a MUTABLE re-bind at upload
