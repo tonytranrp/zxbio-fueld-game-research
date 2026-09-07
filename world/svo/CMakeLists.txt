@@ -23,6 +23,7 @@ target_sources(world_svo PUBLIC
         include/world/svo/ray_trace.hpp
         include/world/svo/beam.hpp
         include/world/svo/cell_grid.hpp
+        include/world/svo/brick_pool.hpp
         include/world/svo/lod_bands.hpp
         include/world/svo/warp_divergence.hpp
 )

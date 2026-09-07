@@ -10,6 +10,7 @@ add_executable(world_svo_tests
     test_warp_divergence.cpp
     test_beam.cpp
     test_cell_grid.cpp
+    test_brick_pool.cpp
     test_lod_bands.cpp
 )
 # detail/tree_builder_impl.hpp: the tests instantiate build_tree for their own analytic samplers.
