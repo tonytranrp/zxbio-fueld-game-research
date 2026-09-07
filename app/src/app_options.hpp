@@ -78,6 +78,12 @@ struct AppOptions {
     // Goal 238's controlled capture: pin the adapted level to a fixed EV so the SAME bright source
     // can be photographed at two adaptation levels without changing what is on screen.
     std::optional<float> exposure_pin_ev;
+    // Goal 244: vsync. ON ships; OFF is the only configuration in which a frame-time measurement
+    // means anything, because a vsynced `present` blocks on the panel.
+    bool vsync = true;
+    // Goal 247: suppress world rebuilds entirely. The world goes stale, which is the POINT -- it is
+    // how the rebuild storm's contribution to the frame time gets a number instead of an argument.
+    bool rebuild = true;
     // Prompt 002: these five were `no_*` members before the port, mirrored into a positive form at
     // every use site (`svo_settings.sky = !no_sky`). ValueKind::Toggle answers to BOTH --x and
     // --no-x from one row, so the negation now happens exactly once, in the spelling.

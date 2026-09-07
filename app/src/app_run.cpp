@@ -600,6 +600,7 @@ Session::Session(const AppOptions& options, bool visible) : window(1280, 720, "v
             }
             autoExposure->set_settings(exposure);
         }
+        context->set_vsync(options.vsync);
         render::diligent::attach_gpu_profiler(
             *context); // Tracy GPU zones (Vulkan only; safe no-op elsewhere)
         render::diligent::set_gpu_timers_enabled(*context, options.gpu_timers);
@@ -1064,11 +1065,17 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
                 } else {
                     ++slow.other;
                 }
+                // `capture` is IN this line. It was not, and that cost a hypothesis: a 180 ms frame
+                // whose seven printed phases summed to 0.7 ms looks like a mysterious stall, and is
+                // actually the harness writing a PNG (a staging copy + WaitForIdle + libpng, which
+                // CLAUDE.md already documents at 200+ ms). A breakdown that does not add up to the
+                // total is not a breakdown.
                 log(LogLevel::Warn,
                     "slow frame {}: {:.1f} ms = start {:.1f} + upload {:.1f} + camera {:.1f} + render "
-                    "{:.1f} + post {:.1f} + overlay {:.1f} + present {:.1f}{}{}{}{}",
+                    "{:.1f} + post {:.1f} + overlay {:.1f} + present {:.1f} + capture {:.1f}{}{}{}{}",
                     frame - 1, frameMs, prevPhases.frame_start, prevPhases.upload, prevPhases.camera,
                     prevPhases.render, prevPhases.post, prevPhases.overlay, prevPhases.present,
+                    prevPhases.capture,
                     prevCauses.swapped ? " [tree swapped]" : "", prevCauses.uploading ? " [uploading]" : "",
                     prevCauses.building ? " [building]" : "",
                     prevCauses.refreshed ? " [cache refreshed]" : "");
@@ -1116,7 +1123,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             // Rebuild once the camera has left the inner half of the finest LOD ring: the tree is
             // still correct everywhere (coarser rings are conservative), just not at full detail
             // right around the camera until the new one lands.
-            if (!world.building() &&
+            if (options.rebuild && !world.building() &&
                 world.distance_from_build_center(camera.position) > options.svo.lod_radius * 0.5f) {
                 world.request_build(camera.position);
             }

@@ -42,6 +42,10 @@ public:
 
     void resize(std::uint32_t width, std::uint32_t height);
     void present();
+    // Goal 244: vsync as a setting rather than a hardcoded 1. With it on, `present` time is the
+    // panel's, not the renderer's, and every frame-time percentile downstream measures the display.
+    void set_vsync(bool enabled) noexcept;
+    [[nodiscard]] bool vsync() const noexcept;
 
     [[nodiscard]] Backend backend() const noexcept;
     [[nodiscard]] std::uint32_t width() const noexcept;

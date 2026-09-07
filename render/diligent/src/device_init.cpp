@@ -139,7 +139,20 @@ void RenderContext::resize(std::uint32_t width, std::uint32_t height) {
 }
 
 void RenderContext::present() {
-    impl_->swapchain->Present(1); // vsync on -- correctness over speed is M1.4's own done-when
+    // Prompt 004 goal 244: vsync is now a SETTING, because with it hardcoded on, `present` is not a
+    // measurement of anything -- the swap chain blocks until the panel is ready and every frame-time
+    // number downstream inherits that. The 165 Hz panel makes a 6 ms frame read as 6 ms and a 7 ms
+    // frame read as 12, which is a step function, not a signal. Off is the measuring configuration;
+    // on is the shipping one.
+    impl_->swapchain->Present(impl_->vsync ? 1u : 0u);
+}
+
+void RenderContext::set_vsync(bool enabled) noexcept {
+    impl_->vsync = enabled;
+}
+
+bool RenderContext::vsync() const noexcept {
+    return impl_->vsync;
 }
 
 Backend RenderContext::backend() const noexcept {

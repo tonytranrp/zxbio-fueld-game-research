@@ -33,6 +33,9 @@ struct RenderContext::Impl {
     // Group E, Vulkan only. tracyVkCtx is a tracy::VkCtx* stored type-erased so only the TUs that
     // actually include TracyVulkan.hpp (vulkan_tools.cpp, terrain_renderer.cpp) see Tracy/Vulkan
     // types; destroyed via detach_gpu_profiler() from ~RenderContext, before the device dies.
+    // Goal 244. Default ON: that is the shipping behaviour and what the panel wants. The harness
+    // and any measurement run turn it off, because a vsynced `present` measures the display.
+    bool vsync = true;
     void* tracyVkCtx = nullptr;
     bool memoryBudgetExtensionEnabled =
         false; // VK_EXT_memory_budget was requested AND the device came up with it
