@@ -25,6 +25,7 @@ target_link_libraries(voxel_app PRIVATE
     world_collision
     world_player
     world_wind
+    world_water
     render_interface
     render_diligent
     glfw

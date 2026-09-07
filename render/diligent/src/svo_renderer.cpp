@@ -55,9 +55,15 @@ struct MarchConstantsCpu {
     // macros (detail/wind_macros.hpp), these are the numbers --wind-speed/--no-wind move at runtime.
     glm::vec4 windDirSpeed;    // xy = horizontal direction, z = base speed, w = gust amplitude
     glm::vec4 windGustFlutter; // x = gust frequency, y = gust scroll, z = flutter Hz, w = flutter freq
+    // The Gerstner field (world/water), DERIVED on the CPU and only summed on the GPU: how a wind
+    // speed becomes wavelengths and amplitudes, and how the steepness budget is shared out, stays
+    // in one place.
+    std::array<glm::vec4, world::water::kWaveCount> waves; // xy = direction, z = amplitude, w = k
+    glm::vec4 waveParams;                                  // x = steepness Q (shared), yzw spare
     std::array<detail::MaterialRecord, kMaterialCount> materials;
 };
-static_assert(sizeof(MarchConstantsCpu) == 64 + 64 + 16 * 8 + 16 * kMaterialCount,
+static_assert(sizeof(MarchConstantsCpu) ==
+                  64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * kMaterialCount,
               "must match the HLSL cbuffer exactly");
 
 // Mirror of svo_taa.psh.hlsl's cbuffer TaaConstants -- update both together.
@@ -616,6 +622,14 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         cb->windDirSpeed = glm::vec4(windDir.x, windDir.z, s.wind.base_speed, s.wind.gust_amplitude);
         cb->windGustFlutter =
             glm::vec4(s.wind.gust_frequency, s.wind.gust_scroll, s.wind.flutter_hz, s.wind.flutter_frequency);
+        // Wind and waves share one field, which is the physically right coupling and also why
+        // --no-wind gives glass: make_wave_field returns zero amplitudes for a zero base speed.
+        const world::water::WaveField waveField = world::water::make_wave_field(s.wind);
+        for (std::size_t i = 0; i < world::water::kWaveCount; ++i) {
+            const world::water::GerstnerWave& w = waveField.waves[i];
+            cb->waves[i] = glm::vec4(w.direction.x, w.direction.y, w.amplitude, w.wavenumber);
+        }
+        cb->waveParams = glm::vec4(waveField.waves[0].steepness, 0.0f, 0.0f, 0.0f);
         cb->materials = detail::kMaterialRecords;
     }
     ctx->SetPipelineState(impl_->pso);

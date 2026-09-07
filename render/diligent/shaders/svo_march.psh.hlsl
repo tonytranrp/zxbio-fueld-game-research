@@ -36,6 +36,11 @@ cbuffer MarchConstants
     // numbers --wind-speed / --no-wind move without a recompile.
     float4 g_WindDirSpeed;     // xy = horizontal wind direction, z = base speed, w = gust amplitude
     float4 g_WindGustFlutter;  // x = gust frequency, y = gust scroll, z = flutter Hz, w = flutter freq
+    // The Gerstner wave field (world/water), DERIVED on the CPU and only summed here: xy =
+    // direction, z = amplitude, w = wavenumber k. WAVE_COUNT is a macro from world/water's own
+    // kWaveCount, so the array cannot get out of step with the C++ that fills it.
+    float4 g_Waves[WAVE_COUNT];
+    float4 g_WaveParams;       // x = steepness Q (shared, so the field's total stays in budget)
     // One record per material (render/diligent/detail/material_macros.hpp's material_record):
     // rgb = linear albedo, w = shading model. MATERIAL_COUNT and MAT_SHADING_* are macros the C++
     // side passes at shader creation from the material registry -- no material literal lives here.
@@ -451,19 +456,54 @@ float ValueNoise(float2 p)
 // nearly vertical, so a sharp pow(., 256) highlight fired wherever the 3-7 m ripple lattice
 // tilted the normal through the peak, one bright cell per lattice cell. A broad, dim highlight
 // plus a half-meter noise component turns that into the smooth glitter band real water has.
-float3 ShadeWater(float3 worldPos, float3 viewDir, float timeSeconds)
+// The Gerstner surface normal at a column (Prompt 001 E1). MIRROR of world/water's wave_surface(),
+// under the usual rule: the CPU version is the reference, this follows it, and the field it sums
+// was derived there -- the shader never decides what a wind speed means.
+//
+// The normal is the analytic derivative of the same sum, not a finite difference of the height:
+// Gerstner displaces points horizontally as well as vertically, so a height difference disagrees
+// with the crests at exactly the steepnesses that make crests worth having.
+float3 GerstnerNormal(float2 p, float timeSeconds, float fade)
+{
+    float nx = 0.0;
+    float nz = 0.0;
+    float ny = 1.0;
+    const float q = g_WaveParams.x;
+    [unroll]
+    for (int i = 0; i < WAVE_COUNT; ++i)
+    {
+        const float2 dir = g_Waves[i].xy;
+        const float amplitude = g_Waves[i].z * fade;
+        const float k = g_Waves[i].w;
+        if (amplitude <= 0.0)
+        {
+            continue;
+        }
+        // Deep-water dispersion omega = sqrt(g*k): longer waves travel faster, so a swell outruns
+        // the chop instead of the whole field sliding as one sheet.
+        const float omega = sqrt(WAVE_GRAVITY * k);
+        const float phase = k * dot(dir, p) - omega * timeSeconds;
+        const float s = sin(phase);
+        const float c = cos(phase);
+        const float wa = k * amplitude;
+        nx -= dir.x * wa * c;
+        nz -= dir.y * wa * c;
+        ny -= q * wa * s;
+    }
+    return normalize(float3(nx, max(ny, 0.05), nz));
+}
+
+float3 ShadeWater(float3 worldPos, float3 viewDir, float timeSeconds, float fade)
 {
     const float2 p = worldPos.xz;
-    const float2 d1 = normalize(float2(1.0, 0.35));
-    const float2 d2 = normalize(float2(-0.42, 1.0));
-    float3 n = float3(0.0, 1.0, 0.0);
-    n.xz += 0.030 * cos(dot(p, d1) * 0.90 + timeSeconds * 1.7) * d1;
-    n.xz += 0.020 * cos(dot(p, d2) * 1.70 + timeSeconds * 2.6) * d2;
-    const float w1 = ValueNoise(p * 0.35 + float2(timeSeconds * 0.21, timeSeconds * 0.13));
-    const float w2 = ValueNoise(p * 0.35 + float2(31.7 - timeSeconds * 0.17, timeSeconds * 0.24));
+    // Gerstner crests carry the surface; the fine noise stays because a real sea has capillary
+    // detail far below the shortest gravity wave, and because it is what breaks the sun glint into
+    // a glitter band instead of one mirror cell per lattice cell (the water-checkerboard lesson in
+    // research/lin-look-log.md -- do not remove it without re-reading that).
+    float3 n = GerstnerNormal(p, timeSeconds, fade);
     const float f1 = ValueNoise(p * 2.1 + float2(timeSeconds * 0.9, -timeSeconds * 0.6));
     const float f2 = ValueNoise(p * 2.1 + float2(57.3 + timeSeconds * 0.5, timeSeconds * 0.8));
-    n.xz += 0.035 * float2(w1 - 0.5, w2 - 0.5) + 0.05 * float2(f1 - 0.5, f2 - 0.5);
+    n.xz += fade * 0.05 * float2(f1 - 0.5, f2 - 0.5);
     const float3 rippleN = normalize(n);
     const float3 body = float3(0.06, 0.22, 0.36);
     const float cosTheta = saturate(dot(viewDir, rippleN));
@@ -615,7 +655,16 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     float3 color = albedo * (ambient * ao + kSunColor * diffuse * lit);
     if (MaterialShading(hit.material) == MAT_SHADING_WATER)
     {
-        color = ShadeWater(p, -dir, g_CameraPosWorld.w) * lerp(0.6, 1.0, lit);
+        // E3's shore fade is 1.0 here, deliberately. A wave cannot orbit in water thinner than
+        // half its wavelength, and world/water::shore_fade implements exactly that -- but the
+        // SHADER has no depth to feed it: a probe ray straight down from the surface hits the
+        // water column's own voxels immediately, so it would need a water-skipping traversal
+        // variant, which is a change to the marcher the 7,000-ray oracle guards. The CPU side
+        // (the swimmer's surface) does apply it. Note also that this implementation displaces
+        // NORMALS, not geometry, so the artefact E3 exists to prevent -- crests clipping through
+        // the sand -- cannot occur here; what is missing is only that shallow water should look
+        // calmer. Recorded as a follow-up goal rather than guessed at.
+        color = ShadeWater(p, -dir, g_CameraPosWorld.w, 1.0) * lerp(0.6, 1.0, lit);
     }
 
     // exp2 height fog converging on the sky gradient (terrain.psh.hlsl's formula, goals 33/34/91).

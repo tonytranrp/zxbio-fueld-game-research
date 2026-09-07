@@ -36,6 +36,7 @@
 #include "world/collision/terrain_collider.hpp"
 #include "world/player/fixed_step.hpp"
 #include "world/player/view_polish.hpp"
+#include "world/water/gerstner.hpp"
 #include "world/wind/wind_field.hpp"
 #include "world/streaming/chunk_events.hpp"
 #include "world/streaming/world_bounds.hpp"
@@ -336,7 +337,8 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
                     engine::input::GlfwInput& input, const world::generation::HeightmapGenerator& heightmap,
                     world::collision::TerrainCollider* collider, const engine::core::Clock& clock,
                     const AppOptions& options, std::uint32_t& walkViolations,
-                    world::player::FixedStepper& stepper, float& viewOffsetY) {
+                    world::player::FixedStepper& stepper, float& viewOffsetY,
+                    const world::water::WaveField& waveField, float waveTime) {
     auto [transform, lens, spectator] =
         registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(
             cameraEntity);
@@ -381,6 +383,15 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
         const float groundHeight = heightmap.height_at(transform.position.x, transform.position.z);
         world::player::WorldSense sense;
         sense.ground_height = groundHeight;
+        // E2: the swimmer rides the ACTUAL surface, not a constant sea level -- the same Gerstner
+        // sum the marcher draws, evaluated on the CPU from the same field. Only where there is sea
+        // to swim in: over land the wave height is meaningless and would shift the water plane the
+        // buoyancy test uses.
+        if (groundHeight < world::player::kSeaLevelWorld) {
+            sense.water_surface_y =
+                world::player::kSeaLevelWorld +
+                world::water::wave_height(waveField, transform.position.x, transform.position.z, waveTime);
+        }
         const world::player::PlayerIntent intent = app::to_intent(input.state(), jumpEdge);
         jumpEdge = false; // consumed by the first tick of this frame
 
@@ -717,6 +728,9 @@ int run_mesh(Session& s, const AppOptions& options) {
     // built once rather than per frame. Off under the mechanical frame checks, along with the
     // crosshair, so --verify-frame's contrast metric measures the world and not the HUD.
     const app::TreeLookup aimTrees(world.heightmap(), options.seed);
+    // E2: the swimmer's surface. Derived once from the wind, like the renderer's copy -- one field,
+    // two readers, rather than two derivations that agree only approximately.
+    const world::water::WaveField waveField = world::water::make_wave_field(options.svo_settings.wind);
     const bool crosshairOn = options.crosshair.value_or(!options.verify_frame);
     bool loggedReady = false;
     const auto loadStart = std::chrono::steady_clock::now();
@@ -761,9 +775,10 @@ int run_mesh(Session& s, const AppOptions& options) {
                 world.log_timings();
                 loggedReady = true;
             }
+            const float waveTime = static_cast<float>(s.clock.elapsed_seconds());
             const render::interface::Camera camera = update_camera_phase(
                 s.registry, s.cameraEntity, *s.input, world.heightmap(), options.noclip ? nullptr : &collider,
-                s.clock, options, walkViolations, stepper, viewOffsetY);
+                s.clock, options, walkViolations, stepper, viewOffsetY, waveField, waveTime);
 
             renderer.render(camera);
             if (s.postProcess) {
@@ -840,6 +855,9 @@ int run_svo(Session& s, const AppOptions& options) {
     // built once rather than per frame. Off under the mechanical frame checks, along with the
     // crosshair, so --verify-frame's contrast metric measures the world and not the HUD.
     const app::TreeLookup aimTrees(world.heightmap(), options.seed);
+    // E2: the swimmer's surface. Derived once from the wind, like the renderer's copy -- one field,
+    // two readers, rather than two derivations that agree only approximately.
+    const world::water::WaveField waveField = world::water::make_wave_field(options.svo_settings.wind);
     const bool crosshairOn = options.crosshair.value_or(!options.verify_frame);
     std::size_t uploads = 0;
     double lastUploadMs = 0.0;
@@ -959,9 +977,12 @@ int run_svo(Session& s, const AppOptions& options) {
             }
         } else {
             const double refreshBefore = collider.last_refresh_ms();
+            // The renderer's OWN animation clock, so the swimmer rides the surface being drawn
+            // rather than one that agrees with it only approximately.
+            const float waveTime = renderer.anim_seconds();
             const render::interface::Camera camera = update_camera_phase(
                 s.registry, s.cameraEntity, *s.input, world.heightmap(), options.noclip ? nullptr : &collider,
-                s.clock, options, walkViolations, stepper, viewOffsetY);
+                s.clock, options, walkViolations, stepper, viewOffsetY, waveField, waveTime);
             phases.refreshed = collider.last_refresh_ms() != refreshBefore && !collider.refresh_pending();
             // Rebuild once the camera has left the inner half of the finest LOD ring: the tree is
             // still correct everywhere (coarser rings are conservative), just not at full detail

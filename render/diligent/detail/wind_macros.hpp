@@ -1,5 +1,6 @@
 #pragma once
 
+#include "world/water/gerstner.hpp"
 #include "world/wind/wind_field.hpp"
 
 #include "Graphics/GraphicsTools/interface/ShaderMacroHelper.hpp"
@@ -38,6 +39,13 @@ inline void add_wind_macros(Diligent::ShaderMacroHelper& macros) {
     macros.AddShaderMacro("WIND_FLUTTER_W1", kFlutterW1);
     macros.AddShaderMacro("WIND_FLUTTER_RATIO", kFlutterRatio);
     macros.AddShaderMacro("WIND_TWO_PI", kTwoPi);
+
+    // The wave field's shape constants (world/water). The per-run waves themselves are DERIVED on
+    // the CPU and passed in the constant buffer -- only the array size and g are fixed at build
+    // time, and both come from world/water's own header so the HLSL array cannot get out of step
+    // with the C++ that fills it.
+    macros.AddShaderMacro("WAVE_COUNT", static_cast<Diligent::Uint32>(world::water::kWaveCount));
+    macros.AddShaderMacro("WAVE_GRAVITY", world::water::kGravity);
 }
 
 } // namespace render::diligent::detail
