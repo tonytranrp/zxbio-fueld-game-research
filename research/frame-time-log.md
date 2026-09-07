@@ -110,3 +110,115 @@ fly_transect numbers above were re-taken by inserting after `backend`, which eve
 That is the sixth vacuous instrument in this arc, and the first I caught by checking the instrument
 rather than by disbelieving the result — the check was "does the flag appear in the file I actually
 ran", which took one grep.
+
+---
+
+## 4. The rebuild storm, stopped (goals 249–253) — a stopgap, labelled as one
+
+`> lod_radius * 0.5f` tied how *often* the world is rebuilt to a *detail* parameter, and at the 4 m
+default that asked for a full 400 MB rebuild every **2 metres**. The trigger is now a named policy on
+`SvoWorldOptions` with four parts: a trigger distance, hysteresis, a minimum interval measured from
+the last **adoption** (not the last build start — the upload is 13–21 frames of `UpdateBuffer`
+traffic after the build ends), and a speed gate.
+
+### What it bought
+
+`fly_transect`, vsync off, vk:
+
+| | before | after |
+|---|---|---|
+| median | 4.64 | **4.02** |
+| p95 | 7.17 | **5.89** |
+| **p99** | **13.16** | **8.52** |
+| slow frames (>20 ms) | 7 of 2014 | **4 of 2271** |
+| ...caused by upload or build | 5 | **2** |
+| trees built | 3 | 2 |
+
+**p99 −35%**, against a rebuilds-*disabled* floor of 6.89 ms — so this closes about two thirds of the
+gap between the shipped behaviour and never rebuilding at all.
+
+### The trigger distance turned out not to be the lever, and the ramp is what showed it
+
+I shipped 24 m first, on the reasoning that a 2 s build at 40 m/s is outrun after 80 m anyway. Then
+I ramped it, because a number chosen by argument is not a measurement:
+
+| trigger | p99 (ms) |
+|---|---|
+| 4 m | 9.32 |
+| 8 m | 8.19 |
+| 16 m | 8.06 |
+| 24 m | 8.28 |
+
+**Flat, inside the run-to-run spread.** The reason is the speed gate: during a fast flight *no*
+rebuild triggers at any distance, so the trigger distance only decides behaviour while the camera is
+moving **slowly** — which is exactly when a rebuild is cheap to absorb. **The AK-B win is goal 250's
+speed gate, not goal 249's distance.**
+
+That mattered, because the distance is *not* free in the other dimension. Rendering the same pose
+with the LOD centre displaced (`tools/svo_render --lod-center`, the deterministic reproduction
+CLAUDE.md names for exactly this):
+
+| LOD-centre offset | staleness, mean levels | pixels changed |
+|---|---|---|
+| 4 m | 0.03 | 0.2% |
+| **8 m** | **0.27** | **2.9%** |
+| 16 m | 5.11 | 36.7% |
+| 24 m | 13.70 | **45.3%** |
+
+**Free to 8 m, off a cliff by 16.** Capture: `research/captures/ak_lod_staleness.png` — at 24 m the
+near-field terrain is visibly chunky, which is the cost my first draft would have shipped silently.
+
+**So the shipped value is 8 m**: all of the frame-time win, and 94% of the image quality 24 m threw
+away. Two measurements, opposite directions, one obvious answer.
+
+### Goal 250's check FAILS, and the reason is structural
+
+The check is "zero rebuilds completing more than one trigger-distance behind the camera". Measured
+adopt lag on `fly_transect`: **135.2 m and 33.9 m**, against an 8 m trigger. Both fail.
+
+- The 135 m one is the **initial** build, requested at spawn and adopted after the camera has already
+  flown; no trigger policy governs it.
+- The 33.9 m one is a build that triggered while the camera was slow and then **accelerated during
+  the ~2 s build**.
+
+**Deferring cannot bound the adopt lag, because the camera's speed after the trigger is not knowable
+at trigger time.** I chose deferral over velocity prediction (goal 250 permits either) because
+prediction needs a reliable build-duration estimate to extrapolate by, and the measured duration
+varies **1.89–3.60 s** with terrain complexity — a prediction would be wrong by tens of metres
+exactly when it matters. But deferral does not fix it either. **This is a structural limit of
+"rebuild the whole world around a point", and it is the argument for AK-C/D rather than a tuning
+failure.**
+
+### Goal 251: decided against, with the numbers
+
+`build_job` calls `sampler.set_focus(camera, 4 * lod_radius)`, rebuilding a 1/16 m height field over
+a 16 m radius on every build, and 251 asks for cross-build reuse. Measured first:
+**`sampler` is 0.15–0.19 s of a 1.89–3.60 s build — 5–9%.**
+
+Reuse would recover at most part of that, and only when consecutive focus regions overlap — which,
+with the trigger now at 8 m and the speed gate suppressing rebuilds during flight, is a handful of
+builds per minute. Against `fill_brick` at ~60% of build time (goal 162's own note), this is the
+wrong 8% to optimise. **Decided against, and the number is why.** It becomes worth doing if AK-C's
+per-cell rebuild makes builds frequent and small, which is the opposite regime.
+
+### Goal 161: fixed, and the test that hid it now cannot
+
+`fill_terrain` truncated the surface height toward zero (`static_cast<int32_t>`) instead of flooring,
+so a column at −3.4 m became −3: **underwater terrain sat one voxel high, everywhere below sea
+level.** Above sea level truncation and flooring agree, which is precisely why the sampler-vs-fill
+equivalence test — which **skipped every negative-height column** — never saw it.
+
+Both fixed together: `fill_terrain` floors, and the test's skip is deleted. It now compares
+**196,608 voxels with 0 skipped** (was ~2/3 of that with the underwater third excluded). A test that
+excludes the region where two implementations disagree is not an equivalence test.
+
+### Goal 253: what this did NOT fix
+
+- The world still goes **stale between rebuilds** — 2.9% of pixels at the shipped 8 m trigger, and
+  the capture above shows what the 24 m version would have looked like.
+- The **adopt lag is unbounded** (above), so a fast flier is always looking at a tree centred where
+  they were, not where they are.
+- The **whole-tree cost is untouched**: still 1.89–3.60 s of CPU and 431–688 MB re-uploaded per
+  rebuild. AK-B makes it happen less often; it does not make it cheaper.
+- The single worst frames are still the **tree swap and its upload** (2 of the 4 remaining slow
+  frames), because adopting a tree still means creating and filling GPU buffers for the whole world.

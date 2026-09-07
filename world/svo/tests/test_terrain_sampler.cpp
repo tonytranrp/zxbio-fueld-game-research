@@ -26,10 +26,15 @@ constexpr int kSeed = 1337;
 
 // The tie between the new representation and the shipped world: at voxel size 1 m the sampler
 // must answer exactly what fill_terrain wrote into the chunk, voxel for voxel (trees off -- the
-// chunk world never voxelizes trees). Columns with a NEGATIVE surface height are skipped: there
-// fill_terrain's `static_cast<int32_t>(surfaceHeight)` truncates toward zero instead of flooring,
-// so its underwater terrain sits one voxel higher than the geometric rule -- a real fill_terrain
-// quirk (docs/goals.md), not something the meter-based sampler should reproduce.
+// chunk world never voxelizes trees).
+//
+// GOAL 161 IS FIXED, so this test no longer skips anything. It used to exclude columns with a
+// NEGATIVE surface height, because `fill_terrain` truncated toward zero (`static_cast<int32_t>`)
+// instead of flooring -- a column at -3.4 m became -3, one voxel HIGH, everywhere below sea level.
+// Above sea level truncation and flooring agree, which is exactly why skipping the negative columns
+// hid it. `fill_terrain` floors now and EVERY column is compared, which is what makes this a tie
+// between the two representations rather than a tie over the half of the world where they happened
+// to agree.
 TEST_CASE("terrain sampler reproduces fill_terrain exactly at 1 m voxels", "[svo][terrain]") {
     const world::generation::HeightmapGenerator heightmap(kSeed);
     TerrainSamplerParams params;
@@ -40,7 +45,6 @@ TEST_CASE("terrain sampler reproduces fill_terrain exactly at 1 m voxels", "[svo
 
     const ChunkCoord coords[] = {{0, 0, 0}, {1, -1, 0}, {-1, 0, 1}, {2, 0, -2}, {-2, 1, -1}, {0, -2, 2}};
     std::size_t compared = 0;
-    std::size_t skipped = 0;
     std::size_t nonAir = 0;
     for (const ChunkCoord& coord : coords) {
         Chunk chunk(coord);
@@ -51,10 +55,6 @@ TEST_CASE("terrain sampler reproduces fill_terrain exactly at 1 m voxels", "[svo
                 const float wz = static_cast<float>(coord.z * kChunkSize + lz);
                 float surface = 0.0f;
                 heightmap.generate_column_heights_spaced(wx, wz, 1, 1, 1.0f, &surface);
-                if (surface < 0.0f) {
-                    skipped += static_cast<std::size_t>(kChunkSize);
-                    continue;
-                }
                 for (std::int32_t ly = 0; ly < kChunkSize; ++ly) {
                     const float wy = static_cast<float>(coord.y * kChunkSize + ly);
                     const MaterialID expected = chunk.voxels().at(local_index(lx, ly, lz));
@@ -72,8 +72,8 @@ TEST_CASE("terrain sampler reproduces fill_terrain exactly at 1 m voxels", "[svo
             }
         }
     }
-    std::printf("fill_terrain equivalence: %zu voxels compared (%zu non-air), %zu skipped below sea level\n",
-                compared, nonAir, skipped);
+    std::printf("fill_terrain equivalence: %zu voxels compared (%zu non-air), 0 skipped -- goal 161\n",
+                compared, nonAir);
     CHECK(compared > 100000);
     CHECK(nonAir > 1000);
 }

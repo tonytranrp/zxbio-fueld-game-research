@@ -84,6 +84,9 @@ struct AppOptions {
     // Goal 247: suppress world rebuilds entirely. The world goes stale, which is the POINT -- it is
     // how the rebuild storm's contribution to the frame time gets a number instead of an argument.
     bool rebuild = true;
+    // Goal 249: the trigger distance, exposed so its cost/benefit is a measured table rather than a
+    // chosen number. Ramping it is how the value in SvoWorldOptions was picked.
+    std::optional<float> rebuild_trigger;
     // Prompt 002: these five were `no_*` members before the port, mirrored into a positive form at
     // every use site (`svo_settings.sky = !no_sky`). ValueKind::Toggle answers to BOTH --x and
     // --no-x from one row, so the negation now happens exactly once, in the spelling.

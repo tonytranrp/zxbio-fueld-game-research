@@ -200,6 +200,12 @@ constexpr std::array kTable{
            .help = "world rebuilds as the camera moves; OFF freezes the tree (goal 247's A/B)",
            .default_text = "on",
            .group = "developer"},
+    Option{.name = "rebuild-trigger",
+           .set = bind<&AppOptions::rebuild_trigger>(),
+           .kind = ValueKind::Float,
+           .help = "metres the camera may leave the build centre before a rebuild (goal 249)",
+           .default_text = "24",
+           .group = "developer"},
     Option{.name = "view-polish",
            .set = bind<&AppOptions::view_polish>(),
            .kind = ValueKind::Toggle,
@@ -421,6 +427,9 @@ void finalize(AppOptions& options) noexcept {
     // rule, not a parse step, and the harness needs the same rule without re-parsing anything.
     if (options.svo_settings.debug_view != render::diligent::SvoDebugView::None) {
         options.post = false;
+    }
+    if (options.rebuild_trigger) {
+        options.svo.rebuild_trigger_metres = *options.rebuild_trigger;
     }
     options.svo.worker_threads = static_cast<std::size_t>(std::max(0, options.svo_threads));
     options.svo_settings.upload_bytes_per_frame =

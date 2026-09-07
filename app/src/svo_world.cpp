@@ -53,6 +53,46 @@ float SvoWorld::distance_from_build_center(glm::vec3 camera) const noexcept {
     return glm::length(camera - buildCenter_);
 }
 
+bool SvoWorld::should_rebuild(glm::vec3 camera, float speed, double now) const noexcept {
+    if (building_.load()) {
+        return false; // one build at a time, unchanged
+    }
+    // Goal 249's minimum interval, measured from the ADOPTION of the last tree rather than the
+    // start of its build: the upload is 13-21 frames of UpdateBuffer traffic after the build ends,
+    // and starting the next resample inside that window stacks CPU work on top of it.
+    if (now - lastAdoptSeconds_ < static_cast<double>(options_.rebuild_min_interval_seconds)) {
+        return false;
+    }
+    // Goal 250: not while moving fast. A build centred where the camera was is worthless by the
+    // time it lands, and at 40 m/s a 2 s build is 80 m stale on arrival.
+    if (speed > options_.rebuild_max_speed) {
+        return false;
+    }
+    const float distance = distance_from_build_center(camera);
+    // Goal 249's hysteresis. Having triggered once, wait until the camera settles near the new
+    // centre before arming again -- otherwise a camera drifting along the trigger radius asks for
+    // a rebuild on every frame it crosses back and forth.
+    if (awaitingSettle_) {
+        if (distance <= options_.rebuild_settle_metres) {
+            awaitingSettle_ = false;
+        }
+        return false;
+    }
+    if (distance <= options_.rebuild_trigger_metres) {
+        return false;
+    }
+    awaitingSettle_ = true;
+    return true;
+}
+
+void SvoWorld::note_adopted(double now, glm::vec3 cameraAtAdopt) noexcept {
+    lastAdoptSeconds_ = now;
+    // Goal 250's check: how far the camera had travelled from the build centre by the time the tree
+    // it asked for actually landed. This is the number that says whether deferring worked.
+    lastAdoptCamera_ = cameraAtAdopt;
+    lastAdoptLag_ = distance_from_build_center(cameraAtAdopt);
+}
+
 bool SvoWorld::request_build(glm::vec3 camera) {
     if (building_.load()) {
         return false;

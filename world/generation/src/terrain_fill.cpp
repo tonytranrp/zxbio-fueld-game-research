@@ -53,8 +53,13 @@ void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightma
                              static_cast<std::size_t>(lx + 1)];
     };
 
-    const auto minSurface = static_cast<std::int32_t>(minMax.min);
-    const auto maxSurface = static_cast<std::int32_t>(minMax.max);
+    // FLOOR, not truncate (goal 161). `static_cast<int32_t>` rounds toward ZERO, so a column at
+    // -3.4 m truncated to -3 while the sampler's geometric rule ("a voxel is solid iff its bottom is
+    // at or below the surface") wants -4: underwater terrain sat one voxel HIGH, everywhere below
+    // sea level. Above sea level the two agree, which is why the equivalence test -- which skipped
+    // negative-height columns -- never saw it.
+    const auto minSurface = static_cast<std::int32_t>(std::floor(minMax.min));
+    const auto maxSurface = static_cast<std::int32_t>(std::floor(minMax.max));
 
     // Whole chunk strictly above every column's surface AND above sea level -> pure air, which is
     // already the default a freshly constructed ChunkVoxels starts as -- nothing to do.
@@ -84,7 +89,7 @@ void fill_terrain(world::chunk::Chunk& chunk, const HeightmapGenerator& heightma
     for (std::int32_t lz = 0; lz < kChunkSize; ++lz) {
         for (std::int32_t lx = 0; lx < kChunkSize; ++lx) {
             const float surfaceHeightF = heightAt(lx, lz);
-            const auto surfaceHeight = static_cast<std::int32_t>(surfaceHeightF);
+            const auto surfaceHeight = static_cast<std::int32_t>(std::floor(surfaceHeightF));
 
             // Central-difference slope from the margin-complete grid (seam-exact).
             const float slopeX = std::abs(heightAt(lx + 1, lz) - heightAt(lx - 1, lz)) * 0.5f;

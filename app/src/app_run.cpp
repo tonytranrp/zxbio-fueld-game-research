@@ -1003,8 +1003,10 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
 
     // Hands a finished build to the renderer's staged upload, and pumps that upload one slice per
     // frame; logs the tree the frame it lands.
+    glm::vec3 lastCameraPos{0.0f};
     const auto adopt_finished = [&]() {
         if (std::shared_ptr<const world::svo::BrickTree> tree = world.take_finished()) {
+            world.note_adopted(s.clock.elapsed_seconds(), lastCameraPos);
             // Both owners take the handle in the same statement: the renderer stages it onto the
             // GPU across frames, the simulation queries it. One immutable object, two owners.
             // The swap happens on the main thread between ticks, so a plain assignment is correct
@@ -1021,11 +1023,12 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
         const app::SvoWorld::LastBuild last = world.last_build();
         log(LogLevel::Info,
             "svo tree #{}: {} bricks, {} internal, {} solid leaves, {:.1f} MB, build {:.2f}s (sampler "
-            "{:.2f}s, {} classified, {} bricks sampled), staged upload {:.1f} ms over {} frames, {} trees",
+            "{:.2f}s, {} classified, {} bricks sampled), staged upload {:.1f} ms over {} frames, {} trees"
+            ", adopt lag {:.1f} m",
             uploads, last.bricks, last.tree.internal_nodes, last.tree.solid_leaves,
             static_cast<double>(last.memory_bytes) / 1.0e6, last.stats.seconds, last.sampler_seconds,
             last.stats.boxes_classified, last.stats.bricks_sampled, lastUploadMs,
-            renderer.last_upload_frames(), last.trees);
+            renderer.last_upload_frames(), last.trees, world.last_adopt_lag_metres());
         return true;
     };
 
@@ -1075,9 +1078,8 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
                     "{:.1f} + post {:.1f} + overlay {:.1f} + present {:.1f} + capture {:.1f}{}{}{}{}",
                     frame - 1, frameMs, prevPhases.frame_start, prevPhases.upload, prevPhases.camera,
                     prevPhases.render, prevPhases.post, prevPhases.overlay, prevPhases.present,
-                    prevPhases.capture,
-                    prevCauses.swapped ? " [tree swapped]" : "", prevCauses.uploading ? " [uploading]" : "",
-                    prevCauses.building ? " [building]" : "",
+                    prevPhases.capture, prevCauses.swapped ? " [tree swapped]" : "",
+                    prevCauses.uploading ? " [uploading]" : "", prevCauses.building ? " [building]" : "",
                     prevCauses.refreshed ? " [cache refreshed]" : "");
             }
         }
@@ -1123,8 +1125,16 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             // Rebuild once the camera has left the inner half of the finest LOD ring: the tree is
             // still correct everywhere (coarser rings are conservative), just not at full detail
             // right around the camera until the new one lands.
-            if (options.rebuild && !world.building() &&
-                world.distance_from_build_center(camera.position) > options.svo.lod_radius * 0.5f) {
+            // Goals 249/250: the trigger is SvoWorld's policy now, not a rule inlined here. It
+            // carries a named distance with hysteresis, a minimum interval measured from the last
+            // adoption, and a speed gate -- the old `> lod_radius * 0.5f` tied how often the world
+            // was rebuilt to a DETAIL parameter and asked for a 400 MB rebuild every 2 metres.
+            const float cameraSpeed = glm::length(glm::vec2{camera.position.x - lastCameraPos.x,
+                                                            camera.position.z - lastCameraPos.z}) /
+                                      std::max(static_cast<float>(s.clock.delta_seconds()), 1.0e-4f);
+            lastCameraPos = camera.position;
+            if (options.rebuild &&
+                world.should_rebuild(camera.position, cameraSpeed, s.clock.elapsed_seconds())) {
                 world.request_build(camera.position);
             }
             phases.camera = phase_ms(phaseClock);
