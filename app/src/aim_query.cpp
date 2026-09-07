@@ -86,9 +86,15 @@ AimHit query_aim(const world::generation::HeightmapGenerator& heightmap, glm::ve
     // Fixed-step march with one bisection refinement: plenty for a debug crosshair readout. The
     // tree test rides the same steps -- a trunk is 0.5-0.7 m thick, so a 0.5 m step cannot skip
     // one, and a canopy is metres across.
+    // The counter is an INTEGER and the distance is derived from it, rather than accumulating a
+    // float: the same clang-tidy FloatLoopCounter finding that was fixed in tools/svo_render, and
+    // the same reason -- repeated `t += kStep` drifts, so the last step of a 300 m march is not the
+    // length the first one was.
     constexpr float kStep = 0.5f;
+    const int steps = static_cast<int>(maxDistance / kStep);
     glm::vec3 prev = origin;
-    for (float t = kStep; t <= maxDistance; t += kStep) {
+    for (int step = 1; step <= steps; ++step) {
+        const float t = static_cast<float>(step) * kStep;
         const glm::vec3 p = origin + dir * t;
         const float surface = heightmap.height_at(p.x, p.z);
 

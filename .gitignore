@@ -21,3 +21,4 @@ _deps/
 target/
 heightmap_profile.csv
 .token-optimizer/
+loading_*.png

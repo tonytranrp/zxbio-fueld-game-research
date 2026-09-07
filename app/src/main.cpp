@@ -36,10 +36,10 @@
 #include "world/collision/terrain_collider.hpp"
 #include "world/player/fixed_step.hpp"
 #include "world/player/view_polish.hpp"
-#include "world/water/gerstner.hpp"
-#include "world/wind/wind_field.hpp"
 #include "world/streaming/chunk_events.hpp"
 #include "world/streaming/world_bounds.hpp"
+#include "world/water/gerstner.hpp"
+#include "world/wind/wind_field.hpp"
 #include "world_loader.hpp"
 
 #if defined(TRACY_ENABLE)
@@ -1104,19 +1104,28 @@ int run(const AppOptions& options) {
 } // namespace
 
 int main(int argc, char** argv) {
-    app::install_crash_handler();
-    // Unbuffered stdout: when output is redirected to a file (smoke runs, CI), full buffering
-    // would otherwise eat the final log lines -- including exception reports -- if the process
-    // dies without flushing. Cost is irrelevant at this log volume.
-    std::setvbuf(stdout, nullptr, _IONBF, 0);
-    const auto options = parse_args(std::span<char*>(argv, static_cast<std::size_t>(argc)));
-    if (!options) {
-        return EXIT_FAILURE;
-    }
+    // Everything is inside the try, including argument parsing, and there is a catch-all: escaping
+    // main is std::terminate, which loses the message. The crash handler below reports what it can
+    // for the failures it hooks, but a thrown exception that never reaches a catch is not one of
+    // them. (clang-tidy's bugprone-exception-escape; the same fix tools/svo_render got.)
     try {
+        app::install_crash_handler();
+        // Unbuffered stdout: when output is redirected to a file (smoke runs, CI), full buffering
+        // would otherwise eat the final log lines -- including exception reports -- if the process
+        // dies without flushing. Cost is irrelevant at this log volume.
+        std::setvbuf(stdout, nullptr, _IONBF, 0);
+        const auto options = parse_args(std::span<char*>(argv, static_cast<std::size_t>(argc)));
+        if (!options) {
+            return EXIT_FAILURE;
+        }
         return run(*options);
     } catch (const std::exception& e) {
-        log(LogLevel::Error, "fatal: {}", e.what());
+        // fprintf, not log(): a handler in main must not itself be able to throw, and log()
+        // formats. tools/svo_render's main reports the same way for the same reason.
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return EXIT_FAILURE;
+    } catch (...) {
+        std::fprintf(stderr, "fatal: unknown exception\n");
         return EXIT_FAILURE;
     }
 }

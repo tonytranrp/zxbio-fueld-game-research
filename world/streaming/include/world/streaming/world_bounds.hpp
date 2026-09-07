@@ -29,7 +29,10 @@ inline constexpr WorldBounds kDefaultWorldBounds{/*radius_chunks=*/48, /*y_min=*
 // is the loader's own concern (world_loader.hpp), not this pure shape query.
 [[nodiscard]] inline std::vector<world::chunk::ChunkCoord> chunks_in_bounds(const WorldBounds& bounds) {
     std::vector<world::chunk::ChunkCoord> coords;
-    const auto side = static_cast<std::size_t>(2 * bounds.radius_chunks + 1);
+    // Widen the OPERAND, not the result: `2 * radius + 1` in int can overflow before the cast ever
+    // sees it, which is the whole point of bugprone-misplaced-widening-cast. Same shape as the fix
+    // brick.cpp's exposed_face_sum needed.
+    const std::size_t side = static_cast<std::size_t>(bounds.radius_chunks) * 2u + 1u;
     const std::int32_t yCount = bounds.y_max - bounds.y_min + 1;
     coords.reserve(side * side *
                    static_cast<std::size_t>(yCount)); // NOLINT(bugprone-misplaced-widening-cast)

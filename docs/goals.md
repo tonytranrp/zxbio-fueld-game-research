@@ -1124,6 +1124,201 @@ self-contained component files. Decision log with every measurement and the bise
      supersedes goal 113's written "constexpr table, no runtime registry" — still a constexpr table,
      now a composed one). Kept `constexpr`, zero runtime dispatch, as 113 required.
 
+## Gameplay, wind and water (groups AD–AH)
+
+`Prompts/001-2026-09-07-gameplay-physics-world-life.md`. The engine rendered a beautiful
+sub-centimetre world you were a *spectator with a body* in: fly by default, walking minimal, no
+jump, no crosshair, no wind, static water. Decision log with every measurement:
+`research/gameplay-pass-log.md`.
+
+Groups AD, AE, AH and goal 189 are DONE. Groups AF (trees v2) and AG (grass) are NOT started —
+`research/gameplay-pass-log.md` §8 says exactly where the line is and what they build on, and their
+goals below are left unchecked on purpose rather than descoped.
+
+## AD. Player physics: a real controller
+
+177. [x] Fixed-timestep simulation. `world/player`'s `FixedStepper` runs the sim at 60 Hz whatever
+     the frame rate, so the jump apex, the coyote window and the smoothing time constant mean the
+     same thing on every machine. Physics state lives in `PlayerState`, never in the frame loop's
+     locals. Went in `world/` and not `app/` deliberately: `app/` is behind `VOXEL_BUILD_RENDERER`,
+     so its tests never run in CI's gating no-GPU `core` job, and a state machine whose whole value
+     is determinism is exactly what belongs there. **Check**: the accumulator conserves simulated
+     time to 1e-8 at any cadence and two cadences agree to within the one tick rounding can defer
+     (the first draft asserted exact tick equality and measured 11 vs 12 — 1/60 is not a binary
+     fraction; log §3); `step_player` is bit-identical over 300 ticks whether they are delivered in
+     one batch or in batches of 7/1/13/29/…; `--autofly --walk` 900 frames = 0 ground violations.
+     That last one read **74** at first — `--autofly` teleported per FRAME, after the physics, and
+     at 150 fps most frames run zero ticks. Moving the travel inside the tick fixed it; the
+     fixed-step change revealed the harness bug rather than causing it.
+178. [x] Jump with coyote time and buffering, on a real `Stance` {Grounded, Airborne, Swimming}
+     state machine — coyote, buffering, head-bob and the landing dip all need last tick's stance,
+     which a per-frame sweep result cannot give. Space is now a jump in walk mode (an EDGE, via
+     `InputState::take_jump`, alongside its unchanged fly-mode level). **Check**: 8.5 m/s against
+     -32 m/s² is a 1.129 m apex, inside the brief's 1.0–1.25 m band, pinned by a test so a gravity
+     change cannot move it silently; coyote expiry, buffer consumption and "a held key jumps once
+     in 240 ticks" each have their own test; the in-sim measured apex lands in the same band.
+179. [x] Micro-step smoothing on the svo path. The step allowance is a *smoothing budget* there
+     (0.04 m, ~5 voxels) rather than a ledge climb — at 7.8 mm voxels every natural slope is a
+     sub-centimetre staircase, so the failure mode is micro-jitter, not blocked stairs. The mesh
+     path keeps 0.55 m for its 1 m blocks. `--step-height M` overrides. The FEET stay exact; only
+     the rendered eye lags (τ 0.1 s, hard-clamped, collapsed while airborne), so every mechanical
+     check measures the same body with or without it. **Check**: the lag never exceeds the step
+     budget over a 120-tick staircase climb and never exceeds the hard clamp under a teleport;
+     `--autofly --walk` still 0 violations. Knowingly NOT captured as an image sequence — a 4 cm
+     effect at a 0.1 s time constant is not something a still shows honestly, and the numeric
+     assertion is strictly stronger (log §5).
+180. [x] Crosshair + a richer aim readout. The crosshair is an ImGui foreground draw-list cross —
+     no second fullscreen pass, because the overlay already runs AFTER the TAA resolve, which is
+     the only thing the brief's fallback existed to solve. `aim_query` now sees TREES (a
+     `TreeLookup` with a per-chunk-column placement cache) and reports hit DISTANCE; a trunk used
+     to report as the hillside behind it. **Check**: viewed captures read "Stone @ 80,41,279
+     (117 m)", "Water @ 74,0,219 (70 m)" (D3D12) and "Leaves @ 32,51,299 (129 m)" — the last a
+     canopy the pre-A4 query could not see; new tests cover the trunk case, the canopy case, the
+     distance, and the negative (without the tree source the same ray does not report Wood).
+     Captures: `research/captures/gp_a4_*.png`.
+181. [x] Swim through and climb ashore. Space/Ctrl are a direct vertical VELOCITY while submerged,
+     not an acceleration — buoyancy at full submersion is +32 m/s² net, so any human-scale thrust
+     would simply lose to it. Plus rlVoxel's liquid pop-up: blocked horizontally while swimming
+     with air a probe-height above gets an upward impulse. **Check**: tests cover
+     dive-against-buoyancy, the float equilibrium, surfacing, and the pop-up condition;
+     `--autofly --walk` across water = 0 violations.
+182. [x] View polish: head-bob keyed to distance walked (not wall-clock, so the pace is
+     frame-rate independent), landing dip proportional to impact, boost FOV kick. All render-only,
+     all off under `--verify-frame`/`--autofly`, killable with `--no-view-polish`. **Check**: a test
+     drives absurd inputs (200 m/s impact, full speed, boosting, 600 ticks) and asserts the eye
+     offset never exceeds 5 cm; disabled, it returns exactly zero and decays rather than freezing.
+
+## AE. Wind: one shared field
+
+183. [x] `world/wind` — `sample_wind(params, position, time)`, analytic and deterministic:
+     constant direction, gust-varied magnitude (Ghost of Tsushima's model per the grass research),
+     plus a flutter band for foliage surfaces. In `world/` and not `engine/` because `engine/` is
+     infrastructure a different game reuses unchanged, and wind is *this world's weather*. Sines
+     rather than FastNoise2 on purpose: the function has to exist twice, in C++ and HLSL, and
+     produce the same numbers — a hash-based noise cannot promise that across two compilers, a sum
+     of directional sines can, exactly. **Check**: gusts provably TRAVEL (what a point sees now is
+     what the point upwind saw a moment ago, to 1e-4); pure-function determinism under reordered and
+     interleaved evaluation; speed stays in the band the parameters describe and never reverses;
+     flutter is bounded and spatially varying (neighbouring leaves are not in lockstep); no
+     allocations.
+184. [x] Wind constants as ONE source of truth, not two. `world/wind`'s own header holds the wave
+     shape; `render/diligent/detail/wind_macros.hpp` compiles those same values into every
+     wind-aware shader as `WIND_*` macros (the Group AC material-macro mechanism).
+     `shaders/wind.fxh` contains no numbers of its own, so drift is *unrepresentable* rather than
+     merely tested — the brief's CPU/GPU parity concern answered structurally. Per-run tuning goes
+     through the constant buffer so `--wind-speed` works without recompiling a shader. **Check**: a
+     shader naming a macro the C++ does not define fails to compile, which is the mechanism; both
+     backends build and run.
+185. [x] `--wind-speed M` / `--no-wind`, and the overlay shows the wind at the player, sampled on
+     the renderer's OWN animation clock (`anim_seconds()`) so the number shown is the one being
+     drawn. `--no-wind` sets `still_wind()`, which zeroes the FIELD rather than making each consumer
+     test a flag. **Check**: overlay reads "wind: 5.6 m/s from 34 deg (gust -0.14)"; wind-on vs
+     `--no-wind` frames diffed — 18,018 pixels change and **98.2% of them are foliage green**, so
+     the effect lands on leaves and nothing else and `--no-wind` is provably static.
+
+## AF. Trees v2: skeletons, pipe model, sway — NOT STARTED
+
+Deliberately unstarted, not descoped: the pass ran out of budget after AD/AE/AH and goal 189.
+`research/gameplay-pass-log.md` §8 records what they build on (the wind field is complete and is
+what they were going to consume) and the one non-obvious design question waiting for them.
+
+186. [ ] Space-colonization skeletons (`world/generation/tree_skeleton`), deterministic per
+     (seed, position), with the existing three silhouettes plus a high-flutter aspen variant.
+     **Check**: determinism, connectivity, bounds, tip spacing, and a viewed debug dump of three
+     skeletons before any voxelization.
+187. [ ] Pipe-model radii from accumulated distal leaf count. **Check**: a hand-built skeleton gets
+     exactly the expected radii; branch junctions satisfy da Vinci within 15% over N random trees.
+188. [ ] Leaf mass distributed from sapwood area, feeding radii, sway mass and canopy density.
+     **Check**: total leaf area ≈ LAI × crown footprint in the 0.5–3.0 band; denser at tips.
+190. [ ] Hierarchical spring sway (trunk fundamental from the cantilever formula, branches
+     semi-independent so multiple-resonance damping emerges structurally). **Check**: step response
+     and resonance near the predicted f0 ≈ 0.26 Hz for sycamore-scale parameters; determinism;
+     ≤ 0.5 ms/frame for all in-ring trees, measured with the attributor.
+191. [ ] Skeleton-driven voxelization into the svo tree — capsule trunks, per-segment leaf clouds.
+     **Check**: brick/MB growth measured BEFORE committing (the research names vegetation as the
+     worst-case SVO content class); `--verify-frame` stays ≥ 25%; the terrain-sampler equivalence
+     test still passes byte-for-byte; viewed captures at 2/10/60 m on both backends.
+192. [ ] Geometric canopy motion in the marcher (C6.2's bounded experiment — domain-warping the
+     sample position inside canopy bricks). The SHADING half (C6.1) is already done and shipped as
+     part of goal 185's field; this is the half with no public prior art. **Check**: captures at
+     2 m and 10 m, TAA ghosting evaluated in a slow pan, oracle still 0/7,000 (the warp applies at
+     shading, not traversal). An honest negative result is an acceptable outcome here.
+
+189. [x] Mesh-path wind parity (C7): `terrain.vsh.hlsl`'s two hand-picked sine waves are gone; it
+     reads the same `wind.fxh` field, so `--wind-speed`/`--no-wind` mean one thing on both renderer
+     paths. Foliage leans downwind in proportion to local wind speed (0.03 m per m/s ≈ the old
+     hand-tuned amplitude at a 6 m/s breeze, so the mesh world's look is preserved) plus a small
+     cross-wind flutter. Logged decision: the mesh path does NOT get v2 trees this pass.
+     **Check**: wind-8 vs `--no-wind` frames diffed — 1,473 pixels change, 27.9% foliage green; the
+     rest is terrain revealed and occluded behind moving canopy edges, which is the signature of
+     GEOMETRIC displacement (a 98% green result there would have meant the displacement was not
+     happening). Also fixed the mesh overlay's hardcoded `wind: 0.0 m/s`, caught by reading a
+     capture rather than by a test. Captures: `research/captures/gp_c7_mesh_wind_{on,off}.png`.
+
+## AG. Grass — NOT STARTED
+
+Same status as AF. One design question is already answered in `research/gameplay-pass-log.md` §8:
+D3 needs the Grass material to be wind-responsive, and Grass is `Shading::Lit`, not
+`Shading::Foliage`; changing its shading model would wrongly give ground grass the mesh path's
+canopy sway. The materials-as-components answer is a new `MaterialDef` member (`wind_responsive`)
+exported to shaders alongside the shading model — not made, because making it without a consumer
+would be speculative.
+
+193. [ ] Deterministic blade-cluster placement voxelized into the finest LOD ring only, with a
+     `GrassBlade` material (`Phase::Foliage`). **Check**: determinism; < +15% build time and < +10%
+     tree MB at the default pose, or halve density and log the tradeoff; viewed captures at
+     1/4/15 m; walk through it with no collision and no aim-readout lie.
+194. [ ] Instanced raster grass overlay composed against the march's depth, with layered wind and a
+     player-position bend. **Check**: correct occlusion both ways on a hillside; wind sweep visible
+     in a sequence; walking bends it; frame cost measured and inside the 60 fps budget; both
+     backends.
+195. [ ] Distant grass tint — Grass-material hits modulated by the wind field, sharing the foliage
+     shimmer's code. **Check**: viewed capture at 60 m across a valley; `--no-wind` kills it; debug
+     views unaffected.
+
+## AH. Water surface motion
+
+196. [x] Gerstner displacement in the marcher, replacing the fixed ripple lattice. Four components,
+     directions spread around the wind's, deep-water dispersion ω = √(gk) so a swell outruns the
+     chop instead of the field sliding as one sheet. Wind and waves share ONE field, so `--no-wind`
+     is glass by construction. The steepness budget is a CORRECTNESS constraint, not taste —
+     Σ Q·k·A > 1 self-intersects the surface into visible loops. The field is DERIVED on the CPU and
+     only summed on the GPU. **Check**: the budget test pins Σ Q·k·A at 0.6 for every wind speed
+     0–25 m/s, not just the default; the analytic normal matches the real geometric normal of the
+     displaced surface (dot > 0.999 over a grid); viewed captures at 0.5/3/8 m/s go glass → chop →
+     long crest bands, on both backends; `--verify-frame` 34.7% (vk) / 34.6% (d3d12), unchanged;
+     wind-8 vs `--no-wind` diffed — 52,078 pixels change, **98.5% water blue**. The first spectrum
+     was wrong and a capture said so (all swell, no chop, flatter than the lattice it replaced); the
+     fix was C++-only because the derivation lives on the CPU — log §9.
+197. [x] Wave-aware swimming surface: `WorldSense::water_surface_y` is the same Gerstner sum the
+     marcher draws, on the renderer's own animation clock, over genuinely submerged columns only.
+     **Check**: `--autofly --walk` across water = 0 ground violations with the surface moving under
+     the body.
+198. [ ] Shore fade in the SHADER. `world/water::shore_fade` exists, is tested (the research's §2.3
+     depth-vs-wavelength criterion), and the CPU uses it — but the marcher passes 1.0, because a
+     probe ray straight down from the surface hits the water column's own voxels immediately, so a
+     depth query needs a water-skipping traversal variant, and that is a change the 7,000-ray oracle
+     guards. Note this implementation displaces NORMALS, not geometry, so the artefact E3 exists to
+     prevent (crests clipping through sand) cannot occur; what is missing is only that shallow water
+     should look calmer. **Check**: unchanged — a beach capture on both backends with the waves
+     flattening at the waterline.
+199. [ ] The physical water pipeline this pass deliberately did not start: shoaling, refraction,
+     breaking criteria, foam advection, currents (water research §5.3/§9). A pass of its own
+     magnitude. **Check**: to be defined by that pass.
+
+## Tooling defects found in passing (goal 101's standing expectation)
+
+200. [x] `--dump-every` wrote nothing and reported nothing — `dump_frame`'s result was
+     `(void)`-discarded and its path was relative to whatever the working directory happened to be.
+     A whole capture session produced no files and no error. It now honours `VOXEL_DUMP_FRAME` as
+     the stem (absolute, numbered) and logs `written`/`FAILED`. **Check**: a capture session
+     produces the files it claims to, with a log line naming each.
+201. [x] `--crosshair` / `--no-crosshair`. The crosshair is suppressed under `--verify-frame` by
+     default so a HUD cross cannot inflate the local-contrast metric; the override exists so a
+     capture can show it. **Check**: `--verify-frame` reads 34.7%/34.6% without it, and every
+     crosshair capture was taken with it.
+
+
 ## Sources
 
 Every technical detail in groups C–F, I, and L traces to the extended research task completed this

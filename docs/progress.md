@@ -19,7 +19,7 @@ water) chosen to evoke the *feeling* of that aesthetic. Since the Voxel Represen
 (`research/voxel-representation-redesign.md`), the terrain mesh itself is genuinely blocky —
 per-voxel-face, greedy-merged cubes — rather than a smooth iso-surface merely *lit* to look chunky.
 
-## Current state (2026-09-06, after the micro-voxel pivot, the Lin-look/collision/lag pass, and materials as components)
+## Current state (2026-09-07, after the micro-voxel pivot, the Lin-look/collision/lag pass, materials as components, and the gameplay/wind/water pass)
 
 **The world is now sub-centimeter.** `voxel_app`'s default path (`--renderer svo`,
 `research/micro-voxel-pivot-log.md`) builds a **sparse-brick octree** around the camera — 8³
@@ -500,6 +500,68 @@ tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the oct
 - The fly-feel question (goal 83, pre-redesign): speeds are right for a spectator/debug tool at
   this world scale; a persistent-player game would want acceleration curves, unrelated to this
   redesign and unaffected by it.
+
+### The gameplay, wind and water pass (2026-09-07, `research/gameplay-pass-log.md`)
+
+**You are no longer a spectator with a body.** Groups AD/AE/AH of `docs/goals.md`, from
+`Prompts/001-2026-09-07-gameplay-physics-world-life.md`:
+
+- **`world/player`** — the controller became a real one: a 60 Hz fixed timestep (so the jump apex,
+  the coyote window and the smoothing time constant mean the same thing on every machine), a
+  `Stance` state machine, jump with 0.1 s coyote time and 0.1 s input buffering (8.5 m/s → a
+  1.129 m apex), diving and a swim-to-shore assist, and a "feel" layer (head-bob keyed to distance
+  walked, landing dip, boost FOV kick) that is render-only and clamped to 5 cm. It lives in
+  `world/`, not `app/`, because `app/` is behind `VOXEL_BUILD_RENDERER` and its tests would never
+  run in CI's gating no-GPU job.
+- **The svo path's step height is a smoothing budget** (0.04 m, ~5 voxels), not a ledge climb: at
+  7.8 mm voxels every natural slope is a sub-centimetre staircase, so the failure mode is
+  micro-jitter. The feet stay exact; only the rendered eye lags.
+- **`world/wind`** — one field everything reads. Constant direction, gust-varied magnitude, gusts
+  that travel downwind. Its wave-shape constants are compiled into every wind-aware shader as
+  macros from the C++ header, so the HLSL mirror contains no numbers of its own and cannot drift.
+  `terrain.vsh.hlsl`'s old hand-picked sine wobble is gone; both renderer paths read this.
+- **`world/water`** — Gerstner waves driven by the same wind, with deep-water dispersion, an
+  enforced steepness budget, and analytic normals. The swimmer rides the actual surface.
+- **A visible crosshair**, and an aim readout that finally sees trees and reports distance.
+
+**Two verification techniques worth keeping.** First, **numeric frame diffs**: for effects that are
+motion rather than structure, diff two frames and classify the pixels that changed. "Does the wind
+reach the leaves and nothing else" became one line — 18,018 pixels change, 98.2% of them foliage
+green. The same method confirmed the water (98.5% blue) and, by producing a *deliberately* low 27.9%
+on the mesh path, confirmed that path is moving geometry rather than shading. Second, the pass found
+that **`--dump-every` had been silently writing nothing** — its result was `(void)`-discarded and its
+path was relative to an unspecified working directory.
+
+**Three real bugs, all found by tests or captures rather than reasoning:**
+
+1. **A collision defect in shipped code.** A body resting exactly on a surface reads back as
+   marginally *inside* it, because the caller stores the camera eye and rebuilds the feet as
+   `eye - eye_height` each tick — a float round trip worth ~1e-7, and a voxel world puts surfaces at
+   exact coordinates constantly. That took `move_and_slide`'s "started inside → move unblocked"
+   escape, which hands back the whole wanted motion, so gravity walked the body through the floor
+   one tick after landing. Fixed with a 1 mm depenetration skin tried before the escape. The lesson:
+   a "never trap the player" hatch is also a "silently disable collision" hatch, and the difference
+   is a tolerance nobody had written down.
+2. **`--autofly` was not part of the simulation it tested.** It teleported the camera per *frame*,
+   after the physics; once the sim went fixed-step, ~60% of frames at 150 fps run zero ticks, so the
+   body was shoved into a new column with nothing to settle it — 74 ground violations in 900 frames.
+   Moving the travel inside the tick restored 0. The fixed-step change revealed the bug rather than
+   causing it.
+3. **The water's first wave spectrum was wrong, and a capture said so.** Components spanning only a
+   factor of 5 make a strong wind all swell and no chop, and the water read *flatter* than the fixed
+   ripple lattice it replaced. A real sea carries both at once; the range now spans ~14. The fix was
+   C++-only, with no shader edit, because the field is derived on the CPU and only summed on the GPU.
+
+**Open, and deliberately so:** trees v2 (goals 186–192) and grass (193–195) were not started — the
+pass ran out of budget, and the log's §8 records exactly what they build on rather than leaving half
+a tree system behind. The shader-side shore fade (198) is half done for a specific reason: a depth
+probe would need a water-skipping traversal variant the 7,000-ray oracle guards, and because this
+implementation displaces normals rather than geometry, the artefact it exists to prevent cannot
+occur anyway.
+
+**164/164 tests** (was 119). `--verify-frame` 34.7% Vulkan / 34.6% D3D12, unchanged.
+`--autofly --walk` 900 frames: 0 ground violations, 1 slow frame (the known goal-175 tree swap).
+
 
 ## Sources this file compresses
 
