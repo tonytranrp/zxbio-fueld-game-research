@@ -54,12 +54,12 @@ namespace app {
 
 namespace {
 
-using engine::core::log;
-using engine::core::LogLevel;
 using dev::telemetry::FrameCauses;
 using dev::telemetry::FrameCounters;
 using dev::telemetry::FramePhases;
 using dev::telemetry::FrameRecord;
+using engine::core::log;
+using engine::core::LogLevel;
 
 // How long --verify-frame keeps waiting for the world to finish loading before declaring failure.
 // Wall-clock, not a frame count: a loading-screen frame's cost is dominated by the world build,
@@ -86,9 +86,23 @@ struct ChunkEventCounters {
 // Is the body standing on the ground right now? The `capture event grounded` point needs it, and
 // so does the walk-violation accounting; reading it from the ECS keeps the frame loop from having
 // to thread a second out-parameter through update_camera_phase.
+
+// Goal 230: what does asking the octree actually cost per tick? Accumulated in nanoseconds around
+// the ONE call that does all of it -- step_camera plus the counter's own overlaps_solid -- because
+// a budget stated per tick has to be measured per tick, not inferred from a frame phase whose
+// printed resolution is 0.1 ms and which also contains the input, the look and the wave field.
+struct CollisionCost {
+    std::uint64_t nanos = 0;
+    std::uint64_t ticks = 0;
+    std::uint64_t worst_nanos = 0;
+
+    [[nodiscard]] double mean_ms() const noexcept {
+        return ticks == 0 ? 0.0 : static_cast<double>(nanos) / static_cast<double>(ticks) / 1.0e6;
+    }
+    [[nodiscard]] double worst_ms() const noexcept { return static_cast<double>(worst_nanos) / 1.0e6; }
+};
 [[nodiscard]] bool spectator_grounded(engine::ecs::Registry& registry, engine::ecs::Entity camera) {
-    return registry.get<app::SpectatorCameraState>(camera).physics.stance ==
-           world::player::Stance::Grounded;
+    return registry.get<app::SpectatorCameraState>(camera).physics.stance == world::player::Stance::Grounded;
 }
 
 // ---- per-frame phases (goal 50: run() split into independently-readable pieces) ----------------
@@ -109,11 +123,11 @@ template <world::collision::SolidQuery Q>
 render::interface::Camera
 update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraEntity, FrameInput& input,
                     const world::generation::HeightmapGenerator& heightmap, Q* query,
-                    const engine::core::Clock& clock,
-                    const AppOptions& options, std::uint32_t& walkViolations,
-                    world::player::FixedStepper& stepper, float& viewOffsetY,
+                    const engine::core::Clock& clock, const AppOptions& options,
+                    std::uint32_t& walkViolations, world::player::FixedStepper& stepper, float& viewOffsetY,
                     const world::water::WaveField& waveField, float waveTime,
-                    std::uint32_t& insideSolidEvents) {
+                    std::uint32_t& insideSolidEvents, std::uint32_t& insideSolidStartedInside,
+                    std::uint32_t& insideSolidSteppedUp, CollisionCost& collisionCost) {
     auto [transform, lens, spectator] =
         registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(
             cameraEntity);
@@ -188,6 +202,7 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
             if constexpr (requires(Q& q, glm::vec3 p) { q.refresh(p); }) {
                 query->refresh(transform.position);
             }
+            const auto collisionBegin = std::chrono::steady_clock::now();
             step = app::step_camera(transform, spectator, *query, intent, sense, dt);
             // Goal 228: the analytic backstop in step_player is gone, so a body that ends a tick
             // inside solid is now VISIBLE instead of silently lifted. This is the counter that
@@ -195,8 +210,29 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
             const world::collision::Aabb body = world::collision::Aabb::upright(
                 transform.position - glm::vec3{0.0f, spectator.tuning.eye_height, 0.0f},
                 spectator.tuning.body_half_width, spectator.tuning.body_height);
-            if (query->overlaps_solid(body)) {
+            // Ask about a box INSET by the sweep's own contact skin, not the raw one. A body
+            // resting exactly on a surface reads as marginally inside it -- the caller stores the
+            // eye and rebuilds the feet as (eye - eye_height) every tick, and a voxel world puts
+            // surfaces at exact coordinates constantly. SweepParams::skin already says this and
+            // already tolerates it; a counter that does NOT tolerate it measures the float round
+            // trip instead of the bug. Measured on clip_stress at 4x speed: 358 "inside solid"
+            // ticks whose deepest corner was 0.0001 m in -- one ten-thousandth of a metre, against
+            // a 0.0078 m voxel. The real embeddings this counter was built to find were 0.048 m.
+            constexpr float kContactSkin = world::collision::SweepParams{}.skin;
+            const world::collision::Aabb contactBody{body.min + glm::vec3{kContactSkin},
+                                                     body.max - glm::vec3{kContactSkin}};
+            const bool endedInside = query->overlaps_solid(contactBody);
+            const auto collisionNanos =
+                static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                               std::chrono::steady_clock::now() - collisionBegin)
+                                               .count());
+            collisionCost.nanos += collisionNanos;
+            ++collisionCost.ticks;
+            collisionCost.worst_nanos = std::max(collisionCost.worst_nanos, collisionNanos);
+            if (endedInside) {
                 ++insideSolidEvents;
+                insideSolidStartedInside += step.started_inside ? 1u : 0u;
+                insideSolidSteppedUp += step.stepped_up ? 1u : 0u;
                 if (insideSolidEvents == 1) {
                     log(LogLevel::Error,
                         "body ended a tick INSIDE solid: eye ({:.4f}, {:.4f}, {:.4f}), feet y {:.4f}, "
@@ -501,6 +537,9 @@ Session::Session(const AppOptions& options, bool visible) : window(1280, 720, "v
         if (options.fly) {
             spectator.physics.mode = app::CameraMoveMode::Fly;
         }
+        // Goal 229: the sub-step rule is claimed to be speed-independent. This is the knob that
+        // lets clip_stress put that claim under 40x the shipped speed.
+        spectator.move_speed *= options.speed_scale;
         // A3: the svo path's step allowance is a smoothing budget, not a ledge climb.
         spectator.tuning.step_height = options.renderer == RendererKind::Svo
                                            ? world::player::kSvoStepHeight
@@ -509,7 +548,6 @@ Session::Session(const AppOptions& options, bool visible) : window(1280, 720, "v
             spectator.tuning.step_height = *options.step_height;
         }
         spawnPosition = transform.position;
-
     }
 }
 
@@ -546,10 +584,18 @@ void LiveInput::begin_frame() {
     // world/player's own contract. Taking it inside tick() would re-arm the buffer every tick.
     jumpEdgeThisFrame_ = input_->take_jump();
 }
-bool LiveInput::quit_requested() const { return input_->state().quit_requested; }
-bool LiveInput::take_walk_toggle() { return input_->take_walk_toggle(); }
-bool LiveInput::take_screenshot() { return input_->take_screenshot(); }
-glm::vec2 LiveInput::take_look_delta() { return input_->take_look_delta(); }
+bool LiveInput::quit_requested() const {
+    return input_->state().quit_requested;
+}
+bool LiveInput::take_walk_toggle() {
+    return input_->take_walk_toggle();
+}
+bool LiveInput::take_screenshot() {
+    return input_->take_screenshot();
+}
+glm::vec2 LiveInput::take_look_delta() {
+    return input_->take_look_delta();
+}
 TickInput LiveInput::tick(const glm::vec3&, float, float, bool jumpEdge) {
     TickInput out;
     out.intent = to_intent(input_->state(), jumpEdge && jumpEdgeThisFrame_);
@@ -588,8 +634,11 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
     cap.verifyOk = !options.verify_frame;
     FrameTelemetry telemetry;
     std::uint32_t frame = 0;
-    std::uint32_t walkViolations = 0; // ticks ending below the ground surface in walk mode
-    std::uint32_t insideSolidEvents = 0; // goal 228: ticks that ended with the body in solid
+    std::uint32_t walkViolations = 0;           // ticks ending below the ground surface in walk mode
+    std::uint32_t insideSolidEvents = 0;        // goal 228: ticks that ended with the body in solid
+    std::uint32_t insideSolidStartedInside = 0; // ...of which the sweep already found embedded
+    std::uint32_t insideSolidSteppedUp = 0;     // ...of which stepped up this tick
+    CollisionCost collisionCost;                // goal 230: nanoseconds per fixed tick
     // Prompt 001 A1: the simulation's own clock, carried across frames (never a frame-loop
     // local), plus the render-only view-polish offset it produces.
     world::player::FixedStepper stepper;
@@ -650,7 +699,7 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
             const render::interface::Camera camera = update_camera_phase(
                 s.registry, s.cameraEntity, input, world.heightmap(), options.noclip ? nullptr : &collider,
                 s.clock, options, walkViolations, stepper, viewOffsetY, waveField, waveTime,
-                insideSolidEvents);
+                insideSolidEvents, insideSolidStartedInside, insideSolidSteppedUp, collisionCost);
 
             renderer.render(camera);
             if (s.postProcess) {
@@ -701,8 +750,15 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
     }
 
     if (insideSolidEvents > 0) {
-        log(LogLevel::Error, "collision: {} ticks ended with the body INSIDE solid (0 required)",
-            insideSolidEvents);
+        log(LogLevel::Error,
+            "collision: {} ticks ended with the body INSIDE solid (0 required) -- {} of them the sweep "
+            "had ALREADY found embedded (started_inside: it moved unblocked), {} stepped up",
+            insideSolidEvents, insideSolidStartedInside, insideSolidSteppedUp);
+    }
+    if (collisionCost.ticks > 0) {
+        log(collisionCost.mean_ms() <= 0.20 ? LogLevel::Info : LogLevel::Error,
+            "collision: {:.4f} ms mean per tick over {} ticks, worst {:.4f} ms (budget 0.20 ms)",
+            collisionCost.mean_ms(), collisionCost.ticks, collisionCost.worst_ms());
     }
     if (hooks.on_invariants) {
         hooks.on_invariants(walkViolations, insideSolidEvents);
@@ -732,6 +788,9 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     std::uint32_t frame = 0;
     std::uint32_t walkViolations = 0;
     std::uint32_t insideSolidEvents = 0; // goal 228
+    std::uint32_t insideSolidStartedInside = 0;
+    std::uint32_t insideSolidSteppedUp = 0;
+    CollisionCost collisionCost; // goal 230, the mesh path too
     world::player::FixedStepper stepper;
     float viewOffsetY = 0.0f;
     // A4: the aim query's tree source, kept across frames so its per-column placement cache is
@@ -883,7 +942,8 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             const render::interface::Camera camera = update_camera_phase(
                 s.registry, s.cameraEntity, input, world.heightmap(),
                 options.noclip || !collider.has_tree() ? nullptr : &collider, s.clock, options,
-                walkViolations, stepper, viewOffsetY, waveField, waveTime, insideSolidEvents);
+                walkViolations, stepper, viewOffsetY, waveField, waveTime, insideSolidEvents,
+                insideSolidStartedInside, insideSolidSteppedUp, collisionCost);
             // Rebuild once the camera has left the inner half of the finest LOD ring: the tree is
             // still correct everywhere (coarser rings are conservative), just not at full detail
             // right around the camera until the new one lands.
@@ -1027,11 +1087,17 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     log(LogLevel::Info,
         "slow frames (> {:.0f} ms): {} of {} -- {} on a tree swap, {} while uploading a slice, {} while only "
         "building, {} other",
-        kSlowFrameMs, slow.total, frame, slow.on_swap, slow.while_uploading, slow.while_building,
-        slow.other);
+        kSlowFrameMs, slow.total, frame, slow.on_swap, slow.while_uploading, slow.while_building, slow.other);
     if (insideSolidEvents > 0) {
-        log(LogLevel::Error, "collision: {} ticks ended with the body INSIDE solid (0 required)",
-            insideSolidEvents);
+        log(LogLevel::Error,
+            "collision: {} ticks ended with the body INSIDE solid (0 required) -- {} of them the sweep "
+            "had ALREADY found embedded (started_inside: it moved unblocked), {} stepped up",
+            insideSolidEvents, insideSolidStartedInside, insideSolidSteppedUp);
+    }
+    if (collisionCost.ticks > 0) {
+        log(collisionCost.mean_ms() <= 0.20 ? LogLevel::Info : LogLevel::Error,
+            "collision: {:.4f} ms mean per tick over {} ticks, worst {:.4f} ms (budget 0.20 ms)",
+            collisionCost.mean_ms(), collisionCost.ticks, collisionCost.worst_ms());
     }
     if (hooks.on_invariants) {
         hooks.on_invariants(walkViolations, insideSolidEvents);

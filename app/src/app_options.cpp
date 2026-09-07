@@ -128,6 +128,12 @@ constexpr std::array kTable{
            .kind = ValueKind::Flag,
            .help = "dev only: skip body-vs-world collision entirely (requires --dev)",
            .group = "Player"},
+    Option{.name = "speed-scale",
+           .set = bind<&AppOptions::speed_scale>(),
+           .kind = ValueKind::Float,
+           .help = "multiply the base move speed (goal 229's clip_stress ramp; 1 = shipped)",
+           .default_text = "1",
+           .group = "developer"},
     Option{.name = "step-height",
            .set = bind<&AppOptions::step_height>(),
            .kind = ValueKind::Float,
@@ -379,8 +385,7 @@ engine::cli::ParseOutcome parse_app_options(int argc, char** argv, AppOptions& o
     return outcome;
 }
 
-std::optional<render::diligent::SvoRenderer::Settings>
-settings_from_response_file(const std::string& path) {
+std::optional<render::diligent::SvoRenderer::Settings> settings_from_response_file(const std::string& path) {
     const engine::cli::ExpandResult expanded =
         engine::cli::expand_response_files(std::vector<std::string>{"@" + path});
     if (!expanded.ok) {

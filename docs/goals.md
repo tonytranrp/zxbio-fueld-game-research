@@ -1572,20 +1572,63 @@ Reasoning and every measurement: `research/player-embodiment-log.md`.
      (measured: feet 66.3438, uphill corner voxel top 66.3516, edge 0.0078). Spawning snapped up
      plus two voxels of clearance, with the body settling under gravity, takes `spawn_stand` from
      **181 of 181 ticks inside solid to 0**.
-229. [ ] `clip_stress` at 1x/4x/10x/40x, and the sweep's sub-step derived from the body's smallest
-     half-extent rather than the constant 0.25 m. NOT DONE.
-229a. [ ] **A REAL BUG, FOUND AND NOT YET FIXED.** With the backstop gone and the counter in,
-     `walk_hillside` reports **253** and `walk_shoreline` **236** ticks with the body inside solid,
-     while walking into slopes. `spawn_stand` (still) and `fly_transect` (1483 frames of motion)
-     are clean, so it is specific to walking into a slope, not to motion or to rebuilds. Both
-     scenarios now `assert inside_solid == 0` and therefore FAIL -- deliberately, per the prompt's
-     own instruction that if removing the backstop makes something fall through, that is the bug
-     the group exists to find and the backstop does not go back. Prime suspects, in order: the
-     `started_inside` escape in `move_and_slide` (once inside, motion is unblocked, so one bad tick
-     becomes many), and `kSvoStepHeight = 0.04 m` against a slope that rises more than that per
-     tick. **Check**: both scenarios green with the assertion in place.
-230. [ ] Collision cost budgeted at <= 0.20 ms/tick. NOT MEASURED. The node-visit counts (7 / 1)
-     say the walk is cheap, but that is not the same as a microsecond number.
+229. [x] The sweep's sub-step is derived from the body (`substep_for`), and `clip_stress` runs the
+     speed sweep. `SweepParams::max_substep` now defaults to 0 meaning "derive it"; the old 0.25 m
+     constant was correct against a 0.3 m half-width but for no stated reason, and silently wrong
+     the moment anyone shrank the body. **The rule, stated**: the sweep tests END POSITIONS only,
+     so with the boxes a distance `d` apart, `d < extent` makes consecutive boxes INTERSECT and
+     their union a tube with no gaps -- tunnelling is then impossible for an obstacle of ANY
+     thickness, down to one 7.8 mm voxel. Smallest extent covers every direction of travel; halving
+     it leaves margin for the step-up's non-colinear boxes and for float. 0.30 m for the current
+     body -- FEWER sub-steps than the constant it replaces.
+     **Worst-case safe speed: there is none, and that is the point.** The sub-step count is
+     `ceil(distance / d)`, unbounded, so speed buys sub-steps, not risk; what it buys is cost
+     (goal 230). **Checks PERFORMED**: a body driven into a ONE-VOXEL-THICK (7.8 mm) wall over 1,
+     5, 40 and 400 m in a single call is stopped and outside every time; `clip_stress` under
+     `--ramp speed-scale:1,4,10,40` (10/40/100/400 m/s) reports **0 inside-solid ticks at every
+     rung**. Cost: 0.051 / 0.059 / 0.17-0.28 / 0.95 ms per tick. The 40x rung fails a DIFFERENT
+     check -- 220 walk violations -- because at 400 m/s the body crosses ~7 m per tick, far outside
+     the 8 m radius in which goal 226 measured the LOD hole rate at zero; Prompt 004 closes that,
+     nothing here can.
+     One casualty worth recording: `1.5 / 0.25` is six binary-exact pieces and `1.5 / 0.3` is not,
+     so an unblocked 1.5 m motion started summing to 1.499999762 and a Group A test that asserted
+     exact equality failed. Unblocked axes now snap to the exact wanted delta, guarded by an
+     epsilon and NOT by `!blocked` -- the step-up climbs on y with `wanted.y == 0`, and an
+     unguarded snap silently deleted the 0.4 m climb (caught by its own test one build later).
+229a. [x] **THE REAL BUG, FOUND AND FIXED -- and it was four bugs, of which the first suspect named
+     here was right and the second was wrong.**
+     (1) **The `started_inside` escape never escaped.** Attribution first: `StepResult` gained
+     `started_inside` and the app two more counters, and one run settled it -- `761 ticks ended
+     INSIDE solid, 761 of them started_inside, 0 stepped up`. Moving unblocked through solid ends
+     every tick still inside, so one bad tick became a permanent state. Replaced with a bounded
+     climb-out: probe upward in doubling steps to the body's own height, bisect, lift the least
+     that works; past that bound the unblocked move remains, and still SAYS so.
+     **`walk_hillside` 761 -> 0, `walk_shoreline` 236 -> 0.**
+     (2) **The doubling ladder had a hole.** It reaches 1.024 m and the cap is 1.75 m, so a body
+     buried 1.40 m (measured, `macro_ground`) was declared unrecoverable by an arithmetic accident.
+     The cap is now probed explicitly; there is a test for exactly that gap.
+     (3) **`macro_ground`'s pose was never legal.** "Camera 30 cm above the ground" cannot hold a
+     1.7 m body, so under the walk default the scenario buried it 1.40 m and reported it every
+     tick, from a scenario in which nothing moves. It is a CAMERA shot and now says so
+     (`--fly --noclip`). The scenario set has both kinds and the distinction is now written down.
+     (4) **The counter was measuring itself.** `clip_stress` at 4x still reported 358 events with
+     ZERO started_inside and, with the step-up disabled entirely, still 358. The dump: feet
+     **27.4765**, deepest corner voxel top **27.4766** -- embedded by **0.0001 m**, one tenth of
+     the sweep's own 1 mm contact skin, against a 7.8 mm voxel. `SweepParams::skin` documents this
+     exact float round trip and the sweep already tolerates it; the counter did not. It now asks
+     about a box inset by the same skin. The ratio is what justifies it: artefacts 0.0001 m, real
+     embeddings **0.048 m** -- 480x apart, with the 1 mm inset an order of magnitude clear of both.
+     **Check PERFORMED**: `walk_hillside`, `walk_shoreline`, `spawn_stand`, `fly_transect`,
+     `macro_ground` and `clip_stress` all green with `assert inside_solid == 0` in place, and
+     `clip_stress` green at 1x, 4x, 10x AND 40x. 239/239 tests including the four scenario tests.
+230. [x] Collision cost budgeted at <= 0.20 ms/tick. **MEASURED, per tick, in nanoseconds, around
+     the one call that does all of it** -- a budget stated per tick cannot be inferred from a frame
+     phase printed at 0.1 ms whose contents also include the input, the look and the wave field.
+     At the shipped speed: **0.051 ms mean** (`clip_stress`), 0.032-0.111 across the scenario set --
+     **four times under budget**. The budget holds to ~10x speed (0.17-0.28, straddling) and is
+     gone at 40x (0.95), which is the sub-step count doing exactly what the derivation predicts.
+     Worst single tick is 0.72-2.1 ms and clusters on tree-swap frames -- a cold octree, not a deep
+     descent; recorded rather than chased, since the budget is a per-tick mean and it is met.
 
 ### AJ-B. One body, always
 
@@ -1601,7 +1644,8 @@ Reasoning and every measurement: `research/player-embodiment-log.md`.
      nobody chose. The research bands are read and quoted in the log for whoever does it.
 233. [ ] Gravity/jump decision recorded. NOT DONE.
 234. [ ] Sprint with an acceleration ramp. NOT DONE.
-235. [ ] Slope limits. NOT DONE -- and 229a is probably a symptom of their absence.
+235. [ ] Slope limits. NOT DONE. (229a turned out NOT to be a symptom of their absence: with
+     the step-up disabled entirely the event count did not move. See 229a(4).)
 236. [ ] Swimming re-checked against the moving surface. NOT DONE.
 
 ### AJ-C / AJ-D (237-243) -- NOT STARTED

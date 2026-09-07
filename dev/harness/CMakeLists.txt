@@ -72,7 +72,7 @@ if(BUILD_TESTING)
   # The cheap scenarios, as ctest tests under the `scenario` label (goal 214). They need a GPU, so
   # they are labelled and kept OUT of a plain `ctest` run -- `ctest -L scenario` opts in. The
   # working directory is the repo root so dev/scenarios and dev/goldens resolve.
-  foreach(scenario_name spawn_stand macro_ground valley_far)
+  foreach(scenario_name spawn_stand macro_ground valley_far clip_stress)
     add_test(NAME "scenario.${scenario_name}"
              COMMAND voxel_harness --scenario ${scenario_name} --headless --backend vk
                      --out-dir "${CMAKE_CURRENT_BINARY_DIR}/scenario-out"

@@ -1,0 +1,38 @@
+name clip_stress
+describe Goal 229's speed sweep: drive the body head-first into the steepest terrain the world has, at the shipped speed and at multiples of it, and assert it never ends a tick inside solid. The sub-step rule (world/collision/aabb_sweep.hpp's substep_for) claims to be speed-INDEPENDENT -- speed buys sub-steps, not risk -- and this is the scenario that makes that claim falsifiable. Run the sweep with `--scenario clip_stress --ramp speed-scale:1,4,10,40`; run alone it is the 1x rung.
+backend both
+
+option --walk
+option --no-taa
+
+# The x=0 -> x=+32 climb at z=+16 (25.9 -> 61.9 -> 66.7 m) is the slope that produced 761
+# inside-solid ticks before the depenetration fix, so it is the right wall to run at.
+pose_ground 0,16 -90 -10 1.7
+
+# Straight into the hill, then out of it, then across it diagonally, then into it again while
+# boosting -- four different angles of attack, because a sweep bug that only shows head-on is not
+# the bug this is looking for.
+hold forward 6
+look 90 -20 1
+hold forward 3
+look 45 -30 1
+hold forward+boost 4
+look -135 10 1
+hold forward+jump 3
+hold forward 3
+
+# See walk_hillside for why a moving scenario settles before its capture.
+wait 3
+
+# Captured for eyeballing, deliberately WITHOUT a golden. This scenario is a physics test, not a
+# look test, and its final image is not reproducible today: two identical runs differed by 40.7% of
+# pixels. The pose is deterministic (1505 script-driven ticks either way) but the TERRAIN the body
+# collides against is not -- at 4x speed and up the body outruns the LOD rebuild, so which tree is
+# resident when it hits a slope decides where it ends up. That is the rebuild storm Prompt 004
+# removes; a golden here belongs after that, not before.
+capture end clip_stress
+
+assert frames > 0
+assert contrast_percent > 6
+assert walk_violations == 0
+assert inside_solid == 0

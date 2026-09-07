@@ -91,6 +91,7 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
     const collision::SweepResult moved = collision::move_and_slide(query, body, delta, sweep);
     eyePosition += moved.delta;
     result.stepped_up = moved.stepped_up;
+    result.started_inside = moved.started_inside;
 
     // --- swim-to-shore assist (A5) -------------------------------------------------------------------
     // rlVoxel's "liquid pop-up": swimming into a bank is the one case where a body that is doing

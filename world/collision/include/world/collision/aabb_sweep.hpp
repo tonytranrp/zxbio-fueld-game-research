@@ -15,11 +15,11 @@ struct SweepParams {
     // Bisection refinement of a blocked axis: 12 halvings put the body within 1/4096 of the wanted
     // motion from the obstacle -- under a tenth of a millimeter for any sane per-frame step.
     int bisection_steps = 12;
-    // The whole motion is applied in sub-steps no longer than this per axis. The sweep tests only
-    // end positions, so a sub-step shorter than the body's smallest extent (0.6 m wide) cannot
-    // skip over anything: consecutive body boxes overlap along the path. At boost speed a frame
-    // moves ~1.1 m -- five sub-steps, a tree trunk is 0.5 m thick.
-    float max_substep = 0.25f;
+    // The whole motion is applied in sub-steps no longer than this per axis. **0 means "derive it
+    // from the body"** -- `substep_for()` below -- and that is the default, because a constant here
+    // is only ever safe by accident. The old value was 0.25 m against a 0.3 m half-width: correct,
+    // but for no stated reason, and silently wrong the moment anyone shrinks the body.
+    float max_substep = 0.0f;
     // Contact tolerance for the "started inside" case below. A body resting exactly on a surface
     // reads as marginally INSIDE it, because the caller stores the camera eye and rebuilds the feet
     // as (eye - eye_height) every tick -- a float round trip worth ~1e-7, and a voxel world puts
@@ -27,6 +27,29 @@ struct SweepParams {
     // over any rounding.
     float skin = 0.001f;
 };
+
+// The sub-step rule, stated rather than assumed (goal 229).
+//
+// The sweep tests END POSITIONS only, so it sees an obstacle exactly when one of the tested boxes
+// overlaps it. Place the boxes a distance `d` apart along the path: if `d` is less than the body's
+// extent along that axis, consecutive boxes INTERSECT, so their union is a solid connected tube
+// with no gap anywhere -- and anything inside that tube is inside at least one tested box. Tunnelling
+// is then impossible for an obstacle of ANY thickness, down to a single 7.8 mm voxel. If `d` exceeds
+// the extent the union develops gaps of width `d - extent`, and an obstacle thinner than that fits
+// through one.
+//
+// So the rule is `d < extent`, per axis. Taking the SMALLEST extent covers every direction of travel
+// at once, and halving it leaves margin for the step-up path (which moves the box up, sideways and
+// down again, so the tested boxes are not colinear) and for float. For the 0.6 x 1.75 x 0.6 m body
+// that is 0.30 m -- fewer sub-steps than the 0.25 m constant it replaces, and now for a reason.
+//
+// The sub-step COUNT is unbounded (`ceil(distance / d)`), so the guarantee does not weaken with
+// speed: speed buys sub-steps, not risk. There is no "safe up to N m/s" -- there is a cost. At the
+// 40 m/s fly speed a 1/60 s frame moves 0.67 m: 3 sub-steps. At the 160 m/s boost, 2.67 m: 9.
+[[nodiscard]] inline float substep_for(const Aabb& body) noexcept {
+    const glm::vec3 e = body.extent();
+    return 0.5f * std::min({e.x, e.y, e.z});
+}
 
 struct SweepResult {
     glm::vec3 delta{0.0f}; // the motion actually applied (add it to the body)
@@ -101,20 +124,64 @@ SweepResult move_and_slide(const Q& query, const Aabb& body, const glm::vec3& wa
             lift.y = params.skin;
             start = lifted;
         } else {
-            // Genuinely embedded (spawned in rock, a world rebuild swallowed us): never trap the
-            // player -- move unblocked until free. The classic policy, and what keeps --autofly's
-            // teleport-through-mountains smoke test meaningful.
-            SweepResult r;
-            r.started_inside = true;
-            r.delta = wanted;
-            return r;
+            // Genuinely embedded. The old policy here was "move unblocked until free", and it does
+            // keep the player from being trapped -- but it never actually frees them, because
+            // moving unblocked through solid ends every tick still inside. Measured: walk_hillside
+            // logged 761 inside-solid ticks and ALL 761 were this branch. One bad tick became a
+            // permanent state.
+            //
+            // So: climb out first. Search upward for the smallest lift that frees the box, in
+            // exponentially growing steps to the body's own height. Upward is the right direction
+            // for a body standing on terrain -- it is where the free space provably is, since the
+            // body walked in from somewhere above the surface -- and bounding it by the body height
+            // means a body genuinely buried deep still falls through to the unblocked move rather
+            // than teleporting to the sky.
+            float free = 0.0f;
+            const float maxLift = body.extent().y;
+            float probe = params.skin * 8.0f;
+            for (; probe < maxLift; probe *= 2.0f) {
+                if (!query.overlaps_solid(start.translated(glm::vec3{0.0f, probe, 0.0f}))) {
+                    free = probe;
+                    break;
+                }
+            }
+            // The doubling ladder's last rung lands somewhere in [maxLift/2, maxLift), so a body
+            // buried between the last rung and the cap would be declared unrecoverable by an
+            // arithmetic accident. Measured: macro_ground buries the body 1.40 m, the ladder
+            // reaches 1.024 m, and the cap is 1.75 m -- recoverable, and missed. Probe the cap.
+            if (free == 0.0f && !query.overlaps_solid(start.translated(glm::vec3{0.0f, maxLift, 0.0f}))) {
+                free = maxLift;
+                probe = maxLift;
+            }
+            if (free > 0.0f) {
+                // Bisect between the last blocked probe and the first free one, so the body is
+                // lifted the least that works rather than to a power of two.
+                float lo = free * 0.5f; // the last rung that was still blocked
+                float hi = free;
+                for (int i = 0; i < params.bisection_steps; ++i) {
+                    const float mid = 0.5f * (lo + hi);
+                    if (query.overlaps_solid(start.translated(glm::vec3{0.0f, mid, 0.0f}))) {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                lift.y = hi;
+                start = start.translated(glm::vec3{0.0f, hi, 0.0f});
+            } else {
+                // Buried deeper than the body is tall: nothing sensible to climb to. Move unblocked
+                // so the player is never trapped, and SAY so -- the caller counts it.
+                SweepResult r;
+                r.started_inside = true;
+                r.delta = wanted;
+                return r;
+            }
         }
     }
     // Sub-step so no single end-position test can jump an obstacle (see SweepParams::max_substep).
     const float longest = std::max(std::max(std::abs(wanted.x), std::abs(wanted.y)), std::abs(wanted.z));
-    const int substeps = params.max_substep > 0.0f
-                             ? std::max(1, static_cast<int>(std::ceil(longest / params.max_substep)))
-                             : 1;
+    const float substep = params.max_substep > 0.0f ? params.max_substep : substep_for(start);
+    const int substeps = substep > 0.0f ? std::max(1, static_cast<int>(std::ceil(longest / substep))) : 1;
     SweepResult total;
     total.delta = lift; // the depenetration is part of the motion, so the caller ends up outside
     Aabb box = start;
@@ -128,6 +195,25 @@ SweepResult move_and_slide(const Q& query, const Aabb& body, const glm::vec3& wa
         total.blocked_z = total.blocked_z || r.blocked_z;
         total.grounded = total.grounded || r.grounded;
         total.stepped_up = total.stepped_up || r.stepped_up;
+    }
+    // Sub-stepping is a search strategy, not a change to the answer: a motion that was never
+    // blocked on an axis must apply EXACTLY the wanted delta on it. Summing `wanted/n` n times does
+    // not -- 1.5 m in five 0.3 m pieces sums to 1.499999762, and the test that caught this was
+    // passing before only because the old 0.25 m constant happened to divide 1.5 into six pieces
+    // that are exact in binary. Snap the unblocked axes; leave the blocked ones as the sweep left
+    // them, since there the partial sum IS the answer.
+    //
+    // The snap is guarded by an epsilon and NOT by `!blocked` alone, because an axis can move for a
+    // reason the wanted motion never asked for: the step-up climbs on y with `wanted.y == 0` and
+    // `blocked_y == false`, and an unguarded snap silently deleted the 0.4 m climb (caught by
+    // "a low ledge is stepped up"). Only a difference small enough to BE rounding is rounding.
+    constexpr float kRoundingSlack = 1.0e-4f;
+    const glm::vec3 exact = lift + wanted;
+    for (int axis = 0; axis < 3; ++axis) {
+        const bool blocked = axis == 0 ? total.blocked_x : (axis == 1 ? total.blocked_y : total.blocked_z);
+        if (!blocked && std::abs(total.delta[axis] - exact[axis]) < kRoundingSlack) {
+            total.delta[axis] = exact[axis];
+        }
     }
     return total;
 }

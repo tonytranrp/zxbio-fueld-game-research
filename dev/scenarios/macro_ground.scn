@@ -7,6 +7,14 @@ backend both
 # 0.341% -- see dev/harness/src/image_compare.hpp for the full four-case table.
 option --no-taa
 
+# This is a CAMERA shot, not a body test: 30 cm is where the eye goes, and a 1.7 m body standing
+# on the ground cannot put its eye there. Under the walk default the pose buried the body 1.40 m
+# and every tick of the hold reported it. --fly holds the pose against gravity; --noclip is what
+# makes the pose legal at all. Measured before the flags: 121 inside-solid ticks, 121 walk
+# violations, from a scenario in which nothing moves.
+option --fly
+option --noclip
+
 pose_ground 48,0 -90 -45 0.3
 wait 2
 

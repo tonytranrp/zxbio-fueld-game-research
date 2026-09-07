@@ -75,7 +75,8 @@ struct WorldSense {
 
 // What one tick did, for the caller's telemetry and for the view polish that reacts to it.
 struct StepResult {
-    bool landed = false; // Airborne/Swimming -> Grounded on this tick
+    bool started_inside = false; // the sweep found the body already embedded and moved it unblocked
+    bool landed = false;         // Airborne/Swimming -> Grounded on this tick
     bool jumped = false;
     bool stepped_up = false;
     bool shore_popped = false; // the swim-to-shore assist fired (A5)

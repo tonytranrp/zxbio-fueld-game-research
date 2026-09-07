@@ -45,12 +45,15 @@ struct AppOptions {
     // Prompt 003 goal 231. Walk is the default now, so --walk is a documented NO-OP alias kept
     // because it is in CLAUDE.md and a dozen research logs; --fly is the opt-in, and it, --noclip
     // and the G toggle all sit behind ONE door rather than four.
-    bool walk = false; // no-op alias; the body walks by default
-    bool fly = false;  // dev only: the free camera
+    bool walk = false;   // no-op alias; the body walks by default
+    bool fly = false;    // dev only: the free camera
     bool noclip = false; // dev only: skip body-vs-world collision entirely
-    bool dev = false;  // unlocks fly/noclip/G together. OFF for the app; the harness sets it,
-                       // because a scenario IS a dev context and says so once rather than
-                       // repeating --dev in every .scn.
+    // Goal 229: multiplies the base move speed, so clip_stress can ramp the body from a walk to
+    // 40x it and ask whether the sub-step rule holds. 1 = shipped feel.
+    float speed_scale = 1.0f;
+    bool dev = false; // unlocks fly/noclip/G together. OFF for the app; the harness sets it,
+                      // because a scenario IS a dev context and says so once rather than
+                      // repeating --dev in every .scn.
     // Prompt 001 Group AD. The step allowance is a SMOOTHING BUDGET on the svo path (7.8 mm voxels
     // make every slope a sub-cm staircase) and a real ledge climb on the mesh path (1 m blocks);
     // unset takes each path's own default.
