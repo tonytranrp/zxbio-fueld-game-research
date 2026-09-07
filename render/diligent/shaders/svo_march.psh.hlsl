@@ -47,6 +47,15 @@ cbuffer MarchConstants
     // as a grid of exactly one cell.
     float4 g_GridDims;
     float4 g_GridOrigin;       // xyz = world min corner of cell (0,0,0); w = unused
+    // Goal 261: x = the frame index written into g_CellUsage, y != 0 enables the marking at all
+    // (it is a knob so its cost can be measured against zero), zw spare.
+    //
+    // ORDER MATTERS AND THE static_assert DOES NOT CATCH IT. This field was first added HERE in the
+    // C++ but BETWEEN g_GridDims and g_GridOrigin in the HLSL. The struct sizes still matched, so
+    // the assert passed, and every field after the insertion point read the previous one's bytes --
+    // the grid origin became garbage and the whole world rendered as an empty frame. A cbuffer
+    // mirror is an ORDERED contract, not just a sized one.
+    float4 g_MarkParams;
     // One record per material (render/diligent/detail/material_macros.hpp's material_record):
     // rgb = linear albedo, w = shading model. MATERIAL_COUNT and MAT_SHADING_* are macros the C++
     // side passes at shader creation from the material registry -- no material literal lives here.
@@ -76,6 +85,18 @@ Texture2D<float> g_BeamStart;
 // cell's words concatenated, and a cell's internal offsets stay exactly as the builder produced
 // them, so `tree_layout.hpp` is untouched and the CPU oracle still guards this encoding.
 StructuredBuffer<uint4> g_Cells;
+
+// Prompt 004 goal 261: what the marcher records about the cells it steps into. One word per cell --
+// the frame index in the low 31 bits, bit 31 set when a ray wanted the cell and it was not resident.
+//
+// NO ATOMIC, and the reason is the encoding rather than a guarantee about the hardware. Every ray in
+// this dispatch writes the SAME word for the same cell: the frame index is a per-frame constant, and
+// whether a cell is resident is a property of the structure and not of the ray. So this is a set of
+// concurrent stores of one identical value to one address, which cannot disagree whatever order they
+// land in. An InterlockedOr, a counter, or "how many rays wanted it" would each be a
+// read-modify-write and would put the atomic straight back -- which is why none of them is here.
+// world/svo/cell_marks.hpp carries the argument in full and the CPU mirror it is checked against.
+RWStructuredBuffer<uint> g_CellUsage;
 
 struct PSInput
 {
@@ -376,6 +397,14 @@ Hit TraceGrid(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffse
     for (uint walked = 0u; walked < kMaxGridSteps; ++walked)
     {
         const Cell cell = FetchCell(cellCoord);
+        if (g_MarkParams.y != 0.0)
+        {
+            // A plain store, once per cell entered. See the note on g_CellUsage above for why this
+            // needs no atomic and why it deliberately accumulates nothing.
+            const int3 dims = int3(g_GridDims.xyz);
+            const uint index = uint(cellCoord.x + dims.x * (cellCoord.y + dims.y * cellCoord.z));
+            g_CellUsage[index] = (uint(g_MarkParams.x) & 0x7FFFFFFFu) | (cell.present ? 0u : 0x80000000u);
+        }
         if (cell.present)
         {
             const Hit hit = TraceCell(cell, rayOrigin, rayDir, lodPixelAngle, tOffset, maxT,
