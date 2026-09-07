@@ -56,7 +56,7 @@ public:
         // that tile starts instead of at the root's entry face.
         //
         // OFF BY DEFAULT, because it was measured and it does not pay -- see
-        // research/frame-time-log.md section 13. It works, it is correct (the shipping golden
+        // research/frame-time-and-gpu-architecture-log.md section 13. It works, it is correct (the shipping golden
         // passes with it on at 0.0093% of pixels changed), and it removes 29% of traversal steps
         // and 19% of the march. It also costs 0.69 ms of its own, because 14,400 pixels each
         // chasing a chain of dependent node loads cannot fill this GPU -- so on vk the two cancel

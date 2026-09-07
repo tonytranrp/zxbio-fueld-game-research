@@ -194,7 +194,7 @@ TEST_CASE("the bound's tightness is the LOD leaf size, and that is not a defect"
     // The consequence for the real engine is the point: a beam pre-pass buys exactly as much as the
     // tree is FINE along the ray, and this engine's tree is deliberately coarse at distance. That
     // is why goal 266's decision rests on a measurement over real terrain (see
-    // research/frame-time-log.md section 13), not on this test.
+    // research/frame-time-and-gpu-architecture-log.md section 13), not on this test.
     const BrickTree tree = make_tree();
     const glm::vec3 origin{30.5f, 33.25f, -20.0f};
     const glm::vec3 dir = glm::normalize(glm::vec3{0.02f, -0.01f, 1.0f});

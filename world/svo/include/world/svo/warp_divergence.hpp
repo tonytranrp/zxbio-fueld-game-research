@@ -7,7 +7,7 @@
 // numbers behind that claim are large (Aila & Laine's Table 2: 63.6 -> 122.1 Mrays/s from persistent
 // threads on identical traversal code). The honest way to decide whether they transfer to THIS
 // content is to measure the divergence here, and this machine cannot: its NVIDIA driver does not
-// expose VK_KHR_performance_query (only the Intel iGPU does -- see research/frame-time-log.md
+// expose VK_KHR_performance_query (only the Intel iGPU does -- see research/frame-time-and-gpu-architecture-log.md
 // section 12), so the occupancy and stall-reason counters are not collectable without the Nsight
 // Perf SDK and an admin-only registry change.
 //

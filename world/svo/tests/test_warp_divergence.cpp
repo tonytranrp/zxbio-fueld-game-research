@@ -1,7 +1,7 @@
 // Prompt 004 goal 271: tests for the warp-divergence instrument.
 //
 // This pass has now found SIX measuring instruments that reported a number while measuring nothing
-// (research/frame-time-log.md's running note). This one gets tests before its number is quoted, and
+// (research/frame-time-and-gpu-architecture-log.md's running note). This one gets tests before its number is quoted, and
 // its cases are chosen so that a plausible implementation bug in each direction fails one of them:
 // charging the peak per PIXEL instead of per warp, forgetting clipped tiles have fewer lanes,
 // striding only in x, or returning 0 rather than 1 for an empty frame.

@@ -368,7 +368,7 @@ constexpr std::array kTable{
            .set = bind<&AppOptions::svo_settings, &Settings::beam_tile>(),
            .kind = ValueKind::Int,
            .help = "goal 266 start-t pre-pass: pixels per conservative cone bound; 0 = off (it is "
-                   "correct but does not pay -- see research/frame-time-log.md section 13)",
+                   "correct but does not pay -- see research/frame-time-and-gpu-architecture-log.md section 13)",
            .default_text = "0",
            .group = "SVO shading"},
     Option{.name = "smooth-pixels",

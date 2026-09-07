@@ -536,7 +536,7 @@ int run(int argc, char** argv) {
     // Prompt 004 goal 271: WARP DIVERGENCE, measured rather than assumed.
     //
     // This machine's NVIDIA driver does not expose VK_KHR_performance_query (only the Intel iGPU
-    // does -- see research/frame-time-log.md section 12), so the warp-occupancy and stall-reason
+    // does -- see research/frame-time-and-gpu-architecture-log.md section 12), so the warp-occupancy and stall-reason
     // counters goals 267 and 269 wanted are not collectable here without the Nsight Perf SDK and an
     // admin-only registry change. This is the cheap instrument that measures the SAME underlying
     // quantity from the CPU reference, deterministically and with no driver dependency at all.
@@ -661,6 +661,10 @@ int run(int argc, char** argv) {
         const std::uint32_t tilesX = (r.width + tile - 1u) / tile;
         const std::uint32_t tilesY = (r.height + tile - 1u) / tile;
         std::vector<float> tileStart(static_cast<std::size_t>(tilesX) * tilesY, 0.0f);
+        // Goal 266: the descent depth and node count size the shader mirror's FIXED stack, so they
+        // are measured here rather than guessed at.
+        std::atomic<int> deepest{0};
+        std::atomic<std::uint64_t> visited{0};
         std::vector<std::future<void>> tileRows;
         tileRows.reserve(tilesY);
         for (std::uint32_t tyi = 0; tyi < tilesY; ++tyi) {
@@ -676,9 +680,16 @@ int run(int argc, char** argv) {
                     beam.dir = glm::normalize(forward + right * (ndcX * tanHalf * aspect) +
                                               up * (ndcY * tanHalf));
                     beam.tan_half_angle = tanHalfCone;
-                    const float bound = world::svo::beam_start_t(tree, beam);
+                    world::svo::BeamStats stats;
+                    const float bound = world::svo::beam_start_t(tree, beam, &stats);
                     tileStart[static_cast<std::size_t>(tyi) * tilesX + txi] =
                         std::isfinite(bound) ? bound : 0.0f;
+                    visited.fetch_add(stats.nodes_visited, std::memory_order_relaxed);
+                    int seen = deepest.load(std::memory_order_relaxed);
+                    while (stats.deepest_level > seen &&
+                           !deepest.compare_exchange_weak(seen, stats.deepest_level,
+                                                          std::memory_order_relaxed)) {
+                    }
                 }
             }));
         }
@@ -729,11 +740,13 @@ int run(int argc, char** argv) {
         const auto after = static_cast<double>(realSteps.load());
         std::printf("conservative beam (tile %ux%u, cone half-angle %.4f rad):\n"
                     "  primary steps %.1f -> %.1f per pixel (%.1f%% saved), %llu pixels changed\n"
-                    "  %u tile bounds cost %.1f ms on %u CPU threads\n",
+                    "  %u tile bounds cost %.1f ms on %u CPU threads, %.0f nodes each, %d levels deep\n",
                     tile, tile, std::atan(tanHalfCone), before / pixels, after / pixels,
                     before > 0.0 ? 100.0 * (before - after) / before : 0.0,
                     static_cast<unsigned long long>(realChanged.load()), tilesX * tilesY,
-                    beamSeconds * 1000.0, opt.threads_or_default());
+                    beamSeconds * 1000.0, opt.threads_or_default(),
+                    static_cast<double>(visited.load()) / static_cast<double>(tilesX * tilesY),
+                    deepest.load());
     }
 
     if (!svo_render::PngWriter::write(opt.out.c_str(), r.width, r.height, rgb.data())) {
