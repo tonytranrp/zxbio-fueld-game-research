@@ -1549,3 +1549,83 @@ be re-sent, and that requires the pools (goal 260), which requires the residency
 build side and its upload side is goal 260's.**
 
 309/309 tests.
+
+---
+
+## 21. The resident pools: an unchanged cell now costs zero upload bytes (goal 260, and 257's other half)
+
+§20 closed goal 257's build half and named the half it could not do: *"rebuilding 138 of 4,096 cells
+still re-uploads all 292.9 MB"*, because `FlatCellGrid` concatenates every cell into one array. This
+is the structure that fixes it.
+
+### The split, chosen from where the bytes are rather than from the architecture diagram
+
+Measured on the shipping 512 m region: **902,616 bricks × 144 words = 519.9 MB of the 549.8 MB
+total.** So:
+
+| | share | shape | decision |
+|---|---|---|---|
+| **bricks** | **94.6%** | all exactly `kBrickWords` long | **fixed-capacity pool, persistent slots** |
+| nodes | 5.4% | variable-length per cell | repacked and re-sent whole |
+
+A pool of equal-size slots has **no fragmentation at all**, which is the entire reason the brick
+side is easy and the node side is not. Pooling nodes would need variable-size spans and a compacting
+allocator; re-sending 30 MB instead of writing one is the right trade at a 17:1 ratio, and the
+header says so explicitly so that a future ratio change is a reason to revisit rather than a
+surprise.
+
+**`BrickPool` never grows.** Sized once from a byte budget; `allocate()` returns `kNoSlot` when full
+rather than expanding. That is not about saving memory — there is 7,180 MiB of VRAM against 550 MB
+resident — it is about making the footprint **independent of world size**, which is the property a
+streaming architecture is built on. A pool that grows is not a budget, and an allocator that never
+refuses is one that lets the eviction path go unwritten.
+
+### The one piece of surgery, and the bug it hid
+
+A brick leaf's payload word holds a brick index **in the cell's own numbering**; the pool numbers
+slots globally. `ResidentGrid::install` rewrites that index once, when the cell is installed — and
+that is what makes brick residency independent of where the node array gets repacked to. The two
+become orthogonal after it.
+
+**The first version walked the node array LINEARLY**, stepping by each header's own length. That
+assumes the array is a gapless sequence of nodes in layout order, which nothing in `tree_layout.hpp`
+promises. It is not: a word that is not a header was read as one, its "kind" came out as *brick*,
+and a payload that was not a brick index got rewritten. **The symptom was the resident grid
+reporting a hit where the flat grid saw empty space** — a corruption surfacing nowhere near its
+cause, caught only because the test compares ray by ray against a structure that is itself checked
+against the 7,000-ray oracle.
+
+It now walks **structurally from the root, following the same child pointers the traversal follows.**
+
+### What it buys, asserted rather than reported
+
+`test_resident_grid.cpp`, **60,145 assertions in 6 cases**:
+
+- **It traces what the other forms trace** — 20,000 real rays against the flat grid, comparing hit,
+  distance, material and normal.
+- **Reinstalling three cells dirties only those cells' bricks**, exactly, and under a quarter of the
+  whole grid's bytes — goal 257's Check as an assertion instead of a claim.
+- **Reinstalling in place leaks no slots**: the pool holds exactly what it held before.
+- **A pool too small refuses the install entirely.** A *partial* install would leave node payloads
+  pointing at slots the cell does not own, and that is the corruption class above; `install` is
+  all-or-nothing and gives back every slot it took.
+- **The pool never grows** across four rounds of installing everything and evicting half — capacity,
+  bytes and backing-store size all constant, and `used + free == capacity` throughout.
+- **Eviction returns slots and does not corrupt its neighbours' node bases.**
+
+### The upload arithmetic this makes possible
+
+Per rebuild, with §20's measured 138 of 4,096 cells changed:
+
+| | before (§20) | with pools |
+|---|---|---|
+| nodes | included in the 292.9 MB | ~30 MB, re-sent whole |
+| bricks | **292.9 MB** (all of them) | **~17 MB** (the changed cells' only) |
+| **total** | **292.9 MB** | **~47 MB** |
+
+**Roughly a 6× cut in upload bytes per rebuild**, on top of §20's 10.4× cut in rebuild *time*.
+Stated as arithmetic rather than as a measurement because the renderer still uploads the old way —
+wiring `ResidentGrid` into `SvoRenderer`'s staged upload is the remaining step, and the dirty-run
+accounting it needs is already built and tested.
+
+322/322 tests.

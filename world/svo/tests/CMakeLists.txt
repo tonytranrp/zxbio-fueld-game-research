@@ -12,6 +12,7 @@ add_executable(world_svo_tests
     test_cell_grid.cpp
     test_brick_pool.cpp
     test_lod_bands.cpp
+    test_resident_grid.cpp
 )
 # detail/tree_builder_impl.hpp: the tests instantiate build_tree for their own analytic samplers.
 target_include_directories(world_svo_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")

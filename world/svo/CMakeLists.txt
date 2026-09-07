@@ -7,6 +7,7 @@ add_library(world_svo STATIC
     src/ray_trace.cpp
     src/beam.cpp
     src/cell_grid.cpp
+    src/resident_grid.cpp
 )
 
 target_sources(world_svo PUBLIC
@@ -25,6 +26,7 @@ target_sources(world_svo PUBLIC
         include/world/svo/cell_grid.hpp
         include/world/svo/brick_pool.hpp
         include/world/svo/lod_bands.hpp
+        include/world/svo/resident_grid.hpp
         include/world/svo/warp_divergence.hpp
 )
 
