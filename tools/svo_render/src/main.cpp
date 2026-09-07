@@ -376,7 +376,12 @@ int run(int argc, char** argv) {
                     }
                     float ao = 1.0f;
                     if (opt.ao) {
-                        const float rayLength = std::max(0.15f, opt.ao_radius_px * hit.t * rawPixelAngle);
+                        // Goal 268, mirrored from svo_march.psh.hlsl -- the CPU reference and the
+                        // shader change TOGETHER (Prompt 004 rule 2). Clamped ray length: it used
+                        // to grow without bound with hit distance, so distant pixels paid most for
+                        // the AO that mattered least.
+                        const float rayLength =
+                            std::clamp(opt.ao_radius_px * hit.t * rawPixelAngle, 0.15f, 2.0f);
                         const glm::vec3 helper =
                             std::abs(n.y) < 0.9f ? glm::vec3{0.0f, 1.0f, 0.0f} : glm::vec3{1.0f, 0.0f, 0.0f};
                         const glm::vec3 tangent = glm::normalize(glm::cross(helper, n));
@@ -385,8 +390,11 @@ int run(int argc, char** argv) {
                             hash2(glm::vec2{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f}) *
                             6.2831853f;
                         float occluded = 0.0f;
-                        for (int k = 0; k < 4; ++k) {
-                            const float phi = rot + static_cast<float>(k) * 1.5707963f;
+                        // Two rays, not four: 13% of the march on its own, for 0.084/255 of mean
+                        // image difference. Two opposed azimuths instead of four quadrants, with
+                        // the per-pixel `rot` jitter and TAA carrying what the other two bought.
+                        for (int k = 0; k < 2; ++k) {
+                            const float phi = rot + static_cast<float>(k) * 3.1415927f;
                             Ray aray;
                             aray.origin = offsetOrigin;
                             aray.dir = glm::normalize(
@@ -399,7 +407,7 @@ int run(int argc, char** argv) {
                                 occluded += 1.0f - std::clamp(ah.t / rayLength, 0.0f, 1.0f);
                             }
                         }
-                        ao = 1.0f - 0.6f * (occluded * 0.25f);
+                        ao = 1.0f - 0.6f * (occluded * 0.5f);
                     }
                     const glm::vec3 ambient = glm::mix(kGroundAmbient, kSkyAmbient, n.y * 0.5f + 0.5f);
                     color = albedo * (ambient * ao + kSunColor * diffuse * lit);

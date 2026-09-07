@@ -520,7 +520,15 @@ float3 ShadeWater(float3 worldPos, float3 viewDir, float timeSeconds, float fade
 // distance, and LOD is judged from the ray's own origin (goal 164).
 float AmbientOcclusion(float3 p, float3 n, float2 pixel, float hitDistance)
 {
-    const float rayLength = max(0.15, g_TreeParams.w * hitDistance * g_ShadeParams.w);
+    // Prompt 004 goal 268. Two changes here, both measured, and together they took the marcher
+    // from 4.89 to 4.02 ms on vk and 5.10 to 4.42 on d3d12 -- an 18% / 13% cut of the WHOLE march
+    // for a mean image difference of 0.097/255 over 0.11% of pixels (viewed:
+    // research/captures/ak_ao_cheaper.png, and that is with --no-taa, the harsher case).
+    //
+    // (1) The ray length is CLAMPED. It used to grow without bound with hit distance, so distant
+    // pixels paid the most for the AO that mattered least -- a contact-shadow term whose feature
+    // size is sub-pixel out there. 2 m is a couple of the terrain cubes this look is built from.
+    const float rayLength = clamp(g_TreeParams.w * hitDistance * g_ShadeParams.w, 0.15, 2.0);
     const float lod = g_TreeParams.x * g_ShadeParams.z;
     // Tangent frame around n.
     const float3 helper = abs(n.y) < 0.9 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
@@ -529,16 +537,21 @@ float AmbientOcclusion(float3 p, float3 n, float2 pixel, float hitDistance)
     const float rot = Hash2(pixel) * 6.2831853;
     float occluded = 0.0;
     [unroll]
-    for (int i = 0; i < 4; ++i)
+    // (2) TWO rays, not four. Measured separately: 4.89 -> 4.31 ms on its own, which is 13% of the
+    // march, for 0.084/255 mean difference. Goal 246 priced all four AO rays at 1.81 ms (37% of
+    // the marcher) and this recovers half of that. The hemisphere is sampled at two opposed
+    // azimuths instead of four quadrants, with the per-pixel `rot` jitter and TAA carrying the
+    // rest -- which is what the four were really buying.
+    for (int i = 0; i < 2; ++i)
     {
-        const float phi = rot + float(i) * 1.5707963;
+        const float phi = rot + float(i) * 3.1415927;
         // ~45 degrees off the normal: cheap, and where occlusion actually lives for cube worlds.
         const float3 dir = normalize(n * 0.75 + (tangent * cos(phi) + bitangent * sin(phi)) * 0.66);
         const Hit h = TraceRay(p, dir, lod, 0.0, rayLength, 0.0, kSecondaryCoverage);
         if (h.hit)
             occluded += 1.0 - saturate(h.t / rayLength);
     }
-    return 1.0 - 0.6 * (occluded * 0.25);
+    return 1.0 - 0.6 * (occluded * 0.5);
 }
 
 float3 LevelColor(int level)

@@ -587,3 +587,70 @@ This is the second time in this prompt that a cited mechanism failed to reproduc
 retracted persistent-threads result), and the pattern is worth naming: **published GPU optimisation
 mechanisms are architecture- and toolchain-bound, and this repo's rule of measuring both backends is
 what keeps catching it.** Neither would have been visible on vk alone.
+
+---
+
+## 10. Cheapening the secondary rays — the largest win in this prompt (goal 268)
+
+§2 measured secondary rays at **49% of the marcher on vk**, with AO alone at 1.81 ms (37%) for its
+four traversals. That is where the frame time is, so that is what to cut.
+
+Two levers, measured separately and then together, on `stress_pose`:
+
+| configuration | vk march | d3d12 march |
+|---|---|---|
+| shipping: 4 AO rays, unbounded ray length | 4.89–4.94 | 5.10–5.12 |
+| **2 AO rays** | 4.27–4.31 (**−13%**) | 4.64 (−9%) |
+| **clamped AO ray length (≤2 m)** | 4.46–4.47 (**−9%**) | 4.86 (−5%) |
+| **both** | **4.00–4.05 (−18%)** | **4.42 (−13%)** |
+
+**Both shipped.** The whole march is 18% cheaper on vk and 13% on d3d12.
+
+### Why each works
+
+- **The ray length was unbounded.** `rayLength = max(0.15, aoRadiusPx * hitDistance * pixelAngle)`
+  grows linearly with hit distance, so **distant pixels paid the most for the AO that mattered
+  least** — a contact-shadow term whose feature size out there is sub-pixel. Clamping at 2 m (a
+  couple of the terrain cubes this look is built from) costs nothing visible.
+- **Four hemisphere samples were two more than needed.** Two opposed azimuths plus the existing
+  per-pixel `rot` jitter, with TAA integrating across frames, is what the four quadrants were really
+  buying.
+
+### The image, viewed
+
+`research/captures/ak_ao_cheaper.png` — `macro_ground`, the close-up look shot, side by side.
+**Mean difference 0.097/255 over 0.11% of pixels, max 10.** Visually indistinguishable, and that is
+measured **with `--no-taa`**, the harsher case: the shipping path has TAA to further hide the halved
+sampling. The change is also **below the 1.5% golden gate**, so every scenario golden still passes
+unmodified — which is a useful independent confirmation that the image did not move.
+
+Oracle **0/7,000** (4,000 + 3,000 rays, 0 mismatches). The traversal itself is untouched — AO is a
+shading consumer of it — but the rule is satisfied and checked rather than assumed.
+
+### The CPU reference changed with the shader
+
+Prompt 004 rule 2, and it matters here for a specific reason: `tools/svo_render` is what
+`--lod-center` reproductions and the GPU-vs-CPU diffs are judged against, so an AO change in one and
+not the other would silently invalidate every future comparison. Both levers are mirrored in
+`tools/svo_render/src/main.cpp` with the same constants.
+
+### Two vacuous measurements caught on the way, both mine
+
+1. **The first "2 rays" run reported no change** (4.89 → 4.94, i.e. nothing) — because my patch
+   script matched `\n` against a file with **CRLF** line endings, so it replaced nothing and I
+   measured the baseline twice. Caught by disbelieving a result that contradicted §2's 1.81 ms.
+2. **The `[unroll]`/loop-bound sweep in §9** had the same shape and was caught the same way.
+
+Both are the same root cause as §3's `fly_transect.scn` incident: **a patch that silently matches
+nothing produces a confident measurement of the unchanged system.** The habit that catches it is
+cheap — grep the file for the change before trusting the number — and it is now three for three.
+
+### Not attempted, and why
+
+- **AO from the node's `coverage` attribute** instead of tracing (goal 268's option 2). The
+  attribute is already stored and already read for the LOD early-out, so it is nearly free — but it
+  describes *volume* coverage of a node, not directional occlusion at a point, so it answers a
+  different question. It would need a term relating the two, which is a look decision rather than a
+  performance one; **handed to Prompt 005** with this note.
+- **Reusing one traversal's stack for the next ray.** The two-ray AO loop no longer has enough rays
+  for the bookkeeping to pay, and the shadow ray starts from a different origin and direction.
