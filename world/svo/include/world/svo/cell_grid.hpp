@@ -92,6 +92,23 @@ public:
     /// Absolute grid coordinates this grid covers, in storage order.
     [[nodiscard]] std::vector<glm::ivec3> coords() const;
 
+    /// Storage index of a coordinate, and its inverse. Both are pure arithmetic -- nothing that
+    /// looks a cell up should have to build a coordinate vector to do it.
+    [[nodiscard]] std::size_t index_of(glm::ivec3 coord) const noexcept {
+        const glm::ivec3 l = coord - originCell_;
+        return static_cast<std::size_t>(l.x) +
+               static_cast<std::size_t>(dims_.x) *
+                   (static_cast<std::size_t>(l.y) +
+                    static_cast<std::size_t>(dims_.y) * static_cast<std::size_t>(l.z));
+    }
+    [[nodiscard]] glm::ivec3 coord_of(std::size_t index) const noexcept {
+        const auto x = static_cast<int>(index % static_cast<std::size_t>(dims_.x));
+        const auto rest = index / static_cast<std::size_t>(dims_.x);
+        const auto y = static_cast<int>(rest % static_cast<std::size_t>(dims_.y));
+        const auto z = static_cast<int>(rest / static_cast<std::size_t>(dims_.y));
+        return originCell_ + glm::ivec3{x, y, z};
+    }
+
     [[nodiscard]] bool contains(glm::ivec3 coord) const noexcept {
         const glm::ivec3 local = coord - originCell_;
         return local.x >= 0 && local.y >= 0 && local.z >= 0 && local.x < dims_.x && local.y < dims_.y &&
@@ -134,6 +151,58 @@ struct GridTraceStats {
 /// `params` is passed through unchanged, so the LOD early-out still measures distance from the ray's
 /// own origin (goal 164's rule) and `max_t` still bounds the whole march.
 [[nodiscard]] Hit trace_ray_grid(const CellGrid& grid, const Ray& ray, const TraceParams& params = {},
+                                 GridTraceStats* stats = nullptr) noexcept;
+
+
+/// The GPU-shaped form of a grid: every cell's words concatenated into ONE node array and ONE brick
+/// array, with a per-cell base offset into each.
+///
+/// Prompt 004 goal 256. This is not an optimisation of `CellGrid` -- it is the layout the SHADER
+/// must have, hoisted onto the CPU so the two trace the same bytes rather than being two structures
+/// kept in step by hand. A cell's internal offsets stay exactly as `build_tree` produced them
+/// (relative to its own array) and the base is added at dereference, which is why `tree_layout.hpp`
+/// needs no change and the 7,000-ray oracle keeps its meaning.
+///
+/// The record is deliberately four 32-bit words so a GPU can hold one `uint4` per cell.
+struct FlatCell {
+    std::uint32_t node_base = 0;  ///< word offset of this cell's first node
+    std::uint32_t brick_base = 0; ///< BRICK index (not word offset) of this cell's first brick
+    std::uint32_t root = 0;       ///< root header offset, relative to node_base
+    std::uint32_t flags = 0;      ///< bit 0 = present; the rest is where AK-D's residency state goes
+};
+inline constexpr std::uint32_t kFlatCellPresent = 1u;
+
+class FlatCellGrid {
+public:
+    FlatCellGrid() = default;
+    /// Flattens `grid`. An absent cell gets a record with `flags == 0` and owns no storage.
+    explicit FlatCellGrid(const CellGrid& grid);
+
+    [[nodiscard]] const CellGrid& grid() const noexcept { return grid_; }
+    [[nodiscard]] const std::vector<std::uint32_t>& nodes() const noexcept { return nodes_; }
+    [[nodiscard]] const std::vector<std::uint32_t>& bricks() const noexcept { return bricks_; }
+    [[nodiscard]] const std::vector<FlatCell>& cells() const noexcept { return cells_; }
+    [[nodiscard]] bool empty() const noexcept { return cells_.empty(); }
+    [[nodiscard]] std::uint64_t memory_bytes() const noexcept {
+        return static_cast<std::uint64_t>(nodes_.size() + bricks_.size()) * sizeof(std::uint32_t) +
+               static_cast<std::uint64_t>(cells_.size()) * sizeof(FlatCell);
+    }
+
+    /// A `TreeView` onto cell `index`, or an empty view when the cell is absent. This is the exact
+    /// arithmetic the shader performs, written down once.
+    [[nodiscard]] TreeView view_of(std::size_t index) const noexcept;
+
+private:
+    CellGrid grid_;
+    std::vector<std::uint32_t> nodes_;
+    std::vector<std::uint32_t> bricks_;
+    std::vector<FlatCell> cells_;
+};
+
+/// March the flattened grid. Must return exactly what the owning overload returns for the same
+/// input -- asserted over 20,000 real-terrain rays, because "the flat form and the owning form
+/// agree" is what lets the shader mirror one while the oracle guards the other.
+[[nodiscard]] Hit trace_ray_grid(const FlatCellGrid& flat, const Ray& ray, const TraceParams& params = {},
                                  GridTraceStats* stats = nullptr) noexcept;
 
 } // namespace world::svo

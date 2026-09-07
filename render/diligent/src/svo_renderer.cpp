@@ -61,11 +61,16 @@ struct MarchConstantsCpu {
     // speed becomes wavelengths and amplitudes, and how the steepness budget is shared out, stays
     // in one place.
     std::array<glm::vec4, world::water::kWaveCount> waves; // xy = direction, z = amplitude, w = k
-    glm::vec4 waveParams;                                  // x = steepness Q (shared), yzw spare
+    glm::vec4 waveParams; // x = steepness Q (shared), y = goal 266's beam tile size, zw spare
+    // Goal 256's cell grid. xyz = dimensions in cells, w = cell edge (metres); x <= 0 means the
+    // grid is off and the region is marched as one tree -- which the shader expresses as a grid of
+    // exactly one cell rather than as a separate path, so the two cannot drift.
+    glm::vec4 gridDims;
+    glm::vec4 gridOrigin; // xyz = world min corner of cell (0,0,0)
     std::array<detail::MaterialRecord, kMaterialCount> materials;
 };
 static_assert(sizeof(MarchConstantsCpu) ==
-                  64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * kMaterialCount,
+                  64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * 2 + 16 * kMaterialCount,
               "must match the HLSL cbuffer exactly");
 
 // Mirror of svo_beam.psh.hlsl's cbuffer BeamConstants -- update both together.
@@ -161,6 +166,23 @@ RefCntAutoPtr<IBuffer> create_word_buffer(IRenderDevice* device, const char* nam
     return buffer;
 }
 
+// Goal 256: the per-cell record buffer -- a uint4 each, so the shader can hold one fetch per cell.
+RefCntAutoPtr<IBuffer> create_cell_buffer(IRenderDevice* device, const char* name, std::size_t count) {
+    BufferDesc desc;
+    desc.Name = name;
+    desc.Size = static_cast<Uint64>(count == 0 ? 1 : count) * 4u * sizeof(std::uint32_t);
+    desc.Usage = USAGE_DEFAULT;
+    desc.BindFlags = BIND_SHADER_RESOURCE;
+    desc.Mode = BUFFER_MODE_STRUCTURED;
+    desc.ElementByteStride = 4u * sizeof(std::uint32_t);
+    RefCntAutoPtr<IBuffer> buffer;
+    device->CreateBuffer(desc, nullptr, &buffer);
+    if (!buffer) {
+        throw std::runtime_error(std::string("svo cell buffer creation failed: ") + name);
+    }
+    return buffer;
+}
+
 RefCntAutoPtr<IBuffer> create_constant_buffer(IRenderDevice* device, const char* name, std::size_t bytes) {
     BufferDesc desc;
     desc.Name = name;
@@ -224,6 +246,11 @@ struct SvoRenderer::Impl {
     // swap frame was 30-39 ms of creating two ~250 MB buffers; reuse makes it a pointer swap).
     RefCntAutoPtr<IBuffer> nodes;
     RefCntAutoPtr<IBuffer> bricks;
+    // Goal 256: one uint4 per cell (node base, brick base, root offset, flags), mirroring
+    // world::svo::FlatCell. A single zeroed element until a grid is uploaded, so the variable is
+    // always bindable.
+    RefCntAutoPtr<IBuffer> cellRecords;
+    std::size_t cellRecordsCapacity = 0;
     std::size_t nodesCapacity = 0;
     std::size_t bricksCapacity = 0;
     RefCntAutoPtr<IBuffer> spareNodes;
@@ -340,9 +367,10 @@ void SvoRenderer::Impl::create_pipelines() {
             {SHADER_TYPE_PIXEL, "g_Nodes", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
             {SHADER_TYPE_PIXEL, "g_Bricks", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
             {SHADER_TYPE_PIXEL, "g_BeamStart", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+            {SHADER_TYPE_PIXEL, "g_Cells", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
         };
         psoCI.PSODesc.ResourceLayout.Variables = vars;
-        psoCI.PSODesc.ResourceLayout.NumVariables = 4;
+        psoCI.PSODesc.ResourceLayout.NumVariables = 5;
 
         rc.device->CreateGraphicsPipelineState(psoCI, &pso);
         if (!pso) {
@@ -457,6 +485,11 @@ void SvoRenderer::Impl::create_pipelines() {
     // Bindable placeholders until the first upload (one zero word each: an empty root).
     nodes = create_word_buffer(rc.device, "SVO nodes (empty)", 0);
     bricks = create_word_buffer(rc.device, "SVO bricks (empty)", 0);
+    cellRecords = create_cell_buffer(rc.device, "SVO cells (empty)", 1);
+    const std::array<std::uint32_t, 4> emptyCell{};
+    rc.context->UpdateBuffer(cellRecords, 0, sizeof(emptyCell), emptyCell.data(),
+                             RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    cellRecordsCapacity = 1;
     const std::uint32_t zero = 0u;
     rc.context->UpdateBuffer(nodes, 0, sizeof(zero), &zero, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     rc.context->UpdateBuffer(bricks, 0, sizeof(zero), &zero, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -483,6 +516,12 @@ void SvoRenderer::Impl::bind_tree_buffers() {
 
     // Goal 266: the beam pass walks the same nodes. Bound here rather than at draw time for the
     // same reason as above -- one rebind per tree, not one per frame.
+    if (IShaderResourceVariable* cellsVar = srb->GetVariableByName(SHADER_TYPE_PIXEL, "g_Cells")) {
+        cellsVar->Set(cellRecords->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+    } else {
+        throw std::runtime_error("svo shader variable g_Cells not found");
+    }
+
     if (IShaderResourceVariable* beamNodes =
             beamSrb ? beamSrb->GetVariableByName(SHADER_TYPE_PIXEL, "g_BeamNodes") : nullptr) {
         beamNodes->Set(nodes->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
@@ -766,6 +805,10 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         }
         // .y is goal 266's beam tile size (0 = no seed), taking one of the spare slots this
         // vector was reserved with rather than growing the cbuffer for a single float.
+        // Grid off for now: the shader reads this as "one cell, the whole region", which is the
+        // pre-grid behaviour bit for bit. Goal 257 is what fills it in.
+        cb->gridDims = glm::vec4(0.0f);
+        cb->gridOrigin = glm::vec4(0.0f);
         cb->waveParams = glm::vec4(waveField.waves[0].steepness,
                                    beam ? static_cast<float>(beamTile) : 0.0f, 0.0f, 0.0f);
         cb->materials = detail::kMaterialRecords;

@@ -76,7 +76,13 @@ struct Hit {
 // Amanatides-Woo DDA inside brick leaves. It walks the exact flat words the GPU gets; the HLSL in
 // render/diligent/shaders/svo_march.psh.hlsl mirrors this function statement for statement, and
 // tools/svo_render renders whole frames with it so a GPU frame can be diffed against it.
-[[nodiscard]] Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params = {}) noexcept;
+[[nodiscard]] Hit trace_ray(const TreeView& tree, const Ray& ray, const TraceParams& params = {}) noexcept;
+
+/// The owning-tree overload. Identical behaviour -- `BrickTree::view()` is the whole difference.
+[[nodiscard]] inline Hit trace_ray(const BrickTree& tree, const Ray& ray,
+                                   const TraceParams& params = {}) noexcept {
+    return tree.empty() ? Hit{} : trace_ray(tree.view(), ray, params);
+}
 
 // Ground-truth oracle for tests: brute-force DDA over every finest voxel of a UNIFORM-LOD tree
 // (via BrickTree::material_at), no hierarchy -- slow, obviously correct.

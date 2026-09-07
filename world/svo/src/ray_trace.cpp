@@ -77,7 +77,7 @@ float cell_exit(const Traversal& tr, const glm::ivec3& cellMin, const glm::ivec3
 
 } // namespace
 
-Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) noexcept {
+Hit trace_ray(const TreeView& tree, const Ray& ray, const TraceParams& params) noexcept {
     Hit miss;
     if (tree.empty()) {
         return miss;
@@ -153,7 +153,7 @@ Hit trace_ray(const BrickTree& tree, const Ray& ray, const TraceParams& params) 
     std::uint32_t stack[kMaxLevels];
     stack[0] = tree.root;
     int level = 0;
-    const std::uint32_t* nodes = tree.nodes.data();
+    const std::uint32_t* nodes = tree.nodes;
 
     // `cubeEdge` is the hit cube's edge in world units; `attrLevel` the deepest level whose node
     // on the stack carries attributes for this hit (the brick leaf itself, or a solid leaf's

@@ -194,6 +194,57 @@ TEST_CASE("a grid with holes misses exactly where the holes are", "[svo][grid]")
     }
 }
 
+TEST_CASE("the flattened grid traces identically to the owning one", "[svo][grid][flat]") {
+    // Goal 256. FlatCellGrid is the layout the SHADER holds -- one node array, one brick array, a
+    // per-cell base into each. If it disagreed with the owning form by so much as a hit distance,
+    // every measurement taken on the CPU would stop describing what the GPU does, and the oracle
+    // would be guarding the wrong structure.
+    const Pair pair = build_pair(SphereSampler{glm::vec3{32.0f}, 20.0f, MaterialID::Stone}, 6, 4, -2);
+    const FlatCellGrid flat{pair.grid};
+
+    REQUIRE(flat.cells().size() == pair.grid.cell_count());
+    // The flat form holds exactly the same words -- no more, no fewer.
+    CHECK(flat.bricks().size() / kBrickWords == pair.grid.totals().bricks);
+    CHECK(flat.nodes().size() == pair.grid.totals().node_words);
+
+    RayGen gen{std::mt19937{11}, 64.0f};
+    std::size_t hits = 0;
+    for (int i = 0; i < 20000; ++i) {
+        const Ray ray = gen.next();
+        const Hit owning = trace_ray_grid(pair.grid, ray, TraceParams{});
+        const Hit flattened = trace_ray_grid(flat, ray, TraceParams{});
+        REQUIRE(flattened.hit == owning.hit);
+        if (owning.hit) {
+            ++hits;
+            REQUIRE(flattened.t == Catch::Approx(owning.t));
+            REQUIRE(flattened.material == owning.material);
+            REQUIRE(flattened.normal == owning.normal);
+            REQUIRE(flattened.level == owning.level);
+            REQUIRE(flattened.cube_edge == Catch::Approx(owning.cube_edge));
+        }
+    }
+    CHECK(hits > 5000);
+}
+
+TEST_CASE("an absent cell owns no storage in the flat form", "[svo][grid][flat]") {
+    // The property AK-D's residency depends on: clearing a cell must remove its words, not leave
+    // them stranded in the middle of the array with nothing pointing at them.
+    Pair pair = build_pair(SphereSampler{glm::vec3{32.0f}, 20.0f, MaterialID::Stone}, 6, 4, -2);
+    const FlatCellGrid before{pair.grid};
+
+    const glm::ivec3 victim = pair.grid.coord_of(0);
+    const bool wasPresent = pair.grid.at(victim) != nullptr && pair.grid.at(victim)->present();
+    pair.grid.set(victim, nullptr);
+    const FlatCellGrid after{pair.grid};
+
+    CHECK(after.cells().size() == before.cells().size());
+    CHECK((after.cells()[0].flags & kFlatCellPresent) == 0u);
+    if (wasPresent) {
+        CHECK(after.nodes().size() < before.nodes().size());
+    }
+    CHECK(after.view_of(0).empty());
+}
+
 TEST_CASE("grid geometry and totals are what the design says", "[svo][grid]") {
     // Goal 254's arithmetic, asserted rather than left in prose: a 32 m cell at 7.8 mm voxels is
     // 12 levels, against 16 for a 512 m region -- which is the 25% shorter dependent-load chain the

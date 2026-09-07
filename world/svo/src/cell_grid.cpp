@@ -83,8 +83,12 @@ CellGrid::Totals CellGrid::totals() const noexcept {
     return t;
 }
 
-Hit trace_ray_grid(const CellGrid& grid, const Ray& ray, const TraceParams& params,
-                   GridTraceStats* stats) noexcept {
+// The one walk both forms use. `viewOf(coord) -> TreeView` is the only difference between
+// tracing a grid that owns its cells and tracing the flattened array a GPU holds -- keeping it
+// a parameter is what stops the two implementations drifting apart.
+template <typename ViewOf>
+[[nodiscard]] Hit trace_grid(const CellGrid& grid, const Ray& ray, const TraceParams& params, GridTraceStats* stats,
+               ViewOf&& viewOf) noexcept {
     Hit miss;
     if (stats != nullptr) {
         *stats = GridTraceStats{};
@@ -146,14 +150,14 @@ Hit trace_ray_grid(const CellGrid& grid, const Ray& ray, const TraceParams& para
         if (stats != nullptr) {
             ++stats->cells_stepped;
         }
-        if (const GridCell* c = grid.at(originCell + cell); c != nullptr && c->present()) {
+        if (const TreeView view = viewOf(originCell + cell); !view.empty()) {
             if (stats != nullptr) {
                 ++stats->cells_entered;
             }
             // The cell's own tree positions itself by `geometry.origin`, so the WORLD ray goes
             // straight in -- no transform, and the LOD early-out still measures distance from the
             // ray's own origin exactly as goal 164 requires.
-            const Hit hit = trace_ray(*c->tree, ray, params);
+            const Hit hit = trace_ray(view, ray, params);
             if (hit.hit) {
                 return hit;
             }
@@ -170,6 +174,51 @@ Hit trace_ray_grid(const CellGrid& grid, const Ray& ray, const TraceParams& para
         }
         tMax[axis] += tDelta[axis];
     }
+}
+
+Hit trace_ray_grid(const CellGrid& grid, const Ray& ray, const TraceParams& params,
+                   GridTraceStats* stats) noexcept {
+    return trace_grid(grid, ray, params, stats, [&](glm::ivec3 coord) {
+        const GridCell* c = grid.at(coord);
+        return c != nullptr && c->present() ? c->tree->view() : TreeView{};
+    });
+}
+
+FlatCellGrid::FlatCellGrid(const CellGrid& grid) : grid_(grid) {
+    cells_.resize(grid.cell_count());
+    for (std::size_t i = 0; i < cells_.size(); ++i) {
+        const GridCell* c = grid.at(grid.coord_of(i));
+        if (c == nullptr || !c->present()) {
+            continue; // flags stay 0: absent, and it owns no storage at all
+        }
+        const BrickTree& tree = *c->tree;
+        FlatCell& record = cells_[i];
+        record.node_base = static_cast<std::uint32_t>(nodes_.size());
+        record.brick_base = static_cast<std::uint32_t>(bricks_.size() / kBrickWords);
+        record.root = tree.root;
+        record.flags = kFlatCellPresent;
+        nodes_.insert(nodes_.end(), tree.nodes.begin(), tree.nodes.end());
+        bricks_.insert(bricks_.end(), tree.bricks.begin(), tree.bricks.end());
+    }
+}
+
+TreeView FlatCellGrid::view_of(std::size_t index) const noexcept {
+    if (index >= cells_.size() || (cells_[index].flags & kFlatCellPresent) == 0u) {
+        return TreeView{};
+    }
+    const FlatCell& record = cells_[index];
+    TreeView view;
+    view.geometry = grid_.geometry_for(grid_.coord_of(index));
+    view.nodes = nodes_.data() + record.node_base;
+    view.bricks = bricks_.data() + static_cast<std::size_t>(record.brick_base) * kBrickWords;
+    view.root = record.root;
+    return view;
+}
+
+Hit trace_ray_grid(const FlatCellGrid& flat, const Ray& ray, const TraceParams& params,
+                   GridTraceStats* stats) noexcept {
+    return trace_grid(flat.grid(), ray, params, stats,
+                      [&](glm::ivec3 coord) { return flat.view_of(flat.grid().index_of(coord)); });
 }
 
 } // namespace world::svo

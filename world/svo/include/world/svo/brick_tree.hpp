@@ -19,6 +19,24 @@ namespace world::svo {
 // Immutable after construction by design (research/micro-voxel-pivot-log.md §2.6: the tree is
 // rebuilt from the analytic sampler when the camera moves; live editing is the HashDAG-shaped
 // follow-up, not this structure's job).
+// A non-owning window onto one tree's flat words -- the FIVE things the marcher actually touches.
+//
+// Prompt 004 goal 256: this exists so a cell of a `CellGrid` can be traced without owning its own
+// vectors. On the GPU every cell's nodes and bricks live in ONE array with a per-cell base offset,
+// and a view is exactly that shape -- so the CPU reference and the shader mirror trace the same
+// thing rather than two structures that have to be kept in step by hand.
+struct TreeView {
+    TreeGeometry geometry;
+    const std::uint32_t* nodes = nullptr;
+    const std::uint32_t* bricks = nullptr;
+    std::uint32_t root = 0;
+
+    [[nodiscard]] bool empty() const noexcept { return nodes == nullptr; }
+    [[nodiscard]] const std::uint32_t* brick_words(std::uint32_t brickIndex) const noexcept {
+        return bricks + static_cast<std::size_t>(brickIndex) * kBrickWords;
+    }
+};
+
 class BrickTree {
 public:
     TreeGeometry geometry;
@@ -34,6 +52,10 @@ public:
     }
     [[nodiscard]] const std::uint32_t* brick_words(std::uint32_t brickIndex) const noexcept {
         return bricks.data() + static_cast<std::size_t>(brickIndex) * kBrickWords;
+    }
+    [[nodiscard]] TreeView view() const noexcept {
+        return TreeView{geometry, nodes.empty() ? nullptr : nodes.data(),
+                        bricks.empty() ? nullptr : bricks.data(), root};
     }
 
     // Point query at whatever resolution the tree holds there: the brick voxel containing the
