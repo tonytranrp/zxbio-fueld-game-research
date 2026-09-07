@@ -222,3 +222,193 @@ excludes the region where two implementations disagree is not an equivalence tes
   rebuild. AK-B makes it happen less often; it does not make it cheaper.
 - The single worst frames are still the **tree swap and its upload** (2 of the 4 remaining slow
   frames), because adopting a tree still means creating and filling GPU buffers for the whole world.
+
+---
+
+## 5. The streamable structure, designed before written (goal 254)
+
+### The ranking, and I rank it differently from the brief
+
+The brief's read is *"do both, shallow-grid first"* — a grid of shallow trees, with ESVO-style paging
+applied **within** a cell. Having done the arithmetic I rank it: **grid of shallow trees, and paging
+within a cell is then unnecessary, not merely second.** One paragraph of why, as the goal asks:
+
+ESVO's relative-within-block addressing exists so that *a piece of a tree can be relocated while the
+rest stays valid* — which is only a problem because pieces of one tree point at each other by
+absolute offset. **A grid of independent cells has no cross-cell pointers at all**: a ray leaving a
+cell does not follow a pointer, it re-enters the grid at the top and indexes the next cell
+arithmetically from its own position. So the unit of relocation is the cell, a cell is built and
+uploaded atomically, and nothing inside it ever moves independently of the rest of it. The flat
+offsets already in `tree_layout.hpp` remain correct **unchanged**. The grid does not make relative
+addressing easier; it makes it *moot*. Paying for a `far` bit, a per-block far-pointer table, and a
+page allocator to get a property the grid gives away free is the wrong order.
+
+I would revisit this only if a single cell grew large enough that sub-cell residency mattered — see
+the cell-budget arithmetic below, which says it does not.
+
+### The arithmetic
+
+Today, and every figure measured rather than assumed:
+
+| | value |
+|---|---|
+| region root | 512 m (`root_size_log2 = 9`) |
+| finest voxel | 7.8 mm (`voxel_size_log2 = -7`) |
+| **levels, V** | `9 − (−7)` = **16** |
+| `max_brick_level` | `16 − 3` = 13 |
+| `kMaxVoxelBits` / `kMaxLevels` | 24 / 22 |
+| measured tree | 710 K–1.13 M bricks, **431–688 MB**, build **1.89–3.60 s** |
+| brick | 8³ = 512 voxels in **144 words = 576 bytes** (16 mask + 128 material) |
+
+Proposed cell: **32 m** (`root_size_log2 = 5`), same 7.8 mm voxel.
+
+| | value |
+|---|---|
+| **levels per cell, V** | `5 − (−7)` = **12** |
+| `max_brick_level` per cell | 9 |
+| V against `kMaxVoxelBits = 24` | 12 ≤ 24 — **half the budget, comfortable** |
+| stack depth needed | 12 + 1 = 13 against today's `kMaxLevels = 22` |
+| cells across a 512 m region | 16 × 16 horizontally |
+| occupied vertical span | terrain [−64, 64] m + ~15 m trees ⇒ **5 layers** of 32 m, not 16 |
+| **surface cells** | ~16 × 16 = **256** carry the surface; the rest are empty or solid |
+
+**The rebuild-cost claim, derived rather than quoted.** Terrain is a *surface*, so cost scales with
+the area a rebuild covers, not the volume: one 32 m cell is `(32/512)² = 1/256` of the region's
+footprint. The brief's "~256×" is exactly this, and it checks out. Against the measured 1.89–3.60 s
+whole-region build, **a single surface cell should cost ~7–14 ms** — which is the number that makes
+goal 250's unbounded adopt lag go away, because a rebuild that finishes in 14 ms cannot be outrun.
+
+**The dependent-load chain.** 16 levels → 12 is a **25% shorter** worst-case chain of dependent,
+cache-missing loads per primary ray. Research §3.4's claim (Aokana: *"deep data structures connected
+by pointers are not cache-friendly"*, fixed with *"multiple shallow SVDAGs"*, 2–4× above 32 K) is
+what this tests on this hardware; goal 256 reports the measured march-ms delta, and I will not
+pre-credit it — §9.3's lesson from this same prompt is that a cited speedup can be architecture-bound
+and stale.
+
+**The stack.** `kMaxLevels = 22` sizes a fixed `uint stack[22]` in the shader. A 12-level cell needs
+13. That is **9 fewer registers per lane** on the hot traversal, which on a register-limited kernel
+is free occupancy — goal 256 measures whether it shows up.
+
+### What a cell is, and how a ray crosses one
+
+- A cell is exactly today's `BrickTree` with `root_size_log2 = 5`, plus its integer grid coordinate.
+  **No encoding change**: the same header word (bits 0–7 child mask, 8–9 kind, 16–23 material), the
+  same layout-v2 attribute word, the same `node_child_slot(header, octant) = 2 + popcount(...)`.
+  This is the single most important property of the design — it means the oracle keeps its meaning
+  and `tree_layout.hpp` is untouched.
+- The grid is a flat array of cell records: `{ ivec3 coord, uint nodeOffset, uint brickOffset,
+  uint rootWord, uint flags }`. Node and brick storage stay two big arrays; a cell owns a contiguous
+  span of each, and its internal offsets are **relative to `nodeOffset`** — which is the one change
+  to addressing, and it is an addition rather than a re-encoding.
+- A ray marches the **grid** with a 3D DDA (Amanatides & Woo, which is what Teardown does per
+  §9.4), and inside each cell it enters, runs today's octree traversal unchanged. Crossing a cell
+  boundary is a DDA step, not a pointer dereference.
+- An **absent** cell is a flag, not a null pointer, and that is what AK-D's "never stall a ray" hook
+  attaches to: a ray entering an absent cell shades from the coarsest resident level and files a
+  request, exactly as GigaVoxels does (§1.4).
+
+### Why 32 m rather than 16 or 64
+
+| cell edge | levels V | cells over 512 m | surface cells | est. rebuild (from 1.89–3.60 s ÷ area ratio) |
+|---|---|---|---|---|
+| 16 m | 11 | 32 × 32 | ~1024 | ~2–4 ms |
+| **32 m** | **12** | **16 × 16** | **~256** | **~7–14 ms** |
+| 64 m | 13 | 8 × 8 | ~64 | ~30–56 ms |
+
+64 m cells leave a 30–56 ms rebuild — still a visible hitch if it lands on one frame, and only a 3
+level saving. 16 m cells quadruple the cell count and the per-cell fixed overhead (a grid record, a
+root node, a partly-filled brick span) for a rebuild already well under a frame. **32 m is the
+largest cell whose rebuild fits inside a 150 fps frame budget with room to spare**, which is the
+property that matters.
+
+### What this does NOT decide
+
+Residency and eviction (AK-D) — the grid gives a natural unit for both, but the cache, the LRU and
+the ray-guided request path are that group's work. And **the payload is unchanged here**: goal 258's
+palette and dedup levers apply per brick and are orthogonal to where the brick lives.
+
+### The design's own arithmetic was wrong, and measuring it before writing code is what caught it
+
+The table above predicted **~7–14 ms** for a 32 m cell, by scaling the measured whole-region build
+by the surface-area ratio. Before writing any of it I measured a real build at each region size
+(`voxel_app --region-log2 N`, one build, RelWithDebInfo):
+
+| region | bricks | MB | build | sampler |
+|---|---|---|---|---|
+| 512 m (shipping) | 710 K–1.13 M | 431–688 | 1.89–3.60 s | 0.15–0.19 s |
+| 64 m | 22,870 | 13.8 | **0.08 s** | **0.10 s** |
+| **32 m** | **471** | **0.3** | **0.09 s** | **0.09 s** |
+
+**A 32 m cell costs ~90 ms, not 7–14 ms, and almost none of it is the cell's content.** 471 bricks
+and 0.3 MB cannot take 90 ms. What does is the **fixed per-build cost**: `set_focus` builds a 1/16 m
+height field over a 16 m radius *plus* a 1/8 m field over 64 m on every build, and neither shrinks
+with the cell. At 512 m that fixed cost is 5–9% of the build and invisible; at 32 m it **is** the
+build.
+
+Two consequences, and the second reverses a decision I made an hour ago:
+
+1. **Per-cell rebuild is not viable until the fixed per-build cost is removed.** A 90 ms cell
+   rebuild is six frames at the target rate — worse than the thing it replaces, if it happens per
+   cell. The design needs **one sampler shared across every cell build in a region**, with the focus
+   field built once and reused, and the thread pool and classification setup hoisted out of the
+   per-cell path.
+2. **Goal 251 is reopened by this, and my "decided against" was right for the wrong regime.** I
+   closed it measuring the sampler at 5–9% of a 512 m build and wrote *"it becomes worth doing if
+   AK-C's per-cell rebuild makes builds frequent and small, which is the opposite regime."* That is
+   now the actual regime, and the measurement says focus-field reuse goes from a marginal 8% saving
+   to **the precondition for the whole group**. The earlier verdict stands as written for the world
+   it was written about; it does not survive the cell grid.
+
+**This is why goal 254 says "on paper, in the log, before writing code".** The paper arithmetic was
+defensible and wrong, because it modelled the part of the cost that scales and ignored the part that
+does not. Twenty minutes of measurement turned a 256× win into a 256× win *conditional on a
+prerequisite the design had not identified*.
+
+### Revised ordering for AK-C
+
+1. **Hoist the fixed per-build cost** (goal 251's focus-field reuse, now a prerequisite rather than
+   an optimisation): one `TerrainSampler` per region, reused across cell builds.
+2. Then the cell grid (255/256/257), whose marginal per-cell cost is only then the ~0 ms of tree
+   work the 32 m measurement shows.
+
+Without step 1, step 2 makes the frame time worse, and the measurement above is the evidence.
+
+---
+
+## 6. The build profile (goal 259) — LTO is pay-to-win that does not win here
+
+`release-codegen-and-tradeoffs.md` §1's four buckets, applied. MSVC has no `-O3`, so the `-O2` vs
+`-O3` question translates to `/O2` (what Release already does) versus `/O2` plus `/GL` + `/LTCG`
+(CMake's `INTERPROCEDURAL_OPTIMIZATION`), which is the LTO lever the skill's rules 17 and 18 govern.
+
+`stress_pose`, vsync off, vk, two runs each:
+
+| configuration | frame median (ms) | GPU march (ms) | build time |
+|---|---|---|---|
+| RelWithDebInfo | 5.19 / 5.15 | 4.93 / 4.87 | — |
+| **Release `/O2`** | **5.26 / 5.19** | **4.98 / 4.91** | **3 m 22 s** |
+| Release `/O2 /GL /LTCG` | 5.28 / 5.26 | 5.00 / 4.98 | **8 m 34 s** |
+
+**LTCG is not faster. It is a hair slower — inside the run-to-run spread either way — and it costs
+2.5× the build time.** The LTO build also had Tracy compiled out, which should have helped it, and
+it still did not move.
+
+The reason is goal 244's verdict, and this is the same finding arriving from a second direction:
+**the frame is GPU-bound on the march.** The CPU phases sum to ~0.4 ms of a 5.2 ms frame — 7.7%.
+LTO optimises exactly that 7.7%, so even a spectacular 20% win on it would be 0.08 ms, or 1.5% of
+the frame, against a measured run-to-run spread of ~0.1 ms. **There is nothing here for it to win.**
+
+**Bucket: `pay-to-win` in general, `pay-to-nothing` on this workload.** Which is the point of
+classifying rather than assuming — the skill's rule 17 says LTO belongs to the shipping build and
+not the dev loop, and that is still true in general; it just has no subject here.
+
+**PGO: not worth it, and the arithmetic is the same one.** PGO improves branch layout and inlining
+decisions in *CPU* code, which is the 7.7%. A generous 20% improvement on that is **0.08 ms, or
+1.5% of the frame, below the ±0.1 ms run-to-run spread** — it could not be measured on this
+workload even if it worked perfectly. It becomes worth revisiting only if the CPU share grows, which
+is what AK-C's per-cell rebuild would do (many small builds instead of one large one on a background
+thread).
+
+**`CMakePresets.json` is unchanged.** The chosen shipping configuration stays `windows-release`
+(`/O2`, no LTCG), and the reason is now measured rather than inherited. Adding an LTO preset would
+advertise a 2.5× build-time cost for a benefit this project has demonstrated it does not receive.
