@@ -1,8 +1,8 @@
 # Procedural Terrain Generation: Algorithms, Shipped Systems, and the Statistics of Real Earth — Part 7 (Synthesis)
 
-Provenance: written by the algorithms-side research agent for the merged Earth-terrain document, after the six geoscience parts were outlined. Method: local context (question bank §G, `research/micro-voxel-creators-research.md`, `research/grass-rendering-research.md`, house style from `research/water-physics-and-wave-simulation.md`, the engine reality in `research/terrain-fixes-log.md`) absorbed first; then ~27 web queries across 7 batches (Exa search; game/GDC/vendor-doc sources dominate, geomorphology literature where the physics lives). Every "?"-marked parent anchor was treated as unverified and checked; disagreements are reported inline and tallied in the Provenance section — five this time, one of them a 25× arithmetic error worth fixing before the merge.
+Provenance: written by the algorithms-side research agent for the merged Earth-terrain document. Method: local context (question bank §G, `research/micro-voxel-creators-research.md`, `research/grass-rendering-research.md`, house style from `research/water-physics-and-wave-simulation.md`, the engine reality in `research/terrain-fixes-log.md`) absorbed first; then 27 web queries across 7 batches (Exa; game/GDC/vendor-doc sources dominate, geomorphology literature where the physics lives). Every "?"-marked parent anchor was treated as unverified and checked; disagreements are reported inline and tallied in the Provenance section — five this time, one a 25× arithmetic error worth fixing before the merge.
 
-This is the synthesis layer. Parts 1–6 own the geoscience: Part 1 tectonics/mountains, Part 2 fluvial/landscape evolution, Part 3 glacial/coastal/periglacial, Part 4 caves/karst, Part 5 deserts/wind/climate, Part 6 vegetation. This part owns the **algorithms**: what noise actually is statistically, what erosion solvers actually compute, what shipped engines actually do, and how to check any of it against reality. Cross-references point at "Part N" per that mapping.
+This is the synthesis layer. Parts 1–6 own the geoscience (Part 1 tectonics/mountains, Part 2 fluvial/landscape evolution, Part 3 glacial/coastal/periglacial, Part 4 caves/karst, Part 5 deserts/wind/climate, Part 6 vegetation); this part owns the **algorithms** — what noise is statistically, what erosion solvers compute, what shipped engines do, and how to check any of it against reality. Cross-references point at "Part N" per that mapping.
 
 ---
 
@@ -18,23 +18,21 @@ $$
 
 with octave count $O$, gain $g$ (amplitude falloff per octave, classically $0.5$), lacunarity $\lambda$ (frequency ratio, classically $2.0$), base frequency $f_0$, and $N$ a smooth coherent-noise basis (Perlin, simplex, value noise). In practice $O = 3\text{–}8$: Musgrave notes that more octaves are "unnecessary-to-detrimental" — frequencies below the viewport act only as a slope bias, frequencies above half the sampling resolution alias into stochastic noise [1][2]. The engine's own generator sits exactly in this band: 4 octaves, lacunarity 2, gain 0.5, amplitude 64, FastNoise2 pinned to SSE2, analytic `height_at` with a permanent smoothness regression test (`research/terrain-fixes-log.md` §Group R).
 
-The spectral connection: an fBm with Hurst exponent $H$ has a 1D power spectrum $E(k) \propto k^{-\beta}$ with $\beta = 2H + 1$ (Turcotte's relation $\beta = 2H + 1$, equivalently $H_a = (\beta-1)/2$) [4]. So the classic $g = 0.5$, $\lambda = 2$ fBm is *Brownian motion*: $H = 0.5$, $\beta = 2$.
+The spectral connection: an fBm with Hurst exponent $H$ has a 1D power spectrum $E(k) \propto k^{-\beta}$ with $\beta = 2H + 1$ (Turcotte's relation, equivalently $H_a = (\beta-1)/2$) [4]. So the classic $g = 0.5$, $\lambda = 2$ fBm is *Brownian motion*: $H = 0.5$, $\beta = 2$.
 
 ### 1.2 What real terrain's spectrum actually is
 
-The parent anchor "$E(k) \propto k^{-2}$-ish" is **confirmed for second-order statistics, with two mandatory caveats**:
-
-- **Confirmed:** Turcotte's 1987 spherical-harmonic analysis found Earth topography "a well-defined fractal with D = 1.5 … Brown noise" — $\beta = 2$ along 1D angle-integrated transects [1], reproduced in his 2007 review [4]. Bathymetric studies span $\beta \approx 1.6\text{–}2.5$ by region and method (Berkson & Matthews 1.6–1.8; Fox & Hayes ~2.5; Gibert & Courtillot 2.1–2.3; Balmino ~2) [3].
+The parent anchor "$E(k) \propto k^{-2}$-ish" is **confirmed for second-order statistics, with two mandatory caveats**:- **Confirmed:** Turcotte's 1987 spherical-harmonic analysis found Earth topography "a well-defined fractal with D = 1.5 … Brown noise" — $\beta = 2$ along 1D angle-integrated transects [1], reproduced in his 2007 review [4]. Bathymetric studies span $\beta \approx 1.6\text{–}2.5$ by region and method (Berkson & Matthews 1.6–1.8; Fox & Hayes ~2.5; Gibert & Courtillot 2.1–2.3; Balmino ~2) [3].
 - **Caveat 1 (dimensions):** those are 1D/angle-integrated exponents; the angle-*averaged* 2D spectrum carries $\beta + 1$ [3]. Validating a generator's 2D FFT against Turcotte's number without this conversion concludes your terrain is an octave too rough.
-- **Caveat 2 (the monofractal lie):** Lovejoy, Schertzer, and Gagnon's 2005–2006 analyses of four DEMs spanning 20,000 km down to 50 cm ($>2\times10^8$ pixels) show the $\beta \approx 2$ line holds for *second-order* moments from planetary scales down to ~40 m — but "the multifractal FIF is easily compatible with the data, while the monofractal fBm and fLm are not" [3][5]. Universal multifractal parameters: $\alpha \approx 1.79$ (degree of multifractality; 0 = monofractal), $C_1 \approx 0.12$, and a smoothing exponent $H$ that *differs by setting*: $H = 0.46$ (bathymetry), $0.66$ (continents), $0.77$ (continental margins) [3]. In plain terms: real terrain matches fBm in variance-per-scale, and breaks it in the tails — extreme relief (the Himalaya vs the Indo-Gangetic plain in one tile) is far more common than a Gaussian cascade produces. This is exactly the failure Musgrave was chasing with his multifractal constructions [2][6][7].
+- **Caveat 2 (the monofractal lie):** Lovejoy, Schertzer, and Gagnon's analyses of four DEMs spanning 20,000 km down to 50 cm ($>2\times10^8$ pixels) show the $\beta \approx 2$ line holds for *second-order* moments from planetary scales down to ~40 m — but "the multifractal FIF is easily compatible with the data, while the monofractal fBm and fLm are not" [3][5]. Universal multifractal parameters: $\alpha \approx 1.79$ (0 = monofractal), $C_1 \approx 0.12$, and smoothing exponent $H$ differing by setting: $H = 0.46$ (bathymetry), $0.66$ (continents), $0.77$ (continental margins) [3]. Real terrain matches fBm in variance-per-scale and breaks it in the tails — extreme relief (Himalaya vs Indo-Gangetic plain in one tile) is far more common than a Gaussian cascade produces. This is exactly the failure Musgrave chased with his multifractal constructions [2][6][7].
 
 ### 1.3 The self-similarity failure
 
 Real terrain is not self-similar, in two documented directions:
 
-- **Vertical anisotropy (peaks vs valleys).** In rugged alpine terrain the peaks are more jagged than the valleys (valves fill with detritus and get smoothed by glaciers); in diffusion-dominated sub-alpine terrain the hilltops are rounder than the valleys. Musgrave states this as the motivating asymmetry of his whole research program — "fBm is by design homogeneous and isotropic, while real terrains are neither" [1][2]. A single-$H$ fBm has one roughness everywhere, up-slope and down-slope alike.
-- **Horizontal anisotropy (direction-dependent $H$).** Mountain ranges are elongated; the scaling exponent along a range axis differs from across it. Lovejoy's analyses require an anisotropic scaling operator $\mathbf{G}$ beyond the scalar $H$ for precisely this reason, and note that isotropic analysis "washes out different geomorphologies" [3][5]. Games notice this as the "everything looks the same from any direction" property of naive noise.
-- **Scale-boundedness.** The $\beta \approx 2$ line breaks below ~40 m (trees, in their data) [3][5], and extended-self-similar analyses find the *local* Hurst exponent varies with scale — Lewis's critique, cited in the ESS work, is that "landscapes are fractal for only a few scales" [8]. Mandelbrot's own famous quip, relayed by Musgrave: the fractal dimension of the Himalayas is approximately that of the JFK runway — only the crossover scale differs (kilometers vs millimeters) [1]. Crossover-scale modulation (where the fractal band sits), not dimension modulation, is the stronger artistic control — Musgrave's empirical conclusion [1][9].
+- **Vertical anisotropy (peaks vs valleys).** In rugged alpine terrain the peaks are more jagged than the valleys (valleys fill with detritus and get smoothed by glaciers); in diffusion-dominated sub-alpine terrain the hilltops are rounder than the valleys. Musgrave states this as the motivating asymmetry of his whole program — "fBm is by design homogeneous and isotropic, while real terrains are neither" [1][2]. A single-$H$ fBm has one roughness everywhere, up-slope and down-slope alike.
+- **Horizontal anisotropy (direction-dependent $H$).** Mountain ranges are elongated; the scaling exponent along a range axis differs from across it. Lovejoy's analyses require an anisotropic scaling operator $\mathbf{G}$ beyond scalar $H$, and note that isotropic analysis "washes out different geomorphologies" [3][5]. Games notice this as the "everything looks the same from any direction" property of naive noise.
+- **Scale-boundedness.** The $\beta \approx 2$ line breaks below ~40 m (trees) [3][5], and extended-self-similar analyses find the *local* Hurst exponent varies with scale — Lewis's critique, cited in the ESS work: "landscapes are fractal for only a few scales" [8]. Mandelbrot's quip, relayed by Musgrave: the fractal dimension of the Himalayas is approximately that of the JFK runway — only the crossover scale differs (kilometers vs millimeters) [1]. Crossover-scale modulation (where the fractal band sits), not dimension modulation, is the stronger artistic control — Musgrave's empirical conclusion [1][9].
 
 ### 1.4 The hypsometric failure
 
@@ -48,10 +46,10 @@ This is *the* #1 tell of fake terrain, ahead of every spectral subtlety in §1.2
 
 ### 1.6 When fBm is enough
 
-- **Micro-relief** (centimeter-to-meter roughness on an already-correct macro surface): the spectrum below ~40 m is where multifractal analysis itself gives out into vegetation-dominated noise [3]; low-octave noise displacement is the standard and defensible choice.
-- **Distant LOD.** At screen sizes of a few pixels per feature, second-order statistics dominate perception; the tail failures are invisible. Musgrave's Nyquist argument [1] is the formal version.
+- **Micro-relief** (centimeter-to-meter roughness on an already-correct macro surface): below ~40 m the multifractal analysis itself gives out into vegetation-dominated noise [3]; low-octave noise displacement is the standard, defensible choice.
+- **Distant LOD.** At a few pixels per feature, second-order statistics dominate perception; the tail failures are invisible. Musgrave's Nyquist argument [1] is the formal version.
 - **Base continental shape** — the low-frequency *skeleton* that later passes (tectonic stamps, SPIM carving, §3–4) reorganize. fBm as a *first draft* is fine; fBm as the deliverable is the failure.
-- **Non-eroded settings:** recent volcanic terrain, dune fields (Part 5), and badlands are closer to scale-limited noise than fluvial terrain is — Musgrave: "All natural terrains, except perhaps recent volcanic ones, bear the scars of erosion" [7].
+- **Non-eroded settings:** recent volcanic terrain, dune fields (Part 5), badlands — Musgrave: "All natural terrains, except perhaps recent volcanic ones, bear the scars of erosion" [7].
 
 ---
 
@@ -80,9 +78,9 @@ Starting parameters from the author: $H \approx 0.25\text{–}1.0$, offset $\app
 
 ### 2.3 Billowed, terraced, and the rest
 
-- **Billowed** ($|N|$ or $1-|N|$ without the weight cascade): rounded lumps — clouds, dune swells, and the "cotton-ball" foothills look. The multiplicative multifractal version gives heterogeneous plains-foothills-mountains in one patch [7][9].
-- **Terraced / quantized.** Gardner's 1980s terrain quantized altitude to yield "terraced land, such as mesas" [1]. **What real stair-step terrain is (confirmed):** resistant-layer stratigraphy plus differential erosion. The Grand Staircase is the type example: ~6,000 vertical feet of alternating cliffs and plateaus over ~150 miles; "each 'riser' is a cliff … as much as 2,000 feet high and each 'tread' is a plateau, terrace, or flat … as much as 15 miles wide"; hard sandstones/limestones form cliffs and terraces, soft shales/siltstones form the slopes between [17][18][19]. Cosmogenic-erosion work on the same region adds the mechanism detail that matters for generation: strong-over-weak contacts get *undermined* (amplified erosion), weak-over-strong contacts grow protective benches — i.e., the stair-step is an erosion-rate pattern in layered rock, not a height quantization [20]. Procedurally: terrace the heightfield where a stratigraphy mask says so, then erode; Houdini's explicit `HeightField Terrace` SOP exists for exactly this [21]. Flat-top mesa outlines additionally want a *cap-rock* logic (a resistant layer above softer rock, Part 1's volcanic/Sedimentary story).
-- **Plane/rigid/warped combinations per landform.** Musgrave's parameter-table doctrine: modulate crossover scale with altitude (foothills→peaks), square-and-weight for ridges, offset for valleys; Michel et al. for folds [1][7][14]. Shipped-game/tutorial parameter tables vs terrain-science measurements: the former are aesthetic (gain 0.5, lacunarity 2, 3–8 octaves — universal across Musgrave, Blender, FastNoise2 defaults); the latter say the *bulk* spectrum matches $\beta \approx 2$ but $H$ should vary $0.46\text{–}0.77$ by setting [3] and crossover scale — not $D$ — is the artistic knob [1]. A generator honest about this exposes per-biome $H$ and crossover, not one global "roughness."
+- **Billowed** ($|N|$ or $1-|N|$ without the weight cascade): rounded lumps — clouds, dune swells, cotton-ball foothills. The multiplicative multifractal version gives heterogeneous plains-foothills-mountains in one patch [7][9].
+- **Terraced / quantized.** Gardner's 1980s terrain quantized altitude to yield "terraced land, such as mesas" [1]. **What real stair-step terrain is (confirmed):** resistant-layer stratigraphy plus differential erosion. The Grand Staircase is the type example: ~6,000 vertical feet of alternating cliffs and plateaus over ~150 miles; "each 'riser' is a cliff … as much as 2,000 feet high and each 'tread' is a plateau, terrace, or flat … as much as 15 miles wide"; hard sandstones/limestones form cliffs and terraces, soft shales/siltstones the slopes between [17][18][19]. Cosmogenic-erosion work adds the mechanism that matters for generation: strong-over-weak contacts get *undermined* (amplified erosion), weak-over-strong contacts grow protective benches — the stair-step is an erosion-rate pattern in layered rock, not a height quantization [20]. Procedurally: terrace the heightfield where a stratigraphy mask says so, then erode; Houdini's explicit `HeightField Terrace` SOP exists for exactly this [21]. Mesa outlines additionally want cap-rock logic (resistant layer above softer rock, Part 1).
+- **Plane/rigid/warped combinations per landform.** Musgrave's parameter-table doctrine: modulate crossover scale with altitude (foothills→peaks), square-and-weight for ridges, offset for valleys [1][7][14]. Shipped-game/tutorial parameter tables vs terrain-science measurements: the former are aesthetic (gain 0.5, lacunarity 2, 3–8 octaves — universal across Musgrave, Blender, FastNoise2 defaults); the latter say the *bulk* spectrum matches $\beta \approx 2$ but $H$ should vary $0.46\text{–}0.77$ by setting [3] and crossover scale — not $D$ — is the artistic knob [1]. A generator honest about this exposes per-biome $H$ and crossover, not one global "roughness."
 
 ---
 
@@ -92,7 +90,7 @@ Starting parameters from the author: $H \approx 0.25\text{–}1.0$, offset $\app
 
 Musgrave's formulation is still the canonical one: a low-pass filter whose fixed point is a slope, not a height — "exactly like a standard low-pass filter, except that the value to which it converges is not a DC level but rather, for instance, a slope of 45 degrees. Slopes less than the angle of repose are unaffected" [9]. Iterate: for each pair of neighbors, if the height difference exceeds `talus` (a slope threshold in height-units per cell), move material downhill. O(n) per pass, trivially parallel, converges to angle-of-repose hillslopes — which is *genuinely correct physics* for soil-mantled and scree slopes (Part 2 §20: real threshold hillslopes; Montgomery's Olympic/Coast-Range slope histograms cluster at threshold values [22]).
 
-**The soap-bubble artifact:** iterated to convergence, thermal erosion minimizes total height variance subject to the slope constraint — every convexity gets planed toward the talus angle, and the terrain ends up a network of planar facets meeting at ridges, the visual signature of a *minimum-energy soap film*, not of rock mass strength contrasts. Real talus fields are patchy (lithology, aspect, vegetation; Part 6 §66); the algorithm is lithology-blind and homogeneous. Mitigation in production tools: mask the pass by rock-softness (Gaea's Selective Processing exposes exactly a Rock Softness bias mask [23]).
+**The soap-bubble artifact:** iterated to convergence, thermal erosion minimizes total height variance subject to the slope constraint — every convexity gets planed toward the talus angle, and the terrain ends up a network of planar facets meeting at ridges, the signature of a *minimum-energy soap film*, not of rock-mass-strength contrasts. Real talus fields are patchy (lithology, aspect, vegetation; Part 6 §66); the algorithm is lithology-blind and homogeneous. Production mitigation: mask the pass by rock-softness (Gaea's Selective Processing exposes exactly a Rock Softness bias mask [23]).
 
 ### 3.2 Droplet / hydraulic particle erosion
 
@@ -118,7 +116,7 @@ The Braun–Willett (2013) algorithm solves this **O(n)** and fully implicit, an
 2. Accumulate discharge/area by sweeping the stack once, back-to-front — trivial, and it accepts *spatially varying precipitation* (an orographic field from §6 plugs straight in) [29].
 3. March time implicitly node-by-node down the stack: because each node's new height depends only on its receiver's already-updated height, large time steps remain stable [29].
 
-The stack-ordering idea is the single most stealable algorithm in this document for a game engine: it converts "global hydrology" from an iterative, convergence-sensitive simulation into two linear sweeps. The FastScape library family (fastscapelib-fortran and its C++ successor) packages SPL + sediment transport + hillslope diffusion + marine deposition, all implicit and O(n), plus O(n) depression-resolving flow routing over sinks and implicit O(n) glacial erosion; it is designed to couple to flexural isostasy and full 3D tectonic models, and has run $10^8$-node problems on a laptop [30][31][32]. Flexural-isostasy coupling (erosion unloads the crust, the crust rebounds, see Part 1 §4) is a supported add-on, and in a game context is best treated as a cheap low-pass rebound kernel rather than a physical plate solver.
+The stack-ordering idea is the single most stealable algorithm in this document for a game engine: it converts "global hydrology" from an iterative, convergence-sensitive simulation into two linear sweeps. The FastScape library family (fastscapelib-fortran and its C++ successor) packages SPL + sediment transport + hillslope diffusion + marine deposition, all implicit and O(n), plus O(n) depression-resolving flow routing and implicit O(n) glacial erosion; it couples to flexural isostasy and has run $10^8$-node problems on a laptop [30][31][32]. Flexural-isostasy coupling (erosion unloads the crust, the crust rebounds; Part 1 §4) is best treated in a game as a cheap low-pass rebound kernel, not a physical plate solver.
 
 ### 3.4 Cost/quality ranking and what each gets RIGHT
 
@@ -178,17 +176,17 @@ MishMash's confessed pipeline is the cautionary case: "generally a height field,
 
 ### 5.1 World Machine & Gaea (heightfield-first, node-graph)
 
-**World Machine:** a world file "doesn't define a terrain, but the steps to create a terrain" — devices wired in a flowchart, continuous previews, build to high resolution on export; resummon the same graph with a new seed for a sibling terrain [49]. Basic flow per the docs and its own marketing lineage: primitive/noise devices → erosion devices (hydraulic + thermal, the flagship) → coastal/masking/export. **Gaea:** same shape, one node per heightfield operation, graphs strictly left-to-right, Portals/Chokepoints for organization [50]. Gaea's Erosion node is the reference commercial hydraulic-erosion implementation: Feature Scale in meters (width of largest valleys/ridges), Real Scale driven by the terrain definition, selective processing by Rock Softness / Erosion Strength / Precipitation masks (slope/altitude bias or custom), and — the two properties a game should copy — **resolution-parity** (a 512² preview preserves major erosion features of a 4K/8K build) and an explicit **Deterministic** toggle (parallel erosion is otherwise nondeterministic in the small; single-core for reproducibility) [23][51]. Data outputs — Wear, Deposits, Flow — are the mask set every downstream system (biomes, vegetation, texturing) consumes [23]. Gaea's docs also carry the sharpest practitioner warnings in the field: flow-line textures make terrains "extremely conspicuous"; real terrains "rarely have clean flow lines" [51].
+**World Machine:** a world file "doesn't define a terrain, but the steps to create a terrain" — devices wired in a flowchart, continuous previews, build to high resolution on export; the same graph with a new seed gives a sibling terrain [49]. Basic flow: primitive/noise devices → erosion devices (hydraulic + thermal, the flagship) → coastal/masking/export. **Gaea:** same shape — one node per heightfield operation, graphs strictly left-to-right, Portals/Chokepoints for organization [50]. Gaea's Erosion node is the reference commercial hydraulic-erosion implementation: Feature Scale in meters, Real Scale driven by the terrain definition, selective processing by Rock Softness / Erosion Strength / Precipitation masks (slope/altitude bias or custom), and — the two properties a game should copy — **resolution-parity** (a 512² preview preserves major erosion features of a 4K/8K build) and an explicit **Deterministic** toggle (parallel erosion is otherwise nondeterministic in the small; single-core for reproducibility) [23][51]. Data outputs — Wear, Deposits, Flow — are the mask set every downstream system consumes [23]. Gaea's docs also carry the sharpest practitioner warnings in the field: flow-line textures make terrains "extremely conspicuous"; real terrains "rarely have clean flow lines" [51].
 
-*Architecture implication:* heightfield-first with erosion as the central transform, everything else as masks. This is the proven pipeline for *artists*, and its graph structure is what a voxel engine's generation passes should mirror internally.
+*Architecture implication:* heightfield-first with erosion as the central transform, everything else as masks — the proven pipeline for *artists*, and the graph structure a voxel engine's generation passes should mirror internally.
 
 ### 5.2 Unreal Landscape (heightmap-consumer)
 
-Landscape is a GPU heightfield with non-destructive Edit Layers and splines [52], imported from external tools (World Machine explicitly called out); world composition streams level tiles, with a **Tiled Landscape Import** that consumes World Machine's tiled heightmap/weightmap export and requires adjacent tiles to share border vertices [53][54]. Section size 63×63 quads recommended; the 505×505 default, component/section LOD structure, and origin shifting for large worlds are all in the docs [53][55]. *Implication:* Unreal does not generate — it consumes. The generation architecture lives upstream (World Machine/Gaea/Houdini), which is exactly the seam where a game with its own procedural pipeline would slot in.
+Landscape is a GPU heightfield with non-destructive Edit Layers and splines [52], imported from external tools (World Machine explicitly called out); world composition streams level tiles, with a **Tiled Landscape Import** consuming World Machine's tiled heightmap/weightmap export and requiring adjacent tiles to share border vertices [53][54]. Section size 63×63 quads recommended; component/section LOD structure and origin shifting for large worlds are in the docs [53][55]. *Implication:* Unreal does not generate — it consumes; the generation architecture lives upstream, which is exactly the seam where a game with its own procedural pipeline slots in.
 
 ### 5.3 Houdini terrain (heightfields as 2D volumes)
 
-Heightfields are 2D volume primitives (`height` + `mask` layers, default 1000×1000 m at 2 m grid spacing = 500×500 samples) — "it is not possible to work on a terrain's vertical areas" without converting to polygons; masks as second inputs on nearly every node; erosion via `HeightField Erode` (rewritten in Houdini 21) producing `sediment`, `debris`, `flow`, `flowdir` layers, with hydro/thermal sub-node control and the documented stacking workflow: **Massing → Seeding → Lobing → Remapping (elevation passes) → Upsampling → Shaping (Terrace/Clip) → Re-seeding → Erosion**, iterating erode→distort→erode chains [21][56][57][58]. Seeding — "the less smooth the surfaces, the more realistic erosion will be later … obstacles that water and soil must move around" — is the practitioner's version of our §1.3 scale-boundedness point. *Implication:* DCC-grade iteration on the same heightfield-first substrate; the LOD of truth is the 2D grid, 3D comes only by conversion.
+Heightfields are 2D volume primitives (`height` + `mask` layers, default 1000×1000 m at 2 m spacing = 500×500 samples) — "it is not possible to work on a terrain's vertical areas" without converting to polygons; masks as second inputs on nearly every node; erosion via `HeightField Erode` (rewritten in Houdini 21) producing `sediment`, `debris`, `flow`, `flowdir` layers, with hydro/thermal sub-node control and the documented stacking workflow: **Massing → Seeding → Lobing → Remapping (elevation passes) → Upsampling → Shaping (Terrace/Clip) → Re-seeding → Erosion**, iterating erode→distort→erode chains [21][56][57][58]. Seeding — "the less smooth the surfaces, the more realistic erosion will be later … obstacles that water and soil must move around" — is the practitioner's version of our §1.3 scale-boundedness point. *Implication:* DCC-grade iteration on the same heightfield-first substrate; the LOD of truth is the 2D grid, 3D only by conversion.
 
 ### 5.4 No Man's Sky (density-first on a cube-sphere)
 
@@ -206,7 +204,7 @@ From the two GDC talks (Sean Murray 2017, "Building Worlds Using Math(s)"; Innes
 The 1.18+ architecture, from the wiki's noise-router documentation and the custom-worldgen tutorial [62][63][64]:
 
 - **Noise settings** carry a **noise router**: a collection of **density functions** — composable JSON operators (`add`, `mul`, `clamp`, `range_choice`, `y_clamped_gradient`, `noise`, …) evaluated per block position — with named channels: `final_density` (where solid), aquifer channels (`barrier`, `fluid_level_floodedness`, `fluid_level_spread`, `lava`), ore-vein channels, and — separately — biome channels `temperature`, `vegetation` (humidity), `continents`, `erosion`, `depth`, `ridges` (weirdness) that "do not affect terrain shape" [62].
-3. **Terrain shape** = `sloped_cheese` (base 3D density from `depth` × `factor` — roughly $h(x,z)-y$ plus 3D noise) with a `range_choice` split: above the 1.5625 threshold, the surface regime; below, caves. A `jaggedness` noise adds sharp peaks in high mountains [63].
+- **Terrain shape** = `sloped_cheese` (base 3D density from `depth` × `factor` — roughly $h(x,z)-y$ plus 3D noise) with a `range_choice` split: above the 1.5625 threshold, the surface regime; below, caves. A `jaggedness` noise adds sharp peaks in high mountains [63].
 - **Caves — parent anchor confirmed and extended:** Minecraft carves with **three** noise-cave types, not two — **cheese caves** (3D `cave_cheese` noise blobs: "the black part of the noise image becomes stone, white becomes air … resembling cheese with many holes" — large open pockets), **spaghetti caves** (2D-ish noise pair whose *intersection* is air — long tunnels), and **noodle caves** (thinner, squigglier, 1–5 block wide variants), plus `cave_entrances` noise connecting surface to underground, noise pillars, and aquifers governing cave water/lava with per-aquifer fluid levels [62][63][64]. Pre-1.18 "carver caves" (worm-like feature carvers) still exist as a separate feature pass [64].
 - **Biomes:** a multi-noise parameter list — each biome is a point in (temperature, humidity, continentalness, erosion, weirdness, depth) space; nearest-neighbor wins. Terrain and biome *share* some noise inputs (the same continents/erosion/ridges fields feed both), creating the implicit link between shape and surface without biome-determines-terrain coupling [62][64].
 - **Surface rules:** a separate declarative pass decides surface blocks (grass/sand/etc. by biome + slope + depth + water) after density [62][64].
@@ -217,11 +215,11 @@ The 1.18+ architecture, from the wiki's noise-router documentation and the custo
 
 From Tarn Adams' own descriptions (Gamasutra 2008 interview; GameAIPro ch. 41; PRACTICE 2016) [65][66][67]:
 
-1. **Elevation** by midpoint displacement (its axis-alignment artifacts explicitly why the erosion phase exists next).
+1. **Elevation** by midpoint displacement (its axis-alignment artifacts are explicitly why the erosion phase exists next).
 2. **Climate fields:** temperature (biased by elevation and latitude), **rainfall later biased with orographic precipitation / rain shadows**, drainage as another fractal, plus salinity, vegetation, and fantasy fields (savagery, good/evil).
 3. **Biomes as derived lookup, never laid down directly:** "rainfall ≥ 66/100 and drainage < 50 → swamp" — "the nice thing about having the fractally-generated basic fields is that the biome boundaries all look natural" [65].
-4. **Erosion phase:** temporary river paths run out from mountain bases, "digging away at a square if it can't find a lower one"; then real rivers, *forced* to the ocean if they fail; lakes bulged; loop-erasure; flow amounts and tributary structure computed; rivers named [65]. This is a hand-rolled priority-flood-plus-carve — §4's algorithm class, invented independently in 2006-era hobby code.
-5. Then vegetation/animal populations, civilizations, ~500 years of history (economy, wars, sites) — "long-term simulation design" [65][67]. Adams' design principles: simulate basic fields and let biomes *arise*; and "base your model on real-world analogs … the world maps improved greatly when rain shadows were taken into consideration … drainage was another nonobvious consideration" [66].
+4. **Erosion phase:** temporary river paths run out from mountain bases, "digging away at a square if it can't find a lower one"; then real rivers, *forced* to the ocean if they fail; lakes bulged; loop-erasure; flow amounts and tributary structure computed; rivers named [65]. A hand-rolled priority-flood-plus-carve — §4's algorithm class, invented independently in 2006-era hobby code.
+5. Then vegetation/animal populations, civilizations, ~500 years of history [65][67]. Adams' design principles: simulate basic fields and let biomes *arise*; "base your model on real-world analogs … the world maps improved greatly when rain shadows were taken into consideration … drainage was another nonobvious consideration" [66].
 
 *Implication:* simulation-first is the only shipped architecture whose *rainfall is a function of its own mountains* — the payoff this document's §6 argues for — and it runs at world-map resolution (coarse grids, seconds-to-minutes), not voxel resolution. The scale separation is the lesson.
 
@@ -276,7 +274,7 @@ The standard Minecraft-style surface: $d(x,y,z) = h(x,z) - y + N_3(x,y,z)$ — a
 
 Minecraft 1.18's actual scheme (§5.5): large blob **cheese** caves from a clamped 3D noise (`cave_cheese`, y-anisotropic scale ~0.67 vs 1.0, suppressed near the surface by a `sloped_cheese`-dependent term); tunnel **spaghetti** caves from the intersection of two ridged-style 2D noises; **noodle** caves as thin 1–5-block squiggles; cave-entrance noise linking surface to deep; noise pillars; aquifers as per-region fluid levels with flood/spread/barrier channels deciding water vs air vs lava (lava threshold 0.3) [62][63][64]. Frequency/hollowness/thickness parameters per type give "extremely diverse" caves [64].
 
-**Cellular-automata smoothing** is the complementary pass where it matters: Minecraft carvers historically applied post-carve smoothing to tunnel walls, and CA smoothing is standard in 2D falling-sand/tunnel generators (Dwarf Fortress's fluid engine is itself "a specialized cellular automata … water falls down if it can, over if it can" [65]; Rijsdijk's voxel playground runs CA water over brickmaps, per the micro-voxel doc §3.7). For 3D cave networks, CA passes buy wall-eroded, pocket-rounded tunnels from raw noise intersections at O(n) per iteration — cheap enough at chunk scale.
+**Cellular-automata smoothing** is the complementary pass where it matters: Minecraft carvers historically applied post-carve smoothing, and CA is standard in falling-sand/tunnel generators (Dwarf Fortress's fluid engine is "a specialized cellular automata … water falls down if it can, over if it can" [65]; Rijsdijk's voxel playground runs CA water, per the micro-voxel doc §3.7). CA passes buy wall-eroded, pocket-rounded tunnels from raw noise intersections at O(n) per iteration — cheap at chunk scale.
 
 ### 7.3 Arches and overhangs
 
@@ -288,7 +286,7 @@ Layered materials along Y — Minecraft's surface rules + deepslate banding; Hou
 
 ### 7.5 The heightfield–voxel hybrid — argued for, emphatically
 
-Generate a hydrologically-correct heightfield (§4), then voxelize with 3D detail only where needed. **For:** (a) rivers, drainage, and biome fields all need 2D graphs anyway — no one has shipped coherent river networks from pure 3D density fields; (b) NMS — the most voxel-native shipped game — does exactly this (noise-varied sphere radius + a thin 3D shell) [60]; Minecraft's `sloped_cheese` is the flat-world version [63]; MishMash's micro-voxel engine is "generally a height field, however with several stamping and carving passes to create 3d detail" (micro-voxel doc §2.2); (c) the collision/vegetation/LOD systems all want an authoritative analytic surface (the engine's own `height_at` pattern — micro-voxel doc §4.2 makes the same argument). **Against:** the hybrid's honest cost — 3D detail near the surface can contradict the hydrology (a cave breaching a riverbed drains the river; MishMash's documented pond-draining bug). The discipline: treat the 3D shell as *subordinate* — carve caves with a density budget that goes to zero within some distance below the water table, and make the water table a property of the flow graph, not of local geometry. Verdict: hybrid, with the heightfield as the constitution and 3D noise as statute.
+Generate a hydrologically-correct heightfield (§4), then voxelize with 3D detail only where needed. **For:** (a) rivers, drainage, and biome fields all need 2D graphs anyway — no one has shipped coherent river networks from pure 3D density fields; (b) NMS — the most voxel-native shipped game — does exactly this (noise-varied sphere radius + a thin 3D shell) [60]; Minecraft's `sloped_cheese` is the flat-world version [63]; MishMash's micro-voxel engine is "generally a height field, however with several stamping and carving passes to create 3d detail" (micro-voxel doc §2.2); (c) collision/vegetation/LOD all want an authoritative analytic surface (the engine's own `height_at` pattern — micro-voxel doc §4.2 argues the same). **Against:** 3D detail near the surface can contradict the hydrology (a cave breaching a riverbed drains the river; MishMash's documented pond-draining bug). The discipline: treat the 3D shell as *subordinate* — carve caves with a density budget that goes to zero below the water table, and make the water table a property of the flow graph, not local geometry. Verdict: hybrid, with the heightfield as the constitution and 3D noise as statute.
 
 ---
 
@@ -382,108 +380,108 @@ What this pipeline deliberately does *not* include: real-time erosion, per-frame
   3. **"$k^{-2}$" needs qualification:** true for 1D angle-integrated second-order stats (Turcotte [1]); the 2D angle-averaged exponent is $\beta+1$; and monofractal fBm is formally rejected against multifractal FIF in higher moments (Lovejoy/Schertzer [3][5]).
   4. **NMS "weird terrain libraries" — unverified:** could not confirm any named internal library from the GDC talks or press; verified instead: layered noise + domain warp in "uber noise" + hand-injected positive/negative-space structure algorithms [12][15][60][61]. Recommend dropping the phrase from the merged doc.
   5. **Lapse rate ~6.5 °C/km — flagged, not URL-verified this session** (matches the standard-atmosphere constant; no fetched source). Also a *nuance* rather than disagreement: D8's diagonal bias is confirmed, but the newest re-evaluation shows D∞ carries its own ~25% cardinal/ordinal bias [35] — the merged doc shouldn't present D∞ as bias-free.
-- **Unverified-and-omitted:** none beyond #4/#5 (no fabricated URLs; the Zelda-wind-audio-style omissions were not needed here). The firespark.de hydraulic-erosion paper and ranmantaru blog are cited by URL as community-standard references (author metadata not captured in this session's fetches).
+- **Unverified-and-omitted:** none beyond #4/#5 (no fabricated URLs; no Zelda-wind-audio-style unverifiable talks were needed here). The firespark.de hydraulic-erosion paper and ranmantaru blog are cited by URL as community-standard references (author metadata not captured in this session's fetches).
 
 ## Sources
 
-1. Turcotte, D.L. (1987), "A fractal interpretation of topography and geoid spectra on the Earth, Moon, Venus, and Mars" — https://doi.org/10.1029/jb092ib04p0e597
-2. Musgrave, F.K. (1994), *Methods for Realistic Landscape Imaging* (dissertation) — https://www.kenmusgrave.com/dissertation.pdf
-3. Lovejoy, S. et al. (2006), "Multifractal earth topography," *Nonlin. Proc. Geophys.* 13 — https://npg.copernicus.org/articles/13/541/2006/ (PDF: https://hal.science/hal-00331093/file/npg-13-541-2006.pdf)
-4. Turcotte (2007), "Self-organized complexity in geomorphology" — https://pdodds.w3.uvm.edu/files/papers/others/2007/turcotte2007a.pdf
+1. Turcotte (1987), fractal topography/geoid spectra — https://doi.org/10.1029/jb092ib04p0e597
+2. Musgrave (1994), *Methods for Realistic Landscape Imaging* — https://www.kenmusgrave.com/dissertation.pdf
+3. Lovejoy et al. (2006), multifractal earth topography — https://npg.copernicus.org/articles/13/541/2006/ (PDF: https://hal.science/hal-00331093/file/npg-13-541-2006.pdf)
+4. Turcotte (2007), self-organized complexity in geomorphology — https://pdodds.w3.uvm.edu/files/papers/others/2007/turcotte2007a.pdf
 5. Gagnon et al. (2006), multifractal topography EPL — http://www.physics.mcgill.ca/~gang/eprints/eprintLovejoy/topoEPL.JS_Gagnon.pdf
-6. Musgrave, Kolb, Mace (1989), "The synthesis and rendering of eroded fractal terrains" — https://doi.org/10.1145/74334.74337
-7. Musgrave, "Procedural Fractal Terrains" (Texturing & Modeling chapter) — https://blenderartists.org/uploads/short-url/z1tZXakC8HSoHjytpwiCvqKejSU.pdf
+6. Musgrave, Kolb, Mace (1989), eroded fractal terrains — https://doi.org/10.1145/74334.74337
+7. Musgrave, "Procedural Fractal Terrains" chapter — https://blenderartists.org/uploads/short-url/z1tZXakC8HSoHjytpwiCvqKejSU.pdf
 8. Kaplan & Kuo (1995), extended self-similar terrain — https://doi.org/10.1117/12.205974
 9. Musgrave terrain course notes — https://www.classes.cs.uchicago.edu/archive/2015/fall/23700-1/final-project/MusgraveTerrain00.pdf
-10. NCEI/NOAA, "Hypsographic Curve of Earth's Surface from ETOPO1" — https://www.ncei.noaa.gov/sites/default/files/2023-01/Hypsographic%20Curve%20of%20Earth%E2%80%99s%20Surface%20from%20ETOPO1.pdf
-11. Pedersen, V.K. et al. (2024), "Earth's hypsometry and what it tells us about global sea level" — https://pure.au.dk/ws/portalfiles/portal/451367801/1-s2.0-S0012821X2400503X-main.pdf
-12. r2d2meuleu/terrain-erosion-3-ways (NMS uber-noise domain warp + erosion motivation) — https://github.com/r2d2meuleu/terrain-erosion-3-ways
-13. Quilez, I., "Domain warping" — https://iquilezles.org/articles/warp/
-14. Michel et al. (2015), "Generation of Folded Terrains from Simple Vector Maps" — https://portfolio.exppad.com/documents/2015__Michel__Generation_of_Folded_Terrains_from_Simple_Vector_Maps.pdf
-15. Murray, S. (GDC 2017), "Building Worlds Using Math(s)" — https://www.youtube.com/watch?v=C9RyEiEzMiU ; https://www.gdcvault.com/play/1024514/Building-Worlds-Using
+10. NCEI/NOAA, hypsographic curve from ETOPO1 — https://www.ncei.noaa.gov/sites/default/files/2023-01/Hypsographic%20Curve%20of%20Earth%E2%80%99s%20Surface%20from%20ETOPO1.pdf
+11. Pedersen et al. (2024), Earth's hypsometry & sea level — https://pure.au.dk/ws/portalfiles/portal/451367801/1-s2.0-S0012821X2400503X-main.pdf
+12. terrain-erosion-3-ways (NMS uber noise + erosion motivation) — https://github.com/r2d2meuleu/terrain-erosion-3-ways
+13. Quilez, "Domain warping" — https://iquilezles.org/articles/warp/
+14. Michel et al. (2015), folded terrains from vector maps — https://portfolio.exppad.com/documents/2015__Michel__Generation_of_Folded_Terrains_from_Simple_Vector_Maps.pdf
+15. Murray (GDC 2017), Building Worlds Using Math(s) — https://www.youtube.com/watch?v=C9RyEiEzMiU ; https://www.gdcvault.com/play/1024514/Building-Worlds-Using
 16. Blender OSL Musgrave node — https://github.com/jesterKing/blender/blob/master/blender/intern/cycles/kernel/shaders/node_musgrave_texture.osl
-17. Utah Geological Survey, "What is the Grand Staircase?" (PI-64) — https://ugspub.nr.utah.gov/publications/public_information/pi-64.pdf
-18. NPS, "Grand Staircase" — https://www.nps.gov/brca/learn/nature/grandstaircase.htm
-19. Wikipedia, "Grand Staircase" — https://en.wikipedia.org/wiki/Grand_Staircase
-20. Darling/Bierman et al. (2018), GSA abstract, erosion-rate patterns Grand Canyon/Staircase — https://www.uvm.edu/cosmolab/papers/Darling_2018_6461.pdf
-21. SideFX, "Erosion" (Houdini heightfields guide) — https://www.sidefx.com/docs/houdini/heightfields/erosion.html
-22. Montgomery, D.R. (2001), "Slope Distributions, Threshold Hillslopes, and Steady-state Topography" — https://doi.org/10.2475/ajs.301.4-5.432
-23. Gaea docs, "Erosion node" — https://docs.gaea.app/reference/nodes/simulate/erosion.html
+17. Utah Geol. Survey, "What is the Grand Staircase?" — https://ugspub.nr.utah.gov/publications/public_information/pi-64.pdf
+18. NPS, Grand Staircase — https://www.nps.gov/brca/learn/nature/grandstaircase.htm
+19. Wikipedia, Grand Staircase — https://en.wikipedia.org/wiki/Grand_Staircase
+20. Darling/Bierman et al. (2018), GSA abstract, erosion rates Grand Staircase — https://www.uvm.edu/cosmolab/papers/Darling_2018_6461.pdf
+21. SideFX, Houdini erosion guide — https://www.sidefx.com/docs/houdini/heightfields/erosion.html
+22. Montgomery (2001), slope distributions & threshold hillslopes — https://doi.org/10.2475/ajs.301.4-5.432
+23. Gaea docs, Erosion node — https://docs.gaea.app/reference/nodes/simulate/erosion.html
 24. SebLague/Hydraulic-Erosion — https://www.github.com/SebLague/Hydraulic-Erosion
-25. Lague transcript, "Coding Adventure: Hydraulic Erosion" — https://rosetta.to/u/sebastianlague/coding-adventure-hydraulic-erosion (video: https://www.youtube.com/watch?v=eaXk97ujbPQ)
-26. firespark.de, "Implementation of a method for hydraulic erosion" — https://www.firespark.de/resources/downloads/implementation%20of%20a%20methode%20for%20hydraulic%20erosion.pdf
-27. ranmantaru, "Water erosion on heightmap terrain" — http://ranmantaru.com/blog/2011/10/08/water-erosion-on-heightmap-terrain/
-28. "Minimizing the grid-resolution dependence of flow-routing algorithms" — https://www.sciencedirect.com/science/article/abs/pii/S0169555X10002606
-29. Braun, J. & Willett, S.D. (2013), O(n) implicit stream-power solver — https://doi.org/10.1016/j.geomorph.2012.10.008 (https://www.sciencedirect.com/science/article/abs/pii/S0169555X12004618)
-30. FastScapeLib documentation — https://fastscape.org/fastscapelib-fortran/
-31. GFZ, "FastScape — landscape evolution model development" — https://www.gfz.de/en/section/earth-surface-process-modelling/projects/current-projects/fastscape-landscape-evolution-model-development
-32. Bovy et al. (2020), "The FastScape software stack" — https://doi.org/10.5194/egusphere-egu2020-9474
-33. Barnes, Lehman, Mulla (2014), "Priority-Flood" — https://richard.science/sci/2014_depressions.pdf ; https://doi.org/10.1016/j.cageo.2013.04.024 ; https://arxiv.org/pdf/1511.04463
-34. Barnes et al., ScienceDirect abstract page — https://www.sciencedirect.com/science/article/abs/pii/S0098300413001337
-35. "An evaluation of flow-routing algorithms for calculating contributing area on regular grids," *Earth Surf. Dynam.* 13 (2025) — https://esurf.copernicus.org/articles/13/239/2025/esurf-13-239-2025.pdf
-36. "Runoff simulation with eight different flow accumulation algorithms" — https://www.sciencedirect.com/science/article/abs/pii/S1364815214002497
-37. Pelletier/USGS-related D∞ evaluation (same as 28) — https://www.sciencedirect.com/science/article/abs/pii/S0169555X10002606
-38. Landlab, "Comparison of FlowDirectors" — https://landlab.csdms.io/tutorials/flow_direction_and_accumulation/compare_FlowDirectors.html
+25. Lague transcript, hydraulic erosion — https://rosetta.to/u/sebastianlague/coding-adventure-hydraulic-erosion (video: https://www.youtube.com/watch?v=eaXk97ujbPQ)
+26. firespark.de, hydraulic erosion method — https://www.firespark.de/resources/downloads/implementation%20of%20a%20methode%20for%20hydraulic%20erosion.pdf
+27. ranmantaru, water erosion on heightmaps — http://ranmantaru.com/blog/2011/10/08/water-erosion-on-heightmap-terrain/
+28. Grid-resolution dependence of flow routing — https://www.sciencedirect.com/science/article/abs/pii/S0169555X10002606
+29. Braun & Willett (2013), O(n) implicit SPL solver — https://doi.org/10.1016/j.geomorph.2012.10.008 (https://www.sciencedirect.com/science/article/abs/pii/S0169555X12004618)
+30. FastScapeLib docs — https://fastscape.org/fastscapelib-fortran/
+31. GFZ, FastScape project page — https://www.gfz.de/en/section/earth-surface-process-modelling/projects/current-projects/fastscape-landscape-evolution-model-development
+32. Bovy et al. (2020), FastScape software stack — https://doi.org/10.5194/egusphere-egu2020-9474
+33. Barnes, Lehman, Mulla (2014), Priority-Flood — https://richard.science/sci/2014_depressions.pdf ; https://doi.org/10.1016/j.cageo.2013.04.024 ; https://arxiv.org/pdf/1511.04463
+34. Barnes et al., ScienceDirect page — https://www.sciencedirect.com/science/article/abs/pii/S0098300413001337
+35. Flow-routing algorithm evaluation, *Earth Surf. Dynam.* 13 (2025) — https://esurf.copernicus.org/articles/13/239/2025/esurf-13-239-2025.pdf
+36. Eight flow-accumulation algorithms compared — https://www.sciencedirect.com/science/article/abs/pii/S1364815214002497
+37. (same as 28)
+38. Landlab, FlowDirectors comparison — https://landlab.csdms.io/tutorials/flow_direction_and_accumulation/compare_FlowDirectors.html
 39. Orlandini et al., path-based D8-LAD/LTD — http://idrologia.unimore.it/orlandini/web-archive/papers/2002WR001639.pdf
-40. (as 38)
-41. (as 28)
-42. Tarboton, Bras, Rodriguez-Iturbe (1991), "On the extraction of channel networks from digital elevation data" — https://hydrology.usu.edu/dtarb/hp91.pdf ; https://doi.org/10.1002/hyp.3360050107
-43. TauDEM, "Stream Drop Analysis" / "Stream Definition With Drop Analysis" — https://hydrology.usu.edu/taudem/taudem5/help53/StreamDropAnalysis.html ; https://hydrology.usu.edu/taudem/taudem5/help53/StreamDefinitionWithDropAnalysis.html
-44. Tarboton, "Terrain Analysis Using Digital Elevation Models in Hydrology" — https://hydrology.usu.edu/dtarb/ESRI_paper_6_03.pdf
-45. NetMap/Terrainworks, "Drainage Density" — https://www.netmaptools.org/Pages/NetMapHelp/drainage_density.htm
-46. Tucker, G.E. & Bras, R.L. (1998), "Hillslope processes, drainage density, and landscape morphology" — https://doi.org/10.1029/98wr01474
-47. Collins & Bras (2010), "Climatic and ecological controls of equilibrium drainage density…" — https://doi.org/10.1029/2009wr008615
+40. (same as 38)
+41. (same as 28)
+42. Tarboton, Bras, Rodriguez-Iturbe (1991), channel-network extraction — https://hydrology.usu.edu/dtarb/hp91.pdf ; https://doi.org/10.1002/hyp.3360050107
+43. TauDEM, Stream Drop Analysis / Stream Definition — https://hydrology.usu.edu/taudem/taudem5/help53/StreamDropAnalysis.html ; https://hydrology.usu.edu/taudem/taudem5/help53/StreamDefinitionWithDropAnalysis.html
+44. Tarboton, terrain analysis in hydrology — https://hydrology.usu.edu/dtarb/ESRI_paper_6_03.pdf
+45. NetMap, drainage density — https://www.netmaptools.org/Pages/NetMapHelp/drainage_density.htm
+46. Tucker & Bras (1998), hillslope processes & drainage density — https://doi.org/10.1029/98wr01474
+47. Collins & Bras (2010), drainage density in drylands — https://doi.org/10.1029/2009wr008615
 48. Kim, Yoon, Choi (2023), LiDAR drainage density — https://doi.org/10.3390/app13020700
 49. World Machine Help, Ch.1 — https://help.world-machine.com/topic/chapter-1-an-introduction-to-world-machine/
-50. Gaea docs, "Infinity Graph" — https://docs.quadspinner.com/Guide/Graph/Graph.html
-51. Gaea docs, "Understanding Erosion" — https://docs.gaea.app/using/using-gaea/understanding-erosion/index.html
-52. UE4.27, "Landscape Edit Layers" — https://docs.unrealengine.com/4.27/en-US/BuildingWorlds/Landscape/Layers/
-53. UE4.27, "World Composition User Guide" — https://docs.unrealengine.com/4.27/en-US/BuildingWorlds/LevelStreaming/WorldBrowser/
-54. UE, "World Composition in Unreal Engine" — https://dev.epicgames.com/documentation/unreal-engine/world-composition-in-unreal-engine
-55. UE4.27, "Creating and Using Custom Heightmaps and Layers" — https://docs.unrealengine.com/4.27/en-US/BuildingWorlds/Landscape/Custom/
-56. SideFX, "Heightfields and terrains" — https://www.sidefx.com/docs/houdini/heightfields/index.html
-57. SideFX, "Realistic terrain with heightfields" — http://www.sidefx.com/docs/houdini/model/terrain_workflow.html
-58. SideFX, "Terrain creation" — http://www.sidefx.com/docs/houdini/heightfields/creation.html
-59. McKendrick, I. (GDC 2017), "Continuous World Generation in No Man's Sky" — https://www.youtube.com/watch?v=sCRzxEEcO2Y ; https://www.gdcvault.com/play/1024265/Continuous-World-Generation-in-No-Man-s-Sky-
+50. Gaea docs, Infinity Graph — https://docs.quadspinner.com/Guide/Graph/Graph.html
+51. Gaea docs, Understanding Erosion — https://docs.gaea.app/using/using-gaea/understanding-erosion/index.html
+52. UE4.27, Landscape Edit Layers — https://docs.unrealengine.com/4.27/en-US/BuildingWorlds/Landscape/Layers/
+53. UE4.27, World Composition — https://docs.unrealengine.com/4.27/en-US/BuildingWorlds/LevelStreaming/WorldBrowser/
+54. UE, World Composition — https://dev.epicgames.com/documentation/unreal-engine/world-composition-in-unreal-engine
+55. UE4.27, custom heightmaps & layers — https://docs.unrealengine.com/4.27/en-US/BuildingWorlds/Landscape/Custom/
+56. SideFX, heightfields & terrains — https://www.sidefx.com/docs/houdini/heightfields/index.html
+57. SideFX, realistic terrain workflow — http://www.sidefx.com/docs/houdini/model/terrain_workflow.html
+58. SideFX, terrain creation — http://www.sidefx.com/docs/houdini/heightfields/creation.html
+59. McKendrick (GDC 2017), Continuous World Generation in NMS — https://www.youtube.com/watch?v=sCRzxEEcO2Y ; https://www.gdcvault.com/play/1024265/Continuous-World-Generation-in-No-Man-s-Sky-
 60. Polygon (2017), "In the beginning, No Man's Sky was flat" — https://www.polygon.com/2017/3/2/14790028/no-mans-sky-was-flat-procedural-world-generation-maths/
-61. (as 15)
-62. Minecraft Wiki, "Noise router" — https://minecraft.wiki/w/Noise_router
-63. Minecraft Wiki, "Tutorial:Custom world generation" — https://minecraft.wiki/w/Tutorial:Custom_world_generation
-64. Minecraft cave types & generation order — https://wiki.sasgaming.net/wiki/Minecraft:Cave ; https://minecraftathome.miraheze.org/wiki/World_Generation
-65. Adams, T., Gamasutra interview (2008), "The Making Of Dwarf Fortress" — https://www.gamedeveloper.com/design/interview-the-making-of-dwarf-fortress
-66. Adams, T., "Simulation Principles from Dwarf Fortress," GameAIPro ch. 41 — http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter41_Simulation_Principles_from_Dwarf_Fortress.pdf
-67. Adams, T., PRACTICE 2016 talk — https://www.youtube.com/watch?v=yDPb0jqRr3o
-68. "Interpreting Whittaker Biome Diagrams" guide — https://gveg.wyobiodiversity.org/application/files/7916/4641/2117/Whittaker_Diagram_Guide.pdf
-69. Macmillan/Gervais, "CLIMATE AND LIFE: Biomes" — https://digfir-published.macmillanusa.com/gervais1e/gervais1e_ch08_2.html
+61. (same as 15)
+62. Minecraft Wiki, Noise router — https://minecraft.wiki/w/Noise_router
+63. Minecraft Wiki, Tutorial:Custom world generation — https://minecraft.wiki/w/Tutorial:Custom_world_generation
+64. Minecraft caves & generation order — https://wiki.sasgaming.net/wiki/Minecraft:Cave ; https://minecraftathome.miraheze.org/wiki/World_Generation
+65. Adams, Gamasutra interview (2008) — https://www.gamedeveloper.com/design/interview-the-making-of-dwarf-fortress
+66. Adams, GameAIPro ch. 41 — http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter41_Simulation_Principles_from_Dwarf_Fortress.pdf
+67. Adams, PRACTICE 2016 — https://www.youtube.com/watch?v=yDPb0jqRr3o
+68. Whittaker diagram guide — https://gveg.wyobiodiversity.org/application/files/7916/4641/2117/Whittaker_Diagram_Guide.pdf
+69. Macmillan/Gervais, Climate and Life: Biomes — https://digfir-published.macmillanusa.com/gervais1e/gervais1e_ch08_2.html
 70. Scientific Data, modified Whittaker diagram — https://www.nature.com/articles/s41597-025-04387-0/figures/2
-71. Smith, R.B. & Barstad, I. (2004), "A Linear Theory of Orographic Precipitation" — https://journals.ametsoc.org/view/journals/atsc/61/12/1520-0469_2004_061_1377_altoop_2.0.co_2.xml
-72. fastscape-lem/orographic-precipitation (Python LT model) — https://github.laiyagushi.com/fastscape-lem/orographic-precipitation
-73. QGIS plugin, "Linear Theory Orographic Precipitation" — https://plugins.qgis.org/plugins/LinearTheoryOrographicPrecipitation/
-74. Roe & Baker (2006), orographic precipitation extension — https://earthweb.ess.washington.edu/roe/Web/GerardWeb/Publications_files/RoeBaker_PrecipPatt_JAS06.pdf
-75. Oliveras & Malhi (2015), "Many shades of green: the dynamic tropical forest–savannah transition zones" — https://royalsocietypublishing.org/doi/10.1098/rstb.2015.0308
-76. Dantas, Batalha, Pausas (2013), "Fire drives functional thresholds on the savanna–forest transition" — https://digital.csic.es/bitstream/10261/94686/1/Dantas-2013-Ecology_savanna-forest-threshold.pdf
-77. Bernardino et al. (2022), "Savanna–Forest Coexistence Across a Fire Gradient" — https://www.uv.es/jgpausas/papers/Bernardino-2022-Ecosystems_savanna-forest-fire-gradient.pdf
-78. Staal et al. (2016), "Bistability, Spatial Interaction, and the Distribution of Tropical Forests and Savannas" — https://doi.org/10.1007/s10021-016-0011-1
-79. "Widespread forest-savanna coexistence but limited bistability… in Central Africa" — https://beta.iopscience.iop.org/article/10.1088/1748-9326/ad8cef
-80. Wuyts et al., gradual vs steep forest edges (throughfall) — https://www.sciencedirect.com/science/article/abs/pii/S0378112708007378
-81. Sci. Rep. (2023), forest edge type & snail assemblages (edge widths) — https://www.nature.com/articles/s41598-023-43758-8
-82. Keddy, C., "Forest Structure in Eastern North America" — https://www.eomf.on.ca/media/k2/attachments/structure.pdf
-83. Burrascano et al. (2013), temperate old-growth global review — https://www.uvm.edu/giee/pubpdfs/Burrascano_2013_Forest_Ecology_and_Management.pdf
+71. Smith & Barstad (2004), linear theory of orographic precipitation — https://journals.ametsoc.org/view/journals/atsc/61/12/1520-0469_2004_061_1377_altoop_2.0.co_2.xml
+72. fastscape-lem orographic-precipitation (Python) — https://github.com/fastscape-lem/orographic-precipitation
+73. QGIS LT orographic precipitation plugin — https://plugins.qgis.org/plugins/LinearTheoryOrographicPrecipitation/
+74. Roe & Baker (2006), orographic precipitation patterns — https://earthweb.ess.washington.edu/roe/Web/GerardWeb/Publications_files/RoeBaker_PrecipPatt_JAS06.pdf
+75. Oliveras & Malhi (2015), forest–savannah transitions — https://royalsocietypublishing.org/doi/10.1098/rstb.2015.0308
+76. Dantas, Batalha, Pausas (2013), fire-driven savanna–forest thresholds — https://digital.csic.es/bitstream/10261/94686/1/Dantas-2013-Ecology_savanna-forest-threshold.pdf
+77. Bernardino et al. (2022), savanna–forest coexistence across fire gradient — https://www.uv.es/jgpausas/papers/Bernardino-2022-Ecosystems_savanna-forest-fire-gradient.pdf
+78. Staal et al. (2016), bistability & tropical forest/savanna distribution — https://doi.org/10.1007/s10021-016-0011-1
+79. Forest-savanna coexistence in Central Africa — https://beta.iopscience.iop.org/article/10.1088/1748-9326/ad8cef
+80. Wuyts et al., gradual vs steep forest edges — https://www.sciencedirect.com/science/article/abs/pii/S0378112708007378
+81. Sci. Rep. (2023), forest edge type & snail assemblages — https://www.nature.com/articles/s41598-023-43758-8
+82. Keddy, forest structure in E. North America — https://www.eomf.on.ca/media/k2/attachments/structure.pdf
+83. Burrascano et al. (2013), temperate old-growth review — https://www.uvm.edu/giee/pubpdfs/Burrascano_2013_Forest_Ecology_and_Management.pdf
 84. Frontiers (2026), Isoberlinia stand structure — https://www.frontiersin.org/journals/forests-and-global-change/articles/10.3389/ffgc.2026.1800379/full
-85. Red Blob Games, "2D Point Sets" (jittered grid / Poisson / blue noise) — https://www.redblobgames.com/x/1830-jittered-grid/
-86. Muratori, C., "The Nebraska Problem" — https://caseymuratori.com/blog_0011
-87. Lagae & Dutré, "A Comparison of Methods for Generating Poisson Disk Distributions" — https://onlinelibrary.wiley.com/doi/10.1111/j.1467-8659.2007.01100.x
-88. Williams, Ritsos, Headleand (2020), "Virtual Forestry Generation: Evaluating Models for Tree Placement in Games" — https://mdpi-res.com/d_attachment/computers/computers-09-00020/article_deploy/computers-09-00020.pdf?version=1584100029
+85. Red Blob Games, 2D point sets — https://www.redblobgames.com/x/1830-jittered-grid/
+86. Muratori, "The Nebraska Problem" — https://caseymuratori.com/blog_0011
+87. Lagae & Dutré, Poisson-disk comparison — https://onlinelibrary.wiley.com/doi/10.1111/j.1467-8659.2007.01100.x
+88. Williams, Ritsos, Headleand (2020), virtual forestry tree placement — https://mdpi-res.com/d_attachment/computers/computers-09-00020/article_deploy/computers-09-00020.pdf?version=1584100029
 89. Åkesson (2025), KTH thesis on PVG methods — http://urn.kb.se/resolve?urn=urn%3Anbn%3Ase%3Akth%3Adiva-367794
-90. Wolinsky & Pratson (2005), "Constraints on landscape evolution from slope histograms" — https://doi.org/10.1130/g21296.1
-91. "On the dynamic smoothing of mountains" (slope-tail exponent vs age) — https://agupubs.onlinelibrary.wiley.com/doi/10.1002/2017GL073095
-92. Graf, W.L. (1970), "The Geomorphology of the Glacial Valley Cross Section" — https://scholarcommons.sc.edu/cgi/viewcontent.cgi?article=1041&context=geog_facpub
-93. Coles (2014), glacial valley cross-sections thesis (b-values) — https://etheses.whiterose.ac.uk/id/eprint/5452/1/Coles_2014.pdf
-94. Montgomery (2002), "Valley formation by fluvial and glacial erosion" — https://glaciers.pdx.edu/fountain/readings/TopicsInGeomorphology/Montgomery2002_ValleyFormationGlaciersRivers.pdf
-95. "Assessing glacial modification of bedrock valleys using a novel approach" (V-index) — https://www.sciencedirect.com/science/article/abs/pii/S0169555X18302526
+90. Wolinsky & Pratson (2005), landscape evolution from slope histograms — https://doi.org/10.1130/g21296.1
+91. On the dynamic smoothing of mountains — https://agupubs.onlinelibrary.wiley.com/doi/10.1002/2017GL073095
+92. Graf (1970), glacial valley cross-section — https://scholarcommons.sc.edu/cgi/viewcontent.cgi?article=1041&context=geog_facpub
+93. Coles (2014), glacial valley cross-sections thesis — https://etheses.whiterose.ac.uk/id/eprint/5452/1/Coles_2014.pdf
+94. Montgomery (2002), valley formation fluvial vs glacial — https://glaciers.pdx.edu/fountain/readings/TopicsInGeomorphology/Montgomery2002_ValleyFormationGlaciersRivers.pdf
+95. Glacial valley modification assessment (V-index) — https://www.sciencedirect.com/science/article/abs/pii/S0169555X18302526
 96. Hergarten & Robl (2018), Flint's law vs hillslope diffusion — https://meetingorganizer.copernicus.org/EGU2018/EGU2018-3093-1.pdf
 97. pyTopoComplexity — https://par.nsf.gov/biblio/10494722
-98. Local: `research/micro-voxel-creators-research.md`, `research/grass-rendering-research.md`, `research/terrain-fixes-log.md`, `research/_terrain_question_bank.md`
+98. Local docs: `research/micro-voxel-creators-research.md`, `research/grass-rendering-research.md`, `research/terrain-fixes-log.md`, `research/_terrain_question_bank.md`
 
 ---
 
@@ -491,43 +489,43 @@ What this pipeline deliberately does *not* include: real-time erosion, per-frame
 
 Beyond the parent's 69–80; each answered or explicitly dispositioned.
 
-1. **Is the β=2 spectrum an attractor of erosion physics, or of deposition?** Partially answered: Turcotte's own lattice-deposition model produces k⁻² surfaces from pure deposition [4]; fluvial erosion topography is self-similar/multifractal under SPIM dynamics with conditions on m, n and uplift variability [Banavar et al., not fetched]. Disposition: worth a dedicated follow-up in Part 2's terms.
-2. **What octave count does β=2 require if lacunarity ≠ 2?** The octave-lacunarity-gain trio sets a finite band; outside the band the spectrum rolls off. Answered qualitatively (Musgrave's band-limiting [2]); exact filter response is a one-page derivation — future work.
-3. **Can a voxel engine validate its 3D density field (not just heights) against anything?** Open; no equivalent statistics for full 3D terrain exist in the game or GIS literature surveyed. Proposal: extend §9's suite with cave-porosity and passage-orientation statistics against Part 4.
-4. **What is the visual, not statistical, detection threshold for drainage wrongness?** Unanswered in the literature I found; user-study territory (the forestry-placement studies [88][89] are the template).
-5. **Does priority-flood filling produce geologically wrong lakes (too many, wrong shapes)?** Yes as stated in GIS practice — fills are data-conditioning, not hydrology; games wanting real lakes need depression *hierarchy* and outflow decisions. Disposition: flagged; Barnes' watershed-labeling variant is the starting point [33].
-6. **How fast is Priority-Flood in game terms?** 20-line algorithm, O(n) integer [33]; for a 1024² region it is sub-millisecond-scale on modern CPUs. Answered by complexity, not benchmarked here.
+1. **Is the β=2 spectrum an attractor of erosion physics, or of deposition?** Partially answered: Turcotte's lattice-deposition model produces k⁻² surfaces from pure deposition [4]; fluvial self-similarity under SPIM dynamics has conditions on m, n, uplift variability [not fetched]. Disposition: follow-up in Part 2's terms.
+2. **What octave count does β=2 require if lacunarity ≠ 2?** The octave-lacunarity-gain trio sets a finite band; outside it the spectrum rolls off. Answered qualitatively [2]; exact filter response is a one-page derivation — future work.
+3. **Can a voxel engine validate its 3D density field (not just heights) against anything?** Open; no equivalent statistics for full 3D terrain exist in the literature surveyed. Proposal: extend §9 with cave-porosity and passage-orientation statistics against Part 4.
+4. **What is the visual, not statistical, detection threshold for drainage wrongness?** Unanswered in the literature found; user-study territory ([88][89] are the template).
+5. **Does priority-flood filling produce geologically wrong lakes?** Yes as stated in GIS practice — fills are data-conditioning, not hydrology; real lakes need depression *hierarchy* and outflow decisions. Flagged; Barnes' watershed-labeling variant is the starting point [33].
+6. **How fast is Priority-Flood in game terms?** O(n) integer, 20 lines [33]; sub-millisecond-scale for a 1024² region on modern CPUs. Answered by complexity, not benchmarked.
 7. **Is D8's 45° bias visible at game resolution?** At channel widths ≥3 cells, yes — sawtooth rivers; mitigations: D8-LTD [39] or sub-cell path accumulation. Answered.
 8. **What m/n should a game's SPIM use?** θ=m/n≈0.4–0.5 typical, from observed slope–area exponents −0.35…−0.6 with n≤1 [28][29]. Answered.
-9. **How many implicit SPIM steps to steady state?** Depends on uplift/erodibility ratio; research codes use hundreds–thousands of steps but Braun-Willett's implicit scheme allows large dt [29]. Disposition: needs an experiment on our heightfield scale; not in sources.
-10. **Can orographic P and SPIM oscillate (rain shadow chases the ridge)?** Physically yes over geologic time; at generation-time iteration counts, one LT pass per erosion checkpoint is standard practice in coupled fastscape work [30][72]. Partially answered.
-11. **What does the 128 m NMS shell imply for our 7.8 mm engine?** Our shell must be similarly thin — full-resolution voxels only near the camera (already the engine's LOD-radius design); macro relief belongs to the analytic layer. Answered by analogy [60].
-12. **Is Minecraft's 1.5625 sloped_cheese threshold meaningful for us?** It's a tuned constant of their density math, not transferable. Answered (negative).
+9. **How many implicit SPIM steps to steady state?** Depends on uplift/erodibility; research codes use hundreds–thousands of steps but the implicit scheme allows large dt [29]. Disposition: needs an experiment at our heightfield scale; not in sources.
+10. **Can orographic P and SPIM oscillate (rain shadow chases the ridge)?** Physically yes over geologic time; one LT pass per erosion checkpoint is standard in coupled fastscape work [30][72]. Partially answered.
+11. **What does the 128 m NMS shell imply for our 7.8 mm engine?** Our shell must be similarly thin — full-res voxels only near the camera (already the engine's LOD-radius design); macro relief belongs to the analytic layer [60]. Answered by analogy.
+12. **Is Minecraft's 1.5625 sloped_cheese threshold meaningful for us?** A tuned constant of their density math, not transferable. Answered (negative).
 13. **Do aquifers generalize beyond Minecraft's water/lava?** Yes trivially — per-region fluid level + flood/spread/barrier channels is a clean chunk-scale water table [62]. Answered.
-14. **What is the real fraction of cave volume vs rock (porosity) by karst maturity?** Part 4's territory; I did not fetch numbers. Disposition: cross-reference, not answered here.
-15. **Can the constant-drop test run per-biome?** Yes — drainage density varies 2–12 km/km² by climate [45][46]; per-biome t-tests are the natural extension of TauDEM's global one [43]. Answered.
-16. **Does thermal erosion's soap-facet artifact survive under added noise?** Practically masked by re-seeded detail (Houdini's re-seeding step [58] is the documented practitioner answer). Answered.
-17. **What droplet count converges to a stable channel network?** No convergence theory exists; Lague's 70k/255² is aesthetic [25]. Disposition: open; treat droplets as non-deterministic decoration.
-18. **Is there a deterministic (seed-stable) droplet scheme?** Yes — fixed spawn lattice + deterministic PRNG per droplet; Gaea's Deterministic toggle is the commercial precedent (single-core for reproducibility [23]). Answered.
-19. **Should rivers be carved below the heightfield or the heightfield lowered to them?** Carve: SPIM produces the valley and the channel together; post-hoc lowering breaks the slope–area law. Answered by construction [29].
-20. **How wide should a game river be per catchment area?** Real hydraulic geometry: w ∝ A^0.5 within basins [28]; use it. Answered.
-21. **Where do waterfalls/knickpoints belong in the pipeline?** As SPIM transients on lithology contrasts (Part 2 §19, §29); a stencil on layer boundaries is the cheap version. Answered in outline.
-22. **Can domain warp encode real fold *orientation* data?** Yes — Michel et al. drive warp by plate velocity vectors [14]; orientation comes free if the belt skeleton is authored. Answered.
+14. **What is the real cave-volume fraction (porosity) by karst maturity?** Part 4's territory; not fetched. Disposition: cross-reference.
+15. **Can the constant-drop test run per-biome?** Yes — drainage density varies 2–12 km/km² by climate [45][46]; per-biome t-tests extend TauDEM's global one [43]. Answered.
+16. **Does thermal erosion's soap-facet artifact survive under added noise?** Practically masked by re-seeded detail (Houdini's re-seeding step [58]). Answered.
+17. **What droplet count converges to a stable channel network?** No convergence theory exists; Lague's 70k/255² is aesthetic [25]. Disposition: open; treat droplets as decoration.
+18. **Is there a deterministic (seed-stable) droplet scheme?** Yes — fixed spawn lattice + deterministic PRNG per droplet; Gaea's Deterministic toggle is the commercial precedent [23]. Answered.
+19. **Should rivers be carved below the heightfield or the heightfield lowered to them?** Carve: SPIM produces the valley and the channel together; post-hoc lowering breaks the slope–area law [29]. Answered by construction.
+20. **How wide should a game river be per catchment area?** Hydraulic geometry: w ∝ A^0.5 within basins [28]. Answered.
+21. **Where do waterfalls/knickpoints belong?** As SPIM transients on lithology contrasts (Part 2 §19, §29); a stencil on layer boundaries is the cheap version. Answered in outline.
+22. **Can domain warp encode real fold *orientation*?** Yes — Michel et al. drive warp by plate velocity vectors [14]; orientation comes free if the belt skeleton is authored. Answered.
 23. **Is a 2D heightfield adequate for anticlinal ridges with breached cores?** Marginally: ridge + carve stencil gets the planform; the water gap through the breach needs flow-graph forcing. Partially answered.
-24. **Does anyone ship variogram-based LOD (fractal interpolation between samples)?** Musgrave's QAEB tracing is the historical version [7]; modern engines bake LODs instead. Answered (negative for shipped modern engines surveyed).
-25. **What grid resolution should the hydrology pass run at vs the voxel grid?** Decoupled: hydrology at 10–30 m-equivalent (drainage statistics are defined there [42][48]), voxels 7.8 mm near camera. Answered by scale analysis.
-26. **Is blue-noise vegetation placement worth it over jittered-hex?** At 5 m tree spacing, no user can tell (angle histograms differ [85]); spend the effort on cluster structure instead. Answered with the study backing [88].
-27. **How do you place vegetation on 3D cave walls?** John Lin ray-traces placement queries (sunlight, openness, cave walls) — the documented answer (micro-voxel doc §1.4). Answered by citation.
-28. **What's the grass-density equivalent of stems/ha?** Part 6's ground-cover fractions own this; grass-rendering doc §4's shipped blade budgets (83k–100k drawn) are the render-side answer. Answered by cross-reference.
+24. **Does anyone ship variogram-based LOD (fractal interpolation between samples)?** Musgrave's QAEB tracing is the historical version [7]; modern engines bake LODs instead. Answered (negative).
+25. **What grid resolution should hydrology run at vs the voxel grid?** Decoupled: hydrology at 10–30 m-equivalent (drainage statistics are defined there [42][48]), voxels 7.8 mm near camera. Answered by scale analysis.
+26. **Is blue-noise vegetation placement worth it over jittered-hex?** At 5 m tree spacing, no user can tell (angle histograms differ [85]); spend the effort on cluster structure [88]. Answered.
+27. **How do you place vegetation on 3D cave walls?** John Lin ray-traces placement queries (sunlight, openness, cave walls) — micro-voxel doc §1.4. Answered by citation.
+28. **What's the grass-density equivalent of stems/ha?** Part 6's ground-cover fractions own this; grass-rendering doc §4's shipped blade budgets (83k–100k drawn) are the render-side answer. Cross-reference.
 29. **Do ecotone sharpness rules apply underwater?** Unresearched (kelp/seagrass boundaries). Disposition: open; Part 6/Part 3 follow-up.
 30. **Can the Whittaker diagram be made hysteretic cheaply?** Yes — order-dependent lookup (last biome biases threshold), implementing alternative stable states; no shipped example found. Partially answered (proposal).
 31. **What's the cheapest correct rain shadow?** Upslope model P = Cw·U·∇h [71]; one gradient + dot product. Answered.
 32. **When does the LT FFT model beat the upslope model?** When mountain width ~ drift distance (5–25 km): spillover and displaced maxima matter [71][74]. Answered.
 33. **Should biome noise fields share octaves with terrain noise (Minecraft-style)?** Yes where correlation is physical (elevation→temperature), no where independence is physical (rainfall vs micro-relief); Minecraft shares continents/erosion/ridges [62]. Answered.
-34. **How is the 29% land fraction best enforced?** By two-crust construction (§10.2 step 1) or sea-level quantile matching of the continent field; the second is cheaper, the first is geologically honest (Part 1). Answered with options.
-35. **Does the slope-histogram acceptance test distinguish SPIM output from stamped terrain?** Yes — stamped cliffs create bimodal/shouldered histograms absent from Wolinsky-Pratson's observed trend [90]. Answered.
+34. **How is the 29% land fraction best enforced?** Two-crust construction (§10.2 step 1) or sea-level quantile matching; the second is cheaper, the first geologically honest (Part 1). Answered with options.
+35. **Does the slope-histogram test distinguish SPIM output from stamped terrain?** Yes — stamped cliffs create bimodal/shouldered histograms absent from Wolinsky-Pratson's observed trend [90]. Answered.
 36. **What is the memory cost of a flow graph per region?** D8 receivers + stack order + accumulation: ~3 words/cell at hydrology resolution — negligible vs bricks. Answered by arithmetic.
-37. **Can the SPIM stack be computed incrementally as chunks stream?** Not locally — flow graphs are global by nature; but hydrology at 10–30 m resolution fits whole-region computation at generation time (DF does world-scale in seconds [65]). Answered.
+37. **Can the SPIM stack be computed incrementally as chunks stream?** Not locally — flow graphs are global by nature; hydrology at 10–30 m fits whole-region computation at generation time (DF does world-scale in seconds [65]). Answered.
 38. **Is there a shipped game with published terrain validation statistics?** None found; the §9 suite would be novel. Answered (negative).
-39. **What would break in the pipeline first at planet scale?** FFT-based orography (global FFT on a sphere needs HEALPix/spherical harmonics) and the 32-bit float coordinate system (NMS's documented multi-space problem [15][60]). Answered.
-40. **Which single §9 test gives the most bug-detection per line of code?** Drainage density (test #4): it catches missing rivers, noise gullies, wrong thresholds, and broken flow routing in one number with a wide real-Earth band [45][46][47][48]. Answered — recommendation.
+39. **What breaks first in the pipeline at planet scale?** FFT-based orography (needs spherical harmonics/HEALPix) and 32-bit float coordinates (NMS's documented multi-space problem [15][60]). Answered.
+40. **Which single §9 test gives the most bug-detection per line of code?** Drainage density (test #4): catches missing rivers, noise gullies, wrong thresholds, and broken flow routing in one number with a wide real-Earth band [45][46][47][48]. Answered — recommendation.
