@@ -23,6 +23,8 @@ const char* to_string(GpuPass pass) noexcept {
         return "march";
     case GpuPass::Resolve:
         return "resolve";
+    case GpuPass::Beam:
+        return "beam";
     case GpuPass::Post:
         return "post";
     case GpuPass::Overlay:

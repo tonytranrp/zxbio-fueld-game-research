@@ -31,7 +31,8 @@ namespace render::diligent {
 class RenderContext;
 
 enum class GpuPass : std::uint8_t {
-    Frame,   // the whole frame's GPU work: the sum of the four below must land inside it
+    Frame,   // the whole frame's GPU work: the sum of those below must land inside it
+    Beam,    // the coarse start-t pre-pass (goal 266), one pixel per screen tile
     March,   // the fullscreen ray march
     Resolve, // the TAA temporal resolve
     Post,    // bloom + tonemap composite
@@ -41,9 +42,9 @@ enum class GpuPass : std::uint8_t {
 
 [[nodiscard]] const char* to_string(GpuPass pass) noexcept;
 
-// The four ranges whose sum is checked against GpuPass::Frame.
-inline constexpr GpuPass kSummedPasses[] = {GpuPass::March, GpuPass::Resolve, GpuPass::Post,
-                                            GpuPass::Overlay};
+// The ranges whose sum is checked against GpuPass::Frame.
+inline constexpr GpuPass kSummedPasses[] = {GpuPass::Beam, GpuPass::March, GpuPass::Resolve,
+                                            GpuPass::Post, GpuPass::Overlay};
 
 // Scoped begin/end. A pass that is not entered on a frame simply reports its previous value, which
 // is why last_ms() is paired with measured_this_frame().

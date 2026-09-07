@@ -34,10 +34,12 @@
 // geometry makes it miss, and that is the single correctness risk of this optimisation.
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 #include "engine/core/math.hpp"
 #include "world/svo/brick_tree.hpp"
+#include "world/svo/tree_layout.hpp"
 
 namespace world::svo {
 
@@ -49,6 +51,14 @@ struct Beam {
     /// the cone a single ray, which is a legitimate (and exact) degenerate case.
     float tan_half_angle = 0.0f;
     float max_t = std::numeric_limits<float>::infinity();
+    /// Stop descending once a node is smaller than the cone's own radius there. Refining below the
+    /// cone's cross-section cannot tighten the bound much -- the expanded box is dominated by the
+    /// radius, not the node -- and stopping early is CONSERVATIVE by construction, since any
+    /// geometry inside the node is at t >= the node's entry. It is what bounds the descent depth,
+    /// which is what lets the same algorithm run on a GPU with a fixed stack.
+    bool stop_below_cone = true;
+    /// A hard ceiling on descent depth, for the same reason. Stopping early only loosens the bound.
+    int max_depth = kMaxLevels;
 };
 
 /// A conservative lower bound on the distance at which any ray inside `beam` can first meet solid
@@ -57,17 +67,29 @@ struct Beam {
 /// Feed the result to `TraceParams::t_start`. Bricks are bounded at their own node's entry rather
 /// than descended into: a brick is eight finest voxels across, so refining inside one buys almost
 /// nothing and costs a DDA per node.
-[[nodiscard]] float beam_start_t(const BrickTree& tree, const Beam& beam) noexcept;
+/// How hard the descent worked -- how deep it went and how many nodes it tested. The depth is what
+/// sizes the shader mirror's fixed stack, so it is measured rather than guessed.
+struct BeamStats {
+    int deepest_level = 0;
+    std::uint32_t nodes_visited = 0;
+};
 
-/// The cone that bounds a `tile_w` x `tile_h` block of pixels whose centre ray is `dir`, given the
-/// per-pixel angular size `pixel_angle` (radians). The half-angle spans from the tile's centre to
-/// its corner, plus half a pixel so the block's outer edge is inside the cone.
+[[nodiscard]] float beam_start_t(const BrickTree& tree, const Beam& beam,
+                                 BeamStats* stats = nullptr) noexcept;
+
+/// The cone that bounds a `tile_w` x `tile_h` block of pixels, given the per-pixel angular size
+/// `pixel_angle` (radians). The half-angle spans from the tile's centre to its corner, plus a
+/// one-pixel margin.
+///
+/// THE MARGIN IS NOT SLOP. Half of it covers the fact that a pixel is SAMPLED at its centre but
+/// COVERS its whole footprint. The other half covers TAA's sub-pixel jitter, which shifts every
+/// primary ray by up to half a pixel in each axis -- 0.707 px diagonally -- while the shader still
+/// indexes the tile by the ray's UNJITTERED pixel. Without it a jittered edge ray can lean out of
+/// the cone that bounded it, and the bound stops being conservative for that ray.
 [[nodiscard]] inline float tile_tan_half_angle(float pixel_angle, float tile_w, float tile_h) noexcept {
     const float halfW = 0.5f * tile_w * pixel_angle;
     const float halfH = 0.5f * tile_h * pixel_angle;
-    // The corner is the diagonal of the two half-extents; the extra half pixel covers the fact
-    // that a pixel is sampled at its centre but covers its whole footprint.
-    const float diagonal = std::sqrt(halfW * halfW + halfH * halfH) + 0.5f * pixel_angle;
+    const float diagonal = std::sqrt(halfW * halfW + halfH * halfH) + pixel_angle;
     return std::tan(diagonal);
 }
 

@@ -358,6 +358,13 @@ constexpr std::array kTable{
            .help = "1 = stop at one pixel; <1 finer, >1 coarser",
            .default_text = "1",
            .group = "SVO shading"},
+    Option{.name = "beam-tile",
+           .set = bind<&AppOptions::svo_settings, &Settings::beam_tile>(),
+           .kind = ValueKind::Int,
+           .help = "goal 266 start-t pre-pass: pixels per conservative cone bound; 0 = off (it is "
+                   "correct but does not pay -- see research/frame-time-log.md section 13)",
+           .default_text = "0",
+           .group = "SVO shading"},
     Option{.name = "smooth-pixels",
            .set = bind<&AppOptions::svo_settings, &Settings::smooth_pixels>(),
            .kind = ValueKind::Float,

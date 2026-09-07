@@ -17,7 +17,11 @@ struct Walk {
     glm::vec3 invd{0.0f};
     float tanHalf = 0.0f;
     float maxT = 0.0f;
+    bool stopBelowCone = true;
+    int maxDepth = kMaxLevels;
     float best = std::numeric_limits<float>::infinity();
+    int deepest = 0;              // diagnostics: how deep this actually went
+    std::uint32_t visited = 0;    // diagnostics: nodes tested
 };
 
 // Slab test of the centre ray against [lo, hi]. Returns false on a miss; otherwise `tNear` is the
@@ -61,7 +65,7 @@ float far_corner_distance(const Walk& w, const glm::vec3& lo, const glm::vec3& h
     return std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
 }
 
-void descend(Walk& w, std::uint32_t node, const glm::vec3& lo, float edge) noexcept {
+void descend(Walk& w, std::uint32_t node, const glm::vec3& lo, float edge, int depth) noexcept {
     const glm::vec3 hi = lo + glm::vec3{edge};
 
     // Expand by the cone's radius at this node's farthest reach, then test the centre ray. See the
@@ -74,6 +78,16 @@ void descend(Walk& w, std::uint32_t node, const glm::vec3& lo, float edge) noexc
     }
     if (tNear >= w.best) {
         return; // nothing in here can beat what we already have
+    }
+
+    ++w.visited;
+    w.deepest = std::max(w.deepest, depth);
+
+    // Below the cone's own cross-section, or past the depth ceiling, the node's entry IS the answer.
+    // Conservative either way: every point of geometry inside this node is at t >= tNear.
+    if (depth >= w.maxDepth || (w.stopBelowCone && edge < radius)) {
+        w.best = std::min(w.best, tNear);
+        return;
     }
 
     const std::uint32_t header = w.nodes[node];
@@ -117,13 +131,13 @@ void descend(Walk& w, std::uint32_t node, const glm::vec3& lo, float edge) noexc
         if (children[i].tNear >= w.best) {
             break; // sorted, so every remaining child is farther still
         }
-        descend(w, children[i].node, children[i].lo, half);
+        descend(w, children[i].node, children[i].lo, half, depth + 1);
     }
 }
 
 } // namespace
 
-float beam_start_t(const BrickTree& tree, const Beam& beam) noexcept {
+float beam_start_t(const BrickTree& tree, const Beam& beam, BeamStats* stats) noexcept {
     if (tree.empty()) {
         return std::numeric_limits<float>::infinity();
     }
@@ -139,8 +153,14 @@ float beam_start_t(const BrickTree& tree, const Beam& beam) noexcept {
     }
     w.tanHalf = std::max(beam.tan_half_angle, 0.0f);
     w.maxT = beam.max_t;
+    w.stopBelowCone = beam.stop_below_cone;
+    w.maxDepth = std::max(beam.max_depth, 1);
 
-    descend(w, tree.root, glm::vec3{0.0f}, rootEdge);
+    descend(w, tree.root, glm::vec3{0.0f}, rootEdge, 0);
+    if (stats != nullptr) {
+        stats->deepest_level = w.deepest;
+        stats->nodes_visited = w.visited;
+    }
     return w.best;
 }
 

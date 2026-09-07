@@ -68,6 +68,15 @@ static_assert(sizeof(MarchConstantsCpu) ==
                   64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * kMaterialCount,
               "must match the HLSL cbuffer exactly");
 
+// Mirror of svo_beam.psh.hlsl's cbuffer BeamConstants -- update both together.
+struct BeamConstantsCpu {
+    glm::mat4 invViewProj;
+    glm::vec4 camera;     // xyz camera position
+    glm::vec4 treeOrigin; // xyz root min corner; w = root edge
+    glm::vec4 params;     // x = tan(cone half-angle), y = tile pixels, zw = 1 / screen size
+    glm::uvec4 ints;      // x = root node offset, y = tree present
+};
+
 // Mirror of svo_taa.psh.hlsl's cbuffer TaaConstants -- update both together.
 struct TaaConstantsCpu {
     glm::mat4 invViewProj;
@@ -224,6 +233,16 @@ struct SvoRenderer::Impl {
     std::uint64_t treeBytes = 0;
     bool hasTree = false;
 
+    // Goal 266: the coarse start-t pre-pass. One conservative cone bound per screen tile, at
+    // 1/beam_tile resolution, mirroring world::svo::beam_start_t.
+    RefCntAutoPtr<IPipelineState> beamPso;
+    RefCntAutoPtr<IShaderResourceBinding> beamSrb;
+    RefCntAutoPtr<IBuffer> beamConstants;
+    RefCntAutoPtr<ITexture> beamStart;
+    Uint32 beamWidth = 0;
+    Uint32 beamHeight = 0;
+    int beamTile = 0; // the tile size beamStart was sized for; 0 = no target yet
+
     // Temporal resolve pass.
     RefCntAutoPtr<IPipelineState> taaPso;
     RefCntAutoPtr<IShaderResourceBinding> taaSrb;
@@ -273,6 +292,7 @@ struct SvoRenderer::Impl {
     void create_pipelines();
     void bind_tree_buffers();
     void ensure_targets();
+    void ensure_beam_target(int tile);
     ITextureView* final_rtv();
 };
 
@@ -319,9 +339,10 @@ void SvoRenderer::Impl::create_pipelines() {
             {SHADER_TYPE_PIXEL, "MarchConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
             {SHADER_TYPE_PIXEL, "g_Nodes", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
             {SHADER_TYPE_PIXEL, "g_Bricks", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+            {SHADER_TYPE_PIXEL, "g_BeamStart", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
         };
         psoCI.PSODesc.ResourceLayout.Variables = vars;
-        psoCI.PSODesc.ResourceLayout.NumVariables = 3;
+        psoCI.PSODesc.ResourceLayout.NumVariables = 4;
 
         rc.device->CreateGraphicsPipelineState(psoCI, &pso);
         if (!pso) {
@@ -337,6 +358,47 @@ void SvoRenderer::Impl::create_pipelines() {
         pso->CreateShaderResourceBinding(&srb, true);
         if (!srb) {
             throw std::runtime_error("svo SRB creation failed");
+        }
+    }
+    {
+        RefCntAutoPtr<IShader> ps =
+            create_shader(rc, factory, SHADER_TYPE_PIXEL, "svo_beam.psh.hlsl", "SVO beam PS");
+
+        GraphicsPipelineStateCreateInfo psoCI;
+        psoCI.PSODesc.Name = "SVO beam PSO";
+        psoCI.pVS = vs;
+        psoCI.pPS = ps;
+        psoCI.GraphicsPipeline.NumRenderTargets = 1;
+        psoCI.GraphicsPipeline.RTVFormats[0] = TEX_FORMAT_R32_FLOAT;
+        psoCI.GraphicsPipeline.DSVFormat = TEX_FORMAT_UNKNOWN; // no depth: nothing to test or write
+        psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = False;
+
+        // DYNAMIC for the same reason the march's are: the node buffer is replaced on every
+        // rebuild, and a MUTABLE variable accepts a resource exactly once per SRB.
+        ShaderResourceVariableDesc vars[] = {
+            {SHADER_TYPE_PIXEL, "BeamConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+            {SHADER_TYPE_PIXEL, "g_BeamNodes", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        };
+        psoCI.PSODesc.ResourceLayout.Variables = vars;
+        psoCI.PSODesc.ResourceLayout.NumVariables = 2;
+
+        rc.device->CreateGraphicsPipelineState(psoCI, &beamPso);
+        if (!beamPso) {
+            throw std::runtime_error("svo beam PSO creation failed");
+        }
+        beamConstants = create_constant_buffer(rc.device, "SVO BeamConstants CB", sizeof(BeamConstantsCpu));
+        if (IShaderResourceVariable* var =
+                beamPso->GetStaticVariableByName(SHADER_TYPE_PIXEL, "BeamConstants")) {
+            var->Set(beamConstants);
+        } else {
+            throw std::runtime_error("svo shader variable not found: BeamConstants");
+        }
+        beamPso->CreateShaderResourceBinding(&beamSrb, true);
+        if (!beamSrb) {
+            throw std::runtime_error("svo beam SRB creation failed");
         }
     }
     {
@@ -418,6 +480,15 @@ void SvoRenderer::Impl::bind_tree_buffers() {
     }
     nodesVar->Set(nodes->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
     bricksVar->Set(bricks->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+
+    // Goal 266: the beam pass walks the same nodes. Bound here rather than at draw time for the
+    // same reason as above -- one rebind per tree, not one per frame.
+    if (IShaderResourceVariable* beamNodes =
+            beamSrb ? beamSrb->GetVariableByName(SHADER_TYPE_PIXEL, "g_BeamNodes") : nullptr) {
+        beamNodes->Set(nodes->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+    } else {
+        throw std::runtime_error("svo shader variable g_BeamNodes not found");
+    }
 }
 
 void SvoRenderer::Impl::ensure_targets() {
@@ -435,6 +506,22 @@ void SvoRenderer::Impl::ensure_targets() {
     history[1] =
         create_target(rc.device, "SVO history 1", targetWidth, targetHeight, TEX_FORMAT_RGBA16_FLOAT);
     historyValid = false;
+    beamTile = 0; // force the beam target to be re-sized against the new dimensions
+}
+
+void SvoRenderer::Impl::ensure_beam_target(int tile) {
+    if (tile <= 0) {
+        return;
+    }
+    if (beamStart && beamTile == tile && beamWidth == (targetWidth + static_cast<Uint32>(tile) - 1u) /
+                                                          static_cast<Uint32>(tile)) {
+        return;
+    }
+    auto& rc = context->impl();
+    beamWidth = std::max(1u, (targetWidth + static_cast<Uint32>(tile) - 1u) / static_cast<Uint32>(tile));
+    beamHeight = std::max(1u, (targetHeight + static_cast<Uint32>(tile) - 1u) / static_cast<Uint32>(tile));
+    beamStart = create_target(rc.device, "SVO beam start-t", beamWidth, beamHeight, TEX_FORMAT_R32_FLOAT);
+    beamTile = tile;
 }
 
 ITextureView* SvoRenderer::Impl::final_rtv() {
@@ -583,6 +670,46 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
     const float rawPixelAngle =
         2.0f * std::tan(camera.fov_y_radians * 0.5f) / static_cast<float>(std::max<Uint32>(scDesc.Height, 1));
 
+    // Pass 0 (goal 266): the coarse start-t pre-pass. One conservative cone bound per screen tile,
+    // at 1/tile resolution, from which every primary ray in that tile starts. Measured on the CPU
+    // reference at 35-53% of primary traversal steps with ZERO pixels changed; the shader is a
+    // mirror of world::svo::beam_start_t, whose tests carry the proof that the bound is safe.
+    const int beamTile = std::max(0, s.beam_tile);
+    const bool beam = beamTile > 0 && impl_->hasTree;
+    impl_->ensure_beam_target(beam ? beamTile : 16);
+    if (beam) {
+        ZoneScopedN("svo beam");
+        const GpuPassScope beamScope(*impl_->context, GpuPass::Beam);
+        ITextureView* beamRtv = impl_->beamStart->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
+        ctx->SetRenderTargets(1, &beamRtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        {
+            MapHelper<BeamConstantsCpu> cb(ctx, impl_->beamConstants, MAP_WRITE, MAP_FLAG_DISCARD);
+            cb->invViewProj = invViewProj;
+            cb->camera = glm::vec4(camera.position, 0.0f);
+            cb->treeOrigin = glm::vec4(impl_->geometry.origin, impl_->geometry.root_edge());
+            // The cone must contain the whole tile: the half-diagonal of `tile` pixels plus a
+            // one-pixel margin (footprint + TAA jitter). Same formula as
+            // world::svo::tile_tan_half_angle, which the CPU measurement used and whose header
+            // carries the reason the margin is exactly this size.
+            const float halfSpan = 0.5f * static_cast<float>(beamTile) * rawPixelAngle;
+            const float diagonal = std::sqrt(2.0f * halfSpan * halfSpan) + rawPixelAngle;
+            cb->params = glm::vec4(std::tan(diagonal), static_cast<float>(beamTile),
+                                   1.0f / static_cast<float>(std::max<Uint32>(scDesc.Width, 1)),
+                                   1.0f / static_cast<float>(std::max<Uint32>(scDesc.Height, 1)));
+            cb->ints = glm::uvec4(impl_->rootOffset, impl_->hasTree ? 1u : 0u, 0u, 0u);
+        }
+        ctx->SetPipelineState(impl_->beamPso);
+        ctx->CommitShaderResources(impl_->beamSrb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ctx->Draw({3, DRAW_FLAG_VERIFY_ALL, 1});
+    } else {
+        // Zero means "start at the root entry", so a cleared target is exactly the old
+        // behaviour -- the march needs no branch and the A/B is a real one.
+        ITextureView* beamRtv = impl_->beamStart->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
+        const float zero[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        ctx->SetRenderTargets(1, &beamRtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ctx->ClearRenderTarget(beamRtv, zero, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    }
+
     // Pass 1: the march, into the raw target (temporal on) or straight into the final target.
     ITextureView* finalRtv = impl_->final_rtv();
     ITextureView* dsv = rc.swapchain->GetDepthBufferDSV();
@@ -637,7 +764,10 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
             const world::water::GerstnerWave& w = waveField.waves[i];
             cb->waves[i] = glm::vec4(w.direction.x, w.direction.y, w.amplitude, w.wavenumber);
         }
-        cb->waveParams = glm::vec4(waveField.waves[0].steepness, 0.0f, 0.0f, 0.0f);
+        // .y is goal 266's beam tile size (0 = no seed), taking one of the spare slots this
+        // vector was reserved with rather than growing the cbuffer for a single float.
+        cb->waveParams = glm::vec4(waveField.waves[0].steepness,
+                                   beam ? static_cast<float>(beamTile) : 0.0f, 0.0f, 0.0f);
         cb->materials = detail::kMaterialRecords;
     }
     {
@@ -645,6 +775,8 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         // renderer has always had (kept, because every number in research/lin-look-log.md was
         // taken with it); THIS is the narrower one that says how much of it is the march.
         const GpuPassScope marchScope(*impl_->context, GpuPass::March);
+        impl_->srb->GetVariableByName(SHADER_TYPE_PIXEL, "g_BeamStart")
+            ->Set(impl_->beamStart->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE));
         ctx->SetPipelineState(impl_->pso);
         ctx->CommitShaderResources(impl_->srb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         ctx->Draw({3, DRAW_FLAG_VERIFY_ALL, 1});

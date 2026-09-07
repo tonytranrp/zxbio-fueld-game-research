@@ -941,3 +941,101 @@ apex is outside the slab.
 32% of *all* traversal steps at `stress_pose` (primary is 27.4 of 40.2), which on a 3.33 ms march
 that is dominated by traversal predicts roughly a 1 ms cut — the largest single item still open in
 this prompt. 283/283 tests pass.
+
+---
+
+## 14. The beam pre-pass on the GPU: correct, effective, and it still does not pay (goal 266, closed)
+
+The CPU half of §13 said the seed removes 35–53% of primary traversal steps. This is the shader
+mirror, the app wiring, and what happened when it ran on the actual GPU.
+
+### It works, and it is correct
+
+`svo_beam.psh.hlsl` renders one pixel per screen tile into an R32_FLOAT target and
+`svo_march.psh.hlsl` starts every primary ray at that tile's bound. The one structural difference
+from the CPU is forced and harmless: a pixel shader cannot recurse, so the descent walks an explicit
+stack and visits children in a fixed order derived from the direction signs instead of sorting them
+near-to-far — ordering changes only how fast the running best prunes, never the result, which is a
+minimum over admitted nodes.
+
+Two details that are not slop and are written into the code as such:
+
+- **The seed is read with `Load()` at an explicitly computed tile index**, never sampled by UV. A
+  filtered or rounded fetch can land on a *neighbouring* tile, whose bound is not conservative for
+  this pixel, and the failure mode is a hole in the terrain far from its cause.
+- **The cone's margin is one whole pixel, not half.** Half covers a pixel being sampled at its
+  centre but covering its footprint; the other half covers TAA's sub-pixel jitter, which moves the
+  ray by up to 0.707 px diagonally while the shader still indexes by the *unjittered* pixel.
+
+**Correctness evidence: with the pass on, `stress_pose` passes the shipping golden — captured before
+this feature existed — at a mean of 0.099/255 and 0.0093% of pixels changed.** 288/288 tests pass,
+including the five GPU scenario tests.
+
+### And the measurement, interleaved so clock drift cannot fake it
+
+`--ramp beam-tile:0,8,0,8,0,8,0,8`, one process, alternating rungs:
+
+| | beam ms | march ms | **beam + march** |
+|---|---|---|---|
+| **vk**, off | 0.00 | 3.59 / 3.63 / 3.65 / 3.64 → **3.63** | **3.63** |
+| **vk**, tile 8 | 0.70 (all four) | 3.02 / 3.02 / 2.88 / 2.88 → **2.95** | **3.65** |
+| **d3d12**, off | 0.00 | **4.22** | **4.22** |
+| **d3d12**, tile 8 | 1.04 | **3.90** | **4.94** |
+
+**The march really does get 19% faster on vk. The pre-pass really does cost 0.69 ms. They cancel to
+within 0.01 ms — and on d3d12 the pre-pass is 0.72 ms of pure loss.**
+
+Across tile sizes (vk, mean steps from the ramp's own counter):
+
+| tile | beam pixels | mean steps | beam ms | march ms | total |
+|---|---|---|---|---|---|
+| off | — | 91.9 | 0.00 | 3.61 | **3.61** |
+| 2 | 230,400 | 61.6 | 2.32 | 3.24 | 5.56 |
+| 4 | 57,600 | 63.0 | 1.18 | 3.16 | 4.34 |
+| **8** | 14,400 | 65.4 | 0.68 | 3.20 | **4.02** |
+| 16 | 3,600 | 68.7 | 0.58 | 3.60 | 4.18 |
+| 32 | 920 | 72.5 | 0.58 | 3.63 | 4.21 |
+| 64 | 240 | 75.8 | 0.48 | 3.19 | 3.67 |
+| 128 | 60 | 80.6 | 0.48 | 3.24 | 3.72 |
+| 256 | 15 | 91.9 | 0.01 | 3.62 | 3.63 |
+
+**No tile size wins.** The best total is worse than doing nothing.
+
+### Why, and this is the part worth keeping
+
+**The pre-pass cannot fill the GPU.** Look at the cost column against the pixel count: 14,400 pixels
+cost 0.68 ms and 3,600 cost 0.58 ms — a **quarter of the work for 85% of the time**. Sixty pixels
+still cost 0.48 ms. That is not a shader doing more or less work; it is two warps chasing a chain of
+dependent node loads with no other warps resident to hide the latency. The beam is a small,
+serial, pointer-chasing dispatch, which is the exact shape a GPU is worst at — and the same
+mechanism §12 measured from the other side.
+
+(The tile-256 row is the control: 15 pixels, cone so wide it terminates at the root, 0.01 ms and
+mean steps back at the un-seeded 91.9. The pass costs nothing when it does nothing, so the 0.48 ms
+floor is real work, not fixed overhead.)
+
+### The finding that outlives the feature
+
+> **A 29% cut in traversal steps buys 19% of march time.**
+
+That is the first direct measurement of how step-bound this marcher actually is, and it is a
+number the rest of this prompt needs. Roughly two thirds of the march is traversal and one third is
+everything else — so **any lever that shortens the dependent-load chain should be costed at about
+0.65× its step reduction**, including AK-C's shallow-grid tree, whose stated premise is exactly
+that ("a shallower tree should be measurably faster on its own, from the shortened dependent-load
+chain"). It does not make that idea wrong; it sizes it.
+
+### Status: closed as a measured negative, kept behind a knob
+
+`Settings::beam_tile` defaults to **0** and `--beam-tile N` turns it on. The code stays because the
+result is a *this GPU, this tree, this frame* result, not a claim about the technique: a coarser
+tree, a different GPU, or the reprojected variant below would each move it, and re-measuring is one
+flag.
+
+**The specific follow-up, recorded rather than attempted:** the beam and the march are serialised
+only because the march reads the beam's output *this* frame. Seeding from the PREVIOUS frame's beam,
+widened by the camera's own travel over one frame (0.24–0.96 m at this project's 40–160 m/s fly
+speeds — a bounded, cheap subtraction that keeps the bound conservative), makes the two passes
+independent and lets the GPU overlap them. That is what Teardown's and Aokana's Hi-Z variants
+effectively do. If the overlap were free the result flips from a 0.01 ms wash to a 0.68 ms win, or
+19% of the march. Opened as a goal rather than guessed at.

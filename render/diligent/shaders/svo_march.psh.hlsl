@@ -59,6 +59,11 @@ uint MaterialShading(uint material)
 
 StructuredBuffer<uint> g_Nodes;
 StructuredBuffer<uint> g_Bricks;
+// Goal 266: one conservative start distance per screen tile, from svo_beam.psh.hlsl. Read
+// with Load() at an explicitly computed tile index rather than sampled by UV -- a filtered or
+// rounded fetch could land on a NEIGHBOURING tile, whose bound is not conservative for this
+// pixel, and the failure would be a hole in the terrain rather than an obvious error.
+Texture2D<float> g_BeamStart;
 
 struct PSInput
 {
@@ -215,7 +220,7 @@ void ReadAttributes(inout Hit h, uint stack[kMaxLevels], int attrLevel, float sm
 // coverageThreshold: an early-out node under this volume coverage is descended instead of hit
 // (TraceParams::lod_coverage_threshold).
 Hit TraceRay(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffset, float maxT, float smoothPixelAngle,
-             float coverageThreshold)
+             float coverageThreshold, float tStart)
 {
     Hit miss = MakeMiss();
     if ((g_TreeInts.w & kFlagTree) == 0u)
@@ -259,12 +264,25 @@ Hit TraceRay(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffset
     const bool inside = all(o >= 0.0) && all(o < 1.0);
     float t = inside ? 0.0 : tEnter;
     int lastAxis = inside ? -1 : enterAxis;
+    // Goal 266: a beam seed jumps the ray past the root entry. Once it has, the ray no longer
+    // starts ON a root face, so the entry-axis snap below would put the cell in the wrong place --
+    // the coordinate has to come from the seeded position alone. lastAxis goes to -1 for the same
+    // reason, which is exactly how a ray starting inside the root is already handled. Mirrors
+    // world/svo/src/ray_trace.cpp's TraceParams::t_start.
+    const bool seeded = tStart > t;
+    if (seeded)
+    {
+        t = tStart;
+        if (t > tExit)
+            return miss;
+    }
+    lastAxis = seeded ? -1 : lastAxis;
     const int n = int(cells);
     int3 c;
     {
         const float3 p = o + t * d;
         c = clamp(int3(floor(p * cells)), int3(0, 0, 0), int3(n - 1, n - 1, n - 1));
-        if (!inside)
+        if (!inside && !seeded)
         {
             const int3 m = AxisMask(enterAxis);
             c = c * (int3(1, 1, 1) - m) + m * (CompI(step, enterAxis) > 0 ? 0 : n - 1);
@@ -555,7 +573,7 @@ float AmbientOcclusion(float3 p, float3 n, float2 pixel, float hitDistance)
         const float phi = rot + float(i) * 3.1415927;
         // ~45 degrees off the normal: cheap, and where occlusion actually lives for cube worlds.
         const float3 dir = normalize(n * 0.75 + (tangent * cos(phi) + bitangent * sin(phi)) * 0.66);
-        const Hit h = TraceRay(p, dir, lod, 0.0, rayLength, 0.0, kSecondaryCoverage);
+        const Hit h = TraceRay(p, dir, lod, 0.0, rayLength, 0.0, kSecondaryCoverage, 0.0);
         if (h.hit)
             occluded += 1.0 - saturate(h.t / rayLength);
     }
@@ -584,7 +602,19 @@ void main(in PSInput PSIn, out PSOutput PSOut)
 
     const float lodAngle = (flags & kFlagLodMarch) != 0u ? g_TreeParams.x : 0.0;
     const float smoothAngle = g_ShadeParams.x * g_ShadeParams.w;
-    const Hit hit = TraceRay(camera, dir, lodAngle, 0.0, 1.0e30, smoothAngle, 0.0);
+    // Goal 266: the tile's conservative start distance. Load() at an explicitly computed tile
+    // index, never a filtered or UV-rounded fetch -- a neighbouring tile's bound is NOT conservative
+    // for this pixel, and getting it wrong shows up as a hole in the terrain, far from the cause.
+    // g_WaveParams.y is the tile size, 0 when the pre-pass is off (its target is cleared to zero
+    // then, so this reads 0 either way and the march needs no branch).
+    //
+    // PSIn.Pos is the UNJITTERED pixel centre, which is the right tile to index. The jittered RAY
+    // can lean up to half a pixel out of that tile, and the cone is widened by a whole pixel
+    // (world::svo::tile_tan_half_angle's margin) precisely so it still contains it.
+    const int beamTile = int(g_WaveParams.y);
+    const float tSeed =
+        beamTile > 0 ? g_BeamStart.Load(int3(int2(PSIn.Pos.xy) / beamTile, 0)) : 0.0;
+    const Hit hit = TraceRay(camera, dir, lodAngle, 0.0, 1.0e30, smoothAngle, 0.0, tSeed);
     if (!hit.hit)
     {
         PSOut.Color = float4((flags & kFlagSky) != 0u ? SkyRadiance(dir) : float3(0.25, 0.5, 0.8), 1.0);
@@ -643,7 +673,7 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     if ((flags & kFlagShadows) != 0u && diffuse > 0.0)
     {
         const Hit shadow = TraceRay(shadowOrigin, -kSunDirection, g_TreeParams.x * g_TreeParams.y, 0.0, 1.0e30, 0.0,
-                                    kSecondaryCoverage);
+                                    kSecondaryCoverage, 0.0);
         lit = shadow.hit ? 0.0 : 1.0;
     }
     float ao = 1.0;

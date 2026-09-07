@@ -54,7 +54,7 @@ public:
     [[nodiscard]] Percentiles frame_ms() const;
     [[nodiscard]] Percentiles gpu_ms() const;
     // Goal 220: the four named ranges, and how much of the whole-frame range they account for.
-    [[nodiscard]] Percentiles gpu_pass_ms(int index) const; // 0=march 1=resolve 2=post 3=overlay
+    [[nodiscard]] Percentiles gpu_pass_ms(int index) const; // 0=march 1=resolve 2=post 3=overlay 4=beam
     [[nodiscard]] Percentiles gpu_frame_ms() const;
     [[nodiscard]] double gpu_pass_coverage() const;
     [[nodiscard]] SlowFrameCounts slow_frames() const;

@@ -1268,6 +1268,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             using render::diligent::gpu_pass_ms;
             using render::diligent::GpuPass;
             pending.counters.gpu_frame_ms = gpu_pass_ms(*s.context, GpuPass::Frame);
+            pending.counters.gpu_beam_ms = gpu_pass_ms(*s.context, GpuPass::Beam);
             pending.counters.gpu_march_ms = gpu_pass_ms(*s.context, GpuPass::March);
             pending.counters.gpu_resolve_ms = gpu_pass_ms(*s.context, GpuPass::Resolve);
             pending.counters.gpu_post_ms = gpu_pass_ms(*s.context, GpuPass::Post);

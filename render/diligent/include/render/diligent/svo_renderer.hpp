@@ -51,6 +51,19 @@ public:
         bool sky = true;            // analytic sky on miss (false: flat clear color, --no-sky)
         bool grain = true;          // per-cube brightness hash, faded toward pixel size (goal 167)
         bool taa = true;            // temporal anti-aliasing resolve (goal 168)
+        // Goal 266: the coarse start-t pre-pass. One conservative cone bound per `beam_tile`
+        // square of pixels, computed at 1/beam_tile resolution, from which every primary ray in
+        // that tile starts instead of at the root's entry face.
+        //
+        // OFF BY DEFAULT, because it was measured and it does not pay -- see
+        // research/frame-time-log.md section 13. It works, it is correct (the shipping golden
+        // passes with it on at 0.0093% of pixels changed), and it removes 29% of traversal steps
+        // and 19% of the march. It also costs 0.69 ms of its own, because 14,400 pixels each
+        // chasing a chain of dependent node loads cannot fill this GPU -- so on vk the two cancel
+        // to within 0.01 ms and on d3d12 it is 0.72 ms WORSE. Kept behind this knob so a coarser
+        // tree, a different GPU, or the reprojected variant that could overlap it with the march
+        // can be re-measured by changing one number.
+        int beam_tile = 0;
         float lod_quality = 1.0f;   // 1 = stop at one pixel; <1 finer, >1 coarser
         float shadow_lod = 4.0f;    // shadow rays tolerate this much coarser LOD (from their origin)
         float ao_lod = 8.0f;        // AO rays likewise
