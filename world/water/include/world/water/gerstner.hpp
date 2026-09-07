@@ -40,6 +40,12 @@ struct WaveField {
     std::array<GerstnerWave, kWaveCount> waves{};
 };
 
+// Period of the LARGEST-amplitude component, seconds (T = 2*pi/omega). The field is a sum of several
+// waves and has no single period, but a body floating on it bobs mostly at the biggest one -- and a
+// flicker count is only readable against a period ("31 transitions" means nothing until you know the
+// run saw 25 crests). Goal 236 is the reason this exists.
+[[nodiscard]] float dominant_period(const WaveField& field) noexcept;
+
 // Build the field from the wind (Group B). Wind and waves share one direction and one strength,
 // which is the physically right coupling and also why --no-wind gives glass.
 //

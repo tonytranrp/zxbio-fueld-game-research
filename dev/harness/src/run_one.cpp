@@ -6,18 +6,15 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <limits>
 #include <cstdio>
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <vector>
 
 #include "app_options.hpp"
 #include "app_run.hpp"
 #include "dev/scenario/parser.hpp"
-#include "world/generation/heightmap_generator.hpp"
-#include "world/player/fixed_step.hpp"
-#include "world/player/tuning.hpp"
 #include "dev/scenario/scenario.hpp"
 #include "dev/telemetry/frame_report.hpp"
 #include "dev/telemetry/json.hpp"
@@ -28,6 +25,9 @@
 #include "image_compare.hpp"
 #include "render/diligent/frame_verify.hpp"
 #include "scripted_input.hpp"
+#include "world/generation/heightmap_generator.hpp"
+#include "world/player/fixed_step.hpp"
+#include "world/player/tuning.hpp"
 
 namespace dev::harness {
 
@@ -75,8 +75,8 @@ using engine::core::LogLevel;
         for (int corner = 0; corner < 5; ++corner) {
             const float dx = corner == 4 ? 0.0f : ((corner & 1) != 0 ? kHalf : -kHalf);
             const float dz = corner == 4 ? 0.0f : ((corner & 2) != 0 ? kHalf : -kHalf);
-            analytic = std::max(analytic,
-                                heightmap.height_at(sc.ground_pose->xz.x + dx, sc.ground_pose->xz.y + dz));
+            analytic =
+                std::max(analytic, heightmap.height_at(sc.ground_pose->xz.x + dx, sc.ground_pose->xz.y + dz));
         }
         analytic = std::max(analytic, world::player::kSeaLevelWorld);
         // ...and then SNAPPED UP TO THE VOXEL GRID, which is the surface the body actually stands
@@ -185,9 +185,11 @@ int run_one(const scenario::Scenario& sc, const Options& harnessOptions, render:
     app::RunHooks hooks;
     hooks.on_frame = [&out](const telemetry::FrameRecord& record) { out.report.add(record); };
     hooks.on_warmup_frame = [&out](double wallMs) { out.report.add_warmup(wallMs); };
-    hooks.on_invariants = [&out](std::uint32_t walkViolations, std::uint32_t insideSolid) {
+    hooks.on_invariants = [&out](std::uint32_t walkViolations, std::uint32_t insideSolid,
+                                 std::uint32_t stanceChanges) {
         out.walk_violations = walkViolations;
         out.inside_solid_events = insideSolid;
+        out.stance_changes = stanceChanges;
     };
     // The MAXIMUM over the run's capture points: a scenario that moves will have frames looking
     // at sky and frames looking at terrain, and "did this run ever show a world" is the question

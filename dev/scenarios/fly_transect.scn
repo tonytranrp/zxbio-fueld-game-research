@@ -20,6 +20,14 @@ hold none 1
 # workaround, and this line should be deletable once 004 lands.
 wait 3
 
+
+# GOLDEN POLICY (measured, this scenario has none / only the early ones):
+# A capture taken after sustained MOTION is not reproducible on this engine today. Two identical
+# runs of the same scenario differ by 5.3% to 35.5% of pixels, because at speed the body outruns the
+# LOD rebuild and which tree is resident when it stops decides what it sees. Captures taken AT REST
+# reproduce to 0.0001-0.11%, well under the 1.5% gate. So the moving captures here are written for
+# eyeballing and deliberately have no golden until Prompt 004 removes the rebuild storm.
+
 capture frame 60 early
 capture frame 400 mid
 capture end final

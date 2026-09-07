@@ -331,3 +331,158 @@ TEST_CASE("The simulation is a pure function of the tick count", "[player][contr
     REQUIRE(a.state.vertical_velocity == b.state.vertical_velocity);
     REQUIRE(a.state.eye_smooth_offset == b.state.eye_smooth_offset);
 }
+
+// --- goal 235: the walkable slope limit -----------------------------------------------------------
+
+namespace {
+
+// A world that is a single inclined plane through the origin, rising along +X at `slope`. The body
+// collides against the real plane; `WorldSense` reports the same slope analytically, which is the
+// split the shipping code has (voxel surface for collision, analytic field for steepness).
+struct RampWorld {
+    float slope_radians = 0.0f;
+
+    [[nodiscard]] float height_at(float x) const noexcept { return x * std::tan(slope_radians); }
+
+    [[nodiscard]] bool overlaps_solid(const Aabb& box) const noexcept {
+        // Solid below the plane. Sampled at the box's own uphill edge so a body standing on the
+        // ramp rests on the highest ground it covers, exactly as the voxel world would place it.
+        return box.min.y < height_at(box.max.x);
+    }
+};
+static_assert(world::collision::SolidQuery<RampWorld>);
+
+struct RampSim {
+    RampWorld world;
+    PlayerState state;
+    PlayerTuning tuning;
+    WorldSense sense;
+    glm::vec3 eye{0.0f, 0.0f, 0.0f};
+
+    explicit RampSim(float slopeDegrees) {
+        world.slope_radians = glm::radians(slopeDegrees);
+        state.mode = MoveMode::Walk;
+        state.stance = Stance::Grounded;
+        sense.water_surface_y = -1000.0f;
+        sense.ground_slope_radians = world.slope_radians;
+        sense.ground_uphill = glm::vec2{1.0f, 0.0f}; // the ramp rises along +X
+        tuning.step_height = kSvoStepHeight;
+        eye.y = world.height_at(0.0f) + tuning.eye_height + 0.01f;
+    }
+
+    StepResult tick(const PlayerIntent& intent) {
+        sense.ground_height = world.height_at(eye.x);
+        // Yaw -90 looks along +X, which is straight up the ramp.
+        return step_player(world, state, tuning, intent, sense, eye, glm::radians(-90.0f), 0.0f, 40.0f, kDt);
+    }
+};
+
+} // namespace
+
+TEST_CASE("A slope at or under the limit is climbed; one above it is not", "[player][slope]") {
+    PlayerIntent uphill;
+    uphill.forward = true;
+    const PlayerTuning defaults;
+    const float limitDegrees = glm::degrees(defaults.max_walk_slope_radians);
+
+    // The prompt's ladder. Each rung is compared against the DECLARED limit, not a literal, so
+    // retuning the limit retunes the expectation with it.
+    for (const float degrees : {20.0f, 30.0f, 40.0f, 50.0f, 60.0f}) {
+        RampSim sim(degrees);
+        const float startX = sim.eye.x;
+        for (int i = 0; i < 240; ++i) { // 4 s
+            sim.tick(uphill);
+        }
+        const float travelled = sim.eye.x - startX;
+        const bool walkable = degrees <= limitDegrees + 1.0e-3f;
+        UNSCOPED_INFO("slope " << degrees << " deg, travelled " << travelled << " m, limit " << limitDegrees);
+        if (walkable) {
+            CHECK(travelled > 0.5f); // made real progress up it
+            CHECK_FALSE(sim.state.slide_speed > 0.0f);
+        } else {
+            // Refused: the body may not gain ground up the face, and it slides back down it.
+            CHECK(travelled <= 0.0f);
+            CHECK(sim.state.slide_speed > 0.0f);
+        }
+    }
+}
+
+TEST_CASE("The climb/slide boundary does not oscillate", "[player][slope]") {
+    // The prompt's stability check: 2 degrees either side of the limit, held for 60 ticks, the
+    // answer must not change once it has settled. It cannot, by construction -- "too steep" is a
+    // pure function of a smooth analytic field, with no hysteresis to ring -- and this is the case
+    // that says so rather than assuming it.
+    PlayerIntent uphill;
+    uphill.forward = true;
+    const float limitDegrees = glm::degrees(PlayerTuning{}.max_walk_slope_radians);
+
+    for (const float offset : {-2.0f, 2.0f}) {
+        RampSim sim(limitDegrees + offset);
+        for (int i = 0; i < 30; ++i) {
+            sim.tick(uphill); // settle
+        }
+        const bool slidingAfterSettle = sim.tick(uphill).sliding;
+        int changes = 0;
+        for (int i = 0; i < 60; ++i) {
+            if (sim.tick(uphill).sliding != slidingAfterSettle) {
+                ++changes;
+            }
+        }
+        UNSCOPED_INFO("slope " << (limitDegrees + offset) << " deg, sliding " << slidingAfterSettle
+                               << ", changes " << changes);
+        CHECK(changes == 0);
+        CHECK(slidingAfterSettle == (offset > 0.0f));
+    }
+}
+
+TEST_CASE("A slide is a friction cone: zero at the limit, growing above it, capped", "[player][slope]") {
+    // The limit and the slide strength are ONE number, not two that can disagree: net downslope
+    // acceleration is g(sin t - tan(limit) cos t), which is exactly zero at the limit.
+    const PlayerTuning tuning;
+    const float limit = tuning.max_walk_slope_radians;
+    PlayerState state;
+    WorldSense sense;
+    sense.ground_uphill = glm::vec2{1.0f, 0.0f};
+
+    sense.ground_slope_radians = limit;
+    static_cast<void>(update_slide(state, tuning, sense, true, 1.0f));
+    CHECK_THAT(state.slide_speed, Catch::Matchers::WithinAbs(0.0, 1.0e-5));
+
+    // Steeper accelerates, and steeper still accelerates harder.
+    state.slide_speed = 0.0f;
+    sense.ground_slope_radians = limit + glm::radians(10.0f);
+    static_cast<void>(update_slide(state, tuning, sense, true, 0.1f));
+    const float gentle = state.slide_speed;
+    CHECK(gentle > 0.0f);
+
+    state.slide_speed = 0.0f;
+    sense.ground_slope_radians = glm::radians(80.0f);
+    static_cast<void>(update_slide(state, tuning, sense, true, 0.1f));
+    CHECK(state.slide_speed > gentle);
+
+    // Capped: a slide is not faster than a run, however long the face is.
+    for (int i = 0; i < 1000; ++i) {
+        static_cast<void>(update_slide(state, tuning, sense, true, 1.0f / 60.0f));
+    }
+    CHECK_THAT(state.slide_speed, Catch::Matchers::WithinRel(tuning.max_slide_speed, 1.0e-4f));
+
+    // And it bleeds off on walkable ground rather than stopping dead, so stepping from a 41 degree
+    // face onto a 39 degree one is not a wall.
+    sense.ground_slope_radians = 0.0f;
+    static_cast<void>(update_slide(state, tuning, sense, true, 1.0f / 60.0f));
+    CHECK(state.slide_speed < tuning.max_slide_speed);
+    CHECK(state.slide_speed > 0.0f);
+}
+
+TEST_CASE("Airborne is not sliding, however steep the ground below is", "[player][slope]") {
+    // `grounded` gates the whole thing: a body falling past a cliff face is falling, not sliding
+    // down it, and the two must not both be adding downhill velocity.
+    const PlayerTuning tuning;
+    PlayerState state;
+    WorldSense sense;
+    sense.ground_uphill = glm::vec2{1.0f, 0.0f};
+    sense.ground_slope_radians = glm::radians(80.0f);
+    const glm::vec2 slide = update_slide(state, tuning, sense, false, 0.5f);
+    CHECK(state.slide_speed == 0.0f);
+    CHECK(glm::length(slide) == 0.0f);
+}

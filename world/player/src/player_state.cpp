@@ -36,6 +36,23 @@ void accelerate_ground(glm::vec2& velocity, const glm::vec2& target, const Playe
     velocity = step >= distance ? target : velocity + gap * (step / distance);
 }
 
+glm::vec2 update_slide(PlayerState& state, const PlayerTuning& tuning, const WorldSense& sense, bool grounded,
+                       float dt) noexcept {
+    const bool tooSteep = grounded && sense.ground_slope_radians > tuning.max_walk_slope_radians;
+    if (!tooSteep) {
+        // Bleed off at the braking rate. Not instant: stepping from a 41 degree face onto a 39
+        // degree one should not stop the body dead, and a hard reset here is what would make the
+        // climb/slide boundary jitter.
+        state.slide_speed = std::max(0.0f, state.slide_speed - tuning.ground_decel * dt);
+    } else {
+        const float t = sense.ground_slope_radians;
+        const float mu = std::tan(tuning.max_walk_slope_radians);
+        const float along = std::abs(tuning.gravity) * (std::sin(t) - mu * std::cos(t));
+        state.slide_speed = std::min(state.slide_speed + std::max(along, 0.0f) * dt, tuning.max_slide_speed);
+    }
+    return state.slide_speed <= 0.0f ? glm::vec2{0.0f} : -sense.ground_uphill * state.slide_speed;
+}
+
 glm::vec3 wish_velocity(const PlayerIntent& intent, const PlayerTuning& tuning, MoveMode mode,
                         float yawRadians, float pitchRadians, float moveSpeed) noexcept {
     constexpr glm::vec3 kWorldUp{0.0f, 1.0f, 0.0f};

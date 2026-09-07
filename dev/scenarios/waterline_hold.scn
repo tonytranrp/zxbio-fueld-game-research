@@ -1,0 +1,35 @@
+name waterline_hold
+describe Goal 236's flicker check: stand exactly where the sea meets the land for thirty seconds of wave motion and count stance transitions. The `inWater` predicate is `feetY < surface && ground_height < surface`, and since goal 197 that surface MOVES -- it is the live Gerstner sum. A body standing at x=111.5 (ground 0.37 m, sea level 0) has its feet inside the band the crests sweep through, so if the predicate is going to flicker between Grounded and Swimming, this is the one pose in the world where it must.
+backend both
+
+option --walk
+option --no-taa
+
+# Ground heights along z=0, from tools/svo_render --xz: 3.82 at x=109, 2.59 at 110, 1.16 at 111,
+# 0.37 at 111.5, -0.49 at 112. The waterline is x = 111.6; 111.5 is the last standable metre.
+pose_ground 111.5,0 -90 -6 1.7
+wait 30
+
+
+# GOLDEN POLICY (measured, this scenario has none / only the early ones):
+# A capture taken after sustained MOTION is not reproducible on this engine today. Two identical
+# runs of the same scenario differ by 5.3% to 35.5% of pixels, because at speed the body outruns the
+# LOD rebuild and which tree is resident when it stops decides what it sees. Captures taken AT REST
+# reproduce to 0.0001-0.11%, well under the 1.5% gate. So the moving captures here are written for
+# eyeballing and deliberately have no golden until Prompt 004 removes the rebuild storm.
+
+capture end waterline_hold
+
+assert frames > 0
+assert contrast_percent > 6
+assert inside_solid == 0
+# The prompt's criterion is "does not flicker more than once per wave crest". Measured: the dominant
+# wave period here is 2.86 s, so thirty seconds is about 10.5 crests -- the gate is therefore 10, and
+# 8 leaves no room for argument. What the run actually reads is 4, and all four are DISTINCT one-off
+# transitions (spawn settle, then entering the sea), not a repeating pair.
+#
+# Before the two fixes goal 236 produced, this read 33, of which 16 were grounded->airborne and 16
+# airborne->grounded: the body sliding down a 59 degree shore and phantom-landing every 1.9 s. Only
+# ONE of the 33 involved water at all, which is why the first fix -- hysteresis on the swim
+# predicate -- moved nothing.
+assert stance_changes < 8

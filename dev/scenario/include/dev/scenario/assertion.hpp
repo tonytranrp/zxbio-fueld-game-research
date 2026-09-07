@@ -29,6 +29,7 @@ enum class Metric : std::uint8_t {
     GoldenDistance,  // the regression metric of goal 217, worst over the run's captures
     WalkViolations,  // ticks that ended below the ground surface
     InsideSolid,     // goal 228: ticks that ended with the body inside solid geometry
+    StanceChanges,   // goal 236: Grounded/Airborne/Swimming transitions -- waterline flicker
     Uploads,         // tree uploads completed
 };
 

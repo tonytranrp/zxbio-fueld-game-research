@@ -58,6 +58,10 @@ struct AppOptions {
     // make every slope a sub-cm staircase) and a real ledge climb on the mesh path (1 m blocks);
     // unset takes each path's own default.
     std::optional<float> step_height;
+    // Goal 235, in DEGREES because that is how a slope is discussed; the tuning holds radians.
+    // Its reason for existing is the before/after: `--ramp max-walk-slope:40,89` renders the same
+    // cliff refused and climbed, which is a demonstration rather than a claim.
+    std::optional<float> max_walk_slope_deg;
     // Prompt 002: these five were `no_*` members before the port, mirrored into a positive form at
     // every use site (`svo_settings.sky = !no_sky`). ValueKind::Toggle answers to BOTH --x and
     // --no-x from one row, so the negation now happens exactly once, in the spelling.

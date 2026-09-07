@@ -52,7 +52,9 @@ struct RunHooks {
     // measuring: `assert walk_violations == 0` passed on a run that logged 1861 of them, because
     // RunResult::walk_violations was never written. An assertion that cannot fail is worse than no
     // assertion, because it reads as evidence.
-    std::function<void(std::uint32_t walkViolations, std::uint32_t insideSolidEvents)> on_invariants;
+    std::function<void(std::uint32_t walkViolations, std::uint32_t insideSolidEvents,
+                       std::uint32_t stanceChanges)>
+        on_invariants;
     // Loading-phase frames, so the report can say how long the world was not there.
     std::function<void(double wallMs)> on_warmup_frame;
 };

@@ -46,8 +46,30 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
         // Goal 234: the body accelerates. `wish` is the TARGET velocity in m/s; the ramp is what
         // turns Shift from an instant x4 into a sprint you have to build up to (0.70 s to 7 m/s at
         // 10 m/s^2) and let go of (0.50 s back to a stop at 14).
-        accelerate_ground(state.horizontal_velocity, glm::vec2{wish.x, wish.z}, tuning, dt);
-        delta = glm::vec3{state.horizontal_velocity.x, 0.0f, state.horizontal_velocity.y} * dt;
+        // Goal 235: on ground too steep to walk, the uphill half of the wish is refused before the
+        // ramp ever sees it -- you can still move across and down the face, just not up it.
+        glm::vec2 target{wish.x, wish.z};
+        // "In contact with the ground", not "grounded this exact tick". A body sliding down a steep
+        // face is in INTERMITTENT contact -- it leaves the surface for a tick at a time on the way
+        // down -- and gating the slide on strict groundedness made it flicker on and off, which the
+        // stability test caught as two state changes in 60 ticks. Coyote time is already the
+        // engine's name for "recently grounded"; reusing it here is the same idea, not a new one.
+        const bool groundContact = state.stance == Stance::Grounded || state.coyote_remaining > 0.0f;
+        const bool tooSteep = groundContact && sense.ground_slope_radians > tuning.max_walk_slope_radians;
+        if (tooSteep) {
+            const float uphill = glm::dot(target, sense.ground_uphill);
+            if (uphill > 0.0f) {
+                target -= sense.ground_uphill * uphill;
+            }
+        }
+        accelerate_ground(state.horizontal_velocity, target, tuning, dt);
+        const glm::vec2 slide = update_slide(state, tuning, sense, groundContact, dt);
+        // Report the DECISION, not the residual speed: "this ground is too steep to walk and I am
+        // on it" is stable, while "some downhill velocity is still bleeding off" is not, and the
+        // second is what a caller watching for jitter would have been shown.
+        result.sliding = tooSteep;
+        const glm::vec2 ground = state.horizontal_velocity + slide;
+        delta = glm::vec3{ground.x, 0.0f, ground.y} * dt;
     }
 
     if (state.mode == MoveMode::Fly) {
@@ -71,8 +93,15 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
     // Swimming needs a genuinely submerged column, not just feet below the plane: standing in a
     // puddle on ground above sea level is walking, and always was.
     const float feetY = eyePosition.y - tuning.eye_height;
-    const bool inWater = feetY < sense.water_surface_y && sense.ground_height < sense.water_surface_y;
-    const float submersion = inWater ? std::min(sense.water_surface_y - feetY, 1.0f) : 0.0f;
+    const float depth = sense.water_surface_y - feetY;
+    // Goal 236: hysteresis, because the surface MOVES now. A single threshold against a Gerstner
+    // sum is crossed twice per wave by a body standing at the waterline -- measured at 25 stance
+    // transitions in 30 s before this. Which threshold applies depends on what the body is already
+    // doing, which is what makes it hysteresis rather than a wider band.
+    const float enterOrExit =
+        state.stance == Stance::Swimming ? tuning.swim_exit_depth : tuning.swim_enter_depth;
+    const bool inWater = depth > enterOrExit && sense.ground_height < sense.water_surface_y;
+    const float submersion = inWater ? std::min(depth, 1.0f) : 0.0f;
 
     // --- vertical ----------------------------------------------------------------------------------
     if (inWater) {
@@ -98,6 +127,12 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
     const collision::Aabb body = collision::Aabb::upright(feet, tuning.body_half_width, tuning.body_height);
     collision::SweepParams sweep;
     sweep.step_height = tuning.step_height;
+    // Goal 235: the step-up is how a body climbs a sub-centimetre staircase, which is exactly what
+    // a 60 degree hillside is at 7.8 mm voxels -- so leaving it on would let the body walk up a
+    // face the slope limit just refused. Steep ground gets no step budget.
+    if (state.mode == MoveMode::Walk && sense.ground_slope_radians > tuning.max_walk_slope_radians) {
+        sweep.step_height = 0.0f;
+    }
     const collision::SweepResult moved = collision::move_and_slide(query, body, delta, sweep);
     eyePosition += moved.delta;
     result.stepped_up = moved.stepped_up;
@@ -132,7 +167,18 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
             state.stance = Stance::Airborne;
         }
     } else if (!inWater) {
-        state.stance = Stance::Airborne;
+        // Goal 236: a body SLIDING down a face too steep to walk is in contact with it, even on the
+        // ticks the sweep does not ground. Letting those ticks read Airborne makes the stance
+        // oscillate -- measured at `waterline_hold`, standing still on a 59 degree shore: 16
+        // grounded->airborne and 16 airborne->grounded transitions in 30 s, against exactly one
+        // involving water. Every one of those is a phantom landing, and the landing dip and the
+        // coyote timer both react to it.
+        //
+        // `result.sliding` already requires ground contact within coyote time, so a body that
+        // slides off the bottom of a cliff into real air still goes Airborne within 0.1 s.
+        if (!result.sliding) {
+            state.stance = Stance::Airborne;
+        }
     }
 
     // --- the analytic backstop, and why it is gone --------------------------------------------------

@@ -82,7 +82,7 @@ if(BUILD_TESTING)
   # They stay registered because on a machine WITH a GPU a plain `ctest` running them is exactly
   # what caught seven stale goldens this pass. The working directory is the repo root so
   # dev/scenarios and dev/goldens resolve.
-  foreach(scenario_name spawn_stand macro_ground valley_far clip_stress)
+  foreach(scenario_name spawn_stand macro_ground valley_far clip_stress walk_cliff)
     add_test(NAME "scenario.${scenario_name}"
              COMMAND voxel_harness --scenario ${scenario_name} --headless --backend vk
                      --out-dir "${CMAKE_CURRENT_BINARY_DIR}/scenario-out"

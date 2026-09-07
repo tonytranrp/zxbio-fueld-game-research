@@ -42,6 +42,23 @@ struct PlayerTuning {
     // Fly is the dev tool and keeps its old feel exactly: `move_speed` x this on Shift.
     float fly_boost_factor = 4.0f;
 
+    // ---- the walkable slope, as a friction cone (goal 235) --------------------------------------
+    // Above this the body SLIDES instead of climbing. 40 degrees, and the band it was chosen from:
+    //   * Minetti's gradient measurements span +/-45% grade = **+/-24.2 degrees**, but that is the
+    //     limit of a treadmill protocol, not of human capability -- people walk up steeper scree
+    //     than any treadmill will tilt to. Taking 24 degrees as a hard limit would over-read the
+    //     source, and it would refuse the 31 degree slope `walk_hillside` is named for.
+    //   * Mountain paths statistically optimise at 20-30% grade (11-17 degrees) -- that is the
+    //     comfortable gradient, not the possible one.
+    //   * Shipped engines default near 45 (Unreal 44.765, Source 45.57), a number that exists for
+    //     level design with 45 degree ramps. This terrain has no ramps; it has hills at ~31 and
+    //     cliffs at 75-79.
+    // 40 degrees sits above every hill the generator makes and below every cliff, which is the
+    // behaviour that reads as "I can walk up that, I cannot walk up THAT".
+    float max_walk_slope_radians = 0.6981317f; // 40 degrees
+    // A slide is not faster than a run. Terminal speed for the friction-cone slide below.
+    float max_slide_speed = 7.0f;
+
     // Earth gravity, deliberately (goal 233). The old -32.0 was 3.26x Earth with an 8.5 m/s jump --
     // a game-convention choice that was never recorded AS a choice. Having just made the ground
     // speeds real, keeping a 3.26x gravity would be incoherent: the body would walk like a human
@@ -66,6 +83,13 @@ struct PlayerTuning {
     float jump_buffer_time = 0.10f; // a press this early still fires on landing
 
     // ---- swimming (A5) --------------------------------------------------------------------------
+    // You WADE before you swim, and the two thresholds differ (goal 236). Without this the
+    // `inWater` predicate is a bare comparison against a surface that moves, so a body standing at
+    // the waterline crosses it twice per wave: MEASURED at 25 stance transitions in 30 s at
+    // x=111.5 on the shoreline, against a ~4 s dominant wave period. Hysteresis, with a reading:
+    // you start swimming once you are thigh-deep and stop once only your shins are under.
+    float swim_enter_depth = 0.6f;  // feet this far below the surface before Swimming begins
+    float swim_exit_depth = 0.2f;   // and it ends once less than this remains
     float swim_speed = 3.5f;        // direct vertical velocity while Space/Ctrl held under water
     float shore_pop_impulse = 5.0f; // upward kick when swimming into a climbable lip
     float shore_pop_probe = 0.6f;   // how far above the blocked body to look for air

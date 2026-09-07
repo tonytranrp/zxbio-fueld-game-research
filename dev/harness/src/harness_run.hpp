@@ -42,6 +42,7 @@ struct RunResult {
     float contrast_percent = 0.0f;
     std::uint32_t walk_violations = 0;
     std::uint32_t inside_solid_events = 0;
+    std::uint32_t stance_changes = 0; // goal 236: Grounded/Airborne/Swimming transitions
     bool passed = true;
 };
 
@@ -92,8 +93,8 @@ struct RampRung {
     double fps_from_frame_ms = 0.0;
 };
 
-int run_ramp(const scenario::Scenario& sc, const Options& harnessOptions,
-             render::diligent::Backend backend, std::vector<RampRung>& out);
+int run_ramp(const scenario::Scenario& sc, const Options& harnessOptions, render::diligent::Backend backend,
+             std::vector<RampRung>& out);
 
 // The machine-readable report of goal 216.
 [[nodiscard]] bool write_report(const std::string& path, const scenario::Scenario& sc,

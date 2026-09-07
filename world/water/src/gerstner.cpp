@@ -133,4 +133,18 @@ float shore_fade(const WaveField& field, float depth) noexcept {
     return t * t * (3.0f - 2.0f * t);
 }
 
+float dominant_period(const WaveField& field) noexcept {
+    const GerstnerWave* biggest = nullptr;
+    for (const GerstnerWave& w : field.waves) {
+        if (w.amplitude > 0.0f && (biggest == nullptr || w.amplitude > biggest->amplitude)) {
+            biggest = &w;
+        }
+    }
+    if (biggest == nullptr) {
+        return 0.0f; // glass: --no-wind, or a wind of zero
+    }
+    const float omega = biggest->omega();
+    return omega > 0.0f ? 6.283185307179586f / omega : 0.0f;
+}
+
 } // namespace world::water

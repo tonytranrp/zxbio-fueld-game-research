@@ -376,7 +376,20 @@ Full record: `research/player-embodiment-log.md`. Machine-relevant deltas ONLY:
 - **The scenario ctest tests need a real GPU and CI has none.** The GitHub Windows runner enumerates
   no Vulkan ICD at all (WARP is D3D12 only), so CI runs `ctest ... -LE scenario`. A plain local
   `ctest` still runs them, which is how seven stale goldens were caught.
-- **252/252 tests** (215 core). Goldens were re-taken for all ten scenarios on both backends: the
+- **A body on ground steeper than 40 degrees SLIDES** (`max_walk_slope_radians`), and the step-up gets
+  no budget there -- at 7.8 mm voxels a 4 cm step climbs any staircase, which is every slope.
+  `--max-walk-slope DEG` (dev) is the before/after knob. The slope comes from the ANALYTIC
+  heightfield by central difference at 1 m; the voxel surface's local slope is only ever 0 or 90.
+  **The current generator's terrain is 57-71 degrees where it is called a "hillside"** -- mostly
+  unwalkable at any realistic limit. That is a requirement for Prompt 006.
+- **Swimming has wade/swim hysteresis** (`swim_enter_depth` 0.6 / `swim_exit_depth` 0.2) and a
+  sliding body keeps its Grounded stance. New `stance_changes` metric; the app prints transitions by
+  (from, to) beside the dominant wave period, because a flicker count is unreadable without one.
+- **GOLDENS ONLY WORK AT REST.** Measured: identical back-to-back runs differ 0.0001-0.11% for
+  captures taken at rest and **5.3-35.5% after sustained motion**, against a 1.5% gate. Every moving
+  capture's golden is DELETED, not loosened, and its scenario carries a `GOLDEN POLICY` note. Do not
+  re-accept them before Prompt 004 removes the rebuild storm (goal 246).
+- **257/257 tests** (219 core). Goldens were re-taken for all ten scenarios on both backends: the
   static poses had been stale since walk became the default, and the moving ones moved with the new
   speeds and gravity.
 

@@ -129,7 +129,8 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
                     std::uint32_t& walkViolations, world::player::FixedStepper& stepper, float& viewOffsetY,
                     const world::water::WaveField& waveField, float waveTime,
                     std::uint32_t& insideSolidEvents, std::uint32_t& insideSolidStartedInside,
-                    std::uint32_t& insideSolidSteppedUp, CollisionCost& collisionCost) {
+                    std::uint32_t& insideSolidSteppedUp, CollisionCost& collisionCost,
+                    std::uint32_t& stanceChanges, std::array<std::uint32_t, 9>& stanceTransitions) {
     auto [transform, lens, spectator] =
         registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(
             cameraEntity);
@@ -178,6 +179,21 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
         const float groundHeight = heightmap.height_at(transform.position.x, transform.position.z);
         world::player::WorldSense sense;
         sense.ground_height = groundHeight;
+        // Goal 235: the macroscopic slope, by central difference on the ANALYTIC field. One metre
+        // is the right probe distance -- far enough to skip the 7.8 mm staircase the body actually
+        // collides with, near enough to follow a hill rather than average it away. Four extra
+        // `height_at` calls per tick; the analytic sampler is FastNoise, not an octree descent.
+        {
+            constexpr float kProbe = 1.0f;
+            const float hx = heightmap.height_at(transform.position.x + kProbe, transform.position.z) -
+                             heightmap.height_at(transform.position.x - kProbe, transform.position.z);
+            const float hz = heightmap.height_at(transform.position.x, transform.position.z + kProbe) -
+                             heightmap.height_at(transform.position.x, transform.position.z - kProbe);
+            const glm::vec2 gradient{hx / (2.0f * kProbe), hz / (2.0f * kProbe)};
+            const float steepness = glm::length(gradient);
+            sense.ground_slope_radians = std::atan(steepness);
+            sense.ground_uphill = steepness > 1.0e-5f ? gradient / steepness : glm::vec2{0.0f};
+        }
         // E2: the swimmer rides the ACTUAL surface, not a constant sea level -- the same Gerstner
         // sum the marcher draws, evaluated on the CPU from the same field. Only where there is sea
         // to swim in: over land the wave height is meaningless and would shift the water plane the
@@ -196,6 +212,7 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
         const world::player::PlayerIntent& intent = ticked.intent;
 
         const glm::vec3 before = transform.position;
+        const world::player::Stance stanceBefore = spectator.physics.stance;
         world::player::StepResult step;
         if (query != nullptr) {
             // A query that maintains a cache gets told where the body is; one that does not (the
@@ -262,6 +279,20 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
         } else {
             const app::OpenWorld open; // --noclip: nothing is solid
             step = app::step_camera(transform, spectator, open, intent, sense, dt);
+        }
+
+        // Goal 236: every Grounded/Airborne/Swimming transition, counted. The waterline is the
+        // place this can go wrong -- the `inWater` predicate compares the feet against a surface
+        // that now MOVES (the Gerstner sum), so a body floating at a crest can cross the predicate
+        // twice per wave and flicker between Swimming and Grounded.
+        if (spectator.physics.stance != stanceBefore) {
+            ++stanceChanges;
+            // Attribution, not just a count. Which PAIR oscillates says which subsystem is
+            // responsible, and this pass has now been wrong twice by guessing that from a total.
+            const auto pair = [](world::player::Stance a, world::player::Stance b) {
+                return static_cast<int>(a) * 3 + static_cast<int>(b);
+            };
+            ++stanceTransitions[static_cast<std::size_t>(pair(stanceBefore, spectator.physics.stance))];
         }
 
         // A6: render-only feel. Off under the mechanical checks so --autofly/--verify-frame keep
@@ -567,6 +598,9 @@ Session::Session(const AppOptions& options, bool visible) : window(1280, 720, "v
         if (options.step_height) {
             spectator.tuning.step_height = *options.step_height;
         }
+        if (options.max_walk_slope_deg) {
+            spectator.tuning.max_walk_slope_radians = glm::radians(*options.max_walk_slope_deg);
+        }
         spawnPosition = transform.position;
     }
 }
@@ -654,11 +688,13 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
     cap.verifyOk = !options.verify_frame;
     FrameTelemetry telemetry;
     std::uint32_t frame = 0;
-    std::uint32_t walkViolations = 0;           // ticks ending below the ground surface in walk mode
-    std::uint32_t insideSolidEvents = 0;        // goal 228: ticks that ended with the body in solid
-    std::uint32_t insideSolidStartedInside = 0; // ...of which the sweep already found embedded
-    std::uint32_t insideSolidSteppedUp = 0;     // ...of which stepped up this tick
-    CollisionCost collisionCost;                // goal 230: nanoseconds per fixed tick
+    std::uint32_t walkViolations = 0;                 // ticks ending below the ground surface in walk mode
+    std::uint32_t insideSolidEvents = 0;              // goal 228: ticks that ended with the body in solid
+    std::uint32_t insideSolidStartedInside = 0;       // ...of which the sweep already found embedded
+    std::uint32_t insideSolidSteppedUp = 0;           // ...of which stepped up this tick
+    CollisionCost collisionCost;                      // goal 230: nanoseconds per fixed tick
+    std::uint32_t stanceChanges = 0;                  // goal 236: stance transitions over the run
+    std::array<std::uint32_t, 9> stanceTransitions{}; // ...broken down by (from, to)
     // Prompt 001 A1: the simulation's own clock, carried across frames (never a frame-loop
     // local), plus the render-only view-polish offset it produces.
     world::player::FixedStepper stepper;
@@ -719,7 +755,8 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
             const render::interface::Camera camera = update_camera_phase(
                 s.registry, s.cameraEntity, input, world.heightmap(), options.noclip ? nullptr : &collider,
                 s.clock, options, walkViolations, stepper, viewOffsetY, waveField, waveTime,
-                insideSolidEvents, insideSolidStartedInside, insideSolidSteppedUp, collisionCost);
+                insideSolidEvents, insideSolidStartedInside, insideSolidSteppedUp, collisionCost,
+                stanceChanges, stanceTransitions);
 
             renderer.render(camera);
             if (s.postProcess) {
@@ -787,8 +824,25 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
                                        : static_cast<double>(collisionCost.node_visits) /
                                              static_cast<double>(collisionCost.queries));
     }
+    // Goal 236: the flicker count is only readable next to the wave period it should be compared
+    // against -- "31 stance changes" means nothing until you know the run saw 25 crests.
+    {
+        static constexpr std::array<const char*, 3> kStanceNames{"grounded", "airborne", "swimming"};
+        std::string breakdown;
+        for (std::size_t from = 0; from < 3; ++from) {
+            for (std::size_t to = 0; to < 3; ++to) {
+                const std::uint32_t n = stanceTransitions[from * 3 + to];
+                if (n > 0) {
+                    breakdown += std::format(" {}->{}:{}", kStanceNames[from], kStanceNames[to], n);
+                }
+            }
+        }
+        log(LogLevel::Info, "stance: {} transitions over the run;{} -- dominant wave period {:.2f} s",
+            stanceChanges, breakdown.empty() ? std::string{" none"} : breakdown,
+            world::water::dominant_period(waveField));
+    }
     if (hooks.on_invariants) {
-        hooks.on_invariants(walkViolations, insideSolidEvents);
+        hooks.on_invariants(walkViolations, insideSolidEvents, stanceChanges);
     }
     log(LogLevel::Info, "exiting after {} frames on {}", frame,
         render::diligent::to_string(s.context->backend()));
@@ -817,7 +871,9 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     std::uint32_t insideSolidEvents = 0; // goal 228
     std::uint32_t insideSolidStartedInside = 0;
     std::uint32_t insideSolidSteppedUp = 0;
-    CollisionCost collisionCost; // goal 230, the mesh path too
+    CollisionCost collisionCost;     // goal 230, the mesh path too
+    std::uint32_t stanceChanges = 0; // goal 236, the mesh path too
+    std::array<std::uint32_t, 9> stanceTransitions{};
     world::player::FixedStepper stepper;
     float viewOffsetY = 0.0f;
     // A4: the aim query's tree source, kept across frames so its per-column placement cache is
@@ -966,11 +1022,12 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             // The renderer's OWN animation clock, so the swimmer rides the surface being drawn
             // rather than one that agrees with it only approximately.
             const float waveTime = renderer.anim_seconds();
-            const render::interface::Camera camera = update_camera_phase(
-                s.registry, s.cameraEntity, input, world.heightmap(),
-                options.noclip || !collider.has_tree() ? nullptr : &collider, s.clock, options,
-                walkViolations, stepper, viewOffsetY, waveField, waveTime, insideSolidEvents,
-                insideSolidStartedInside, insideSolidSteppedUp, collisionCost);
+            const render::interface::Camera camera =
+                update_camera_phase(s.registry, s.cameraEntity, input, world.heightmap(),
+                                    options.noclip || !collider.has_tree() ? nullptr : &collider, s.clock,
+                                    options, walkViolations, stepper, viewOffsetY, waveField, waveTime,
+                                    insideSolidEvents, insideSolidStartedInside, insideSolidSteppedUp,
+                                    collisionCost, stanceChanges, stanceTransitions);
             // Rebuild once the camera has left the inner half of the finest LOD ring: the tree is
             // still correct everywhere (coarser rings are conservative), just not at full detail
             // right around the camera until the new one lands.
@@ -1133,8 +1190,25 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
                                        : static_cast<double>(collisionCost.node_visits) /
                                              static_cast<double>(collisionCost.queries));
     }
+    // Goal 236: the flicker count is only readable next to the wave period it should be compared
+    // against -- "31 stance changes" means nothing until you know the run saw 25 crests.
+    {
+        static constexpr std::array<const char*, 3> kStanceNames{"grounded", "airborne", "swimming"};
+        std::string breakdown;
+        for (std::size_t from = 0; from < 3; ++from) {
+            for (std::size_t to = 0; to < 3; ++to) {
+                const std::uint32_t n = stanceTransitions[from * 3 + to];
+                if (n > 0) {
+                    breakdown += std::format(" {}->{}:{}", kStanceNames[from], kStanceNames[to], n);
+                }
+            }
+        }
+        log(LogLevel::Info, "stance: {} transitions over the run;{} -- dominant wave period {:.2f} s",
+            stanceChanges, breakdown.empty() ? std::string{" none"} : breakdown,
+            world::water::dominant_period(waveField));
+    }
     if (hooks.on_invariants) {
-        hooks.on_invariants(walkViolations, insideSolidEvents);
+        hooks.on_invariants(walkViolations, insideSolidEvents, stanceChanges);
     }
     log(LogLevel::Info, "exiting after {} frames on {}", frame,
         render::diligent::to_string(s.context->backend()));

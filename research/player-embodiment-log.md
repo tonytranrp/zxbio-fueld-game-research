@@ -1,7 +1,6 @@
 # Player embodiment — decision log
 
-Prompt 003, Group AJ (goals 225–243). **Partial**: AJ-A is complete (225–230, including 229a) and
-AJ-B is complete except 235 and most of 236 (see §9); 237–243 are not started. What is here is written the same way
+Prompt 003, Group AJ (goals 225–243). **AJ-A and AJ-B are complete** (225–236); 237–243 are not started (see §12). What is here is written the same way
 the rest of this repo's logs are — every measurement, every "decided against", and the things that
 turned out to be wrong.
 
@@ -503,19 +502,191 @@ Goal 244 opened.
 
 ---
 
-## 9. What AJ-B did NOT do
+## 9. The walkable slope, and what it revealed about the terrain (goal 235)
+
+**The limit is 40°**, and the band it was chosen from:
+
+- Minetti's gradient measurements span ±45% grade = **±24.2°** — but that is the limit of a treadmill
+  protocol, not of human capability. People walk up steeper scree than any treadmill will tilt to.
+  Taking 24° as a hard limit would over-read the source.
+- Mountain paths statistically optimise at 20–30% grade (**11–17°**). That is the *comfortable*
+  gradient, not the possible one.
+- Shipped engines default near 45° (Unreal 44.765, Source 45.57) — a number that exists for level
+  design with 45° ramps. This terrain has no ramps.
+
+40° sits above every hill the generator makes and below every cliff, which is the behaviour that
+reads as "I can walk up that, I cannot walk up **that**".
+
+### The limit and the slide are one number, not two
+
+Above the limit the body slides, and the slide's strength is *derived from the limit* rather than
+tuned beside it: the walkable limit **is** the friction angle, so net downslope acceleration is
+
+> `a = g·(sin θ − tan(limit)·cos θ)`
+
+which is exactly zero at the limit and grows above it. A separate "limit" and "slide strength" could
+disagree with each other; this cannot. Terminal speed is capped at `max_slide_speed` — a slide is
+not faster than a run — and on walkable ground the accumulated slide *bleeds off* at the braking
+rate rather than stopping dead, because stepping from a 41° face onto a 39° one should not be a wall.
+
+Three things had to change together, and the third is the one that matters:
+
+1. The uphill component of the wish is refused before the acceleration ramp sees it — you can still
+   move *across* and *down* a steep face, just not up it.
+2. **The step-up gets no budget on steep ground.** This is the whole reason the limit was toothless
+   before it existed: at 7.8 mm voxels every slope is a sub-centimetre staircase, and a 4 cm step
+   budget climbs *any* staircase. Leaving the step-up on would have let the body walk straight up a
+   face the slope check had just refused.
+3. The slope comes from the **analytic** heightfield, by central difference at 1 m — deliberately,
+   even though the body collides against the voxelised world. The collision surface at 7.8 mm has a
+   local slope of either 0° or 90° and nothing in between, so asking it "how steep is this hill"
+   returns noise. The analytic field is the smooth truth those voxels approximate.
+
+### What it measured about the terrain, which was not the point but is the finding
+
+`walk_hillside` is named for a hillside. Along its own line, from `tools/svo_render --xz`:
+
+| x (at z = 16) | 0 | 4 | 8 | 12 | 16 | 20 | 24 |
+|---|---|---|---|---|---|---|---|
+| surface (m) | 25.88 | 33.61 | 39.91 | 50.38 | 61.87 | 69.22 | 69.63 |
+| slope | — | **62.6°** | **57.6°** | **69.1°** | **70.8°** | **61.4°** | 5.9° |
+
+**It is not a hillside. It is a 57–71° cliff**, and the body had been walking up it at 10 m/s purely
+because the step-up climbs staircases. The shoreline is the same story: 1.16 m at x = 111 to −0.49 m
+at x = 112 is **58.8°**.
+
+That is a finding for Prompt 006, not a reason to pick a limit that lets the body climb cliffs: **the
+current generator produces terrain that is mostly unwalkable at any realistic slope limit.** Recorded
+here so 006 inherits it as a requirement rather than rediscovering it.
+
+A side effect worth having: with the step-up no longer running on steep ground, `walk_hillside`'s
+collision cost fell from **0.061 to 0.040 ms/tick** and its query count from 20.5 to 8.7 per tick.
+
+### The check
+
+`walk_cliff` walks straight into the measured 57–71° face and stays at the bottom of it. Captures:
+`research/captures/aj_slope_limit_refused.png` (the shipped 40° limit — the body pressed against a
+wall of individual cubes after sprinting at it for six seconds) and
+`aj_slope_limit_climbed.png` (the same scenario under `--max-walk-slope 89`, which climbs it). The
+flag exists so that comparison is a demonstration rather than a claim.
+
+Unit tests cover the ladder the prompt asked for — 20/30/40/50/60° compared against the **declared**
+limit rather than a literal, so retuning the limit retunes the expectation — plus the stability
+requirement (2° either side, 60 ticks, **zero** state changes), the friction-cone identity (exactly
+zero slide at the limit), the cap, the bleed-off, and that an airborne body is not sliding.
+
+---
+
+## 10. The waterline, where two fixes were needed and the first one was for the wrong bug (goal 236)
+
+The prompt's suspicion was specific: `inWater` is `feetY < surface && ground_height < surface`, and
+since goal 197 that surface **moves**, so a body at the waterline could cross the predicate twice per
+wave. `waterline_hold` stands at x = 111.5 (ground 0.37 m, sea level 0) for 30 s and counts stance
+transitions.
+
+**Measured: 33 transitions**, against a dominant wave period of 2.86 s — about 10.5 crests in the
+run. So the flicker was real and roughly three times per crest.
+
+I fixed the predicate first, with hysteresis that has a physical reading — you start swimming once
+you are thigh-deep (0.6 m) and stop once only your shins are under (0.2 m), rather than crossing one
+threshold in both directions.
+
+**It moved nothing. The count went to 33.** So I did what this pass has now had to do four times:
+stopped guessing and made the counter say *which* transition:
+
+```
+stance: 33 transitions -- grounded->airborne:16  airborne->grounded:16  airborne->swimming:1
+```
+
+**Sixteen and sixteen, and exactly one involving water.** The waterline had nothing to do with it.
+The shore at x = 111.5 is a **58.8° slope** (goal 235's own measurement), so the body was *sliding*,
+and a sliding body loses contact with the surface for a tick at a time. Every one of those ticks read
+Airborne, so the stance oscillated at ~1.9 s — and the landing dip and the coyote timer both react to
+that, which makes it a real defect and not just a noisy counter.
+
+The fix is one line and it follows from goal 235's own model: **a body sliding down a face is in
+contact with it**, so a `sliding` tick that the sweep did not ground keeps its Grounded stance.
+`result.sliding` already requires contact within coyote time, so a body that slides off the bottom of
+a cliff into real air still goes Airborne within 0.1 s.
+
+**33 → 4.** And the four are *distinct* one-off transitions — the spawn settling, then entering the
+sea — not a repeating pair. Against 10.5 crests, the prompt's criterion ("not more than once per
+crest") is met with a factor of 2.6 to spare.
+
+The hysteresis stays. It was a fix for a bug that was not firing yet, but it is correct on its own
+terms and it is the reason exactly one of the original 33 involved water instead of several.
+
+### Three sea states
+
+`swim_cycle` walks off the land into the sea, swims out, turns, swims back and climbs out, under
+`--ramp wind-speed:0.5,3,8`. Wind and waves share one direction and one strength, so wind speed *is*
+sea state: glass, chop, swell.
+
+| wind | stance transitions | inside-solid | frame contrast |
+|---|---|---|---|
+| 0.5 m/s | 11 | **0** | 54.6% |
+| 3 m/s | 11 | **0** | 43.2% |
+| 8 m/s | 9 | **0** | 35.3% |
+
+Zero inside-solid events at every sea state, and the transition count does not grow with the waves —
+if the surf were driving the predicate it would.
+
+**"Zero stuck frames" was operationalised as** zero inside-solid ticks plus zero walk violations plus
+a bounded stance count, because there is no stuck-detector in the harness and inventing one for a
+single check would be worse than saying what was actually measured. A body genuinely stuck against a
+shore lip shows up as inside-solid events or as the run failing to reach its capture; neither
+happened at any of the three.
+
+---
+
+---
+
+## 11. The golden mechanism only works at rest (measured while re-taking them)
+
+Re-taking every golden for AJ-B forced a question Prompt 002 never asked directly: **is a golden of a
+MOVING scenario reproducible at all?** Two identical back-to-back runs of each, same build, same
+backend, same machine:
+
+| capture | % pixels changed vs its own golden |
+|---|---|
+| `spawn_stand` first_light / final | **0.062 / 0.107** |
+| `valley_far` (static pose) | **0.083** |
+| `walk_shoreline` first_light / on_ground | **0.017 / 0.011** |
+| `fly_orbit` quarter | **0.0001** |
+| `fly_orbit` final | 8.2 |
+| `walk_shoreline` final | 15.5 |
+| `fly_transect` early / mid / final | 11.8 / 15.6 / 5.3 |
+| `walk_hillside` on_ground / final | 12.8 / **35.5** |
+| `walk_cliff`, `waterline_hold`, `swim_cycle` | 34.6 / 32.6 / 44.9 |
+
+The gate is 1.5%. **Captures at rest reproduce two to four orders of magnitude inside it; captures
+after sustained motion miss it by ten to twenty times.** The `wait 3` settle Prompt 002 added is not
+enough — `walk_cliff` waits two seconds and still reads 34.6%.
+
+The cause is the one already on the board: at speed the body outruns the LOD rebuild, so *which tree
+is resident when it stops* decides what it sees, and that depends on wall-clock timing. Prompt 002
+saw one instance of this (fly_orbit's vk final differing 70.4% from its own golden while d3d12's was
+bit-identical) and treated it as a settling problem. It is not; it is the rebuild storm, and no
+amount of waiting fixes it while a rebuild can still be in flight.
+
+So the goldens for moving captures are **deleted, not loosened**. Loosening the gate to 40% would
+make it detect nothing at all; a golden that cannot fail is the vacuous-check pattern this pass has
+now hit four times. Twenty golden files remain, all of captures taken at rest, and eight scenarios
+carry a `GOLDEN POLICY` note saying which of their captures are for eyeballing only and why. **Goal
+246**: restore them once Prompt 004 removes the storm, which is also the point at which they become
+worth having.
+
+---
+
+## 12. What Group AJ did NOT do
 
 Stated plainly rather than left to inference:
 
-- **235 (slope limits): NOT DONE.** Nothing yet refuses a slope; at 7.8 mm voxels a 60° hillside is
-  climbable because the sub-centimetre staircase always offers a 4 cm step. The research number to
-  build it against is in hand: Minetti's measurements span ±45% grade (**±24.2°**) and mountain
-  paths optimise at 20–30% grade (11–17°), so the walkable limit sits near 24° — well below the
-  45° game convention, and below the 31° slope `walk_hillside` climbs today, which means choosing
-  it is a real design decision and not a lookup.
-- **236 (swimming vs moving water): PARTIAL.** Its *finding* landed early and by accident — the
-  buoyancy constant above is exactly the "tuned against a flat surface" class of problem 236 warns
-  about. Its **Checks were not performed**: no scenario stands at the waterline for 30 s counting
-  stance flickers per wave crest, and no swim-out-and-back at 0.5 / 3 / 8 m/s wind. The `inWater`
-  predicate flicker against a *moving* surface remains unmeasured.
-- **AJ-C (237–240) and AJ-D (241–243): NOT STARTED.**
+- **AJ-C (237-240) and AJ-D (241-243): NOT STARTED.**
+- **234's uphill-sprint slope relationship** (Minetti's polynomial at 0 / 15 / 30 degrees) is not
+  asserted. It depends on slope-aware *speed*, which is a different thing from the slope *limit*
+  goal 235 built, and nothing yet reads the polynomial.
+- **The terrain is mostly unwalkable** at the limit goal 235 chose -- 57-71 degrees on the scenario
+  named "hillside". That is recorded as a requirement for Prompt 006 rather than worked around here.
+- **Collision over deep water misses its budget** (goal 244), for a reason attributed but not fixed.
+- **Moving captures have no goldens** (goal 246, section 11), because they cannot reproduce yet.

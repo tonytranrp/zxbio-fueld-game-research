@@ -29,6 +29,10 @@ struct PlayerState {
     // state: an instant multiply needs no memory, an acceleration does. Fly mode does not use it --
     // the free camera is a tool and tools respond instantly.
     glm::vec2 horizontal_velocity{0.0f, 0.0f};
+    // Downhill speed accumulated on too-steep ground (goal 235), m/s. Its own scalar rather than a
+    // part of `horizontal_velocity` because the input ramp pulls that toward zero every tick and
+    // would simply cancel the slide: 14 m/s^2 of braking against 4.8 m/s^2 of gravity-along-slope.
+    float slide_speed = 0.0f;
 
     // Jump timing (A2). Both count DOWN in seconds; both are pure consequences of edges and dt.
     float coyote_remaining = 0.0f; // > 0 means "still counts as grounded for a jump"
@@ -75,6 +79,15 @@ struct PlayerIntent {
 struct WorldSense {
     float ground_height = 0.0f; // analytic terrain surface under the body
     float water_surface_y = kSeaLevelWorld;
+    // The MACROSCOPIC slope under the body and the unit XZ direction that points up it (goal 235).
+    //
+    // Taken from the ANALYTIC heightfield, deliberately, even though the body collides against the
+    // voxelised world. At 7.8 mm voxels the collision surface is a staircase whose LOCAL slope is
+    // either 0 or 90 degrees and never anything in between, so asking it "how steep is this hill"
+    // returns noise. The analytic field is the smooth truth those voxels approximate, and it is
+    // what a slope limit is actually about.
+    float ground_slope_radians = 0.0f;
+    glm::vec2 ground_uphill{0.0f, 0.0f};
 };
 
 // What one tick did, for the caller's telemetry and for the view polish that reacts to it.
@@ -84,6 +97,7 @@ struct StepResult {
     bool jumped = false;
     bool stepped_up = false;
     bool shore_popped = false; // the swim-to-shore assist fired (A5)
+    bool sliding = false;      // goal 235: the ground was too steep to walk, so the body slid
     float impact_speed = 0.0f; // |downward velocity| at the moment of landing, else 0
 };
 
@@ -112,6 +126,16 @@ struct StepResult {
 // from wish_velocity because it is the piece with memory, and the piece a test drives directly.
 void accelerate_ground(glm::vec2& velocity, const glm::vec2& target, const PlayerTuning& tuning,
                        float dt) noexcept;
+
+// The friction-cone slide (goal 235). Above `max_walk_slope_radians` the ground stops holding the
+// body and gravity's component along the surface takes over; below it, any accumulated slide bleeds
+// off. Returns the downhill velocity to ADD to the input-driven one.
+//
+// The model is one idea, not two: the walkable limit IS the friction angle, so net downslope
+// acceleration is `g(sin t - tan(limit) cos t)` -- exactly zero at the limit and growing above it.
+// A separate "limit" and "slide strength" would let them disagree; this cannot.
+[[nodiscard]] glm::vec2 update_slide(PlayerState& state, const PlayerTuning& tuning, const WorldSense& sense,
+                                     bool grounded, float dt) noexcept;
 
 // The jump/coyote/buffer state machine, as a pure function of (state, edges, dt). Advances both
 // timers, decides whether this tick jumps, and applies the jump impulse if so. Called once per

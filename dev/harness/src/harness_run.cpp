@@ -56,6 +56,8 @@ double measure(scenario::Metric metric, const RunResult& run) {
         return run.walk_violations;
     case scenario::Metric::InsideSolid:
         return run.inside_solid_events;
+    case scenario::Metric::StanceChanges:
+        return run.stance_changes;
     case scenario::Metric::Uploads:
         return static_cast<double>(counters.uploads);
     }
