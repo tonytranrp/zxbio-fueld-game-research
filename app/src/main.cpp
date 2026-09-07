@@ -13,9 +13,9 @@
 #include "engine/core/log.hpp"
 
 namespace {
+using app::AppOptions;
 using engine::core::log;
 using engine::core::LogLevel;
-using app::AppOptions;
 } // namespace
 
 int main(int argc, char** argv) {

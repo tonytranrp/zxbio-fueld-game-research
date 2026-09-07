@@ -2,8 +2,8 @@
 
 #include <atomic>
 #include <cstddef>
-#include <mutex>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <thread>
 

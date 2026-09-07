@@ -262,6 +262,46 @@ tools/mesh_dump (.obj export), tools/svo_render (CPU reference frames of the oct
                   one-shot storage report)
 ```
 
+## Decided against, Prompt 003 Group AJ-C/AJ-D (goals 239, 243)
+
+These are decisions, not omissions. Each is written down so the next pass does not spend a day
+re-deriving it, which is the entire value of the entry.
+
+- **Motion blur: NOT added, and not to be added for the first-person view.**
+  `research/eye-camera-and-rendering.md` §5.7(e) is unambiguous, and the reasoning is three
+  independent lines that agree: the eye smears its retinal image during a gaze shift and then
+  *deletes* the smear (saccadic suppression, §5.3); a sample-and-hold display's own persistence
+  already supplies the physically correct smear during smooth pursuit (§5.6, MPRT = frame time);
+  and adding a shutter-angle blur on top simulates a **camera the player is not**. The empirical
+  half: a controlled study measured **no player-experience benefit** from its presence
+  ([Disney/MIT](https://la.disneyresearch.com/wp-content/uploads/Presence-of-Motion-Blur-Effect-Does-Not-Improve-Gaming-Experience-Paper.pdf)).
+  If it is ever wanted as a cinematic toggle, §5.7(e)'s own condition applies: exclude camera
+  rotation (the saccade analogue) and blur object motion only.
+
+- **Lens ghosts and starbursts: NOT added.** §5.7(c) and §5.2.2. The physically-based lens-flare
+  literature renders ghosts as internal reflections between the elements of a **multi-element camera
+  lens** and starbursts as aperture-blade diffraction. The eye has one lens and no aperture blades;
+  it *cannot* produce either. They are a camera tell. (The eye's own glare — veiling luminance,
+  $L_v = 10E/\theta^2$ — is a real phenomenon and is what goal 238's bloom models instead.)
+
+- **Luminance vignette: NOT added.** §5.7(f), and the reason is specific rather than aesthetic:
+  acuity and contrast sensitivity fall off differently with eccentricity (acuity roughly linear,
+  MAR = ω₀ + m·e; contrast sensitivity steeper and differently shaped), so a *luminance* vignette is
+  not an approximation of peripheral acuity loss at all. Worse, it darkens exactly the region the
+  periphery is specialised for — motion and looming detection — so it reads as **tunnel vision**,
+  not as reduced detail. If peripheral degradation is ever wanted, degrade resolution/contrast
+  (§5.7(d)'s fixed foveation), never luminance.
+
+- **A visible player body: OUT OF SCOPE for this pass** (goal 243). No player model, no self-shadow,
+  no first-person arms. Each is a content decision the owner has not asked for, and each needs art
+  this project does not have. Recorded rather than silently skipped because the *engineering*
+  groundwork is already done and should not be re-derived: the body's collision box exists and is
+  **0.6 × 1.75 m** with the eye at **1.7 m** (`PlayerTuning`), it is what the sweep moves and what
+  goal 228's counter watches, and a model added later inherits those numbers rather than inventing
+  new ones. The one thing that would need deciding is whether the model's feet follow the physical
+  eye or the smoothed one — goal 240's answer is the physical one, since the smoothing is explicitly
+  a render-only offset.
+
 ## Decisions that survived contact with evidence (this pass's additions)
 
 - **The verify metric had to evolve twice in one day, and the final form is better than the

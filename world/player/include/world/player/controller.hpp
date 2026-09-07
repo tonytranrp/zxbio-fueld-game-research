@@ -161,6 +161,15 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
         state.stance = Stance::Grounded;
         state.vertical_velocity = 0.0f;
         state.coyote_remaining = tuning.coyote_time; // refreshed while standing; spent once airborne
+        if (result.landed) {
+            // Goal 240: the eye smoothing exists to hide a 7.8 mm staircase, not to absorb a fall.
+            // A landing hands it an error the size of the whole drop, and it saturates its clamp
+            // trying to follow -- measured on the captured landing strip, the eye sat 5 cm ABOVE the
+            // body for a third of a second while the landing dip was pulling it 3.4 cm DOWN, so a
+            // landing read as the view floating instead of absorbing. The dip is the term that owns
+            // a landing; the smoothing steps aside for it.
+            state.eye_smooth_offset = 0.0f;
+        }
     } else if (moved.blocked_y && delta.y > 0.0f) {
         state.vertical_velocity = 0.0f; // bumped the head
         if (!inWater) {

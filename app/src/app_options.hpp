@@ -62,6 +62,10 @@ struct AppOptions {
     // Its reason for existing is the before/after: `--ramp max-walk-slope:40,89` renders the same
     // cliff refused and climbed, which is a demonstration rather than a claim.
     std::optional<float> max_walk_slope_deg;
+    // Goal 242: how far the crosshair readout will name a material. Default is derived
+    // (app::kAimResolvableRange, 34 m); the override exists because the 94-ppd young-observer
+    // ceiling gives 54 m and a capture session may legitimately want it.
+    std::optional<float> aim_range;
     // Prompt 002: these five were `no_*` members before the port, mirrored into a positive form at
     // every use site (`svo_settings.sky = !no_sky`). ValueKind::Toggle answers to BOTH --x and
     // --no-x from one row, so the negation now happens exactly once, in the spelling.

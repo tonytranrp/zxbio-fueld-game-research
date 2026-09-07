@@ -122,15 +122,14 @@ struct CollisionCost {
 // zero-overhead; a virtual BodyQuery would have put a call in the sweep's innermost loop for no
 // benefit, since the set of query types is closed and known here.
 template <world::collision::SolidQuery Q>
-render::interface::Camera
-update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraEntity, FrameInput& input,
-                    const world::generation::HeightmapGenerator& heightmap, Q* query,
-                    const engine::core::Clock& clock, const AppOptions& options,
-                    std::uint32_t& walkViolations, world::player::FixedStepper& stepper, float& viewOffsetY,
-                    const world::water::WaveField& waveField, float waveTime,
-                    std::uint32_t& insideSolidEvents, std::uint32_t& insideSolidStartedInside,
-                    std::uint32_t& insideSolidSteppedUp, CollisionCost& collisionCost,
-                    std::uint32_t& stanceChanges, std::array<std::uint32_t, 9>& stanceTransitions) {
+render::interface::Camera update_camera_phase(
+    engine::ecs::Registry& registry, engine::ecs::Entity cameraEntity, FrameInput& input,
+    const world::generation::HeightmapGenerator& heightmap, Q* query, const engine::core::Clock& clock,
+    const AppOptions& options, std::uint32_t& walkViolations, world::player::FixedStepper& stepper,
+    float& viewOffsetY, const world::water::WaveField& waveField, float waveTime,
+    std::uint32_t& insideSolidEvents, std::uint32_t& insideSolidStartedInside,
+    std::uint32_t& insideSolidSteppedUp, CollisionCost& collisionCost, std::uint32_t& stanceChanges,
+    std::array<std::uint32_t, 9>& stanceTransitions, float& smoothOffsetY) {
     auto [transform, lens, spectator] =
         registry.get<engine::ecs::Transform, engine::ecs::CameraLens, app::SpectatorCameraState>(
             cameraEntity);
@@ -301,7 +300,17 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
         const glm::vec3 travelled = transform.position - before;
         polish.horizontal_speed = glm::length(glm::vec2{travelled.x, travelled.z}) / dt;
         polish.boosting = intent.boost;
-        const bool polishOn = options.view_polish && !options.autofly && !options.verify_frame;
+        // `!verify_frame` used to be in this condition too, and it made goal 240 impossible: the
+        // harness sets verify_frame on every scenario (that is where the contrast metric comes from),
+        // so a capture sequence photographing the view polish photographed it switched OFF -- measured,
+        // ten frames across a landing, polish +0.0000 on every one.
+        //
+        // It was over-cautious rather than wrong-headed. The mechanical checks read the PHYSICAL body:
+        // the walk-violation counter and the inside-solid counter both test `transform.position`, and
+        // the polish is added to the camera COPY a few lines below, never to the transform. So polish
+        // cannot move what those measure. `--autofly` keeps its exclusion because it is a streaming
+        // smoke test whose documented behaviour is a bare camera.
+        const bool polishOn = options.view_polish && !options.autofly;
         viewOffsetY = world::player::update_view_polish(spectator.physics, spectator.tuning, polish, step,
                                                         polishOn, dt);
 
@@ -322,6 +331,10 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
     // offset. The BODY is never moved by either -- the walk-violation counter above, --autofly and
     // --verify-frame all measure transform.position, not this.
     camera.position.y += spectator.physics.eye_smooth_offset + viewOffsetY;
+    // The TOTAL render-only offset, which is what goal 240's strip needs reported: the smoothing
+    // and the polish are both "the eye is not exactly where the body is" and a still cannot
+    // separate them.
+    smoothOffsetY = spectator.physics.eye_smooth_offset;
     camera.orientation = transform.orientation;
     camera.fov_y_radians = lens.fov_y_radians + world::player::view_polish_fov_offset(spectator.physics);
     camera.near_plane = lens.near_plane;
@@ -403,7 +416,10 @@ void overlay_phase(FrameTelemetry& t, const engine::core::Clock& clock,
     // Goal 84 + Prompt 001 A4: what the crosshair (view center) is aiming at -- analytic ray march,
     // now including trees and the hit distance.
     const glm::vec3 aimDir = camera.orientation * glm::vec3(0.0f, 0.0f, -1.0f);
-    const app::AimHit aim = app::query_aim(world.heightmap(), camera.position, aimDir, 300.0f, &trees);
+    // Goal 242: the range is `kAimResolvableRange` (34 m), not 300 -- see its derivation. The mesh
+    // path has no octree, so it keeps the analytic march.
+    const app::AimHit aim =
+        app::query_aim(world.heightmap(), camera.position, aimDir, app::kAimResolvableRange, &trees);
     if (aim.hit) {
         std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f (%.0f m)",
                       app::material_name(aim.material), static_cast<double>(aim.position.x),
@@ -445,6 +461,12 @@ void report_phase(FrameTelemetry& t, const engine::core::Clock& clock,
 // called once the scene exists (verify-frame's whole premise is "does the finished scene look
 // right"); `sceneReady` is the chunk count on the mesh path, 1/0 on the svo path.
 struct CaptureState {
+    // Goal 240: the render-only eye offset in effect at the moment of a capture. The POLISH and the
+    // SMOOTHING are held apart, because the captured landing sequence found them disagreeing about
+    // which way the eye should go and a single total hid that. Held here rather than passed, because
+    // capture_phase already takes eight arguments and these are written once per frame.
+    float viewOffsetY = 0.0f;
+    float smoothOffsetY = 0.0f;
     bool verifyOk = false;
     bool verifyRan = false;
     std::uint32_t screenshotCounter = 0; // F2 capture numbering (goal 9)
@@ -508,8 +530,14 @@ bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t f
             hooks.on_verify(render::diligent::sample_non_reference_pixel_fraction(context));
         }
         const bool written = render::diligent::dump_frame(context, path.c_str());
-        log(written ? LogLevel::Info : LogLevel::Error, "capture {}: {} ({})", scenarioCapture, path,
-            written ? "written" : "FAILED");
+        // Goal 240: the render-only eye offset AT the capture, so a strip of stills can be read as
+        // numbers as well as looked at. A 2 cm effect at a 0.12 s time constant is exactly the case
+        // where a picture alone is not evidence -- which is the reason Prompt 001 shipped A6 without
+        // one and the reason this line exists.
+        log(written ? LogLevel::Info : LogLevel::Error,
+            "capture {}: {} ({}) eye offset {:+.4f} m (polish {:+.4f}, smoothing {:+.4f})", scenarioCapture,
+            path, written ? "written" : "FAILED", static_cast<double>(cap.viewOffsetY + cap.smoothOffsetY),
+            static_cast<double>(cap.viewOffsetY), static_cast<double>(cap.smoothOffsetY));
         if (hooks.on_capture) {
             hooks.on_capture(scenarioCapture, path, written);
         }
@@ -699,6 +727,7 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
     // local), plus the render-only view-polish offset it produces.
     world::player::FixedStepper stepper;
     float viewOffsetY = 0.0f;
+    float smoothOffsetY = 0.0f; // goal 240: reported separately from the polish, since they differ
     // A4: the aim query's tree source, kept across frames so its per-column placement cache is
     // built once rather than per frame. Off under the mechanical frame checks, along with the
     // crosshair, so --verify-frame's contrast metric measures the world and not the HUD.
@@ -756,7 +785,7 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
                 s.registry, s.cameraEntity, input, world.heightmap(), options.noclip ? nullptr : &collider,
                 s.clock, options, walkViolations, stepper, viewOffsetY, waveField, waveTime,
                 insideSolidEvents, insideSolidStartedInside, insideSolidSteppedUp, collisionCost,
-                stanceChanges, stanceTransitions);
+                stanceChanges, stanceTransitions, smoothOffsetY);
 
             renderer.render(camera);
             if (s.postProcess) {
@@ -764,6 +793,8 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
             }
             overlay_phase(telemetry, s.clock, *s.context, renderer, world, *s.overlay, chunkCounters, camera,
                           aimTrees, crosshairOn, options.overlay, options.svo_settings.wind, waveTime);
+            cap.viewOffsetY = viewOffsetY;
+            cap.smoothOffsetY = smoothOffsetY;
             capture_phase(cap, options, frame, *s.context, world.ready_chunk_count(), input, hooks,
                           hooks.capture_name
                               ? hooks.capture_name(frame, input.script_seconds(), true, false, false,
@@ -876,6 +907,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     std::array<std::uint32_t, 9> stanceTransitions{};
     world::player::FixedStepper stepper;
     float viewOffsetY = 0.0f;
+    float smoothOffsetY = 0.0f; // goal 240: reported separately from the polish, since they differ
     // A4: the aim query's tree source, kept across frames so its per-column placement cache is
     // built once rather than per frame. Off under the mechanical frame checks, along with the
     // crosshair, so --verify-frame's contrast metric measures the world and not the HUD.
@@ -1027,7 +1059,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
                                     options.noclip || !collider.has_tree() ? nullptr : &collider, s.clock,
                                     options, walkViolations, stepper, viewOffsetY, waveField, waveTime,
                                     insideSolidEvents, insideSolidStartedInside, insideSolidSteppedUp,
-                                    collisionCost, stanceChanges, stanceTransitions);
+                                    collisionCost, stanceChanges, stanceTransitions, smoothOffsetY);
             // Rebuild once the camera has left the inner half of the finest LOD ring: the tree is
             // still correct everywhere (coarser rings are conservative), just not at full detail
             // right around the camera until the new one lands.
@@ -1064,8 +1096,15 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             stats.svo.trees = last.trees;
             stats.svo.uploads = uploads;
             const glm::vec3 aimDir = camera.orientation * glm::vec3(0.0f, 0.0f, -1.0f);
+            // Goal 241: on the svo path the crosshair asks the OCTREE -- the same structure the
+            // body collides against and the same `trace_ray` the shader mirrors -- so it cannot
+            // disagree with either about what is there. The analytic march is the fallback for the
+            // seconds before the first tree lands, and nothing else.
+            const float aimRange = options.aim_range.value_or(app::kAimResolvableRange);
             const app::AimHit aim =
-                app::query_aim(world.heightmap(), camera.position, aimDir, 300.0f, &aimTrees);
+                collider.has_tree()
+                    ? app::query_aim_octree(*collider.tree(), camera.position, aimDir, aimRange)
+                    : app::query_aim(world.heightmap(), camera.position, aimDir, aimRange, &aimTrees);
             if (aim.hit) {
                 std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f (%.0f m)",
                               app::material_name(aim.material), static_cast<double>(aim.position.x),
@@ -1087,6 +1126,8 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             phases.overlay = phase_ms(phaseClock);
 
             phaseClock = std::chrono::steady_clock::now();
+            cap.viewOffsetY = viewOffsetY;
+            cap.smoothOffsetY = smoothOffsetY;
             capture_phase(cap, options, frame, *s.context, 1, input, hooks,
                           hooks.capture_name
                               ? hooks.capture_name(frame, input.script_seconds(), true, causes.swapped,

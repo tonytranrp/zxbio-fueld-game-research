@@ -389,7 +389,19 @@ Full record: `research/player-embodiment-log.md`. Machine-relevant deltas ONLY:
   captures taken at rest and **5.3-35.5% after sustained motion**, against a 1.5% gate. Every moving
   capture's golden is DELETED, not loosened, and its scenario carries a `GOLDEN POLICY` note. Do not
   re-accept them before Prompt 004 removes the rebuild storm (goal 246).
-- **257/257 tests** (219 core). Goldens were re-taken for all ten scenarios on both backends: the
+- **The crosshair asks the OCTREE on the svo path** (`query_aim_octree`, via `world::svo::trace_ray`
+  with LOD and smoothing off), and its range is **34 m**, not 300 -- the distance a 1 cm detail stays
+  resolvable at 20/20. `--aim-range` overrides. A test comparing against `material_at` is 1272/1272.
+- **View polish is ON under `--verify-frame` now.** It was gated off by it, which meant every harness
+  scenario ran with the polish disabled; the mechanical counters read `transform.position` and the
+  polish only offsets the camera copy, so it never could have affected them. `--autofly` still
+  disables it.
+- **`capture <when> <name> no-golden`** in a .scn takes the picture without comparing or promoting
+  it. Use it for any capture taken after motion -- those are not reproducible (see the golden note
+  above), and `--accept-golden` will otherwise keep recreating goldens you deleted.
+- **Scenario ctest tests hold `RESOURCE_LOCK gpu`**: two driving one GPU at once moves frame timing
+  enough to move a golden (`valley_far` failed under `-j 2`, passed three standalone runs at 0.002%).
+- **266/266 tests** (224 core). Goldens were re-taken for all ten scenarios on both backends: the
   static poses had been stale since walk became the default, and the moving ones moved with the new
   speeds and gravity.
 

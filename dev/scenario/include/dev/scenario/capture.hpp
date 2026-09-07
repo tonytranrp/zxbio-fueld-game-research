@@ -28,6 +28,12 @@ struct CapturePoint {
     float seconds = 0.0f;
     CaptureEvent event = CaptureEvent::WorldReady;
     std::string name; // becomes <name>.png beside the report, and the golden's file name
+    // `capture ... no-golden`: take the picture, do NOT compare it and do NOT let --accept-golden
+    // create one. For captures whose frame is not reproducible -- measured: anything taken after
+    // sustained motion differs 5-35% between identical runs while the LOD rebuild storm exists,
+    // against a 1.5% gate. This used to be a comment in the .scn plus a manual `rm`, which
+    // --accept-golden silently undid twice.
+    bool golden = true;
 
     [[nodiscard]] friend bool operator==(const CapturePoint&, const CapturePoint&) = default;
 };

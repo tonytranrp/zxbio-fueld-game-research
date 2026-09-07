@@ -88,6 +88,11 @@ if(BUILD_TESTING)
                      --out-dir "${CMAKE_CURRENT_BINARY_DIR}/scenario-out"
                      --report "${CMAKE_CURRENT_BINARY_DIR}/scenario-out/${scenario_name}.json"
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    set_tests_properties("scenario.${scenario_name}" PROPERTIES LABELS "scenario" TIMEOUT 600)
+    # RESOURCE_LOCK serialises these against each other: they each drive a real swap chain, and two
+    # at once on one GPU changes frame timing enough to move a golden. Caught for real -- valley_far
+    # failed its golden under `ctest -j 2` and passed three consecutive standalone runs at 0.002%,
+    # which is a flake in the harness, not a regression in the scene.
+    set_tests_properties("scenario.${scenario_name}" PROPERTIES LABELS "scenario" TIMEOUT 600
+                         RESOURCE_LOCK gpu)
   endforeach()
 endif()

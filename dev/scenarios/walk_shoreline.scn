@@ -36,10 +36,9 @@ wait 3
 # reproduce to 0.0001-0.11%, well under the 1.5% gate. So the moving captures here are written for
 # eyeballing and deliberately have no golden until Prompt 004 removes the rebuild storm.
 
-capture event grounded on_ground
-capture event world-ready first_light
-capture end final
-
+capture event grounded on_ground no-golden
+capture event world-ready first_light no-golden
+capture end final no-golden
 assert walk_violations == 0
 assert inside_solid == 0
 assert frames > 0

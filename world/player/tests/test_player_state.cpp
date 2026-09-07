@@ -306,3 +306,48 @@ TEST_CASE("Water's upthrust stays 2x gravity, whatever gravity is", "[player][sw
     const float netUpthrust = tuning.gravity + kWaterPhysics.buoyancy_acceleration;
     CHECK_THAT(netUpthrust, Catch::Matchers::WithinRel(std::abs(tuning.gravity), 1.0e-3f));
 }
+
+// --- goal 240: the polish constants, checked against the perception thresholds -------------------
+
+TEST_CASE("Head bob is above the detection threshold and below the acuity threshold", "[player][polish]") {
+    // research/human-movement-and-perception-research.md Part 2: vertical translation is detected
+    // at ~2.13 cm/s (median, 2AFC), and retinal slip costs acuity past ~4 deg/s, degrading rapidly
+    // past 6. A bob has to clear the first and stay under the second, and the interval between them
+    // is where the whole effect has to live.
+    const PlayerTuning tuning;
+    const float hz = tuning.bob_frequency * tuning.walk_speed;
+    const float peakVelocity = 2.0f * 3.14159265f * hz * tuning.bob_amplitude;
+
+    // The bob runs at the human step frequency, because that is the thing it imitates.
+    CHECK_THAT(hz, Catch::Matchers::WithinAbs(1.9, 0.15));
+
+    // Detected, comfortably: this is not a term nobody can see.
+    CHECK(peakVelocity > 10.0f * 0.0213f);
+
+    // But it does not cost acuity. Gaze perturbation while fixating the ground 4 m ahead:
+    // arctan(v / 4 m), which the research's own worked example computes the same way.
+    const float gazeDegPerSec = std::atan(peakVelocity / 4.0f) * 180.0f / 3.14159265f;
+    CHECK(gazeDegPerSec < 4.0f);
+}
+
+TEST_CASE("The polish budget is a budget: no single term can exceed it", "[player][polish]") {
+    // `landing_dip_max` used to be 0.06 against a 0.05 budget, so the clamp silently truncated a
+    // hard landing and the two constants disagreed about what was permitted.
+    const PlayerTuning tuning;
+    CHECK(tuning.landing_dip_max <= tuning.polish_max_offset);
+    CHECK(tuning.bob_amplitude <= tuning.polish_max_offset);
+    // And the two largest terms together still fit, so a landing mid-stride is not clipped.
+    CHECK(tuning.landing_dip_max + tuning.bob_amplitude <= tuning.polish_max_offset + 0.02f);
+}
+
+TEST_CASE("The landing dip is perceptible for a real landing", "[player][polish]") {
+    // A fall from the jump apex arrives at sqrt(2 g h). The dip it produces has to be visible or it
+    // is a term nobody can see, which goal 240 says to delete rather than keep.
+    const PlayerTuning tuning;
+    const float apex = (tuning.jump_speed * tuning.jump_speed) / (2.0f * std::abs(tuning.gravity));
+    const float impact = std::sqrt(2.0f * std::abs(tuning.gravity) * apex);
+    const float dip = std::min(impact * tuning.landing_dip_per_speed, tuning.landing_dip_max);
+    const float peakVelocity = dip / tuning.landing_dip_tau;
+    CHECK(dip > 0.02f);                   // a couple of centimetres of eye travel
+    CHECK(peakVelocity > 5.0f * 0.0213f); // and well past the vertical detection threshold
+}

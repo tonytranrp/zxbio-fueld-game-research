@@ -313,6 +313,16 @@ bool parse_into(std::string_view text, std::string_view path, Scenario& scenario
                 return false;
             }
             point.name = std::string{words[nameIndex]};
+            if (words.size() > nameIndex + 1) {
+                if (words[nameIndex + 1] != "no-golden") {
+                    ctx.message = where(path, lineNumber) +
+                                  "capture takes only \"no-golden\" after the "
+                                  "name (got \"" +
+                                  std::string{words[nameIndex + 1]} + "\")";
+                    return false;
+                }
+                point.golden = false;
+            }
             scenario.captures.push_back(point);
         } else if (directive == "assert") {
             if (!need(4, "<metric> <op> <value>")) {
@@ -445,7 +455,8 @@ std::string emit_scenario(const Scenario& scenario) {
         }
     }
     for (const CapturePoint& point : scenario.captures) {
-        out += "capture " + capture_when_to_string(point) + " " + point.name + "\n";
+        out += "capture " + capture_when_to_string(point) + " " + point.name +
+               (point.golden ? "" : " no-golden") + "\n";
     }
     for (const Assertion& assertion : scenario.assertions) {
         out += "assert " + std::string{metric_name(assertion.metric)} + " " +

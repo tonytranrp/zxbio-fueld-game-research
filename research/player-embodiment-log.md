@@ -1,6 +1,7 @@
 # Player embodiment — decision log
 
-Prompt 003, Group AJ (goals 225–243). **AJ-A and AJ-B are complete** (225–236); 237–243 are not started (see §12). What is here is written the same way
+Prompt 003, Group AJ (goals 225–243). **AJ-A, AJ-B and AJ-D are complete** (225–236, 241–243), AJ-C is complete except
+237 and 238 (see §14). What is here is written the same way
 the rest of this repo's logs are — every measurement, every "decided against", and the things that
 turned out to be wrong.
 
@@ -678,11 +679,146 @@ worth having.
 
 ---
 
-## 12. What Group AJ did NOT do
+## 12. The crosshair asks the octree, and stops claiming what the eye cannot check (goals 241, 242)
+
+**241.** The aim query re-derived the world from the height function. That was correct and it was
+also a *second opinion*: the crosshair could disagree with the body about what is there, and on the
+svo path it does by construction, because the tree carries LOD and edits and the height function
+carries neither. `query_aim_octree` asks `world::svo::trace_ray` — the same traversal the body
+collides against and the same one the shader mirrors — with the LOD early-out and the smoothing
+both **off**, because the readout wants the voxel that is there, not the cube a distant pixel would
+be shaded with. The analytic march survives for the mesh path and as the tests' second opinion,
+which is exactly what the goal's own check uses it for.
+
+**The check, and the three wrong answers it gave first.** Over 2,000 random rays in a real region at
+uniform LOD, comparing the material the readout names against `BrickTree::material_at` at the point
+it reports:
+
+| probe method | mismatches / 1272 hits |
+|---|---|
+| a quarter voxel **along the ray** | 27 (2.1%) |
+| a quarter voxel **along the hit face normal** | 2 |
+| snapped to that voxel's **centre** | 2 |
+| ...and handling `t == 0` | **0** |
+
+Each step named a different thing, and none of them was a defect in the query:
+
+1. The 27 were all `Stone`-vs-`Dirt` or `Dirt`-vs-`Air` at brick level, no LOD cube, no solid leaf.
+   Those are **vertically adjacent material bands**: on a shallow ray a quarter voxel of forward
+   travel crosses into the next voxel down, so the check was sampling a different voxel from the one
+   that was hit. The face normal is the only direction guaranteed to point *into* the hit voxel.
+2. Snapping to the voxel centre removed boundary ambiguity but changed nothing, which was itself
+   informative — it ruled out rounding.
+3. The last two printed **`t = 0.0000`**. The ray *started inside solid*: the tracer reports the
+   origin's own voxel immediately and its "face normal" is a default, not a surface it crossed.
+   Origins uniform over a region put some underground; a real crosshair's origin is the camera, and
+   goal 228's counter asserts every tick that the camera is not inside solid.
+
+Final: **1272 / 1272 material matches, 0 mismatches.** A second case compares the octree query
+against the analytic one straight down over 92 land columns: **92 agreed**.
+
+**242.** The readout's range was **300 m**, a round number nobody derived. It is now
+`kAimResolvableRange` = **34 m**, from `human-eye-and-vision-research.md` Part 1 §8.1: a **1 cm
+detail is resolvable to 34 m at 20/20** (1 arcmin MAR, d = s / tan θ). One centimetre is the scale
+of the detail that distinguishes one material from another here — a 7.8 mm voxel — so **beyond 34 m,
+naming the material is a claim the eye cannot check.**
+
+Rejected criteria, with the reason:
+
+- **54 m** — the same 1 cm detail at the 0.64′ MAR of the 94-ppd young-observer ceiling. A real
+  number describing the best measured eye rather than the nominal one. `--aim-range` exists for it.
+- **619 m** — an 18 cm face as a resolvable *blob*. Wrong criterion: detecting that something is
+  there is not identifying what it is made of, which is what this readout claims.
+- **1719 m** — a 0.5 m tree trunk at 1 arcmin. Same objection, further out.
+
+A test re-derives both distances from the arithmetic rather than trusting the constants, and asserts
+the readout goes blank past its range and hits the same column with the old 300 m — so "blank" is
+demonstrably a range limit and not a missing surface. Four pre-existing cases now state `300.0f`
+explicitly; their subject is classification, not range, and the range is tested on its own.
+
+---
+
+## 13. The view polish, measured against thresholds — and the instrument that was switched off (goal 240)
+
+Every polish constant now sits against a number from
+`research/human-movement-and-perception-research.md` Part 2: **vertical translation is detected at
+~2.13 cm/s** (median, 2AFC), and **retinal slip costs acuity past ~4 °/s**, degrading rapidly past 6.
+
+| constant | was | is | against threshold | verdict |
+|---|---|---|---|---|
+| `bob_frequency` | 1.9 cyc/m | **1.36** | 1.9 Hz at walking pace = the measured human step frequency | perceptible, intended |
+| `bob_amplitude` | 0.025 m | **0.020** | 24 cm/s peak = **11× detection**; 3.4 °/s gaze = **under the 4 °/s acuity threshold** | perceptible, intended |
+| `landing_dip_*` | max 0.06 | **max 0.045** | 3.4 cm dip at a 3.43 m/s landing → 29 cm/s = **13× detection** | perceptible, intended |
+| `eye_smooth_tau` | 0.10 s | 0.10 s | hides a ~90 Hz, 7.8 mm staircase whose velocity is orders past detection | perceptible, intended — it buys removal of a larger artefact |
+| `eye_smooth_max_lag` | 0.25 m | **0.05 m** | see below | was 32 voxels for a 7.8 mm problem |
+| `fov_kick_radians` | 0.075 | 0.075 | 4.3° vertical ≈ 7.5° hFOV, inside the +5–8° recommendation | perceptible, intended |
+| `polish_max_offset` | 0.05 m | 0.05 m | a budget, not an effect | keep |
+
+Nothing was below threshold, so nothing was deleted. Three constants moved, and two of the three
+moves came from things the capture sequence showed that no still would have.
+
+### The bob was running at 19 Hz until goal 232
+
+`bob_frequency` is cycles per **metre**, so its temporal frequency scales with speed. At the old
+10 m/s walk it was **19 Hz** — not a bob, a flicker. Goal 232's 1.4 m/s made it 2.66 Hz by accident;
+1.36 cyc/m puts it at 1.9 Hz deliberately. The amplitude then follows from the acuity constraint
+rather than taste: A ≤ tan(4°)·4 m / (2π·1.9) = 0.0234 m, and the shipped 0.025 at 2.66 Hz was
+producing **5.97 °/s** — past the acuity threshold, into the rapid-degradation band.
+
+### The captured landing, and what it found
+
+Ten frames across a landing (`landing_strip`, `research/captures/aj_landing_strip.png`), with the
+render-only eye offset logged at each. Prompt 001 shipped A3/A6 *without* a sequence, on the honest
+grounds that a 4 cm effect at a 0.1 s time constant is not something a still shows. It is not — and
+the sequence found two things:
+
+**(a) The eye could be 11 cm from the body.** First run, peak total offset **+0.1117 m**. Two
+independent clamps were stacking: `polish_max_offset` (0.05) and `eye_smooth_max_lag` (0.25), for a
+combined 0.30 m that was nobody's decision. Worse, they were pulling *opposite ways*: the landing
+dip pulled the eye down 3.4 cm while the smoothing held it up 11 cm, so a landing read as the view
+**floating rather than absorbing** — the exact opposite of the effect's purpose. `eye_smooth_max_lag`
+is 0.05 now (6 voxels, ample for the staircase it exists for), and a landing zeroes the smoothing
+outright, because the dip is the term that owns a landing. Peak offset **0.1117 → 0.0559 m**.
+
+**(b) The polish was switched off in every scenario, and had been all along.** With the two terms
+reported separately the answer was flat: **polish +0.0000 on all ten frames.** The gate was
+`view_polish && !autofly && !verify_frame`, and the harness sets `verify_frame` on every scenario —
+that is where the contrast metric comes from. So the instrument built to photograph the view polish
+photographed it turned off.
+
+The `!verify_frame` term was over-cautious rather than wrong-headed, and the argument for removing
+it is checkable: the mechanical counters read the **physical** body (`transform.position`), and the
+polish is added to the **camera copy**. It cannot move what they measure. `!autofly` stays, because
+that is a streaming smoke test whose documented behaviour is a bare camera.
+
+**That is the fifth instrument in this prompt to quietly measure nothing** — after `walk_violations`
+never being written, the JSON brace-balance check, the inside-solid counter measuring its own float
+round-trip, and `--speed-scale` scaling only the fly camera. The rate is the finding at this point:
+roughly one per group, always discovered by making the instrument disagree with something rather
+than by reading it.
+
+### Two workflow defects the same task exposed
+
+- **`--accept-golden` kept resurrecting deleted goldens.** §11's policy (no goldens for moving
+  captures) was a comment plus a manual `rm`, and the tool silently undid it twice in one pass. It
+  is now a property of the scenario: `capture <when> <name> no-golden` parses, round-trips through
+  `emit_scenario`, and beats `--accept-golden`. A policy a tool can undo is not a policy.
+- **`ctest -j` flaked on the scenario tests.** `valley_far` failed its golden under `-j 2` and then
+  passed three consecutive standalone runs at 0.002%. Two scenarios driving one GPU at once move
+  frame timing enough to move a golden. The scenario tests now take `RESOURCE_LOCK gpu`, so they
+  serialise against each other and nothing else.
+
+---
+
+## 14. What Group AJ did NOT do
 
 Stated plainly rather than left to inference:
 
-- **AJ-C (237-240) and AJ-D (241-243): NOT STARTED.**
+- **AJ-C 237 (crosshair-metered auto-exposure) and 238 (adaptation-scaled bloom): NOT DONE.**
+  There is no auto-exposure in this renderer at all -- no metering pass, no adaptation state, no
+  exposure input to the tonemap -- so 237 is a feature to build rather than a term to re-point, and
+  238 depends on its output. Everything else in AJ-C and all of AJ-D is done (sections 12 and 13,
+  plus the decided-against entries in `docs/progress.md` for goals 239 and 243).
 - **234's uphill-sprint slope relationship** (Minetti's polynomial at 0 / 15 / 30 degrees) is not
   asserted. It depends on slope-aware *speed*, which is a different thing from the slope *limit*
   goal 235 built, and nothing yet reads the polynomial.

@@ -97,16 +97,60 @@ struct PlayerTuning {
     // ---- eye smoothing (A3) ---------------------------------------------------------------------
     // The FEET stay exact (collision, the walk-violation counter, everything mechanical). Only the
     // rendered eye lags, with this time constant, and only while grounded.
-    float eye_smooth_tau = 0.10f;     // seconds; 0 disables smoothing entirely
-    float eye_smooth_max_lag = 0.25f; // hard clamp, so a bug can never detach the view from the body
+    //
+    // Goal 240's verdict: PERCEPTIBLE AND INTENDED, and the thing it hides is worse than the lag it
+    // adds. Walking a 30 degree slope at 1.4 m/s climbs 0.7 m/s, which over 7.8 mm voxels is a
+    // ~90 Hz staircase; the eye velocity that sawtooth injects is orders of magnitude past the
+    // 2.13 cm/s vertical detection threshold. A 0.10 s time constant is itself well above any
+    // latency threshold and therefore is not free -- but it is buying the removal of a larger
+    // artefact, which is the trade this constant exists to make.
+    float eye_smooth_tau = 0.10f; // seconds; 0 disables smoothing entirely
+    // 0.05, not 0.25. The old clamp was 32 voxels of lag for an effect whose entire job is hiding a
+    // 7.8 mm staircase, and goal 240's captured landing sequence caught what that cost: the total
+    // render-only eye offset peaked at **+0.1117 m** two frames after a landing -- the eye floating
+    // 11 cm ABOVE the body while the landing dip was pulling it 3.4 cm DOWN. The smoothing swamped
+    // the dip by 3x, in the opposite direction, so a landing read as the view floating rather than
+    // absorbing. 0.05 m is 6 voxels: plenty for the staircase, and it makes the dip the dominant
+    // term on a landing, which is what it was written to be.
+    //
+    // It also makes the two clamps agree about the same thing. `polish_max_offset` bounds the
+    // polish and this bounds the smoothing, and "the eye is not where the body is" is ONE
+    // phenomenon -- two independent budgets that stack to 0.30 m was nobody's decision.
+    float eye_smooth_max_lag = 0.05f;
 
-    // ---- view polish (A6) -------------------------------------------------------------------------
-    float bob_amplitude = 0.025f;         // metres of vertical sway at full walk speed
-    float bob_frequency = 1.9f;           // cycles per metre travelled (paces, not seconds)
-    float landing_dip_per_speed = 0.010f; // metres of dip per m/s of impact
-    float landing_dip_max = 0.06f;
+    // ---- view polish (A6), re-derived against perception thresholds (goal 240) --------------------
+    //
+    // Every number here is now checked against `research/human-movement-and-perception-research.md`
+    // Part 2: vertical translation detection ~2.13 cm/s (median, 2AFC); retinal slip tolerated to
+    // ~4 deg/s for acuity, degrading rapidly past ~6.
+    //
+    // BOB FREQUENCY. This is cycles per METRE, so its temporal frequency is speed-dependent: at the
+    // old 10 m/s walk it ran at 19 Hz, which is not a bob, it is a flicker. Goal 232's 1.4 m/s made
+    // it 2.66 Hz by accident. 1.36 cycles/m puts it at **1.9 Hz** at walking pace -- the measured
+    // human step frequency (Moore et al.), which is what a head bob is imitating.
+    float bob_frequency = 1.36f;
+    // BOB AMPLITUDE, derived rather than chosen. Peak vertical head velocity is 2*pi*f*A; the
+    // constraint is that the gaze perturbation while fixating the ground ~4 m ahead stays inside
+    // the 4 deg/s acuity threshold: A <= tan(4 deg) * 4 m / (2*pi*1.9 Hz) = 0.0234 m. The shipped
+    // 0.025 at the resulting 2.66 Hz gave 5.97 deg/s -- past the acuity threshold and into the
+    // 6 deg/s rapid-degradation band. 0.020 m lands at 3.4 deg/s with margin, and is still 19x the
+    // 2.13 cm/s detection threshold (24 cm/s peak), so it is emphatically visible, just not
+    // acuity-costing. PERCEPTIBLE AND INTENDED.
+    float bob_amplitude = 0.020f;
+    // LANDING DIP. A landing from the 0.6 m jump apex arrives at 3.43 m/s, giving a 3.4 cm dip that
+    // decays with tau 0.12 s -- a peak eye velocity near 29 cm/s, 13x the detection threshold.
+    // PERCEPTIBLE AND INTENDED.
+    float landing_dip_per_speed = 0.010f;
+    // 0.045, not 0.06: the old maximum EXCEEDED `polish_max_offset` below, so the budget clamp
+    // truncated the tail of a hard landing and the two constants disagreed about what was allowed.
+    // 0.045 leaves room for the bob inside the same 5 cm budget.
+    float landing_dip_max = 0.045f;
     float landing_dip_tau = 0.12f;
-    float fov_kick_radians = 0.075f; // added to the lens while boosting
+    // 0.075 rad = 4.3 deg vertical, which at 16:9 is ~7.5 deg horizontal -- inside the +5-8 deg
+    // hFOV-on-sprint band `research/player-movement-in-games.md` 5.7(c) recommends, and in the
+    // direction the perception literature is unambiguous about (wider reads as faster).
+    // PERCEPTIBLE AND INTENDED.
+    float fov_kick_radians = 0.075f; // added to the lens while sprinting (goal 234: by SPEED)
     float fov_kick_tau = 0.15f;
     // The whole polish budget: A6's Check is that polish never moves the eye more than 5 cm from
     // the physical pose, and this is the constant that enforces it rather than hoping the sum of

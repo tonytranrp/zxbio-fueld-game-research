@@ -33,7 +33,6 @@ wait 3
 # eyeballing and deliberately have no golden until Prompt 004 removes the rebuild storm.
 
 capture frame 120 quarter
-capture end final
-
+capture end final no-golden
 assert frames > 0
 assert contrast_percent > 6

@@ -1,0 +1,27 @@
+name landing_strip
+describe Goal 240's captured sequence: jump on the spot and photograph the landing, ten frames across it. Prompt 001 shipped the eye smoothing and the landing dip WITHOUT a capture sequence, on the honest grounds that a 4 cm effect at a 0.1 s time constant is not something a still shows. Ten stills across the event do show it, and that is what the harness was built for. Contact is at about 0.70 s (jump 3.43 m/s under -9.81), so the frames straddle it.
+backend both
+
+option --walk
+option --no-taa
+
+pose_ground 48,0 -90 -4 1.7
+# Settle first: a dip measured from a body still falling into its spawn is measuring the spawn.
+wait 2
+hold jump 1
+hold none 3
+
+capture time 2.55 t00_crouch no-golden
+capture time 2.75 t01_rising no-golden
+capture time 2.95 t02_apex no-golden
+capture time 3.10 t03_falling no-golden
+capture time 3.20 t04_contact no-golden
+capture time 3.25 t05_dip_peak no-golden
+capture time 3.32 t06_recover1 no-golden
+capture time 3.40 t07_recover2 no-golden
+capture time 3.55 t08_recover3 no-golden
+capture end t09_settled no-golden
+assert frames > 0
+assert contrast_percent > 6
+assert walk_violations == 0
+assert inside_solid == 0

@@ -246,7 +246,17 @@ int run_one(const scenario::Scenario& sc, const Options& harnessOptions, render:
             out.captures.push_back(std::move(capture));
             continue;
         }
-        if (!harnessOptions.no_golden) {
+        // A scenario can declare a capture ungoldened, and that beats --accept-golden: the whole
+        // point is that no run of this scenario produces a reference for this frame.
+        const bool wantsGolden = [&] {
+            for (const scenario::CapturePoint& p : sc.captures) {
+                if (p.name == name) {
+                    return p.golden;
+                }
+            }
+            return true;
+        }();
+        if (!harnessOptions.no_golden && wantsGolden) {
             const std::filesystem::path golden = goldenDir / (name + ".png");
             capture.golden_path = golden.string();
             const Image actual = load_png(path);

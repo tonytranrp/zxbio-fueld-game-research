@@ -207,3 +207,31 @@ TEST_CASE("a file scenario shadows a built-in of the same name", "[scenario]") {
     REQUIRE(registry.entries().size() == 1);
     CHECK(registry.find("shadowed")->origin == Origin::File);
 }
+
+TEST_CASE("a capture can declare itself ungoldened, and it round-trips", "[scenario][capture]") {
+    // Goal 240's workflow fix. The policy used to be a comment in the .scn plus a manual `rm` of
+    // the golden file, and `--accept-golden` silently undid it twice in one pass. Making it a
+    // property of the scenario means the scenario is what decides, not whoever ran the tool last.
+    const ParseResult first = parse_scenario("name t\n"
+                                             "pose 0,0,0 0 0\n"
+                                             "capture end settled\n"
+                                             "capture frame 10 moving no-golden\n",
+                                             "t.scn");
+    REQUIRE(first.ok);
+    REQUIRE(first.scenario.captures.size() == 2);
+    CHECK(first.scenario.captures[0].golden);
+    CHECK_FALSE(first.scenario.captures[1].golden);
+
+    // Emit and re-parse: the flag has to survive, or the round-trip test guarding this format would
+    // quietly stop covering it -- which is this pass's most repeated failure mode.
+    const ParseResult second = parse_scenario(emit_scenario(first.scenario), "t.scn");
+    REQUIRE(second.ok);
+    CHECK(second.scenario.captures == first.scenario.captures);
+}
+
+TEST_CASE("a capture rejects a trailing word that is not no-golden", "[scenario][capture]") {
+    const ParseResult result =
+        parse_scenario("name t\npose 0,0,0 0 0\ncapture end settled nogolden\n", "t.scn");
+    CHECK_FALSE(result.ok);
+    CHECK(result.message.find("no-golden") != std::string::npos);
+}

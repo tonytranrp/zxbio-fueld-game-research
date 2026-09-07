@@ -1789,7 +1789,93 @@ Reasoning and every measurement: `research/player-embodiment-log.md`.
      remain, all at rest; eight scenarios carry a GOLDEN POLICY note naming which of their captures
      are for eyeballing only.
 
-### AJ-C / AJ-D (237-243) -- NOT STARTED
+### AJ-C. The head, per the vision research (237-240)
+
+237. [ ] Auto-exposure metered at the crosshair, pooled over ~6 degrees. **NOT DONE.** There is no
+     auto-exposure in this renderer at all -- no metering pass, no adaptation state, no exposure
+     input to the tonemap -- so this is a feature to build, not a term to re-point.
+238. [ ] Bloom scaled by the ratio of source to adaptation luminance. **NOT DONE**, and blocked on
+     237: it needs the adaptation level 237 produces.
+239. [x] Motion blur, lens ghosts and the luminance vignette are DECIDED AGAINST, in writing, each
+     with its research section. **Check PERFORMED**: three entries in `docs/progress.md`'s
+     decided-against list. No code change, which is the point -- the value is that the next pass does
+     not spend a day on it.
+     Motion blur: the eye smears during a gaze shift and DELETES the smear; the display's own
+     persistence already supplies the pursuit smear; a shutter angle simulates a camera the player is
+     not; and a controlled study measured no player-experience benefit. Lens ghosts: internal
+     reflections between the elements of a MULTI-ELEMENT CAMERA LENS -- the eye has one lens and no
+     aperture blades and cannot produce them. Vignette: acuity and contrast sensitivity fall off
+     differently with eccentricity, so a LUMINANCE vignette is not an approximation of peripheral
+     acuity at all, and it darkens exactly the region the periphery is specialised for, so it reads
+     as tunnel vision rather than as reduced detail.
+240. [x] View polish re-verified against the perception thresholds, with a captured landing sequence.
+     Every constant now sits against a number from `human-movement-and-perception-research.md`
+     Part 2 (vertical translation detected at ~2.13 cm/s; retinal slip costs acuity past ~4 deg/s).
+     **Nothing was below threshold, so nothing was deleted**; three constants moved.
+     `bob_frequency` 1.9 -> **1.36 cyc/m**: it is cycles per METRE, so at the old 10 m/s walk it ran
+     at **19 Hz** -- a flicker, not a bob. 1.36 puts it at 1.9 Hz, the measured human step frequency.
+     `bob_amplitude` 0.025 -> **0.020 m**, DERIVED: the constraint is that gaze perturbation while
+     fixating 4 m ahead stays inside 4 deg/s, giving A <= 0.0234; the shipped value produced
+     5.97 deg/s, past the acuity threshold and into the 6 deg/s degradation band.
+     `landing_dip_max` 0.06 -> **0.045**: it EXCEEDED `polish_max_offset`, so the budget clamp
+     truncated a hard landing and the two constants disagreed about what was allowed.
+     **Check PERFORMED, and the sequence found two things a still could not.**
+     (a) Peak render-only eye offset was **+0.1117 m** -- the eye 11 cm from the body, because
+     `polish_max_offset` (0.05) and `eye_smooth_max_lag` (0.25) are independent clamps that stack to
+     0.30 m, AND they pulled opposite ways: the dip pulled down 3.4 cm while the smoothing held up
+     11 cm, so a landing read as the view FLOATING rather than absorbing. `eye_smooth_max_lag` is
+     0.05 now and a landing zeroes the smoothing outright. Peak **0.1117 -> 0.0559 m**.
+     (b) **The polish was switched off in every scenario.** With the terms reported separately it
+     read polish +0.0000 on all ten frames: the gate was `!verify_frame`, and the harness sets
+     verify_frame on every scenario (that is where the contrast metric comes from). The instrument
+     built to photograph the polish photographed it turned off. Removing that term is checkable
+     rather than hopeful -- the mechanical counters read `transform.position` and the polish is added
+     to the camera COPY, so it cannot move what they measure.
+     **The fifth instrument in this prompt to quietly measure nothing**, after `walk_violations`, the
+     JSON brace check, the inside-solid counter, and `--speed-scale`. Roughly one per group, every
+     one found by making the instrument disagree with something rather than by reading it.
+     Strip: `research/captures/aj_landing_strip.png`; scenario `landing_strip`; the per-capture eye
+     offset is logged split into polish and smoothing.
+     Two workflow defects fixed on the way: **`capture ... no-golden`** is now part of the .scn
+     grammar (round-trips through `emit_scenario`, beats `--accept-golden`) because goal 246's policy
+     was a comment plus a manual `rm` that the tool silently undid twice; and the scenario ctest
+     tests take **`RESOURCE_LOCK gpu`** after `valley_far` failed its golden under `ctest -j 2` and
+     then passed three standalone runs at 0.002%.
+
+### AJ-D. What the player can see of themselves (241-243)
+
+241. [x] The aim query asks the OCTREE -- `world::svo::trace_ray`, the same traversal the body
+     collides against and the shader mirrors -- with the LOD early-out and smoothing OFF, because the
+     readout wants the voxel that is there, not the cube a distant pixel is shaded with. The analytic
+     march stays for the mesh path and as the tests' second opinion.
+     **Check PERFORMED: 1272 / 1272 material matches over 2,000 random rays, 0 mismatches** -- and
+     the three wrong answers before it are each named, because none was a defect in the query.
+     27 mismatches probing a quarter voxel ALONG THE RAY: all Stone-vs-Dirt or Dirt-vs-Air at brick
+     level, which are VERTICALLY ADJACENT bands -- on a shallow ray a quarter voxel of travel crosses
+     into the next voxel down, so the check sampled a different voxel from the one hit. Probing along
+     the HIT FACE NORMAL: 2. Snapping to the voxel CENTRE: still 2, which ruled out rounding. Those
+     last two printed **t = 0.0000** -- the ray STARTED INSIDE SOLID, where the tracer reports the
+     origin's own voxel and its normal is a default. Test origins are uniform over a region so some
+     are underground; a real crosshair's origin is the camera, which goal 228's counter asserts is
+     not inside solid. Second case: octree vs analytic straight down over 92 land columns, 92 agreed.
+242. [x] The readout's range is **34 m**, from `human-eye-and-vision-research.md` Part 1 8.1: a 1 cm
+     detail is resolvable to 34 m at 20/20 (1 arcmin MAR). **The criterion**: 1 cm is the scale of the
+     detail that distinguishes one material from another here -- a 7.8 mm voxel -- so beyond 34 m,
+     naming the material is a claim the eye cannot check. It replaces 300 m, a round number nobody
+     derived. Rejected, with reasons: 54 m (same detail at the 0.64' 94-ppd ceiling -- the best
+     measured eye rather than the nominal one; `--aim-range` exists for it), 619 m (an 18 cm face as
+     a BLOB -- detecting something is there is not identifying what it is made of), 1719 m (a 0.5 m
+     trunk, same objection further out).
+     **Check PERFORMED**: a test re-derives both distances from `d = s / tan(MAR)` rather than
+     trusting the constants, and asserts the readout goes blank past its range while the same column
+     still hits at 300 m -- so "blank" is demonstrably a range limit, not a missing surface.
+243. [x] A visible player body is OUT OF SCOPE for this pass, recorded in the decided-against list:
+     no model, no self-shadow, no first-person arms, each a content decision the owner has not asked
+     for. The engineering groundwork is noted so it is not re-derived: the collision box is
+     **0.6 x 1.75 m** with the eye at 1.7 m, it is what the sweep moves and what goal 228's counter
+     watches. The one open question named: a model's feet follow the PHYSICAL eye, not the smoothed
+     one, since goal 240 establishes the smoothing as render-only.
+
 
 ## Tooling defects found in passing (goal 101's standing expectation)
 

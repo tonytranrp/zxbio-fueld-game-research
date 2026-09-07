@@ -43,8 +43,7 @@ wait 3
 # reproduce to 0.0001-0.11%, well under the 1.5% gate. So the moving captures here are written for
 # eyeballing and deliberately have no golden until Prompt 004 removes the rebuild storm.
 
-capture end clip_stress
-
+capture end clip_stress no-golden
 assert frames > 0
 assert contrast_percent > 6
 assert walk_violations == 0

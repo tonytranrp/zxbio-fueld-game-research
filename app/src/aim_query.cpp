@@ -5,6 +5,7 @@
 
 #include "world/chunk/chunk_coord.hpp"
 #include "world/materials/materials.hpp"
+#include "world/svo/ray_trace.hpp"
 
 namespace app {
 
@@ -136,6 +137,32 @@ AimHit query_aim(const world::generation::HeightmapGenerator& heightmap, glm::ve
         }
         prev = p;
     }
+    return result;
+}
+
+AimHit query_aim_octree(const world::svo::BrickTree& tree, glm::vec3 origin, glm::vec3 direction,
+                        float maxDistance) {
+    AimHit result;
+    const float dirLength = glm::length(direction);
+    if (dirLength <= 0.0f || tree.empty()) {
+        return result;
+    }
+    world::svo::Ray ray;
+    ray.origin = origin;
+    ray.dir = direction / dirLength; // unit, so `t` is metres and max_t is a distance
+    world::svo::TraceParams params;
+    params.max_t = maxDistance;
+    // No LOD early-out and no smoothing: the readout wants the VOXEL that is there, not the cube a
+    // distant pixel would be shaded with. The renderer's own march uses both; this is deliberately
+    // the exact traversal, which is also what makes it comparable with a brute-force oracle.
+    const world::svo::Hit hit = world::svo::trace_ray(tree, ray, params);
+    if (!hit.hit) {
+        return result;
+    }
+    result.hit = true;
+    result.material = hit.material;
+    result.position = hit.position;
+    result.distance = hit.t;
     return result;
 }
 
