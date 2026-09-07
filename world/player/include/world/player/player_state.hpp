@@ -25,6 +25,10 @@ struct PlayerState {
     MoveMode mode = MoveMode::Walk;
     Stance stance = Stance::Airborne;
     float vertical_velocity = 0.0f; // world units/s, negative = falling
+    // Horizontal ground velocity, m/s, in world XZ (goal 234). Persistent because a ramp is a
+    // state: an instant multiply needs no memory, an acceleration does. Fly mode does not use it --
+    // the free camera is a tool and tools respond instantly.
+    glm::vec2 horizontal_velocity{0.0f, 0.0f};
 
     // Jump timing (A2). Both count DOWN in seconds; both are pure consequences of edges and dt.
     float coyote_remaining = 0.0f; // > 0 means "still counts as grounded for a jump"
@@ -90,6 +94,24 @@ struct StepResult {
 // at your feet must not slow you down.
 [[nodiscard]] glm::vec3 wish_velocity(const PlayerIntent& intent, const PlayerTuning& tuning, MoveMode mode,
                                       float yawRadians, float pitchRadians, float moveSpeed) noexcept;
+
+// The ground speed this intent asks for, m/s, before direction (goal 232/234). Sprint is a SPEED,
+// not a multiplier -- `walk_speed x 4` would be 5.6 m/s and mean nothing, whereas 7.0 is a number
+// the research names.
+[[nodiscard]] float target_ground_speed(const PlayerIntent& intent, const PlayerTuning& tuning) noexcept;
+
+// Anisotropic directional penalty for a unit horizontal wish expressed in the yaw frame
+// (`forward` = +1 straight ahead, `right` = +1 hard right). Returns the fraction of full speed that
+// direction is allowed: 1.0 ahead, `lateral_speed_factor` sideways, `back_speed_factor` behind,
+// blended smoothly between. Games hand-author four discrete states; the research's own
+// recommendation is not to.
+[[nodiscard]] float directional_speed_factor(float forward, float right, const PlayerTuning& tuning) noexcept;
+
+// One tick of the ground acceleration ramp (goal 234). Moves `velocity` toward `target` at
+// `ground_accel` when speeding up and `ground_decel` when slowing, never overshooting. Separate
+// from wish_velocity because it is the piece with memory, and the piece a test drives directly.
+void accelerate_ground(glm::vec2& velocity, const glm::vec2& target, const PlayerTuning& tuning,
+                       float dt) noexcept;
 
 // The jump/coyote/buffer state machine, as a pure function of (state, edges, dt). Advances both
 // timers, decides whether this tick jumps, and applies the jump impulse if so. Called once per

@@ -38,7 +38,17 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
     // See the note at that floor for why every other case lost it.
     constexpr bool query_is_open_world = requires { typename Q::open_world_tag; };
 
-    glm::vec3 delta = wish_velocity(intent, tuning, state.mode, yawRadians, pitchRadians, moveSpeed) * dt;
+    const glm::vec3 wish = wish_velocity(intent, tuning, state.mode, yawRadians, pitchRadians, moveSpeed);
+    glm::vec3 delta{0.0f};
+    if (state.mode == MoveMode::Fly) {
+        delta = wish * dt; // the tool responds instantly; only the body has inertia
+    } else {
+        // Goal 234: the body accelerates. `wish` is the TARGET velocity in m/s; the ramp is what
+        // turns Shift from an instant x4 into a sprint you have to build up to (0.70 s to 7 m/s at
+        // 10 m/s^2) and let go of (0.50 s back to a stop at 14).
+        accelerate_ground(state.horizontal_velocity, glm::vec2{wish.x, wish.z}, tuning, dt);
+        delta = glm::vec3{state.horizontal_velocity.x, 0.0f, state.horizontal_velocity.y} * dt;
+    }
 
     if (state.mode == MoveMode::Fly) {
         // Fly keeps its old meaning exactly: no gravity, no stance, vertical strafe along world up

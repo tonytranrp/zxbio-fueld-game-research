@@ -12,9 +12,13 @@ struct SweepParams {
     // mode). 0.55 m clears a one-voxel terrace of the 0.5 m mesh world and the 8-voxel steps a
     // steep 7.8 mm slope makes.
     float step_height = 0.55f;
-    // Bisection refinement of a blocked axis: 12 halvings put the body within 1/4096 of the wanted
-    // motion from the obstacle -- under a tenth of a millimeter for any sane per-frame step.
+    // Bisection refinement of a blocked axis. The count is now a CEILING, not a schedule: the
+    // search stops as soon as the remaining interval is under `bisection_tolerance` metres, so a
+    // 12 mm walking tick needs 7 halvings and a 2.7 m boost-fly frame still gets all 12.
     int bisection_steps = 12;
+    // 0.1 mm: a tenth of the contact skin below, and 78x finer than the finest voxel. Refining
+    // past this buys nothing any other part of the system can see.
+    float bisection_tolerance = 1.0e-4f;
     // The whole motion is applied in sub-steps no longer than this per axis. **0 means "derive it
     // from the body"** -- `substep_for()` below -- and that is the default, because a constant here
     // is only ever safe by accident. The old value was 0.25 m against a 0.3 m half-width: correct,
@@ -67,7 +71,8 @@ namespace detail {
 // found by bisection after a full-move test. Returns the applied delta along the axis and whether
 // the full move was refused.
 template <SolidQuery Q>
-float sweep_axis(const Q& query, const Aabb& box, int axis, float wanted, int bisectionSteps, bool& blocked) {
+float sweep_axis(const Q& query, const Aabb& box, int axis, float wanted, int bisectionSteps, float tolerance,
+                 bool& blocked) {
     blocked = false;
     if (wanted == 0.0f) {
         return 0.0f;
@@ -80,7 +85,18 @@ float sweep_axis(const Q& query, const Aabb& box, int axis, float wanted, int bi
     blocked = true;
     float lo = 0.0f; // known free
     float hi = 1.0f; // known blocked
+    // Stop when the remaining interval is smaller than the tolerance IN METRES, not after a fixed
+    // count. The count was 12 unconditionally, which is 1/4096 of the motion -- 3 micrometres for a
+    // walking tick's 12 mm, against a 7.8 mm voxel. Measured cost of that generosity (goal 230):
+    // walk_shoreline, which bobs against a shore lip and is therefore BLOCKED almost every tick,
+    // ran 0.21-0.28 ms/tick against a 0.20 budget, while the same scenario at 0.2x and 4x speed --
+    // where the body is NOT in sustained contact -- ran 0.040 and 0.073. Cost here is contact, not
+    // speed, and every halving past the tolerance is a wasted octree descent.
+    const float span = std::abs(wanted);
     for (int i = 0; i < bisectionSteps; ++i) {
+        if ((hi - lo) * span < tolerance) {
+            break;
+        }
         const float mid = 0.5f * (lo + hi);
         d[axis] = wanted * mid;
         if (query.overlaps_solid(box.translated(d))) {
@@ -227,13 +243,16 @@ SweepResult move_and_slide_once(const Q& query, const Aabb& body, const glm::vec
     Aabb box = body;
     glm::vec3 applied{0.0f};
 
-    applied.y = detail::sweep_axis(query, box, 1, wanted.y, params.bisection_steps, r.blocked_y);
+    applied.y = detail::sweep_axis(query, box, 1, wanted.y, params.bisection_steps,
+                                   params.bisection_tolerance, r.blocked_y);
     r.grounded = r.blocked_y && wanted.y < 0.0f;
     box = box.translated(glm::vec3{0.0f, applied.y, 0.0f});
 
-    applied.x = detail::sweep_axis(query, box, 0, wanted.x, params.bisection_steps, r.blocked_x);
+    applied.x = detail::sweep_axis(query, box, 0, wanted.x, params.bisection_steps,
+                                   params.bisection_tolerance, r.blocked_x);
     box = box.translated(glm::vec3{applied.x, 0.0f, 0.0f});
-    applied.z = detail::sweep_axis(query, box, 2, wanted.z, params.bisection_steps, r.blocked_z);
+    applied.z = detail::sweep_axis(query, box, 2, wanted.z, params.bisection_steps,
+                                   params.bisection_tolerance, r.blocked_z);
     box = box.translated(glm::vec3{0.0f, 0.0f, applied.z});
 
     // Step up: horizontal motion was refused and we are not moving upward -- try the same
@@ -241,17 +260,20 @@ SweepResult move_and_slide_once(const Q& query, const Aabb& body, const glm::vec
     if ((r.blocked_x || r.blocked_z) && params.step_height > 0.0f && wanted.y <= 0.0f) {
         Aabb raised = body.translated(glm::vec3{0.0f, applied.y, 0.0f});
         bool upBlocked = false;
-        const float up =
-            detail::sweep_axis(query, raised, 1, params.step_height, params.bisection_steps, upBlocked);
+        const float up = detail::sweep_axis(query, raised, 1, params.step_height, params.bisection_steps,
+                                            params.bisection_tolerance, upBlocked);
         raised = raised.translated(glm::vec3{0.0f, up, 0.0f});
         bool bx = false;
         bool bz = false;
-        const float sx = detail::sweep_axis(query, raised, 0, wanted.x, params.bisection_steps, bx);
+        const float sx = detail::sweep_axis(query, raised, 0, wanted.x, params.bisection_steps,
+                                            params.bisection_tolerance, bx);
         raised = raised.translated(glm::vec3{sx, 0.0f, 0.0f});
-        const float sz = detail::sweep_axis(query, raised, 2, wanted.z, params.bisection_steps, bz);
+        const float sz = detail::sweep_axis(query, raised, 2, wanted.z, params.bisection_steps,
+                                            params.bisection_tolerance, bz);
         raised = raised.translated(glm::vec3{0.0f, 0.0f, sz});
         bool downBlocked = false;
-        const float down = detail::sweep_axis(query, raised, 1, -up, params.bisection_steps, downBlocked);
+        const float down = detail::sweep_axis(query, raised, 1, -up, params.bisection_steps,
+                                              params.bisection_tolerance, downBlocked);
         const float horizontalBefore = applied.x * applied.x + applied.z * applied.z;
         const float horizontalAfter = sx * sx + sz * sz;
         if (horizontalAfter > horizontalBefore + 1.0e-8f) {

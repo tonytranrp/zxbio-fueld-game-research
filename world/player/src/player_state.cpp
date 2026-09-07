@@ -5,6 +5,37 @@
 
 namespace world::player {
 
+float target_ground_speed(const PlayerIntent& intent, const PlayerTuning& tuning) noexcept {
+    return intent.boost ? tuning.sprint_speed : tuning.walk_speed;
+}
+
+float directional_speed_factor(float forward, float right, const PlayerTuning& tuning) noexcept {
+    // Scale the two components of a UNIT direction anisotropically and take the length. Straight
+    // ahead gives 1, straight back `back_speed_factor`, straight sideways `lateral_speed_factor`,
+    // and every diagonal an ellipse between them -- one expression, no state machine.
+    const float alongFactor = forward >= 0.0f ? 1.0f : tuning.back_speed_factor;
+    const float f = forward * alongFactor;
+    const float r = right * tuning.lateral_speed_factor;
+    return std::sqrt(f * f + r * r);
+}
+
+void accelerate_ground(glm::vec2& velocity, const glm::vec2& target, const PlayerTuning& tuning,
+                       float dt) noexcept {
+    const glm::vec2 gap = target - velocity;
+    const float distance = glm::length(gap);
+    if (distance <= 1.0e-6f) {
+        velocity = target;
+        return;
+    }
+    // Speeding up or slowing down is decided by whether the target is FASTER than the current
+    // speed, not by whether there is input: turning at speed is a direction change at constant
+    // magnitude and should not be charged the braking rate.
+    const float rate =
+        glm::length(target) >= glm::length(velocity) ? tuning.ground_accel : tuning.ground_decel;
+    const float step = rate * dt;
+    velocity = step >= distance ? target : velocity + gap * (step / distance);
+}
+
 glm::vec3 wish_velocity(const PlayerIntent& intent, const PlayerTuning& tuning, MoveMode mode,
                         float yawRadians, float pitchRadians, float moveSpeed) noexcept {
     constexpr glm::vec3 kWorldUp{0.0f, 1.0f, 0.0f};
@@ -53,11 +84,20 @@ glm::vec3 wish_velocity(const PlayerIntent& intent, const PlayerTuning& tuning, 
         if (intent.left) {
             wish -= right;
         }
-        speed *= tuning.walk_speed_factor;
+        // Walk speed comes from the tuning in m/s (goal 232), NOT from the spectator's move_speed
+        // times a factor. `moveSpeed` is the fly camera's number and the walking path ignores it.
+        if (glm::length(wish) > 1.0e-6f) {
+            const glm::vec3 unit = glm::normalize(wish);
+            const float alongForward = glm::dot(unit, forward);
+            const float alongRight = glm::dot(unit, right);
+            speed = target_ground_speed(intent, tuning) *
+                    directional_speed_factor(alongForward, alongRight, tuning);
+        }
+        return glm::length(wish) > 1.0e-6f ? glm::normalize(wish) * speed : glm::vec3{0.0f};
     }
 
     if (intent.boost) {
-        speed *= tuning.boost_factor;
+        speed *= tuning.fly_boost_factor;
     }
     const float length = glm::length(wish);
     if (length <= 0.0f) {

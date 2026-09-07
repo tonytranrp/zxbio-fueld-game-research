@@ -69,9 +69,19 @@ target_compile_definitions(voxel_harness PRIVATE
     VOXEL_BUILD_PRESET="${CMAKE_BUILD_TYPE}")
 
 if(BUILD_TESTING)
-  # The cheap scenarios, as ctest tests under the `scenario` label (goal 214). They need a GPU, so
-  # they are labelled and kept OUT of a plain `ctest` run -- `ctest -L scenario` opts in. The
-  # working directory is the repo root so dev/scenarios and dev/goldens resolve.
+  # The cheap scenarios, as ctest tests under the `scenario` label (goal 214).
+  #
+  # The comment that used to be here said they were "kept OUT of a plain `ctest` run" because they
+  # need a GPU. That was an INTENT, never an implementation: a CMake label does not exclude
+  # anything by default, so a plain `ctest` has always run them -- and CI run 34114224721's Windows
+  # renderer job failed all four for a reason no code change could fix, namely that the GitHub
+  # runner enumerates no Vulkan ICD at all ("no compatible GPU/driver enumerated"; WARP is D3D12
+  # only). Excluding them is now the CALLER's job and CI does it with `-LE scenario`, which is a
+  # thing labels genuinely can do.
+  #
+  # They stay registered because on a machine WITH a GPU a plain `ctest` running them is exactly
+  # what caught seven stale goldens this pass. The working directory is the repo root so
+  # dev/scenarios and dev/goldens resolve.
   foreach(scenario_name spawn_stand macro_ground valley_far clip_stress)
     add_test(NAME "scenario.${scenario_name}"
              COMMAND voxel_harness --scenario ${scenario_name} --headless --backend vk

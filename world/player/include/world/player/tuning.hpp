@@ -16,10 +16,42 @@ struct PlayerTuning {
     float body_half_width = 0.3f;
     float body_height = 1.75f;
 
-    // ---- motion --------------------------------------------------------------------------------
-    float gravity = -32.0f;          // world units/s^2, voxel-scale (not Earth's 9.81)
-    float walk_speed_factor = 0.25f; // walking is deliberately slower than flying
-    float boost_factor = 4.0f;       // Shift
+    // ---- motion: REALISTIC SCALE, chosen (goals 232, 233) ----------------------------------------
+    // The whole point of 7.8 mm voxels is human scale. A body that crosses the world at 10 m/s --
+    // which is what `move_speed 40 x walk_speed_factor 0.25` used to give, a number nobody chose --
+    // makes those voxels a blur and the world a diorama. So: every ground number below is the
+    // measured human one, and the departures are named where they occur.
+    // Sources: research/locomotion-biomechanics-physics.md 2.1, research/player-movement-in-games.md
+    // 5.2.1 and 5.7(a), which recommends exactly these three speeds FOR THIS ENGINE.
+    float walk_speed = 1.4f;   // m/s. Self-selected human walking speed: 1.39, band 1.3-1.5.
+    float sprint_speed = 7.0f; // m/s. Fit-human sprint band 6-8; NOT Bolt's 12.32.
+    // Directional penalties, ARMA's shipped values, which sit inside the measured human 70-80%
+    // band. Applied anisotropically to the wish direction, not as four discrete states.
+    float back_speed_factor = 0.75f;
+    float lateral_speed_factor = 0.8f;
+    // Ground acceleration, m/s^2. The research boxes elite human sprint acceleration at ~10 m/s^2
+    // and shipped games at 10-60; 10 is the top of reality and the bottom of the games band, which
+    // is the honest place for a game that has just chosen realistic speeds. Braking is faster than
+    // accelerating because it is: you can plant a foot.
+    // DECIDED AGAINST: the research's own critically-damped velocity spring. At sprint speed a
+    // 0.25-0.5 s time constant implies a PEAK acceleration of v/tau = 14-28 m/s^2 -- above the
+    // 10 m/s^2 the same document boxes as the human limit. A constant cap sits exactly on it, and
+    // makes "time to sprint" a number the tuning declares (v/a) rather than an asymptote.
+    float ground_accel = 10.0f;
+    float ground_decel = 14.0f;
+    // Fly is the dev tool and keeps its old feel exactly: `move_speed` x this on Shift.
+    float fly_boost_factor = 4.0f;
+
+    // Earth gravity, deliberately (goal 233). The old -32.0 was 3.26x Earth with an 8.5 m/s jump --
+    // a game-convention choice that was never recorded AS a choice. Having just made the ground
+    // speeds real, keeping a 3.26x gravity would be incoherent: the body would walk like a human
+    // and fall like a stone. Earth scale also *helps* collision, because it caps fall speed lower
+    // (60 m drop: 34 m/s at 9.81, 62 m/s at 32), and 60 m/s bodies are what stress the sweep.
+    float gravity = -9.81f;
+    // Apex = v0^2 / (2|g|) = 3.43^2 / 19.62 = 0.600 m. A real standing vertical is 0.4-0.5 m at a
+    // ~3 m/s takeoff, so this is a deliberate ~20-50% departure upward: a 0.45 m jump does not read
+    // on screen. 3.43 m/s is still within 15% of the measured human takeoff velocity.
+    float jump_speed = 3.43f;
 
     // Horizontal motion refused at ground level may climb a ledge up to this high. 0.55 m is the
     // MESH world's relic (1 m blocks, half-metre terraces). On the svo path this is a *smoothing
@@ -27,10 +59,9 @@ struct PlayerTuning {
     // mode is micro-jitter, not blocked stairs -- see kSvoStepHeight below.
     float step_height = 0.55f;
 
-    // ---- jump (A2) ------------------------------------------------------------------------------
-    // apex = v0^2 / (2|g|). 8.5 m/s against -32 m/s^2 gives 1.129 m, inside the brief's 1.0-1.25 m
-    // band; the test pins that arithmetic so a gravity change can't silently move the apex.
-    float jump_speed = 8.5f;
+    // ---- jump timing (A2) -------------------------------------------------------------------------
+    // `jump_speed` and `gravity` live above, together, because they are ONE decision (goal 233);
+    // tests pin both the apex and the fall time so neither can move silently.
     float coyote_time = 0.10f;      // grounded credit that survives walking off a ledge
     float jump_buffer_time = 0.10f; // a press this early still fires on landing
 

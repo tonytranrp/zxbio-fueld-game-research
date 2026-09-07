@@ -112,7 +112,11 @@ TEST_CASE("only Water is a liquid, and it carries the swim physics", "[materials
     }
     // The equilibrium the camera test (test_spectator_camera.cpp) expects: upthrust at full
     // submersion exceeds gravity (32 world units/s^2), so a body floats.
-    CHECK(properties_of(MaterialID::Water).liquid.buoyancy_acceleration > 32.0f);
+    // A liquid you float in must out-push your weight; 9.81 is the only gravity constant this
+    // module can honestly name. The 2x relationship to the PLAYER's gravity is pinned in
+    // world/player's tests, which can see both halves -- this one used to say "> 32.0f", a magic
+    // number that silently encoded the old -32 gravity.
+    CHECK(properties_of(MaterialID::Water).liquid.buoyancy_acceleration > 9.81f);
 }
 
 TEST_CASE("only Water is shaded as water and only Leaves as foliage", "[materials]") {

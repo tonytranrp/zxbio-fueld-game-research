@@ -67,10 +67,22 @@ public:
     // number is how you notice.
     [[nodiscard]] std::size_t last_nodes_visited() const noexcept { return lastNodesVisited_; }
 
+    // Goal 230's attribution counters: how many times the sweep ASKED, and how deep each ask went.
+    // Cost per tick is calls x depth, and knowing which of the two is large is the whole question --
+    // the shore-lip measurement went from a guess to a number the moment these existed.
+    [[nodiscard]] std::size_t query_count() const noexcept { return queryCount_; }
+    [[nodiscard]] std::size_t node_visit_total() const noexcept { return nodeVisitTotal_; }
+    void reset_query_counters() const noexcept {
+        queryCount_ = 0;
+        nodeVisitTotal_ = 0;
+    }
+
 private:
     std::shared_ptr<const world::svo::BrickTree> tree_;
     std::uint64_t generation_ = 0;
     mutable std::size_t lastNodesVisited_ = 0;
+    mutable std::size_t queryCount_ = 0;
+    mutable std::size_t nodeVisitTotal_ = 0;
 };
 
 static_assert(SolidQuery<OctreeCollider>);

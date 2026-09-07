@@ -95,6 +95,8 @@ struct CollisionCost {
     std::uint64_t nanos = 0;
     std::uint64_t ticks = 0;
     std::uint64_t worst_nanos = 0;
+    std::uint64_t queries = 0;     // overlaps_solid calls
+    std::uint64_t node_visits = 0; // octree nodes descended across them
 
     [[nodiscard]] double mean_ms() const noexcept {
         return ticks == 0 ? 0.0 : static_cast<double>(nanos) / static_cast<double>(ticks) / 1.0e6;
@@ -229,6 +231,13 @@ update_camera_phase(engine::ecs::Registry& registry, engine::ecs::Entity cameraE
             collisionCost.nanos += collisionNanos;
             ++collisionCost.ticks;
             collisionCost.worst_nanos = std::max(collisionCost.worst_nanos, collisionNanos);
+            // Attribution: cost per tick is (how many times we asked) x (how deep each ask went),
+            // and a budget miss is only actionable once you know which factor is the large one.
+            if constexpr (requires(const Q& q) { q.query_count(); }) {
+                collisionCost.queries += query->query_count();
+                collisionCost.node_visits += query->node_visit_total();
+                query->reset_query_counters();
+            }
             if (endedInside) {
                 ++insideSolidEvents;
                 insideSolidStartedInside += step.started_inside ? 1u : 0u;
@@ -539,7 +548,18 @@ Session::Session(const AppOptions& options, bool visible) : window(1280, 720, "v
         }
         // Goal 229: the sub-step rule is claimed to be speed-independent. This is the knob that
         // lets clip_stress put that claim under 40x the shipped speed.
+        //
+        // It has to reach the BODY's speeds, not just the fly camera's. Goal 232 moved walking off
+        // `move_speed` onto its own m/s fields, and for one build this flag silently stopped
+        // scaling the thing clip_stress exists to stress -- an instrument that quietly measures
+        // nothing is worse than no instrument, which is this pass's recurring lesson.
+        // `ground_accel`/`ground_decel` scale with it so TIME-to-speed stays constant and the ramp
+        // does not swallow the run at 40x.
         spectator.move_speed *= options.speed_scale;
+        spectator.tuning.walk_speed *= options.speed_scale;
+        spectator.tuning.sprint_speed *= options.speed_scale;
+        spectator.tuning.ground_accel *= options.speed_scale;
+        spectator.tuning.ground_decel *= options.speed_scale;
         // A3: the svo path's step allowance is a smoothing budget, not a ledge climb.
         spectator.tuning.step_height = options.renderer == RendererKind::Svo
                                            ? world::player::kSvoStepHeight
@@ -757,8 +777,15 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
     }
     if (collisionCost.ticks > 0) {
         log(collisionCost.mean_ms() <= 0.20 ? LogLevel::Info : LogLevel::Error,
-            "collision: {:.4f} ms mean per tick over {} ticks, worst {:.4f} ms (budget 0.20 ms)",
-            collisionCost.mean_ms(), collisionCost.ticks, collisionCost.worst_ms());
+            "collision: {:.4f} ms mean per tick over {} ticks, worst {:.4f} ms (budget 0.20 ms) -- "
+            "{:.1f} queries/tick, {:.1f} nodes/query",
+            collisionCost.mean_ms(), collisionCost.ticks, collisionCost.worst_ms(),
+            collisionCost.ticks == 0
+                ? 0.0
+                : static_cast<double>(collisionCost.queries) / static_cast<double>(collisionCost.ticks),
+            collisionCost.queries == 0 ? 0.0
+                                       : static_cast<double>(collisionCost.node_visits) /
+                                             static_cast<double>(collisionCost.queries));
     }
     if (hooks.on_invariants) {
         hooks.on_invariants(walkViolations, insideSolidEvents);
@@ -1096,8 +1123,15 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     }
     if (collisionCost.ticks > 0) {
         log(collisionCost.mean_ms() <= 0.20 ? LogLevel::Info : LogLevel::Error,
-            "collision: {:.4f} ms mean per tick over {} ticks, worst {:.4f} ms (budget 0.20 ms)",
-            collisionCost.mean_ms(), collisionCost.ticks, collisionCost.worst_ms());
+            "collision: {:.4f} ms mean per tick over {} ticks, worst {:.4f} ms (budget 0.20 ms) -- "
+            "{:.1f} queries/tick, {:.1f} nodes/query",
+            collisionCost.mean_ms(), collisionCost.ticks, collisionCost.worst_ms(),
+            collisionCost.ticks == 0
+                ? 0.0
+                : static_cast<double>(collisionCost.queries) / static_cast<double>(collisionCost.ticks),
+            collisionCost.queries == 0 ? 0.0
+                                       : static_cast<double>(collisionCost.node_visits) /
+                                             static_cast<double>(collisionCost.queries));
     }
     if (hooks.on_invariants) {
         hooks.on_invariants(walkViolations, insideSolidEvents);

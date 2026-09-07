@@ -120,7 +120,11 @@ jobs:
           path: ${{ github.workspace }}/.cpm-cache
           key: cpm-renderer-windows-${{ hashFiles('cmake/Dependencies.cmake') }}
       - name: Test
-        run: ctest --test-dir C:/b --output-on-failure --timeout 300
+        # -LE scenario: the scenario tests need a real GPU and this runner has no Vulkan ICD at
+        # all (run 34114224721: "no compatible GPU/driver enumerated" -- WARP is D3D12 only), so
+        # they can never pass here. The WARP smoke step below is what covers the renderer on this
+        # machine. Excluding by label is what dev/harness/CMakeLists.txt has always claimed happened.
+        run: ctest --test-dir C:/b --output-on-failure --timeout 300 -LE scenario
       # Software-rasterized smoke (goal 66): no GPU on hosted runners; D3D12 should fall back to
       # the WARP adapter. Best-effort per goal 67 -- failure here is reported, not merge-gating.
       - name: WARP smoke run (mesh renderer)

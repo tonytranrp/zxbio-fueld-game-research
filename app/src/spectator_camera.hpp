@@ -38,8 +38,11 @@ inline constexpr float kEyeHeight = world::player::kDefaultTuning.eye_height;
 inline constexpr float kBodyHalfWidth = world::player::kDefaultTuning.body_half_width;
 inline constexpr float kBodyHeight = world::player::kDefaultTuning.body_height;
 inline constexpr float kGravityAcceleration = world::player::kDefaultTuning.gravity;
-inline constexpr float kSpectatorBoostFactor = world::player::kDefaultTuning.boost_factor;
-inline constexpr float kWalkSpeedFactor = world::player::kDefaultTuning.walk_speed_factor;
+inline constexpr float kSpectatorBoostFactor = world::player::kDefaultTuning.fly_boost_factor;
+// Goal 232: walking speed is a SPEED in m/s now, not a fraction of the fly camera's. There is no
+// `kWalkSpeedFactor` any more, deliberately -- the product it named is the thing that was wrong.
+inline constexpr float kWalkSpeed = world::player::kDefaultTuning.walk_speed;
+inline constexpr float kSprintSpeed = world::player::kDefaultTuning.sprint_speed;
 inline constexpr float kSeaLevelWorld = world::player::kSeaLevelWorld;
 inline constexpr float kSwimEquilibriumDepth = world::player::kWaterPhysics.swim_equilibrium_depth;
 

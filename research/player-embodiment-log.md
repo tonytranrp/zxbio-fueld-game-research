@@ -1,7 +1,7 @@
 # Player embodiment — decision log
 
-Prompt 003, Group AJ (goals 225–243). **Partial**: AJ-A is complete (225–230, including 229a)
-and AJ-B's first goal (231) is done; 232–243 are not. What is here is written the same way
+Prompt 003, Group AJ (goals 225–243). **Partial**: AJ-A is complete (225–230, including 229a) and
+AJ-B is complete except 235 and most of 236 (see §9); 237–243 are not started. What is here is written the same way
 the rest of this repo's logs are — every measurement, every "decided against", and the things that
 turned out to be wrong.
 
@@ -328,10 +328,10 @@ at the same time as the thing it checks tends to share its blind spot.**
 
 ---
 
-## 6. Research read but not yet applied (goals 232–235)
+## 6. The research bands, for reference
 
 `research/locomotion-biomechanics-physics.md` and `research/player-movement-in-games.md` were read
-in full for this pass. The bands, for whoever does 232–235:
+in full for this pass. The bands section 7 chooses from:
 
 | | measured human | shipped games |
 |---|---|---|
@@ -341,13 +341,181 @@ in full for this pass. The bands, for whoever does 232–235:
 | sprint (fit human) | 6–8 m/s | Skyrim 7.1, TF2 Scout 7.62, GTA V ~7.0 |
 | Bolt, top | 12.32 m/s | — |
 | ground acceleration | ~10 m/s² peak, 5+ s to top speed | **10–60 m/s² (1–6 g), instant** |
-
-The engine's current walking speed is `move_speed 40 × walk_speed_factor 0.25 = **10 m/s**` — about
-7× a preferred human walk, faster than every shipped game in the table, and, as the prompt says,
-a number nobody chose: it fell out of a spectator default times a factor.
+| standing vertical jump | 0.4–0.5 m, ~3 m/s takeoff | — |
+| walkable slope (measured span) | ±45% grade = **±24.2°** | Unreal 44.8°, Source 45.6° |
 
 `player-movement-in-games.md` §5.7(a)'s own recommendation for *this* engine is walk 1.4 / jog 3.5 /
-sprint 7 m/s with a critically-damped velocity spring at a 0.25–0.5 s time constant, ARMA's shipped
-×0.75 backpedal and ×0.8 lateral penalties, and the slope relationship from Minetti's polynomials
-(`C_w(i) = 280.5i⁵ − 58.7i⁴ − 76.8i³ + 51.9i² − 19.6i + 2.5`) for uphill speed. That is the decision
-232–235 has to make explicitly rather than inherit.
+sprint 7 m/s, ARMA's ×0.75 backpedal and ×0.8 lateral, and Minetti's slope polynomial
+`C_w(i) = 280.5i⁵ − 58.7i⁴ − 76.8i³ + 51.9i² − 19.6i + 2.5` for uphill speed. Section 7 takes the
+first two and leaves the third to goal 235.
+
+---
+
+## 7. The scale decision (goals 232, 233, 234)
+
+The prompt asks 232 and 233 as two questions and then says 233 must be "one coherent choice". They
+are one question, and the answer is **realistic scale, throughout**.
+
+The argument is the voxels. The entire point of a 7.8 mm voxel world is that you can see individual
+cubes — it is what Group Z's whole look pass was for. A body that crosses that world at 10 m/s makes
+them a blur and turns the world into a diorama you fly over. And 10 m/s was never chosen by anyone:
+it is `move_speed 40 × walk_speed_factor 0.25`, the product of a spectator default and a fudge
+factor. `research/player-movement-in-games.md` §5.7(a) makes the same recommendation, for this
+engine by name.
+
+| | old | new | research band | source |
+|---|---|---|---|---|
+| walk | 10 m/s | **1.4 m/s** | 1.39 measured, 1.3–1.5 common | biomechanics §2.1 |
+| sprint (Shift) | ×4 = 40 m/s | **7.0 m/s** | fit human 6–8 | biomechanics §2.1 |
+| ground acceleration | instant | **10 m/s²** (brake 14) | elite human sprint peak ~10; games 10–60 | games §5.2.3 |
+| backpedal / lateral | none | **×0.75 / ×0.8** | ARMA's shipped values, inside the human 70–80% band | games §5.7(a) |
+| gravity | −32 (3.26× Earth) | **−9.81** | Earth | — |
+| jump apex | 1.129 m | **0.600 m** (v₀ 3.43 m/s) | human 0.4–0.5 m at ~3 m/s takeoff | biomechanics §6.5 |
+
+Departures from measured reality, named rather than left implicit:
+
+- **Sprint 7.0 m/s** is a fit human, not Bolt's 12.32, and not sustainable — the research's own note
+  is that nobody sprints at maximum for more than 5–8 s. There is no stamina pool; the prompt puts
+  it explicitly out of scope and it is a design decision the owner has not asked for.
+- **Jump apex 0.600 m** is 20–50% above a real standing vertical. A 0.45 m jump does not read on
+  screen. The takeoff velocity, 3.43 m/s, is within 15% of the measured human one, and that is the
+  half that governs how it *looks*.
+- **Acceleration 10 m/s²** is the top of reality and the bottom of the games band. **Decided
+  against**: the research's own critically-damped velocity spring. At sprint speed a 0.25–0.5 s time
+  constant implies a peak acceleration of v/τ = 14–28 m/s² — above the 10 m/s² the same document
+  boxes as the human limit — and it makes "time to sprint" an asymptote rather than a number the
+  tuning declares. A constant cap sits exactly on the human figure and gives `t = v/a`: 0.70 s up,
+  0.50 s down, which is what the test asserts.
+
+`walk_speed_factor` is **deleted**, not deprecated. The product it named is the thing that was
+wrong, so leaving it reachable would leave the bug reachable. `boost_factor` became
+`fly_boost_factor` for the same reason: it now applies to exactly one mode and says so.
+
+### What the scale change broke, which is the interesting part
+
+Six things failed, and every one of them was a constant that had silently encoded the old gravity or
+the old speed. None was found by reading; all six were found by running.
+
+1. **`test_spectator_camera`'s "huge dt" tunnelling guard stopped testing anything.** It dropped the
+   body from a literal `y = 5.0` and asserted it landed within one 0.5 s step. One step falls
+   `0.5·|g|·dt²` — 4.00 m under −32 and **1.23 m** under Earth's, so the body simply never reached
+   the ground and the case failed on a velocity assertion. The start height is now *derived* from
+   gravity (80% of one step's fall above the eye height), which is the only configuration that
+   tests tunnelling at all, and it cannot rot again.
+2. **The jump-apex band, twice** — once in `test_player_state` (closed form) and once in
+   `test_controller` (integrated). Both moved to 0.600 m. The integrated one revealed something
+   worth keeping: it now reads **0.6283 against the closed form's 0.6000, a 4.7% overshoot**,
+   because the jump impulse lands inside a tick that has *already* paid its gravity decrement. That
+   was equally true before; at a 1.13 m apex the same 4.7% hid inside a band 0.25 m wide.
+3. **Two `test_controller` cases were sized in ticks against the old speed** — 60 ticks was 10 m at
+   10 m/s and is 1.4 m at the new one. They now derive their budget from the tuning
+   (`ticks_to_walk`), so a speed change moves them automatically.
+4. **The shore-pop case passed for the wrong reason, waiting to happen.** Under Earth gravity the
+   swimmer floats higher, high enough that the *mesh path's* 0.55 m step budget climbs a 0.5 m
+   shore lip outright — so the assist never fired and the case would have gone green while testing
+   nothing. It now sets the SVO path's 4 cm budget, which is what ships.
+5. **Water's buoyancy constant was a ratio dressed as an absolute.** `defs/water.hpp` said
+   `64.0f` with a comment reading "upthrust is 2× gravity" — true only while gravity was −32. With
+   Earth gravity the net upthrust went from +32 to **+54.2 m/s²** and the swimmer was fired out of
+   the sea and onto the shore lip within a hundred ticks. It is `19.62` now (= 2 × 9.81), and
+   because neither header can see the other, the *relationship* is pinned by a test in
+   `world/player` that links both. The real-world figure, recorded for honesty: a human is nearly
+   neutrally buoyant (~0.015 g net), so +1 g is game scale — but it is the *same* game scale that
+   shipped before. Only its spelling changed.
+6. **`--speed-scale` silently stopped scaling the body.** The flag goal 229 added multiplies
+   `move_speed`, and goal 232 moved walking off `move_speed`. For one build the instrument that
+   exists to stress the sweep at 40× was scaling nothing but the fly camera. It now scales
+   `walk_speed`, `sprint_speed` and both acceleration rates together, so *time* to speed is
+   invariant and the ramp does not swallow the run at 40×.
+
+That last one is the third instrument in three prompts to quietly measure nothing (after
+`walk_violations` and the JSON brace check), and the second in this prompt alone (after the
+inside-solid counter measuring its own float round trip). The pattern is now well enough evidenced
+to state as a rule: **when the thing being measured changes, the measuring apparatus is part of the
+blast radius, and nothing warns you.**
+
+### Scenario coverage had to move with the speed
+
+`hold forward 8` covered 80 m at 10 m/s and covers 11 m at 1.4. Three scenarios were named for
+terrain features they would have stopped reaching. Rather than triple their script seconds (and
+their CI cost), the *traverse* legs now **sprint** — 7 m/s crosses the same ground in the same time
+and exercises goal 234's ramp while doing it. `walk_shoreline`'s entry into the sea deliberately
+still walks: entering water at a sprint is a different test from the one that scenario is named for.
+
+### FOV follows speed, not the key (goal 234)
+
+The FOV kick keyed off `PlayerIntent::boost`. With sprint now a ramp that would snap the lens open
+most of a second before the body got there — and hold it open while sprinting into a wall at zero
+speed. It is `clamp((speed − walk_speed) / (sprint_speed − walk_speed), 0, 1)` now. The head-bob's
+full-scale speed came off the same fix: it was the literal `10.0f`, i.e. the old walking speed
+hard-coded a third time.
+
+---
+
+## 8. What collision actually costs, and why (goal 230, re-measured)
+
+The first measurement said 0.051 ms/tick and called the 0.20 ms budget met. With realistic speeds
+`walk_shoreline` reads **0.196–0.276 ms/tick across five runs** — over budget, consistently. Chasing
+that produced the most useful number in this section, and two wrong hypotheses first.
+
+**Wrong hypothesis 1: sub-steps, so cost scales with speed.** Falsified by ramping the same
+scenario, which is **not monotone**:
+
+| `--speed-scale` | walking speed | collision ms/tick |
+|---|---|---|
+| 0.2× | 0.28 m/s | **0.040** |
+| 1× | 1.4 m/s | **0.226** |
+| 4× | 5.6 m/s | **0.073** |
+
+Cost *peaks in the middle*. What is special about 1× is not the speed: it is that at 1× the body
+spends the run in and beside the water, at 0.2× it never gets there, and at 4× it crosses in
+seconds.
+
+**Wrong hypothesis 2: the bisection.** A blocked axis ran all 12 halvings unconditionally — 1/4096
+of the motion, or **3 micrometres** for a walking tick's 12 mm, against a 7.8 mm voxel. That is real
+waste and it is fixed (the search now stops once the interval is under 0.1 mm, a tenth of the
+contact skin and 78× finer than a voxel; the count is a ceiling, so a 2.7 m boost-fly frame still
+gets all 12). Measured gain: **~8%**. Correct, and nowhere near the explanation.
+
+**What it actually is**, from counters added to `OctreeCollider` for the purpose:
+
+| scenario | queries/tick | nodes/query | nodes/tick | ms/tick |
+|---|---|---|---|---|
+| `walk_shoreline` | **5.8** | **76.5** | 444 | **0.218** |
+| `walk_hillside` | 20.5 | 34.2 | **701** | 0.061 |
+| `clip_stress` | 17.7 | 33.5 | 594 | 0.116 |
+| `spawn_stand` | 8.0 | 52.8 | 422 | 0.026 |
+
+`walk_hillside` does **more total node visits than `walk_shoreline` (701 vs 444) at less than a
+third of the cost.** So neither the number of queries nor the number of nodes is the unit of cost —
+which is exactly the kind of result that kills a plausible story. What separates them is *what the
+query finds*: `overlaps_solid` early-outs on the first solid voxel, and over water there is no solid
+voxel to find, so the traversal runs to exhaustion through dense liquid brick leaves that must be
+examined and rejected one occupancy mask at a time. **The expensive query is the one that finds
+nothing.**
+
+**Honest position for goal 230**: the 0.20 ms/tick budget is met everywhere the body is on land —
+0.026 to 0.116 across the scenario set — and **missed, at 0.20–0.28, whenever the body is over deep
+water.** That is a real budget miss, measured, attributed, and not fixed here: the fix is a
+"contains solid" summary bit on the node header so a water-only subtree can be rejected at its root,
+which is a tree-layout change and belongs with Prompt 004's work on that layout, not bolted on here.
+Goal 244 opened.
+
+---
+
+## 9. What AJ-B did NOT do
+
+Stated plainly rather than left to inference:
+
+- **235 (slope limits): NOT DONE.** Nothing yet refuses a slope; at 7.8 mm voxels a 60° hillside is
+  climbable because the sub-centimetre staircase always offers a 4 cm step. The research number to
+  build it against is in hand: Minetti's measurements span ±45% grade (**±24.2°**) and mountain
+  paths optimise at 20–30% grade (11–17°), so the walkable limit sits near 24° — well below the
+  45° game convention, and below the 31° slope `walk_hillside` climbs today, which means choosing
+  it is a real design decision and not a lookup.
+- **236 (swimming vs moving water): PARTIAL.** Its *finding* landed early and by accident — the
+  buoyancy constant above is exactly the "tuned against a flat surface" class of problem 236 warns
+  about. Its **Checks were not performed**: no scenario stands at the waterline for 30 s counting
+  stance flickers per wave crest, and no swim-out-and-back at 0.5 / 3 / 8 m/s wind. The `inWater`
+  predicate flicker against a *moving* surface remains unmeasured.
+- **AJ-C (237–240) and AJ-D (241–243): NOT STARTED.**

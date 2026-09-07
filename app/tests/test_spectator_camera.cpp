@@ -132,16 +132,26 @@ TEST_CASE("Walk mode falls under gravity and rests exactly at ground plus eye he
 
 TEST_CASE("Walk mode survives one huge dt step without tunneling", "[camera][walk]") {
     // A stutter frame (exactly what Group T is about) must not let physics integrate through the
-    // ground: one 0.5s step from just above the surface.
+    // ground: one 0.5 s step from just above the surface.
+    //
+    // The start height is DERIVED, not the old literal 5.0. One 0.5 s step falls 0.5|g|dt^2 --
+    // 4.00 m under the old -32 gravity and 1.23 m under Earth's, so a fixed 5.0 stopped being
+    // "just above the surface" the moment goal 233 changed gravity and the body simply did not
+    // reach the ground within the step. Starting at 80% of one step's fall above the eye height
+    // means the step ALWAYS overshoots the ground, which is the only configuration that tests
+    // tunnelling at all.
+    constexpr float kStutterDt = 0.5f;
+    const float fallInOneStep = 0.5f * std::abs(app::kGravityAcceleration) * kStutterDt * kStutterDt;
     InputState input;
     Transform transform;
-    transform.position = {0.0f, 5.0f, 0.0f};
+    transform.position = {0.0f, app::kEyeHeight + 0.8f * fallInOneStep, 0.0f};
     SpectatorCameraState state;
     state.physics.mode = world::player::MoveMode::Fly;
     state.physics.mode = app::CameraMoveMode::Walk;
 
-    update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 0.5f, 0.0f);
+    update_spectator_camera(transform, state, input, {0.0f, 0.0f}, kStutterDt, 0.0f);
     CHECK(transform.position.y >= app::kEyeHeight - 1e-3f);
+    CHECK(std::abs(transform.position.y - app::kEyeHeight) < 1e-3f); // landed ON it, not through it
     CHECK(state.physics.vertical_velocity == 0.0f);
 }
 
@@ -159,8 +169,11 @@ TEST_CASE("Walk mode moves along yaw only and ignores vertical inputs", "[camera
     state.pitch_radians = glm::radians(-80.0f); // staring at the ground must not slow walking
 
     update_spectator_camera(transform, state, input, {0.0f, 0.0f}, 1.0f, 0.0f);
-    // Full walk speed along -Z (yaw 0), zero sideways drift, still standing at eye height.
-    CHECK(std::abs(transform.position.z - (-state.move_speed * app::kWalkSpeedFactor)) < 1e-3f);
+    // Full walk speed along -Z (yaw 0), zero sideways drift, still standing at eye height. Goal
+    // 232: walking is `kWalkSpeed` m/s outright and does NOT read `state.move_speed`, which is the
+    // fly camera's number. The one-second dt clears the acceleration ramp in a single step
+    // (10 m/s^2 x 1 s covers the whole 1.4 m/s gap), so the distance is the speed.
+    CHECK(std::abs(transform.position.z - (-app::kWalkSpeed)) < 1e-3f);
     CHECK(std::abs(transform.position.x) < 1e-4f);
     CHECK(std::abs(transform.position.y - app::kEyeHeight) < 1e-3f);
 }
@@ -185,7 +198,7 @@ TEST_CASE("Walk mode dropped over deep water settles floating at the surface", "
     engine::ecs::Transform transform;
     transform.position = {0.0f, 30.0f, 0.0f};
     app::SpectatorCameraState state;
-state.physics.mode = world::player::MoveMode::Fly;
+    state.physics.mode = world::player::MoveMode::Fly;
     state.physics.mode = app::CameraMoveMode::Walk;
     const engine::input::InputState idle;
 

@@ -12,14 +12,19 @@ pose_ground 0,16 -90 -10 1.7
 # Straight into the hill, then out of it, then across it diagonally, then into it again while
 # boosting -- four different angles of attack, because a sweep bug that only shows head-on is not
 # the bug this is looking for.
-hold forward 6
+
+# Goal 232 dropped walking from 10 m/s to 1.4 (the measured human speed), so the traverse legs here
+# SPRINT: at 7 m/s they still cross the terrain feature this scenario is named for, in the same
+# script seconds, and they exercise goal 234's acceleration ramp while doing it. A leg written to
+# cover ground at the old speed would now cover a seventh of it and quietly stop testing the slope.
+hold forward+boost 6
 look 90 -20 1
-hold forward 3
+hold forward+boost 3
 look 45 -30 1
 hold forward+boost 4
 look -135 10 1
-hold forward+jump 3
-hold forward 3
+hold forward+boost+jump 3
+hold forward+boost 3
 
 # See walk_hillside for why a moving scenario settles before its capture.
 wait 3

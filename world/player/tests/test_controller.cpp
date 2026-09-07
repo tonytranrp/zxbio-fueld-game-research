@@ -49,6 +49,14 @@ struct Sim {
     }
 };
 
+// Ticks needed to cover `metres` at walking pace, with slack for the acceleration ramp. Goal 232
+// dropped walking from 10 m/s to 1.4, and three cases in this file failed purely because their
+// tick counts were sized against the old speed. A count derived from the tuning cannot rot that way.
+int ticks_to_walk(float metres, const PlayerTuning& tuning) {
+    const float rampSlack = tuning.walk_speed / tuning.ground_accel; // the ramp's own cost, seconds
+    return static_cast<int>((metres / tuning.walk_speed + rampSlack) / kDt) + 4;
+}
+
 } // namespace
 
 TEST_CASE("Standing on flat ground stays grounded and still", "[player][controller]") {
@@ -76,9 +84,15 @@ TEST_CASE("A jump reaches the predicted apex and lands", "[player][controller][j
     }
     REQUIRE(landed);
     const float apex = highest - 1.7f;
-    // The discrete integrator undershoots the closed-form 1.129 m slightly; the band is the check.
-    REQUIRE(apex > 1.0f);
-    REQUIRE(apex < 1.25f);
+    // Goal 233 moved gravity and jump_speed together to Earth scale, so the closed form is now
+    // 3.43^2 / 19.62 = 0.600 m. The discrete integrator undershoots it slightly; the band is the
+    // check, and it is the same check it always was.
+    // Band, not equality: the jump impulse lands INSIDE the tick that has already paid its gravity
+    // decrement, so semi-implicit Euler at 60 Hz overshoots the continuous closed form by ~4.7%
+    // (measured: 0.6283 against 0.6000). That was true before goal 233 too -- it is just visible
+    // now that the apex is 0.6 m rather than 1.13, where the same 4.7% hid inside a wider band.
+    REQUIRE(apex > 0.55f);
+    REQUIRE(apex < 0.66f);
     REQUIRE(sim.state.stance == Stance::Grounded);
     REQUIRE_THAT(sim.eye.y, Catch::Matchers::WithinAbs(1.7, 1.0e-3));
 }
@@ -127,7 +141,8 @@ TEST_CASE("The step budget climbs a 4 cm lip but not a 40 cm one", "[player][con
         sim.tuning.step_height = kSvoStepHeight;
         sim.world.wall_x = 1.0f;
         sim.world.wall_top = 0.04f;
-        for (int i = 0; i < 60; ++i) {
+        const int ticks = ticks_to_walk(2.0f, sim.tuning);
+        for (int i = 0; i < ticks; ++i) {
             sim.tick(right);
         }
         REQUIRE(sim.eye.x > 1.5f);         // walked past the lip
@@ -205,6 +220,13 @@ TEST_CASE("The shore assist pops a swimmer onto a low lip", "[player][controller
     sim.sense.ground_height = -20.0f;
     sim.sense.water_surface_y = 0.0f;
     // A 0.5 m shore lip at x = 1: taller than the floating body's feet, shorter than the probe.
+    //
+    // The step budget must be the SVO path's (4 cm), not the mesh path's 0.55 m relic, or this case
+    // does not test what it says. Found by goal 233: under Earth gravity the swimmer floats higher
+    // than it did under -32, high enough that a 0.55 m step budget climbs a 0.5 m lip outright --
+    // so the assist never fired and the case passed for the wrong reason waiting to happen. It is
+    // the shipping configuration either way; it just used not to matter which.
+    sim.tuning.step_height = kSvoStepHeight;
     sim.world.wall_x = 1.0f;
     sim.world.wall_top = 0.5f;
     sim.eye.y = 0.0f;
@@ -216,7 +238,11 @@ TEST_CASE("The shore assist pops a swimmer onto a low lip", "[player][controller
     PlayerIntent right;
     right.right = true;
     bool popped = false;
-    for (int i = 0; i < 300; ++i) {
+    // Ten seconds, NOT a distance: the assist is time-limited, not travel-limited. The swimmer bobs
+    // against the lip while buoyancy and the horizontal push argue, and the pop fires on whichever
+    // tick finds free air one probe-height up. Sizing this from the walk speed (as the two cases
+    // above legitimately are) would be modelling the wrong thing.
+    for (int i = 0; i < 600; ++i) {
         popped = sim.tick(right).shore_popped || popped;
     }
     REQUIRE(popped);

@@ -7,9 +7,14 @@ option --walk
 pose_ground 64,0 -90 -8 1.7
 # Downhill along +X from 56 m to the waterline at about x=112, then into the sea and back out.
 # The heights along this line, from tools/svo_render: 66.0, 56.2, 47.2, 13.5, -0.5 at x = 48..112.
-hold forward 6
+#
+# Goal 232 dropped walking from 10 m/s to 1.4, so the legs that have to COVER the 48 m to the
+# waterline sprint (7 m/s); the leg that goes into the water walks, because entering the sea at a
+# sprint is a different test from the one this scenario is named for and the swim physics are what
+# it exists to exercise.
+hold forward+boost 5
 hold none 1
-hold forward 8
+hold forward+boost 4
 hold none 2
 look 90 -5 1
 hold forward 10

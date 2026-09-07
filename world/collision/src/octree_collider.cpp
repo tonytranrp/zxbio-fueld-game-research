@@ -200,6 +200,7 @@ std::int64_t column_top(const BrickTree& tree, std::uint32_t node, int level, co
 
 bool OctreeCollider::overlaps_solid(const Aabb& box) const noexcept {
     lastNodesVisited_ = 0;
+    ++queryCount_;
     if (tree_ == nullptr || tree_->empty()) {
         return false;
     }
@@ -208,7 +209,10 @@ bool OctreeCollider::overlaps_solid(const Aabb& box) const noexcept {
         return false; // wholly outside the tree
     }
     const std::int64_t origin[3]{0, 0, 0};
-    return node_overlaps(*tree_, tree_->root, 0, origin, vb, tree_->geometry.voxel_bits(), lastNodesVisited_);
+    const bool hit =
+        node_overlaps(*tree_, tree_->root, 0, origin, vb, tree_->geometry.voxel_bits(), lastNodesVisited_);
+    nodeVisitTotal_ += lastNodesVisited_;
+    return hit;
 }
 
 float OctreeCollider::voxel_top(float x, float z, float yStart) const noexcept {

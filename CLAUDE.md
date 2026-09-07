@@ -349,6 +349,37 @@ Full record: `research/dev-harness-log.md`; how to use it: `docs/dev-harness.md`
 - **`--lod-radius 32` CRASHES** (access violation in `Builder::build_node`, every worker thread):
   `build_tree` has no memory bound. The ramp found it; goal 219a is open.
 
+## Player embodiment (2026-09-07, Prompt 003 Group AJ) -- operational deltas
+
+Full record: `research/player-embodiment-log.md`. Machine-relevant deltas ONLY:
+
+- **`voxel_app` starts as a BODY, walking.** `--walk` is a no-op alias kept for the docs that name
+  it; `--fly`, `--noclip` and the `G` toggle now need **`--dev`** and REFUSE by name without it. The
+  harness sets `dev` itself.
+- **The body is REALISTIC SCALE now**: walk **1.4 m/s**, sprint (Shift) **7.0 m/s** with a 10 m/s^2
+  acceleration ramp, gravity **-9.81**, jump apex **0.600 m**. Every number is from
+  `research/locomotion-biomechanics-physics.md`. `PlayerTuning::walk_speed_factor` is **gone** --
+  walking no longer reads the fly camera's `move_speed` at all.
+  **A tick count in a test is now 7x more script time than it used to be.** Three existing tests
+  failed purely on that; derive budgets from the tuning (`ticks_to_walk`), never a literal.
+- **Scenario traverse legs SPRINT** (`hold forward+boost N`). At 1.4 m/s a leg written for 10 m/s
+  covers a seventh of its terrain and silently stops testing what it is named for.
+- **`--speed-scale F`** (dev) multiplies walk, sprint and both acceleration rates together, so time
+  to speed is invariant. `--ramp speed-scale:1,4,10,40` is goal 229's sweep.
+- **Collision costs 0.026-0.116 ms/tick on land and 0.20-0.28 over deep water** -- the budget miss is
+  real and attributed: `overlaps_solid` early-outs on the first solid voxel, so a query over water
+  finds nothing and runs to exhaustion. Counters for this live on `OctreeCollider`
+  (`query_count()`, `node_visit_total()`); the app prints queries/tick and nodes/query at exit.
+- **A constant that encodes a ratio to gravity must say so.** `defs/water.hpp`'s buoyancy was `64.0`
+  = "2x gravity" and stayed 64 when gravity moved, firing the swimmer out of the sea. It is 19.62,
+  and `world/player`'s tests pin the RELATIONSHIP because neither header can see the other.
+- **The scenario ctest tests need a real GPU and CI has none.** The GitHub Windows runner enumerates
+  no Vulkan ICD at all (WARP is D3D12 only), so CI runs `ctest ... -LE scenario`. A plain local
+  `ctest` still runs them, which is how seven stale goldens were caught.
+- **252/252 tests** (215 core). Goldens were re-taken for all ten scenarios on both backends: the
+  static poses had been stale since walk became the default, and the moving ones moved with the new
+  speeds and gravity.
+
 ## Phase status
 
 **Phase 0 (repo scaffold + dependency fetch/build smoke test): DONE.** Clean configure+build
