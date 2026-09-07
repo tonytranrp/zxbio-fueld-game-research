@@ -20,6 +20,12 @@ struct SweepParams {
     // skip over anything: consecutive body boxes overlap along the path. At boost speed a frame
     // moves ~1.1 m -- five sub-steps, a tree trunk is 0.5 m thick.
     float max_substep = 0.25f;
+    // Contact tolerance for the "started inside" case below. A body resting exactly on a surface
+    // reads as marginally INSIDE it, because the caller stores the camera eye and rebuilds the feet
+    // as (eye - eye_height) every tick -- a float round trip worth ~1e-7, and a voxel world puts
+    // surfaces at exact coordinates constantly. 1 mm is far under the 7.8 mm finest voxel and far
+    // over any rounding.
+    float skin = 0.001f;
 };
 
 struct SweepResult {
@@ -82,11 +88,27 @@ SweepResult move_and_slide_once(const Q& query, const Aabb& body, const glm::vec
 template <SolidQuery Q>
 SweepResult move_and_slide(const Q& query, const Aabb& body, const glm::vec3& wanted,
                            const SweepParams& params) {
-    if (query.overlaps_solid(body)) {
-        SweepResult r;
-        r.started_inside = true;
-        r.delta = wanted;
-        return r;
+    Aabb start = body;
+    glm::vec3 lift{0.0f};
+    if (query.overlaps_solid(start)) {
+        // Depenetrate by the skin before giving up. Without this, a body standing exactly on a
+        // voxel top takes the escape hatch below on the very tick it is resting -- which returns
+        // the WHOLE wanted motion unclipped, so gravity walks it straight through the floor it was
+        // standing on. Found by the step-up test in world/player: the body climbed a 4 cm lip and
+        // then sank off it one tick later, with a single overlap query to show for the frame.
+        const Aabb lifted = start.translated(glm::vec3{0.0f, params.skin, 0.0f});
+        if (params.skin > 0.0f && !query.overlaps_solid(lifted)) {
+            lift.y = params.skin;
+            start = lifted;
+        } else {
+            // Genuinely embedded (spawned in rock, a world rebuild swallowed us): never trap the
+            // player -- move unblocked until free. The classic policy, and what keeps --autofly's
+            // teleport-through-mountains smoke test meaningful.
+            SweepResult r;
+            r.started_inside = true;
+            r.delta = wanted;
+            return r;
+        }
     }
     // Sub-step so no single end-position test can jump an obstacle (see SweepParams::max_substep).
     const float longest = std::max(std::max(std::abs(wanted.x), std::abs(wanted.y)), std::abs(wanted.z));
@@ -94,7 +116,8 @@ SweepResult move_and_slide(const Q& query, const Aabb& body, const glm::vec3& wa
                              ? std::max(1, static_cast<int>(std::ceil(longest / params.max_substep)))
                              : 1;
     SweepResult total;
-    Aabb box = body;
+    total.delta = lift; // the depenetration is part of the motion, so the caller ends up outside
+    Aabb box = start;
     const glm::vec3 piece = wanted / static_cast<float>(substeps);
     for (int i = 0; i < substeps; ++i) {
         const SweepResult r = detail::move_and_slide_once(query, box, piece, params);

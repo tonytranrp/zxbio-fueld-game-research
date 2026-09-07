@@ -99,6 +99,39 @@ TEST_CASE("a body that starts inside solid is not trapped", "[collision][sweep]"
     CHECK_FALSE(r.blocked_y);
 }
 
+TEST_CASE("a body resting a float-ulp inside its own floor is depenetrated, not released",
+          "[collision][sweep]") {
+    // The bug the skin exists for, found by world/player's step-up test. The caller stores the
+    // camera EYE and rebuilds the feet as (eye - eye_height) every tick; that round trip is worth
+    // ~1e-7, so a body the sweep placed exactly on a surface reads back as marginally INSIDE it.
+    // Before the skin, that took the "started inside -> move unblocked" escape and handed back the
+    // full wanted motion -- gravity walking the body straight through the floor it was standing on,
+    // one tick after landing. A voxel world puts surfaces at exact coordinates constantly, so this
+    // is reachable, not theoretical.
+    BoxWorld world;
+    world.floor = -100.0f; // no half-space floor; the ledge below is the only solid
+    world.solids.push_back(Aabb{glm::vec3{-10.0f, -10.0f, -10.0f}, glm::vec3{10.0f, 0.04f, 10.0f}});
+
+    const Aabb sunk = body_at(0.0f, std::nextafter(0.04f, 0.0f), 0.0f); // one ulp inside the top
+    REQUIRE(world.overlaps_solid(sunk));
+
+    const SweepResult r = move_and_slide(world, sunk, glm::vec3{0.0f, -0.5f, 0.0f}, SweepParams{});
+    CHECK_FALSE(r.started_inside);                               // not released from collision...
+    CHECK(r.delta.y > -0.001f);                                  // ...and it did not fall through the surface
+    CHECK_FALSE(world.overlaps_solid(sunk.translated(r.delta))); // it ends outside, so this settles
+}
+
+TEST_CASE("a deeply embedded body still escapes", "[collision][sweep]") {
+    // The skin must not turn the anti-trap policy off: a body genuinely inside rock (spawned there,
+    // or swallowed by a world rebuild) still moves unblocked until it is free.
+    BoxWorld world;
+    world.solids.push_back(Aabb{glm::vec3{-10.0f, -10.0f, -10.0f}, glm::vec3{10.0f, 5.0f, 10.0f}});
+    const Aabb buried = body_at(0.0f, 1.0f, 0.0f);
+    const SweepResult r = move_and_slide(world, buried, glm::vec3{1.0f, 2.0f, 0.0f}, SweepParams{});
+    CHECK(r.started_inside);
+    CHECK(r.delta == glm::vec3{1.0f, 2.0f, 0.0f});
+}
+
 TEST_CASE("many small steps never tunnel through a thin wall", "[collision][sweep]") {
     BoxWorld world;
     world.solids.push_back(Aabb{glm::vec3{5.0f, -1.0f, -10.0f}, glm::vec3{5.05f, 5.0f, 10.0f}}); // 5 cm wall
