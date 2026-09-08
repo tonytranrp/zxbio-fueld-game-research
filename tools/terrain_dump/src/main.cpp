@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "png_writer.hpp"
+#include "world/generation/field/climate.hpp"
 #include "world/generation/field/fluvial.hpp"
 #include "world/generation/field/macro_pipeline.hpp"
 #include "world/generation/field/terrain_field.hpp"
@@ -61,6 +62,30 @@ struct Options {
         }
     }
     return {255, 255, 255};
+}
+
+/// Blue-to-white-to-brown for precipitation, keyed to the field mean of 1.0: dry is brown, mean is
+/// pale, wet is blue. The mean is pinned to the ramp's midpoint for the same reason the elevation
+/// ramp pins sea level -- so the eye reads "wetter or drier than typical" rather than "wherever the
+/// range happened to land".
+[[nodiscard]] std::array<std::uint8_t, 3> precip_colour(float p) {
+    // log2 around the mean, clamped to +-3 stops: precipitation spans 0.1 to ~30 on a ridge and a
+    // linear ramp shows one white line on a brown field.
+    const float s = std::clamp(std::log2(std::max(p, 1e-3f)) / 3.0f, -1.0f, 1.0f);
+    if (s < 0.0f) { // dry: pale -> brown
+        const float u = -s;
+        return {static_cast<std::uint8_t>(235.0f - 100.0f * u),
+                static_cast<std::uint8_t>(225.0f - 140.0f * u),
+                static_cast<std::uint8_t>(205.0f - 175.0f * u)};
+    }
+    return {static_cast<std::uint8_t>(235.0f - 220.0f * s), // wet: pale -> deep blue
+            static_cast<std::uint8_t>(225.0f - 150.0f * s), static_cast<std::uint8_t>(205.0f + 20.0f * s)};
+}
+
+/// Cold blue to warm red across the field's own temperature range.
+[[nodiscard]] std::array<std::uint8_t, 3> temperature_colour(float t01) {
+    return {static_cast<std::uint8_t>(40.0f + 200.0f * t01), static_cast<std::uint8_t>(70.0f + 90.0f * t01),
+            static_cast<std::uint8_t>(230.0f - 190.0f * t01)};
 }
 
 /// Research Part 7 §9.4. Extracted at 30 m-EQUIVALENT resolution regardless of the simulation's
@@ -192,8 +217,8 @@ struct DropTest {
     const auto [m2, v2] = stats(higherOrder);
     out.first_order_mean = m1;
     out.higher_order_mean = m2;
-    const double se = std::sqrt(v1 / static_cast<double>(firstOrder.size()) +
-                                v2 / static_cast<double>(higherOrder.size()));
+    const double se =
+        std::sqrt(v1 / static_cast<double>(firstOrder.size()) + v2 / static_cast<double>(higherOrder.size()));
     out.t_statistic = se > 1e-12 ? (m1 - m2) / se : 0.0;
     return out;
 }
@@ -219,7 +244,8 @@ int main(int argc, char** argv) {
             o.plane = next();
         } else if (a == "--help" || a == "-h") {
             std::printf("terrain_dump: false-colour the macro terrain field and print its statistics\n"
-                        "  --seed N --stages N --cells N --cell-size F --plane elevation|flow --out FILE\n");
+                        "  --seed N --stages N --cells N --cell-size F --out FILE\n"
+                        "  --plane elevation|flow|precip|temperature\n");
             return 0;
         }
     }
@@ -275,7 +301,7 @@ int main(int argc, char** argv) {
             std::sort(heights.begin(), heights.end());
             const auto q = [&](double f) {
                 return heights[std::min(heights.size() - 1,
-                                     static_cast<std::size_t>(f * static_cast<double>(heights.size())))];
+                                        static_cast<std::size_t>(f * static_cast<double>(heights.size())))];
             };
             double mean = 0.0;
             for (float v : heights) {
@@ -283,8 +309,8 @@ int main(int argc, char** argv) {
             }
             mean /= static_cast<double>(heights.size());
             const double median = q(0.5);
-            std::printf("land hypsometry: median %.1f m, mean %.1f m, p90 %.1f m, max %.1f m\n",
-                        median, mean, static_cast<double>(q(0.9)), static_cast<double>(heights.back()));
+            std::printf("land hypsometry: median %.1f m, mean %.1f m, p90 %.1f m, max %.1f m\n", median, mean,
+                        static_cast<double>(q(0.9)), static_cast<double>(heights.back()));
             // A Gaussian field puts its median at half its range. Research 9.3 wants the land
             // peak near SEA LEVEL, so this ratio well below 0.5 is the property being claimed.
             std::printf("  median/max = %.3f  (Gaussian ~0.5; 9.3 wants well below 0.5)\n",
@@ -302,8 +328,8 @@ int main(int argc, char** argv) {
         for (const float ac : {0.005f, 0.01f, 0.05f, 0.1f, 0.5f, 1.0f, 2.0f}) {
             const DropTest d = constant_drop(working, net, ac);
             std::printf("  A_c %6.3f km^2  |t| = %7.2f   first %.3f m (%zu)  higher %.3f m (%zu)\n",
-                        static_cast<double>(ac), std::abs(d.t_statistic), d.first_order_mean,
-                        d.first_links, d.higher_order_mean, d.higher_links);
+                        static_cast<double>(ac), std::abs(d.t_statistic), d.first_order_mean, d.first_links,
+                        d.higher_order_mean, d.higher_links);
         }
         const DropTest drop = constant_drop(working, net, 0.01f);
         std::printf("constant-drop t-test at A_c = 0.01 km^2: |t| = %.2f  (TauDEM criterion |t| < 2)\n",
@@ -312,18 +338,144 @@ int main(int argc, char** argv) {
                     drop.first_order_mean, drop.first_links, drop.higher_order_mean, drop.higher_links);
     }
 
+    // ---- goal 302: the climate planes, measured on the REAL field rather than a synthetic ridge.
+    //
+    // The unit tests assert the mechanism on a Gaussian ridge because that is the only way to know
+    // what the answer should be. These are the same quantities on the terrain that actually ships,
+    // which is a different question: a ridge is one barrier, and this is a coastline plus an
+    // orogenic belt plus everything the erosion did to both.
+    {
+        const std::span<const float> precip = field.plane(Plane::Precipitation);
+        const std::span<const float> temp = field.plane(Plane::Temperature);
+        std::vector<float> landPrecip;
+        landPrecip.reserve(field.cell_count());
+        // Windward- vs lee-FACING land, classified by whether the ground rises or falls along the
+        // wind. This is the shadow measured on real terrain: every slope in the field votes, rather
+        // than one hand-picked transect.
+        double windSum = 0.0;
+        double leeSum = 0.0;
+        std::size_t windN = 0;
+        std::size_t leeN = 0;
+        const ClimateParams cp;
+        const float wlen = std::sqrt(cp.wind_x * cp.wind_x + cp.wind_z * cp.wind_z);
+        const auto ux = static_cast<std::int32_t>(std::round(cp.wind_x / wlen));
+        const auto uz = static_cast<std::int32_t>(std::round(cp.wind_z / wlen));
+        for (std::int32_t cz = 0; cz < field.cells(); ++cz) {
+            for (std::int32_t cx = 0; cx < field.cells(); ++cx) {
+                const std::size_t i = field.index(cx, cz);
+                if (h[i] <= 0.0f) {
+                    continue;
+                }
+                landPrecip.push_back(precip[i]);
+                if (!field.in_bounds(cx - ux, cz - uz)) {
+                    continue;
+                }
+                const float upwind = std::max(h[field.index(cx - ux, cz - uz)], 0.0f);
+                if (h[i] > upwind) {
+                    windSum += precip[i];
+                    ++windN;
+                } else if (h[i] < upwind) {
+                    leeSum += precip[i];
+                    ++leeN;
+                }
+            }
+        }
+        std::sort(landPrecip.begin(), landPrecip.end());
+        const auto pct = [&](double q) {
+            return landPrecip.empty()
+                       ? 0.0f
+                       : landPrecip[std::min(landPrecip.size() - 1,
+                                             static_cast<std::size_t>(q * static_cast<double>(landPrecip.size())))];
+        };
+        const double wet = static_cast<double>(pct(0.90));
+        const double dry = static_cast<double>(pct(0.10));
+        std::printf("precip land p10 %.3f, median %.3f, p90 %.3f  =>  wet/dry %.1f:1 "
+                    "(research §6.2 anchor ~10:1 across a 1.5-2 km barrier)\n",
+                    dry, static_cast<double>(pct(0.50)), wet, dry > 1e-6 ? wet / dry : 0.0);
+        // §6.2's anchor is a knob, not an accident: `background_fraction` sets the floor a fully
+        // shadowed cell falls to, so it alone decides the wet/dry ratio. Swept rather than asserted,
+        // for the same reason the constant-drop threshold was: the useful question is which value
+        // the acceptance number SELECTS.
+        {
+            std::printf("background_fraction sweep (land p90/p10 vs research §6.2's ~10:1):\n");
+            for (const float bg : {0.05f, 0.10f, 0.20f, 0.30f, 0.40f}) {
+                TerrainField probe = field;
+                ClimateParams sweep;
+                sweep.background_fraction = bg;
+                compute_climate(probe, sweep);
+                const std::span<const float> pp = probe.plane(Plane::Precipitation);
+                std::vector<float> probeLand;
+                probeLand.reserve(field.cell_count());
+                for (std::size_t i = 0; i < field.cell_count(); ++i) {
+                    if (h[i] > 0.0f) {
+                        probeLand.push_back(pp[i]);
+                    }
+                }
+                std::sort(probeLand.begin(), probeLand.end());
+                const auto at = [&](double q) {
+                    return probeLand.empty() ? 0.0f
+                                        : probeLand[std::min(probeLand.size() - 1,
+                                                        static_cast<std::size_t>(q * static_cast<double>(probeLand.size())))];
+                };
+                const double w = static_cast<double>(at(0.90));
+                const double d = static_cast<double>(at(0.10));
+                std::printf("  bg %.2f: p10 %.3f  p90 %.3f  =>  %5.1f:1\n", static_cast<double>(bg), d, w,
+                            d > 1e-6 ? w / d : 0.0);
+            }
+        }
+
+        const double windMean = windN != 0 ? windSum / static_cast<double>(windN) : 0.0;
+        const double leeMean = leeN != 0 ? leeSum / static_cast<double>(leeN) : 0.0;
+        std::printf("precip windward-facing land %.3f (%zu cells) vs lee-facing %.3f (%zu) "
+                    "=> %.2f:1\n",
+                    windMean, windN, leeMean, leeN, leeMean > 1e-6 ? windMean / leeMean : 0.0);
+
+        float tlo = temp[0];
+        float thi = temp[0];
+        for (const float v : temp) {
+            tlo = std::min(tlo, v);
+            thi = std::max(thi, v);
+        }
+        std::printf("temperature %.2f .. %.2f C over %.1f m of relief (lapse %.1f C/km)\n",
+                    static_cast<double>(tlo), static_cast<double>(thi),
+                    static_cast<double>(std::max(hi, 0.0f)),
+                    static_cast<double>(lapse_rate_c_per_km()));
+    }
+
     for (const float ac : {0.002f, 0.01f, 0.0625f, 0.1f, 1.0f, 5.0f}) {
         std::printf("drainage density at A_c = %.1f km^2: %6.2f km/km^2  (research §9.4 band 2-12)\n",
                     static_cast<double>(ac), drainage_density(working, ac));
     }
 
     const bool wantFlow = o.plane == "flow";
-    const std::span<const float> source = wantFlow ? working.plane(Plane::FlowAccum) : h;
+    const bool wantPrecip = o.plane == "precip" || o.plane == "precipitation";
+    const bool wantTemp = o.plane == "temperature" || o.plane == "temp";
+    const std::span<const float> source = wantFlow     ? working.plane(Plane::FlowAccum)
+                                          : wantPrecip ? field.plane(Plane::Precipitation)
+                                          : wantTemp   ? field.plane(Plane::Temperature)
+                                                       : h;
+    float tlo = source[0];
+    float thi = source[0];
+    for (const float v : source) {
+        tlo = std::min(tlo, v);
+        thi = std::max(thi, v);
+    }
     std::vector<std::uint8_t> rgb(static_cast<std::size_t>(o.cells) * o.cells * 3);
     for (std::int32_t cz = 0; cz < o.cells; ++cz) {
         for (std::int32_t cx = 0; cx < o.cells; ++cx) {
             const std::size_t i = field.index(cx, cz);
             float t = 0.0f;
+            if (wantPrecip || wantTemp) {
+                const std::array<std::uint8_t, 3> c =
+                    wantPrecip ? precip_colour(source[i])
+                               : temperature_colour(
+                                     std::clamp((source[i] - tlo) / std::max(thi - tlo, 1e-6f), 0.0f, 1.0f));
+                const std::size_t px = i * 3;
+                rgb[px + 0] = c[0];
+                rgb[px + 1] = c[1];
+                rgb[px + 2] = c[2];
+                continue;
+            }
             if (wantFlow) {
                 // log, because accumulation spans five orders of magnitude and a linear ramp shows
                 // one white river on a black field.

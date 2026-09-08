@@ -1,5 +1,6 @@
 #include "world/generation/field/macro_pipeline.hpp"
 
+#include "world/generation/field/climate.hpp"
 #include "world/generation/field/fluvial.hpp"
 
 #include <algorithm>
@@ -153,6 +154,11 @@ void stage_continents(TerrainField& out, const MacroParams& params) {
 // Group AM-B stages 3a-3e. Split into named stages rather than one "erode" call so that
 // --field-stages N can stop between them: goal 306's before/after capture is exactly "run
 // everything up to diffusion, then run diffusion", and a single stage could not express that.
+// Stage 2 of §10.2, and it runs BEFORE the fluvial core on purpose: the precipitation field is
+// the rain the incision should be using, so computing it after the erosion would compute a climate
+// for a landscape that no longer exists.
+void stage_climate(TerrainField& out, const MacroParams&) { compute_climate(out); }
+
 void stage_fill_depressions(TerrainField& out, const MacroParams&) { priority_flood(out); }
 
 void stage_flow(TerrainField& out, const MacroParams&) {
@@ -185,10 +191,21 @@ void stage_diffuse(TerrainField& out, const MacroParams& params) {
 
 constexpr std::array kStageTable{
     Stage{"continents", &stage_continents},
+    Stage{"climate", &stage_climate},
     Stage{"fill_depressions", &stage_fill_depressions},
     Stage{"flow", &stage_flow},
     Stage{"incise", &stage_incise},
     Stage{"diffuse", &stage_diffuse},
+    // CLIMATE RUNS TWICE, and the second pass is not redundant. The first has to come before the
+    // incision because the incision wants a rain field; but that leaves the shipped precipitation
+    // plane keyed to PRE-EROSION topography, while everything downstream (biomes, vegetation) reads
+    // it against the post-erosion terrain it can actually see. Measured, on the shipped seed: the
+    // same background fraction gives a 32.4:1 land wet/dry ratio on the pre-erosion field and
+    // 16.1:1 on the post-erosion one -- a factor of two, from valleys that did not exist when the
+    // first pass ran. Research Part 7 notes one orographic pass per erosion checkpoint is standard
+    // practice in coupled fastscape work; this is the cheapest honest version of that, and the
+    // stage is O(n) so a second pass costs a few milliseconds.
+    Stage{"climate_final", &stage_climate},
 };
 
 } // namespace

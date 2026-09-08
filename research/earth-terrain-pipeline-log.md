@@ -500,3 +500,158 @@ holds 54 higher-order channel cells.
 enough samples to be meaningful here. The constant-drop failure is recorded as an open goal rather
 than tuned away, and the fix is a larger macro field, not a different threshold — which is a real
 cost (a 32 km field at 16 m is 4 M cells and 128 MB) and belongs to a later pass.
+
+---
+
+## 9. Goal 302: orographic climate — four wrong answers, each corrected by its own measurement
+
+This goal produced more self-corrections than any other in the pass, and every one of them came from
+an instrument rather than from re-reading the code. They are listed because the *sequence* is the
+finding: each fix exposed the next error, and three of the four would have shipped as plausible.
+
+### The model, and what it deliberately is not
+
+Research Part 7 §10.2(2) specifies **Smith & Barstad's linear theory** — "LT = one FFT pair". What
+ships is the model the research itself names as LT's baseline, the classical **linear upslope law**
+`S = C_w · U·∇h + S_∞`, plus the two things that law lacks and this goal's acceptance case demands:
+
+1. **Depletion** — a moisture budget carried along the trajectory. The bare upslope law has no
+   memory and will rain the same amount off the third ridge as the first; carrying the budget is
+   what makes a lee **dry** rather than merely un-enhanced, and a rain shadow is a dry lee.
+2. **Drift** — condensate enters a suspended reservoir that advects downwind and falls out with an
+   e-folding length. **The first draft had no drift and therefore could not produce the spillover
+   its own Check asked for.**
+
+The sweep is semi-Lagrangian: each cell reads a bilinear sample one full dominant-axis cell upwind.
+Stepping by `dx / max(|wx|,|wz|)` puts the dominant axis exactly on the previous column or row, so a
+cell's own weight in its own upwind sample is exactly zero and one row-major pass in the wind's
+quadrant is a valid evaluation order. The obvious alternative — snapping the wind to its dominant
+axis — silently discards the cross-wind component, a **17° error** in where every shadow lands for
+the default (1, 0.3) wind.
+
+**Why not the FFT.** An FFT is the easy half of Smith–Barstad; the hard half is its parameters (moist
+Brunt–Väisälä frequency, uplift sensitivity, conversion and fallout times), and the research gives
+the model's shape without a parameter set for a world 8 km across with 112 m of relief. Fitting those
+against nothing produces a field with an FFT's authority and a guess's content. Every parameter here
+instead names the anchor it came from and the miniaturization it was divided by. Goal 302a records
+the upgrade.
+
+### Error 1 — the drift length miniaturized the wrong length
+
+Derived at 1200 m by scaling Roe & Baker's physical 5–25 km drift by the ratio of the Olympic
+transect (~60 km) to this field (8 km), a 7.5× reduction.
+
+**The ridge test measured the lee half of a ridge as WETTER than the windward half.** The field span
+is not what sets the shape — the barrier is. This world's field is 7.5× smaller than the anchor's
+transect but its **mountains are 70× narrower** (`macro_pipeline.cpp` builds a 320 m crest against
+the Olympics' ~25 km half-width). What has to be preserved across the gap is the dimensionless ratio
+**drift / barrier-half-width**, which is 0.2–1.0 for the anchor and gives **64–320 m** here.
+
+Now **250 m**. At 1200 m the spillover ran three barrier-widths deep and buried the shadow.
+
+### Error 2 — the test measured a plain and called it a rain shadow
+
+The same test compared the two **halves of the field** either side of the crest. The windward half is
+eighty columns of flat approach plain that lifts nothing and rains only background; averaging it in
+measures the plain, not the mountain.
+
+Rewritten to compare **symmetric flanks**, one to three sigma out on each side. That is two points
+equidistant from the barrier, which is what a rain shadow is a statement about.
+
+| on a 400 m synthetic ridge | measured |
+|---|---|
+| windward flank vs lee flank | **15.2 : 1** |
+| peak vs fully-shadowed floor | **73 : 1** |
+| peak position | **15 cells (480 m) UPWIND of the crest** |
+| far lee | **0.1000** against a background floor of 0.1000 |
+| crest → one drift length → far lee | 2.47 → 1.07 → 0.10 |
+
+The peak sitting upwind of the crest is LT's own signature and it falls out of depletion plus drift
+without the transfer function.
+
+### Error 3 — a predicted negative that was wrong by a factor of five
+
+The first draft asserted, as a measured fact in a header comment, that carrying the **physical** 2 km
+water-vapour scale height across the scale gap left "a 1.06:1 shadow, which is to say none". Written
+as a test, it failed: the real number is **5.33:1**.
+
+The prediction came from the *previous, unnormalized* model. The plane is now normalised to a field
+mean of 1.0, and **normalisation cancels most of the wring-out height's effect** — scaling total
+condensate up or down scales the windward flank and the drifted lee together.
+
+What the miniaturization actually buys, measured on this world's 112 m of relief:
+
+| `wring_out_height_m` | flank ratio | column wrung out |
+|---|---|---|
+| 2000 m (physical) | 5.33 : 1 | 5.4% |
+| **133 m (2000/15, shipped)** | **7.39 : 1** | **57%** |
+
+A real gain — the peak moves further upwind and leaves less in the cloud to spill over — but **not a
+rescue**. The absolute budget is the part that genuinely matters, and only on a fetch crossing more
+than one range: at 5.4% the second range never rains on air the first one dried.
+
+**And the negative that outranks both: at 112 m of relief NEITHER value reaches §6.2's 10:1.** That
+anchor is quoted for a 1.5–2 km barrier; the 400 m synthetic ridge reaches it at 15.2:1. This world's
+mountains are shorter than the landform the research's number describes — the same shape of result as
+this pass's drainage-density and constant-drop findings, one level up.
+
+### Error 4 — the ocean was raining, and only a picture showed it
+
+The first false-colour dump had the sea north-west of the continent reading **wet**. The seabed rises
+toward that coast, and the sweep was reading a **rising sea floor as forced ascent**. Air over water
+is at sea level; the bathymetry beneath it lifts nothing.
+
+The ascent now runs on `max(h, 0)`, materialised as a separate surface plane rather than clamped at
+the read site — the bilinear sample has to interpolate the *clamped* surface, or the last wet cell
+before a coast still sees a fractional step up out of the water.
+
+**Nothing in the numbers had flagged this.** The ridge tests all passed; they are built on a ridge
+with no ocean in them. It took looking at the picture, against the elevation map, to see it.
+
+### The calibration, swept rather than reasoned — and a second climate pass
+
+`background_fraction` is the floor a fully shadowed cell falls to, so it alone sets the wet/dry
+ratio, which is the one magnitude §6.2 states.
+
+The first value, 0.10, was *reasoned*: a cell receiving the field-mean orographic rain would then be
+10× a fully shadowed one. That is arithmetic about the wrong cell — **the research's ratio is quoted
+against a windward PEAK, and the peak here is 3.7× the field mean**, so 0.10 delivered 32:1.
+
+| background_fraction | 0.05 | 0.10 | **0.20** | 0.30 | 0.40 |
+|---|---|---|---|---|---|
+| land p90/p10 | 21.5 | 16.1 | **10.3** | 7.2 | 5.3 |
+
+Across three seeds at 0.20: **10.3, 8.6, 9.8** against the ~10:1 anchor. Shipped.
+
+**The sweep also caught an inconsistency worth more than the calibration.** At the same background
+fraction the sweep read 16.1:1 while the shipped field read 32.4:1 — because the sweep recomputed on
+post-erosion terrain while the pipeline's climate stage ran on stage-1 terrain. **Erosion moves the
+wet/dry ratio by a factor of two**, through valleys that did not exist when the first pass ran.
+
+Climate now runs **twice**: before the incision (which needs a rain field) and again at the end, so
+the shipped plane is keyed to the terrain everything downstream can actually see. Research Part 7
+notes one orographic pass per erosion checkpoint is standard practice in coupled fastscape work; this
+is the cheapest honest version of it.
+
+### Goal 302's Check, performed
+
+| Check item | result |
+|---|---|
+| false-colour precipitation map, **viewed** | `research/captures/am_precip.png` — ocean uniformly dry, wet bands on upwind-facing coasts and hillsides, dry tails downwind, dendritic wet fingers on the incised valley walls |
+| rain shadow **downwind of a stamped orogen** | yes, and the shadow direction tracks the (1, 0.3) wind rather than the x axis |
+| **spillover** pattern | crest 2.47 → one drift length 1.07 → background 0.10; asserted as a test |
+| wet/dry ratio **stated and compared to the band** | **10.3 : 1** land p90/p10, against §6.2's ~10:1. Whole-field windward-facing vs lee-facing land is a different and much gentler statistic: **1.70 : 1** |
+| lapse rate **asserted numerically** | test asserts `6.5 °C/km` exactly and that the summit-to-lowland difference equals `−6.5 × Δh/1000` to 1e-4 |
+| temperature falls with latitude | **it does not, and that is deliberate.** 8 km is 0.07° of arc; a gradient varying by 0.005 °C across the world is a constant with extra arithmetic, so latitude enters as the base temperature |
+| **cost of the FFT pair** measured | N/A — no FFT. The substitute costs **13 ms + 11 ms = 24 ms** of a 485 ms pipeline at 500², both passes. For reference only, the research quotes LT at ~1 s for 256² on a 2004 workstation |
+
+### One more scale finding, from the temperature capture
+
+`research/captures/am_temperature.png` reads correctly — warm at sea level, cold summits, cool
+dendritic ridges. But the whole world spans **13.50 to 14.00 °C: half a degree.** At 6.5 °C/km,
+112 m of relief cannot produce more.
+
+**Temperature is therefore useless as a biome discriminator on this field**, and a Whittaker-style
+classifier that reads it will separate nothing. Precipitation, which spans 0.29 to 2.98 on the same
+field, is the only climate axis with real range here. That is a requirement on the biome work, not a
+defect in this stage.
