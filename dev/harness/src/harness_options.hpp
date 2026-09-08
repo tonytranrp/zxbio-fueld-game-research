@@ -5,6 +5,7 @@
 
 #include <span>
 #include <string>
+#include <vector>
 
 #include "engine/cli/option.hpp"
 #include "engine/cli/parser.hpp"
@@ -28,6 +29,11 @@ struct Options {
     // named is any voxel_app option; the values are appended to the scenario's own option list, so
     // a rung is a real run of a real scenario rather than a special measurement path.
     std::string ramp;
+    // Prompt 005 goal 276: measure the aliasing metric on PNGs and exit, no GPU and no
+    // scenario. This is how the metric's own validation against the owner's target capture
+    // and the frame he complained about is performed -- and re-performed, by anyone, later.
+    std::vector<std::string> moire_files;
+    int moire_crop_top = 0;
 };
 
 [[nodiscard]] std::span<const engine::cli::Option> option_table() noexcept;

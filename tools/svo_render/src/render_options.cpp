@@ -104,6 +104,16 @@ constexpr std::array kTable{
     // Same awkward pair as voxel_app's (see app/src/app_options.cpp): --grain sets an AMPLITUDE,
     // --no-grain removes the TERM. A Toggle cannot express two targets, so --no-grain stays a
     // plain flag and parse_options() applies it -- identically in both programs.
+    Option{.name = "flat-albedo",
+           .set = bind<&Options::flat_albedo>(),
+           .kind = ValueKind::Flag,
+           .help = "shade every hit with one albedo, ignoring its material (goal 277)",
+           .group = "Shading"},
+    Option{.name = "mottle",
+           .set = bind<&Options::mottle>(),
+           .kind = ValueKind::Toggle,
+           .help = "two-octave world-XZ albedo noise (goal 277's bisection handle)",
+           .group = "Shading"},
     Option{.name = "no-grain",
            .set = bind<&Options::no_grain>(),
            .kind = ValueKind::Flag,

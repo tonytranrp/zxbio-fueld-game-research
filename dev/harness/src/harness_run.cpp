@@ -52,6 +52,8 @@ double measure(scenario::Metric metric, const RunResult& run) {
         return static_cast<double>(counters.resident_bytes) / 1.0e6;
     case scenario::Metric::ContrastPercent:
         return static_cast<double>(run.contrast_percent) * 100.0;
+    case scenario::Metric::MoireRatio:
+        return run.moire_ratio;
     case scenario::Metric::GoldenDistance:
         return worstGolden;
     case scenario::Metric::WalkViolations:

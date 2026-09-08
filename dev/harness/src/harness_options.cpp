@@ -76,6 +76,22 @@ constexpr std::array kTable{
            .kind = ValueKind::Flag,
            .help = "promote this run's captures to goldens (prints the old and new distances first)",
            .group = "Output"},
+    // Repeatable, so it takes a hand-written setter rather than bind<>: every other row in this
+    // table assigns ONE value to one member, and appending is a different operation. The signature
+    // is engine::cli::Setter's, which is the only contract here.
+    Option{.name = "moire",
+           .set = [](void* base, std::string_view token, const Option&) -> engine::cli::Status {
+               static_cast<Options*>(base)->moire_files.emplace_back(token);
+               return engine::cli::Status::Ok;
+           },
+           .kind = ValueKind::String,
+           .help = "measure the goal-276 aliasing metric on this PNG and exit (repeatable)",
+           .group = "Output"},
+    Option{.name = "moire-crop-top",
+           .set = bind<&Options::moire_crop_top>(),
+           .kind = ValueKind::Int,
+           .help = "rows to skip from the top of a --moire image (an overlay baked into a capture)",
+           .group = "Output"},
     Option{.name = "no-golden",
            .set = bind<&Options::no_golden>(),
            .kind = ValueKind::Flag,

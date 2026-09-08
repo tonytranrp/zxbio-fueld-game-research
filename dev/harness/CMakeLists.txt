@@ -9,6 +9,7 @@ add_executable(voxel_harness
     src/harness_options.cpp
     src/harness_run.cpp
     src/image_compare.cpp
+    src/moire_metric.cpp
     src/report.cpp
     src/run_one.cpp
     src/run_ramp.cpp
@@ -69,6 +70,8 @@ target_compile_definitions(voxel_harness PRIVATE
     VOXEL_BUILD_PRESET="${CMAKE_BUILD_TYPE}")
 
 if(BUILD_TESTING)
+  add_subdirectory(tests)
+
   # The cheap scenarios, as ctest tests under the `scenario` label (goal 214).
   #
   # The comment that used to be here said they were "kept OUT of a plain `ctest` run" because they

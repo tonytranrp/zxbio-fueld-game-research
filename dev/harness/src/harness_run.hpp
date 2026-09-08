@@ -31,6 +31,8 @@ struct CaptureResult {
     bool golden_checked = false;
     std::string golden_path;
     std::string diff_path;
+    double moire = 0.0;          ///< goal 276's aliasing ratio for this capture
+    bool moire_measured = false; ///< false when the frame carried too little texture to judge
 };
 
 struct RunResult {
@@ -40,6 +42,10 @@ struct RunResult {
     std::vector<CaptureResult> captures;
     std::vector<AssertionResult> assertions;
     float contrast_percent = 0.0f;
+    // Goal 276. Worst (highest) over the run's captures; 0 when no capture carried enough
+    // texture to judge, which `moire_measured` distinguishes from a genuinely perfect frame.
+    double moire_ratio = 0.0;
+    bool moire_measured = false;
     std::uint32_t walk_violations = 0;
     std::uint32_t inside_solid_events = 0;
     std::uint32_t stance_changes = 0; // goal 236: Grounded/Airborne/Swimming transitions

@@ -38,6 +38,15 @@ struct Options {
     bool trees = true;
     bool shadows = true;
     bool ao = true;
+    // Prompt 005 goal 277: the albedo mottle is two octaves of world-XZ value noise with NO
+    // distance fade, which the prompt names as the strongest moire suspect. It had no toggle,
+    // so it could not be bisected -- and every OTHER term could. This is that toggle.
+    bool mottle = true;
+    // Goal 277: shade every hit with ONE albedo regardless of its material. Isolates the cost of
+    // sampling a DISCRETE shading attribute (Laine & Karras' named artefact) from everything
+    // else, which no existing flag could do -- every other toggle removes a term applied AFTER
+    // the material is chosen, and all six of them measured at zero.
+    bool flat_albedo = false;
     bool grain = true;
     bool no_grain = false; // removes the grain TERM; --grain sets its amplitude. See the table.
     bool verify = false;

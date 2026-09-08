@@ -29,6 +29,13 @@ enum class Metric : std::uint8_t {
     ResidentBricks,  //
     ResidentMb,      //
     ContrastPercent, // frame_verify's LOCAL-CONTRAST metric: is there a scene at all
+    // Prompt 005 goal 276: the ALIASING metric, which is a different question from the one
+    // above and cannot be answered by it. ContrastPercent counts texture and a deliberate
+    // stipple RAISES it -- which is wanted. MoireRatio measures how much of the frame's
+    // high-frequency energy is piled against the pixel Nyquist limit rather than spread over
+    // resolvable frequencies, so a stipple leaves it low and aliasing drives it up. WORST
+    // (highest) over the run's captures. See dev/harness/src/moire_metric.hpp.
+    MoireRatio,
     GoldenDistance,  // the regression metric of goal 217, worst over the run's captures
     WalkViolations,  // ticks that ended below the ground surface
     InsideSolid,     // goal 228: ticks that ended with the body inside solid geometry

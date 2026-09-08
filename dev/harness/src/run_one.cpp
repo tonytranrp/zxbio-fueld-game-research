@@ -23,6 +23,7 @@
 #include "harness_options.hpp"
 #include "harness_run.hpp"
 #include "image_compare.hpp"
+#include "moire_metric.hpp"
 #include "render/diligent/frame_verify.hpp"
 #include "scripted_input.hpp"
 #include "world/generation/heightmap_generator.hpp"
@@ -246,6 +247,23 @@ int run_one(const scenario::Scenario& sc, const Options& harnessOptions, render:
             out.captures.push_back(std::move(capture));
             continue;
         }
+        // Prompt 005 goal 276: the aliasing metric, on EVERY capture and independently of goldens.
+        // Deliberately not inside the `--no-golden` branch below -- a run with no reference image
+        // can still answer "is this frame aliased", and that is the question this pass is about.
+        // WORST over the run's captures, because a scenario that moves will have easy frames and
+        // hard ones and the hard one is the one worth gating on.
+        {
+            const MoireResult moire = moire_ratio(load_png(path));
+            capture.moire = moire.ratio;
+            capture.moire_measured = moire.valid;
+            if (moire.valid) {
+                out.moire_ratio = std::max(out.moire_ratio, moire.ratio);
+                out.moire_measured = true;
+            }
+            log(LogLevel::Info, "capture \"{}\": moire ratio {}", name,
+                moire.valid ? std::to_string(moire.ratio) : ("n/a (" + moire.note + ")"));
+        }
+
         // A scenario can declare a capture ungoldened, and that beats --accept-golden: the whole
         // point is that no run of this scenario produces a reference for this frame.
         const bool wantsGolden = [&] {

@@ -37,6 +37,7 @@ constexpr std::array kMetrics{
     Named<Metric>{"resident_bricks", Metric::ResidentBricks},
     Named<Metric>{"resident_mb", Metric::ResidentMb},
     Named<Metric>{"contrast_percent", Metric::ContrastPercent},
+    Named<Metric>{"moire_ratio", Metric::MoireRatio},
     Named<Metric>{"golden_distance", Metric::GoldenDistance},
     Named<Metric>{"walk_violations", Metric::WalkViolations},
     Named<Metric>{"inside_solid", Metric::InsideSolid},

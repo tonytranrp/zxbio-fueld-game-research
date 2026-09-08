@@ -355,10 +355,14 @@ int run(int argc, char** argv) {
 
                     const world::materials::MaterialDef& props =
                         world::materials::properties_of(hit.material);
-                    glm::vec3 albedo{props.albedo.r, props.albedo.g, props.albedo.b};
-                    const float n1 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 24.0f));
-                    const float n2 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 7.0f) + 17.31f);
-                    albedo *= 0.90f + 0.20f * (0.65f * n1 + 0.35f * n2);
+                    glm::vec3 albedo = opt.flat_albedo
+                                           ? glm::vec3{0.5f, 0.5f, 0.5f}
+                                           : glm::vec3{props.albedo.r, props.albedo.g, props.albedo.b};
+                    if (opt.mottle) {
+                        const float n1 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 24.0f));
+                        const float n2 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 7.0f) + 17.31f);
+                        albedo *= 0.90f + 0.20f * (0.65f * n1 + 0.35f * n2);
+                    }
                     if (opt.grain && hit.cube_edge > 0.0f) {
                         const glm::vec3 cell =
                             glm::floor((p - faceNormal * (0.5f * hit.cube_edge)) / hit.cube_edge);

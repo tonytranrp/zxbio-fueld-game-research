@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,8 @@
 #include "engine/core/log.hpp"
 #include "harness_options.hpp"
 #include "harness_run.hpp"
+#include "image_compare.hpp"
+#include "moire_metric.hpp"
 #include "render/diligent/render_context.hpp"
 
 namespace {
@@ -43,6 +46,29 @@ int main(int argc, char** argv) {
             std::fputs(harness::help_text().c_str(), stderr);
             return EXIT_FAILURE;
         }
+        // --moire: a pure image measurement. Before the scenario registry, because it needs
+        // neither a scenario nor a GPU -- it is the metric's own validation path.
+        if (!options.moire_files.empty()) {
+            int worst = EXIT_SUCCESS;
+            for (const std::string& file : options.moire_files) {
+                const harness::Image image = harness::load_png(file);
+                if (image.empty()) {
+                    log(LogLevel::Error, "moire: cannot read {}", file);
+                    worst = EXIT_FAILURE;
+                    continue;
+                }
+                const harness::MoireResult m =
+                    harness::moire_ratio(image, static_cast<std::uint32_t>(options.moire_crop_top));
+                if (m.valid) {
+                    std::printf("%-56s ratio %8.3f  carrier %.5f  textured %5.1f%%\n", file.c_str(),
+                                m.ratio, m.carrier_rms, 100.0 * m.textured_fraction);
+                } else {
+                    std::printf("%-56s n/a  (%s)\n", file.c_str(), m.note.c_str());
+                }
+            }
+            return worst;
+        }
+
         if (parsed.help_requested) {
             std::fputs(harness::help_text().c_str(), stdout);
             return EXIT_SUCCESS;
