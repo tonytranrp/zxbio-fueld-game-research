@@ -1038,7 +1038,34 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     // the John Lin close-up look, cubes visibly cubes) and the tree's averaged surface normal
     // (cubes near pixel size: the staircase must not shade as a staircase, or it moires).
     const float cubePixels = hit.cubeEdge / max(hit.t * g_ShadeParams.w, 1.0e-6);
-    const float faceWeight = saturate((cubePixels - 1.5) / 3.0);
+
+    // PROMPT 007 GOAL 332: the distance fades are expressed in ARCMINUTES, not pixels.
+    //
+    // `cubePixels` is how many pixels the hit cube spans, and the two fades below used to threshold
+    // it at 1.5 and 4.0 px. That is resolution-DEPENDENT in the worst way: the same cube at the same
+    // distance is filtered differently at a different viewport, because a pixel is a different
+    // angle. Measured at the shipped 1280x720 / 70 deg vertical FOV, one pixel is **6.6865 arcmin**,
+    // so the old thresholds were 10.030' and 26.746'. At 4x resolution the same "1.5 px" is 2.507'
+    // -- a quarter of the angular size, i.e. the filter would kick in on a cube four times smaller.
+    //
+    // Eye research Part 1 §8.3's aside is why this matters: the criterion is the EYE's limit
+    // (~1 arcmin at 20/20), and "an antialiased, band-limited distant object is not missing detail,
+    // it is more faithful than a sharp one". A threshold in pixels cannot express that criterion;
+    // a threshold in arcminutes is exactly it.
+    //
+    // The constants below are the shipped pixel thresholds converted at the shipped resolution, so
+    // **the image at 1280x720 is unchanged** and the behaviour at any other resolution is now
+    // correct rather than accidentally scaled.
+    const float kRadiansToArcmin = 3437.74677;
+    const float pixelArcmin = atan(g_ShadeParams.w) * kRadiansToArcmin;
+    const float cubeArcmin = cubePixels * pixelArcmin;
+    const float kFaceFadeLoArcmin = 10.030;  // was 1.5 px
+    // 4.5 px, NOT 4.0: the old expression was `(cubePixels - 1.5) / 3.0`, so its upper end is
+    // 1.5 + 3.0. Getting that wrong turned a supposedly no-op refactor into a 42%-of-pixels change,
+    // which is exactly what the byte-comparison below exists to catch.
+    const float kFaceFadeHiArcmin = 30.089;  // was 4.5 px (1.5 + 3.0)
+    const float faceWeight =
+        saturate((cubeArcmin - kFaceFadeLoArcmin) / max(kFaceFadeHiArcmin - kFaceFadeLoArcmin, 1e-6));
     const bool haveSmooth = !hit.solidLeaf && dot(hit.smoothNormal, hit.smoothNormal) > 0.01;
     const float3 smoothNormal = haveSmooth ? normalize(hit.smoothNormal) : faceNormal;
     const float3 normal = normalize(lerp(smoothNormal, faceNormal, faceWeight));
@@ -1098,7 +1125,13 @@ void main(in PSInput PSIn, out PSOutput PSOut)
         const float3 cell = floor((p - faceNormal * (0.5 * hit.cubeEdge)) / hit.cubeEdge);
         // Gone by 1.5 px (a per-cube hash at pixel frequency is structured noise against the
         // pixel grid -- its own moire), full from 4 px up.
-        const float amplitude = g_ShadeParams.y * saturate((cubePixels - 1.5) / 2.5);
+        // Goal 332: the grain fade in arcminutes too. Was `(cubePixels - 1.5) / 2.5`, i.e. full
+        // from 4.0 px and gone by 1.5 px -- 26.746' and 10.030' at the shipped resolution.
+        const float kGrainFadeLoArcmin = 10.030;
+        const float kGrainFadeHiArcmin = 26.746;
+        const float amplitude =
+            g_ShadeParams.y *
+            saturate((cubeArcmin - kGrainFadeLoArcmin) / max(kGrainFadeHiArcmin - kGrainFadeLoArcmin, 1e-6));
         grain = 1.0 + amplitude * (Hash3(cell) * 2.0 - 1.0);
     }
     float3 albedo = albedoBase * mottle * grain * (1.0 + stipple);
