@@ -209,6 +209,15 @@ void incise_stream_power(TerrainField& out, const FlowNetwork& net, const Fluvia
                 continue; // an outlet, or already at base level: nothing to incise
             }
             const float area = acc[i] * cellArea;
+            // GOAL 307's channel-head threshold. Below A_c there is no channel, so stream power
+            // does not apply and the slope is left to hillslope diffusion -- which is what creates
+            // the HILLSLOPE PLATEAU in the slope-area relationship. Acceptance test 7 requires that
+            // plateau to exist and says its absence means the diffusion term is off or missing, so
+            // eroding everywhere would have failed the test in a way that looked like a diffusion
+            // bug rather than a missing threshold.
+            if (area < p.channel_threshold_km2 * 1.0e6f) {
+                continue;
+            }
             const float c = p.k * p.dt * std::pow(area, p.m) / dx;
             const float updated = (h[i] + c * h[r]) / (1.0f + c);
             // Never cut below the receiver: the implicit form cannot overshoot, but the guard

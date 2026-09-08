@@ -429,3 +429,74 @@ and has chosen which one to satisfy.**
   ran on 329 cells of a single slope, and the exponent came out **+0.18**, which is not a landscape
   at all. The test was too small, not the solver wrong. At 6.1 km the exponent is negative again.
   **A test whose domain is smaller than the feature it is testing measures the feature's absence.**
+
+---
+
+## 8. Goals 307 and 308 — the density band met, the drop test failed, and why the failure is the honest answer
+
+### 307, met
+
+The channel threshold is now in the incision — below A_c stream power does not apply and the slope
+is left to diffusion, which is what creates the **hillslope plateau** acceptance test 7 requires to
+exist. (Eroding everywhere would have failed test 7 in a way that looked like a diffusion bug rather
+than a missing threshold.)
+
+**At A_c = 0.01 km², drainage density measures 5.58 km/km² — inside §9.4's 2–12 band.** Goal 307's
+Check is met.
+
+### And a design error the threshold exposed: 60 m of uplift on 112 m of relief
+
+Adding the threshold sent the land hypsometry from median/max **0.248 to 0.494** — back to Gaussian.
+The cause was not the threshold: **200 steps × 1000 yr × 3.0e-4 m/yr = 60 m of uniform uplift
+against a total relief of 112 m.** With the threshold in place the uplands had no incision to
+balance it, so they simply rose.
+
+**Uplift is now zero, and that is the design rather than an omission.** §10.1 puts tectonic history
+firmly on the "fake convincingly" side: *"stamp linear orogenic belts … and let the SPIM pass carve
+real drainage through the fake mountains."* Stage 1 stamps the mountain; the fluvial core's job is to
+**carve** that relief, not to grow relief from uplift — growing it is the planet-scale LEM the
+research rules out. With uplift at zero the hypsometry is **median/max 0.124**, better than before
+the threshold existed, because the erosion now works the uplands down toward base level.
+
+### 308, and it fails — swept, because the test is a METHOD not a check
+
+Tarboton's constant-drop is the published way to *choose* A_c, so running it at one threshold would
+answer "does this one pass" when the useful question is "which threshold does it select".
+
+| A_c (km²) | \|t\| | first-order drop (n) | higher-order (n) | verdict |
+|---|---|---|---|---|
+| 0.005 | 15.59 | 0.288 m (3887) | 0.119 m (864) | fails |
+| **0.010** (shipped) | **10.92** | 0.195 m (1755) | 0.072 m (390) | **fails** |
+| 0.050 | 3.78 | 0.090 m (310) | 0.039 m (111) | fails |
+| 0.100 | 2.34 | 0.059 m (168) | 0.027 m (54) | fails |
+| 0.500 | 2.38 | 0.026 m (33) | 0.001 m (10) | fails |
+| 1.000 | **0.68** | 0.008 m (19) | 0.003 m (5) | *passes* |
+| 2.000 | 1.11 | 0.002 m (10) | 0.000 m (3) | *passes* |
+
+**The two thresholds that "pass" have five and three higher-order samples.** The drop *ratio* between
+orders stays at roughly 2.4–2.7× at every threshold where the samples are real; **|t| falls because
+the sample sizes collapse (864 → 5), not because the drops converge.** A t-test on n = 5 has almost
+no power, so those are not passes — they are the test running out of data.
+
+**So the honest statement is: the constant-drop test FAILS on this field wherever it has the power
+to say anything, and the two thresholds where it passes are artefacts of sample size.** Reporting
+|t| = 0.68 at A_c = 1 km² as a pass would have been the easy answer and it would have been wrong.
+
+### What the three measurements together say
+
+| test | selects A_c |
+|---|---|
+| §9.4 drainage density (2–12 km/km²) | 0.005–0.05 km² |
+| §11's quoted A_c band | 0.1–5 km² |
+| §9.6 constant-drop, where it has power | **above 0.1, and it never actually passes** |
+
+**These do not reconcile on an 8 km field, and the reason is the field, not the solver.** The very
+first finding of this pass was that the *playable region* is too small to contain a drainage network;
+this is the same objection one level up — **8 km is large enough for a network but not large enough
+for a network with enough high-order links to run a statistic on.** At A_c = 0.1 km² the whole field
+holds 54 higher-order channel cells.
+
+**A_c stays at 0.01 km²**, chosen from the density because the density is the acceptance test with
+enough samples to be meaningful here. The constant-drop failure is recorded as an open goal rather
+than tuned away, and the fix is a larger macro field, not a different threshold — which is a real
+cost (a 32 km field at 16 m is 4 M cells and 128 MB) and belongs to a later pass.

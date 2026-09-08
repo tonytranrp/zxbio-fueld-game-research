@@ -30,8 +30,22 @@ struct FluvialParams {
     /// Erodibility. The table's band is wide because K absorbs lithology and climate; this is a
     /// mid value, and goal 307's drainage-density measurement is what tunes it.
     float k = 4.0e-5f;
-    /// Rock uplift, m/yr. Part 1 §3 bounds mountain height by isostasy and erosion, not by U.
-    float uplift = 3.0e-4f;
+    /// Rock uplift, m/yr. **ZERO, and that is the design rather than an omission.**
+    ///
+    /// Research §10.1 is explicit that tectonic history is on the "fake convincingly" side of its
+    /// line: *"stamp linear orogenic belts ... with fake roots ... and let the SPIM pass carve real
+    /// drainage through the fake mountains. The rivers will make the stamps credible; nothing else
+    /// will."* Stage 1 already stamps the mountain. The fluvial core's job here is to CARVE that
+    /// relief, not to grow relief from uplift -- growing it is the planet-scale LEM the research
+    /// rules out.
+    ///
+    /// It was 3.0e-4 m/yr first, and the number that showed the mistake: 200 steps x 1000 yr x
+    /// 3.0e-4 = **60 m of uniform uplift against a total relief of 112 m**. With goal 307's channel
+    /// threshold in place the uplands have no incision to balance it, so they simply rose -- and the
+    /// land hypsometry went from median/max 0.248 (peak near sea level, which §9.3 wants) to 0.494
+    /// (Gaussian, which it does not). Uplift without an erosional balance is not landscape
+    /// evolution, it is a ramp.
+    float uplift = 0.0f;
     /// Hillslope diffusivity, m²/yr. Part 2 §4's band for soil-mantled slopes.
     float diffusivity = 1.0e-2f;
     /// Years per step. The implicit incision is unconditionally stable at any dt; the EXPLICIT
@@ -45,6 +59,17 @@ struct FluvialParams {
     int steps = 200;
     int diffusion_steps = 60;
     float sea_level = 0.0f;
+    /// GOAL 307: the channel-head threshold, in km². Erode only where drainage area exceeds it;
+    /// below it the slope is set by diffusion alone, which is what puts the HILLSLOPE PLATEAU
+    /// into the slope-area plot that acceptance test 7 requires to exist.
+    ///
+    /// **0.01 km², which is BELOW the research's own quoted A_c band of 0.1-5 km², and that is a
+    /// deliberate choice between two of its numbers that cannot both be met.** For a
+    /// space-filling network D ~ 1/(2*sqrt(A_c)), so its A_c band implies a drainage density of
+    /// 0.22-1.58 km/km² while its density band (§9.4) is 2-12 -- the two do not intersect. The
+    /// density is the ACCEPTANCE TEST and A_c is a free parameter, so A_c is chosen from the
+    /// density: 0.01 km² puts D mid-band at ~5. Measured curve in the log §7.
+    float channel_threshold_km2 = 0.01f;
 };
 
 /// Barnes/Lehman/Mulla priority-flood with the +epsilon variant, so flats carry an infinitesimal

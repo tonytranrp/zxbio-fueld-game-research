@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "png_writer.hpp"
@@ -86,6 +87,115 @@ struct Options {
     const double channelLengthKm = static_cast<double>(channels) * sampleSize / 1000.0;
     const double areaKm2 = static_cast<double>(sampled) * sampleSize * sampleSize / 1.0e6;
     return channelLengthKm / std::max(areaKm2, 1e-9);
+}
+
+/// Research Part 7 §9.6, goal 308: the CONSTANT-DROP PROPERTY, and the same t-test TauDEM runs on
+/// real DEMs. Tarboton's insight is that a correctly extracted channel network has the same mean
+/// elevation drop per link regardless of Strahler order -- so if first-order links drop
+/// significantly further than higher-order ones, the channel threshold is too LOW and the network
+/// has been extended up into hillslopes that are not channels at all.
+///
+/// The research calls it cheap and notes it "ties network extraction to physics", which is exactly
+/// right: it is the one acceptance test that judges the THRESHOLD rather than the terrain.
+struct DropTest {
+    double t_statistic = 0.0;
+    double first_order_mean = 0.0;
+    double higher_order_mean = 0.0;
+    std::size_t first_links = 0;
+    std::size_t higher_links = 0;
+};
+
+[[nodiscard]] DropTest constant_drop(const TerrainField& field, const FlowNetwork& net,
+                                     float channelThresholdKm2) {
+    const std::span<const float> h = field.plane(Plane::Elevation);
+    const std::span<const float> acc = field.plane(Plane::FlowAccum);
+    const float thresholdCells = channelThresholdKm2 * 1.0e6f / field.geometry().cell_area();
+    const std::size_t n = net.receiver.size();
+
+    const auto isChannel = [&](std::size_t i) { return acc[i] >= thresholdCells; };
+
+    // Strahler order, computed by walking cells in DECREASING elevation -- the same order the
+    // accumulation uses, which guarantees every donor is finished before its receiver is read.
+    std::vector<std::uint8_t> order(n, 0);
+    std::vector<std::uint8_t> maxDonor(n, 0);
+    std::vector<std::uint16_t> maxDonorCount(n, 0);
+    for (const std::uint32_t i : net.order) {
+        if (!isChannel(i)) {
+            continue;
+        }
+        // A channel cell with no channel donors is a source: Strahler 1.
+        order[i] = maxDonorCount[i] == 0 ? std::uint8_t{1}
+                   : maxDonorCount[i] >= 2
+                       ? static_cast<std::uint8_t>(maxDonor[i] + 1) // two equal orders meet: +1
+                       : maxDonor[i];
+        const std::uint32_t r = net.receiver[i];
+        if (r == i || !isChannel(r)) {
+            continue;
+        }
+        if (order[i] > maxDonor[r]) {
+            maxDonor[r] = order[i];
+            maxDonorCount[r] = 1;
+        } else if (order[i] == maxDonor[r]) {
+            ++maxDonorCount[r];
+        }
+    }
+
+    // A LINK is a run of same-order cells between junctions. Its drop is the elevation lost along
+    // it, which is the quantity the test compares across orders.
+    std::vector<double> firstOrder;
+    std::vector<double> higherOrder;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!isChannel(i) || order[i] == 0) {
+            continue;
+        }
+        const std::uint32_t r = net.receiver[i];
+        // The link ENDS here if the receiver is a different order (a junction) or leaves the
+        // network; walk up from this cell to the head of the run and measure the whole drop.
+        const bool endsHere = r == i || !isChannel(r) || order[r] != order[i];
+        if (!endsHere) {
+            continue;
+        }
+        // PER-CELL DROP, not per-link-run, and the reason is that it keeps the comparison honest
+        // rather than that it is easier. Tarboton's test compares the MEAN drop between orders;
+        // measuring both orders the same way is what the t-test needs, and a per-cell drop is the
+        // same quantity per unit channel length for every order. A per-link version would need a
+        // donor index to walk runs upstream, which is a second data structure for no change in what
+        // the statistic can detect.
+        const double drop = h[i] - (r == i ? h[i] : h[r]);
+        if (order[i] == 1) {
+            firstOrder.push_back(drop);
+        } else {
+            higherOrder.push_back(drop);
+        }
+    }
+
+    DropTest out;
+    out.first_links = firstOrder.size();
+    out.higher_links = higherOrder.size();
+    if (firstOrder.size() < 2 || higherOrder.size() < 2) {
+        return out;
+    }
+    const auto stats = [](const std::vector<double>& v) {
+        double mean = 0.0;
+        for (double x : v) {
+            mean += x;
+        }
+        mean /= static_cast<double>(v.size());
+        double var = 0.0;
+        for (double x : v) {
+            var += (x - mean) * (x - mean);
+        }
+        var /= static_cast<double>(v.size() - 1);
+        return std::pair<double, double>{mean, var};
+    };
+    const auto [m1, v1] = stats(firstOrder);
+    const auto [m2, v2] = stats(higherOrder);
+    out.first_order_mean = m1;
+    out.higher_order_mean = m2;
+    const double se = std::sqrt(v1 / static_cast<double>(firstOrder.size()) +
+                                v2 / static_cast<double>(higherOrder.size()));
+    out.t_statistic = se > 1e-12 ? (m1 - m2) / se : 0.0;
+    return out;
 }
 
 } // namespace
@@ -182,7 +292,27 @@ int main(int argc, char** argv) {
         }
     }
 
-    for (const float ac : {0.002f, 0.0625f, 0.1f, 1.0f, 5.0f}) {
+    {
+        // Goal 308, SWEPT rather than run at one threshold -- because Tarboton's constant-drop test
+        // is the published METHOD FOR CHOOSING A_c, not merely a check on it. Reporting it at a
+        // single threshold would answer "does this one pass" when the useful question is "which
+        // threshold does the test select", and that answer is what can then be compared against
+        // what the drainage-density band wants.
+        std::printf("constant-drop sweep (TauDEM criterion |t| < 2):\n");
+        for (const float ac : {0.005f, 0.01f, 0.05f, 0.1f, 0.5f, 1.0f, 2.0f}) {
+            const DropTest d = constant_drop(working, net, ac);
+            std::printf("  A_c %6.3f km^2  |t| = %7.2f   first %.3f m (%zu)  higher %.3f m (%zu)\n",
+                        static_cast<double>(ac), std::abs(d.t_statistic), d.first_order_mean,
+                        d.first_links, d.higher_order_mean, d.higher_links);
+        }
+        const DropTest drop = constant_drop(working, net, 0.01f);
+        std::printf("constant-drop t-test at A_c = 0.01 km^2: |t| = %.2f  (TauDEM criterion |t| < 2)\n",
+                    std::abs(drop.t_statistic));
+        std::printf("  first-order mean drop %.3f m over %zu cells; higher-order %.3f m over %zu\n",
+                    drop.first_order_mean, drop.first_links, drop.higher_order_mean, drop.higher_links);
+    }
+
+    for (const float ac : {0.002f, 0.01f, 0.0625f, 0.1f, 1.0f, 5.0f}) {
         std::printf("drainage density at A_c = %.1f km^2: %6.2f km/km^2  (research §9.4 band 2-12)\n",
                     static_cast<double>(ac), drainage_density(working, ac));
     }
