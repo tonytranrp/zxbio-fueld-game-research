@@ -92,7 +92,11 @@ TEST_CASE("the defaults survive the port unchanged", "[app][cli]") {
     // svo world
     CHECK(o.svo.seed == 1337);
     CHECK(o.svo.voxel_size_log2 == -7);
-    CHECK(o.svo.root_size_log2 == 9);
+    // Prompt 007 goal 329 moved this from 9 (512 m) to 12 (4096 m): 2048 m of view instead of
+    // 256 m. The test is UPDATED rather than relaxed -- its job is to catch an accidental change to
+    // a default, and this was a deliberate one with a measured cost table behind it (see
+    // svo_world.hpp). V = 12 + 7 = 19, five bits under kMaxVoxelBits.
+    CHECK(o.svo.root_size_log2 == 12);
     CHECK(o.svo.lod_radius == Approx(4.0f));
     CHECK(o.svo.trees);
     CHECK(o.svo.worker_threads == 0u);

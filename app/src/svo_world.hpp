@@ -24,7 +24,27 @@ namespace app {
 struct SvoWorldOptions {
     int seed = 1337;
     int voxel_size_log2 = -7; // 7.8 mm: sub-centimeter, the pivot's whole point
-    int root_size_log2 = 9;   // 512 m region around the camera
+    // Prompt 007 goal 329. 4096 m: 2048 m of view in every direction, EIGHT TIMES the 256 m the
+    // 512 m default gave. V = root - voxel = 12 + 7 = 19, five bits under tree_layout.hpp's
+    // kMaxVoxelBits = 24, so no cascaded root is needed -- **V was never the binding constraint in
+    // this range; cost was.**
+    //
+    // Measured, and the shape of it is the finding: growing the REGION is nearly free because the
+    // added volume is all coarse levels, while growing the LOD RADIUS (goal 328) is superlinear.
+    //
+    //   region   view    V   bricks    MB     build    GPU ms   fps
+    //    512 m   256 m  16   219,344   68.9   0.97 s    2.69    165
+    //   1024 m   512 m  17   316,179   98.4   1.37 s    3.21    165
+    //   2048 m  1024 m  18   392,109  121.6   1.66 s    3.33    165
+    //   4096 m  2048 m  19   445,038  138.0   2.12 s    4.09    165   <- shipped
+    //   8192 m  4096 m  20   498,334  154.6   2.79 s    5.55    107
+    //
+    // **256x the area for 2.27x the bricks.** 4096 m is where the vsync cap still holds; 8192 m is
+    // where it breaks, and that is the whole reason the default is not larger.
+    //
+    // The research's near/mid criterion (aesthetics §9.5/§9.9) is 1.83 km at a pixel footprint or
+    // 3.44 km at 1 arcmin; 2048 m of view sits between them.
+    int root_size_log2 = 12;
     // Prompt 007 goal 328. THE KNOB IS AN ANGULAR SIZE, and always was: the LOD rule
     // `target(d) = max(finest, d * finest / lod_radius)` makes target(d)/d constant beyond the
     // radius, so `lod_radius` is the denominator of a fixed angular voxel size expressed in the

@@ -292,7 +292,7 @@ constexpr std::array kTable{
            .set = bind<&AppOptions::svo, &SvoWorldOptions::root_size_log2>(),
            .kind = ValueKind::Int,
            .help = "root edge = 2^N metres",
-           .default_text = "9 (512 m)",
+           .default_text = "12 (4096 m; 2048 m of view)",
            .group = "SVO world",
            .alias = "root-log2"},
     // Prompt 007 goal 328 keeps this as the DEPRECATED ALIAS. It stays because it appears in
