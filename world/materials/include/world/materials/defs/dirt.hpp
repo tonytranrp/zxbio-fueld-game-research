@@ -9,6 +9,7 @@ struct Dirt {
     static constexpr const char* name = "Dirt";
     static constexpr Color albedo{0.44f, 0.28f, 0.14f};
     static constexpr Phase phase = Phase::Solid;
+    static constexpr Stipple stipple{0.030f}; // a trace, so an exposed bank is not conspicuously smoother than the rock beside it
     static constexpr Shading shading = Shading::Lit;
     static constexpr LiquidPhysics liquid{};
     static constexpr bool yields_to_trees = false;

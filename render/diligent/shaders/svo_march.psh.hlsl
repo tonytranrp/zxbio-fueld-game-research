@@ -67,6 +67,13 @@ cbuffer MarchConstants
     float4 g_Materials[MATERIAL_COUNT];
 };
 
+// Goal 285: this material's stipple amplitude, 0..1, from the fractional part above.
+float MaterialStipple(uint material)
+{
+    const float w = g_Materials[min(material, MATERIAL_COUNT - 1u)].w;
+    return w - floor(w);
+}
+
 float3 MaterialAlbedo(uint material)
 {
     return g_Materials[min(material, MATERIAL_COUNT - 1u)].rgb;
@@ -74,7 +81,11 @@ float3 MaterialAlbedo(uint material)
 
 uint MaterialShading(uint material)
 {
-    return uint(g_Materials[min(material, MATERIAL_COUNT - 1u)].w + 0.5);
+    // floor, NOT round: goal 285 packs the material's stipple amplitude into this float's
+    // FRACTIONAL part (see MaterialStipple below), and `+ 0.5` would have rounded an amplitude of
+    // 0.5 or more into the next shading model. Packed rather than given its own array because a new
+    // cbuffer field is a new chance at the field-ORDER mismatch Prompt 004 lost hours to.
+    return uint(floor(g_Materials[min(material, MATERIAL_COUNT - 1u)].w));
 }
 
 StructuredBuffer<uint> g_Nodes;
@@ -149,6 +160,46 @@ static const uint kFlagGrain = 32u;
 // new cbuffer field on purpose -- Prompt 004 lost hours to a cbuffer field-ORDER mismatch that a
 // size static_assert cannot catch, and a spare bit in a word that already exists cannot reorder.
 static const uint kFlagFilterAlbedo = 64u;
+// Goal 285: the deliberate directional stipple. Separate from kFlagGrain, which is the per-CUBE
+// brightness hash from Group Z -- that one is keyed to the voxel lattice and measured at exactly
+// zero contribution to the moire (log section 2), while this one is a chosen pattern at a chosen
+// frequency and is the half of the owner's request that AL-A's filtering spent.
+static const uint kFlagStipple = 128u;
+
+// The hatch direction, in world space. MEASURED, not chosen: a radial FFT of the target capture's
+// stone region puts 641x more energy at 30-45 degrees than at the quietest orientation, so the
+// reference stipple is strongly directional rather than isotropic -- and a world-space direction is
+// what gives a coherent hatch across a whole slope, the way a pencil hatch reads.
+static const float3 kHatchDir = normalize(float3(0.80, 0.35, 0.49));
+
+// One octave of the hatch: a 1D wave along kHatchDir, so its iso-lines are parallel planes and a
+// surface cutting them sees parallel stripes.
+float HatchOctave(float3 p, float scale)
+{
+    return sin(dot(p, kHatchDir) * scale * 6.2831853);
+}
+
+// BENARD, BOUSSEAU & THOLLOT (I3D 2009), the fractal-octave construction, and the reason it is not
+// simpler than this. They prove the three properties a stipple must have are mutually
+// contradictory: constant size and density IN THE IMAGE, following the motion of the 3D surface
+// (or you get the shower-door effect), and temporal continuity. Their resolution is a weighted sum
+// of n octaves whose scales are tied to a ZOOM CYCLE -- one cycle per doubling of apparent size --
+// with weights that sum to 1 across the cycle so no octave ever pops in. Their finding, verbatim:
+// "Empirically we observed that n = 4 octaves is enough to deceive human perception."
+//
+// s is the fractional part of log2(distance); the four weights are theirs exactly.
+float Hatch(float3 p, float distance, float worldScale)
+{
+    const float lz = log2(max(distance, 1.0e-4));
+    const float s = lz - floor(lz);
+    const float base = worldScale / exp2(floor(lz));
+    const float a1 = s / 2.0;
+    const float a2 = 0.5 - s / 6.0;
+    const float a3 = 1.0 / 3.0 - s / 6.0;
+    const float a4 = 1.0 / 6.0 - s / 6.0;
+    return a1 * HatchOctave(p, base * 8.0) + a2 * HatchOctave(p, base * 4.0) +
+           a3 * HatchOctave(p, base * 2.0) + a4 * HatchOctave(p, base);
+}
 static const uint kViewShift = 8u;
 static const uint kViewNone = 0u;
 static const uint kViewLit = 1u;
@@ -987,6 +1038,42 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     if ((flags & kFlagFilterAlbedo) != 0u && hit.hasNodeAlbedo)
         albedoBase = lerp(hit.nodeAlbedo, albedoBase, faceWeight);
 
+    // Goal 285: the deliberate stipple, applied to the ALBEDO so it is lit like the surface it
+    // sits on rather than added afterwards as a screen effect.
+    float stipple = 0.0;
+    if ((flags & kFlagStipple) != 0u)
+    {
+        const float amp = MaterialStipple(hit.material) * g_WaveParams.z;
+        if (amp > 0.0)
+        {
+            // The world scale is a CONSTANT, and it took a measurement to get that right: the
+            // first version passed a distance-dependent scale AND divided by the zoom cycle, which
+            // compensates for distance twice and left the pattern an octave-and-a-half too coarse
+            // to see (moire 1.028 against 1.024 without it -- i.e. no effect at all).
+            //
+            // Benard's construction IS the distance compensation. A fixed world frequency with
+            // octave scales tied to 2^floor(log2 t) has a screen period that is constant in t --
+            // that is the property being bought. The constant is chosen so the heaviest octave
+            // (a2, scale 4x base) lands on the wanted screen period.
+            // THE 4.0 IS THE DERIVATION, NOT A CALIBRATION, and that distinction is the honest
+            // state of this constant. It puts the heaviest octave (a2, scale 4x base) on the
+            // wanted screen period. An attempt to calibrate it against a measured render was
+            // ABANDONED because the instrument was wrong, not the number: a landscape pose spans
+            // many distances at once, so "the delivered screen period" is not a single quantity
+            // there, and successive measurements read 25.6 / 32.0 / 18.3 / 32.0 px for monotonically
+            // increasing requests -- noise. The right instrument is a fixed camera at four
+            // distances from ONE slope, which is goal 285's own Check and is not yet built
+            // (goal 285a). Until it is, --stipple-period is a relative knob, not an absolute one.
+            const float worldScale = 1.0 / max(4.0 * g_WaveParams.w * g_ShadeParams.w, 1.0e-9);
+            // Band-limit exactly as the grain does, and for the same reason: a pattern at pixel
+            // frequency is structured noise against the pixel grid and becomes its own moire. This
+            // fade is what keeps the thing this pass just removed from being reintroduced.
+            const float periodPixels = g_WaveParams.w;
+            const float fade = saturate((periodPixels - 2.0) / 2.0);
+            stipple = amp * fade * Hatch(p, max(hit.t, 1.0e-4), worldScale);
+        }
+    }
+
     const float n1 = ValueNoise(p.xz * (1.0 / 24.0));
     const float n2 = ValueNoise(p.xz * (1.0 / 7.0) + 17.31);
     const float mottle = 0.90 + 0.20 * (0.65 * n1 + 0.35 * n2);
@@ -1001,7 +1088,7 @@ void main(in PSInput PSIn, out PSOutput PSOut)
         const float amplitude = g_ShadeParams.y * saturate((cubePixels - 1.5) / 2.5);
         grain = 1.0 + amplitude * (Hash3(cell) * 2.0 - 1.0);
     }
-    float3 albedo = albedoBase * mottle * grain;
+    float3 albedo = albedoBase * mottle * grain * (1.0 + stipple);
 
     const float diffuse = saturate(dot(normal, -kSunDirection));
     // Secondary-ray origins: half a finest voxel off the hit FACE (into the cell the primary ray

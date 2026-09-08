@@ -49,11 +49,27 @@ struct LiquidPhysics {
 
 // The record every consumer reads: a plain aggregate, so the registry can hold it in a constexpr
 // table and walk it at compile time (the shader macros, the palette uploads, the tests).
+// Prompt 005 goal 285: how strongly this material carries the directional stipple, as a peak
+// brightness modulation. 0 = none.
+//
+// It is a COMPONENT, not a constant in the shader, because the target capture the owner asked
+// for has the stipple on STONE ONLY -- its grass is broad and calm and its sand is smooth --
+// and "which materials are hatched" is exactly the kind of per-material fact Group AC exists to
+// keep out of consumers. A new material gets an answer here or it does not compile.
+//
+// The value for stone is measured, not chosen: the target capture's stone stipple has an RMS of
+// 6.4/255 against a tile mean of 0.463, i.e. 5.4% modulation, which for a sinusoid is a peak of
+// 5.4% * sqrt(2) = 7.6%. See research/fine-grain-look-log.md section 5.
+struct Stipple {
+    float amplitude = 0.0f;
+};
+
 struct MaterialDef {
     const char* name;
     Color albedo; // linear-space; the renderers' palettes and the `material` debug view
     Phase phase;
     Shading shading;
+    Stipple stipple;
     LiquidPhysics liquid;
     bool yields_to_trees;   // a tree's voxel may replace this one (air, water)
     bool overrides_terrain; // this material replaces even solid terrain (the trunk, sunk on purpose)
@@ -75,6 +91,7 @@ concept MaterialDefinition = requires(const TerrainQuery& q) {
     { T::albedo } -> std::convertible_to<Color>;
     { T::phase } -> std::convertible_to<Phase>;
     { T::shading } -> std::convertible_to<Shading>;
+    { T::stipple } -> std::convertible_to<Stipple>;
     { T::liquid } -> std::convertible_to<LiquidPhysics>;
     { T::yields_to_trees } -> std::convertible_to<bool>;
     { T::overrides_terrain } -> std::convertible_to<bool>;

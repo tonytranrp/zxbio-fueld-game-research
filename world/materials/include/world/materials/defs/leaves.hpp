@@ -11,6 +11,7 @@ struct Leaves {
     static constexpr const char* name = "Leaves";
     static constexpr Color albedo{0.20f, 0.50f, 0.12f};
     static constexpr Phase phase = Phase::Foliage;
+    static constexpr Stipple stipple{0.0f}; // ditto, and its own shading model already breaks it up
     static constexpr Shading shading = Shading::Foliage;
     static constexpr LiquidPhysics liquid{};
     static constexpr bool yields_to_trees = false;   // a second canopy does not carve the first

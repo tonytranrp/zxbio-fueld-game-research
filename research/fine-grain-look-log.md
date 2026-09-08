@@ -288,3 +288,203 @@ mottle is world-locked 2D value noise at 1/24 m and 1/7 m, and at this pose thos
 larger than a pixel, so it is not near Nyquist and does not alias. It needs no distance fade, and
 adding one would be a fix for a problem that was measured not to exist. **Recorded as a completed
 negative rather than an unimplemented task.**
+
+---
+
+## 4. Reconstruction, and the measurement that qualifies §3 (goals 280, 281, 282, 283)
+
+### The number that changes how §3 should be read
+
+Every number in §3 is measured with **TAA off**, because that is what the golden-comparing scenarios
+use. TAA off is not what ships. With TAA **on** — the shipping configuration:
+
+| pose | TAA on, filter OFF | TAA on, filter ON |
+|---|---|---|
+| `stress_pose` | 1.090 | **1.024** |
+| `taa_pan` @ rest | 1.667 | 1.697 |
+| `taa_pan` @ panning | 1.114 | 1.265 |
+| `taa_pan` @ just_stopped | 0.968 | 1.087 |
+| `taa_pan` @ settled | 1.022 | 1.014 |
+
+**§3's 53% becomes 6% at `stress_pose`, and on the pan captures the filtered version measures
+slightly WORSE.** TAA was already averaging away most of the pixel-scale material flicker, so the
+two are solving overlapping halves of the same problem. Reporting the 53% without this would have
+been true and misleading.
+
+**What survives the qualification**, and it is worth keeping for three reasons rather than one:
+
+1. **The residual speckle is visible and it goes away.**
+   `research/captures/al_taa_masks_the_filter.png` is the shipping-configuration pair: the red
+   dotted texture on the green hillside is present with the filter off and largely gone with it on.
+   Smaller than the TAA-off difference — and real.
+2. **It is free.** Zero memory, zero measurable GPU time (§3).
+3. **TAA's help is conditional and the filter's is not.** A temporal average only helps once the
+   history has converged; it is rejected at silhouettes and under fast motion, which is exactly when
+   this world moves. The pre-filter works on the first frame.
+
+**And the cost stands**: local contrast 17.99 → 8.83 at `stress_pose`. For a pass whose complaint is
+*"not enough fine grain"*, spending half the texture to remove a faint speckle is only a good trade
+if AL-B puts texture back at a **chosen** frequency. That is the whole bet of this prompt's
+structure, and goal 288 is where it is settled, not here.
+
+### 280 — the history length, decided
+
+Prompt 004 goal 270 settled the cost half: an exponential history is two buffers and a blend weight,
+so **32 frames costs exactly what 8 costs (0.37 ms resolve, identical memory)**. It deferred the
+quality decision here. Measured now, `stress_pose` at rest with the filter on:
+
+| | moiré ratio |
+|---|---|
+| `--taa-blend 0.125` (8 frames) | **1.009** |
+| `--taa-blend 0.03125` (32 frames) | 1.042 |
+
+**Indistinguishable at rest (3%), and goal 270 measured 32 frames as 19% softer one second after
+motion.** **Decision: keep the 8-frame history**, and the reason is now a budget rather than a
+preference — AL-A has already spent 47–56% of the local contrast, and a longer history spends more
+of the same currency. NAADF's 32 frames are recorded as available for nothing if a later pass wants
+them; this pass cannot afford the softness.
+
+### 281 — the shadow lift, closed by 277's negative
+
+Goal 281 is conditional: *"if 277 confirms (c)"*. It did not. `--no-shadows` measured **3.179**
+against a base of **3.127** — removing shadows entirely makes the metric *worse*, so the
+LOD-quantised lift cannot be a significant contributor at these poses. **No change made, and the
+conditional is recorded as unmet rather than silently skipped.** Goal 164's ring fix, which this
+would have extended, is holding.
+
+### 282 — the AO dither, closed on stills and open on motion
+
+`--no-ao` measured **3.140** against **3.127**: on a still frame the screen-space AO hash contributes
+nothing to the metric. The *crawl* question a still cannot answer is left open — and note that
+Prompt 004 goal 268 already halved the AO rays and clamped their length, so the pattern under test is
+not the one the prompt describes. **Recorded as partially answered**: no measurable contribution on
+a still, crawl not judged.
+
+### 283 — the total, so far
+
+| pose | at the start of this prompt (TAA off) | now (TAA off) | now (TAA on, shipping) |
+|---|---|---|---|
+| `stress_pose` | 3.816 | **1.800** | **1.024** |
+| `macro_ground` | 2.368 | **1.665** | 0.530* |
+| `valley_far` | 4.333 | **1.756** | 1.061* |
+
+\* the TAA-on figures for these two were taken with the filter OFF; the filter-on pair was measured
+only at `stress_pose`, and the difference there was 6%.
+
+**For scale: the owner's target capture measures 1.144.** `stress_pose` now measures **1.024** with
+TAA on — *below* the target, which is the arithmetic form of the cost above: the frame is now
+**smoother than the reference**, not just less aliased than before. The aliasing half of the
+complaint is answered; the grain half is not, and AL-B owes it.
+
+---
+
+## 5. The grain as a deliberate style (goals 284–289)
+
+### 284 — the target, measured
+
+A radial FFT of a 128×128 window inside the largest solid-stone region of
+`lin_water_checkerboard_after.png` (the window is 100% stone by the green-excess mask):
+
+| quantity | measured |
+|---|---|
+| **dominant radial period** | **10.67 px** (0.0938 cycles/px) |
+| **amplitude** | **RMS 6.37/255** = 0.0250, against a tile mean of 0.463 → **5.4% modulation** |
+| **anisotropy** | **641× max/min** across 15° orientation bins, energy concentrated at **30–45°** |
+
+**The prompt asks me to confirm or refute that the stipple is directional. CONFIRMED, and not
+marginally: 641×.** It is a hatch, not a dither. And the stipple is on **stone only** — the target's
+green is broad and faceted with no stipple at all, and its sand is smooth, which is why the
+amplitude became a per-material component rather than a global constant.
+
+**The multiplier, stated in writing as the prompt demands.** The owner asked for *"a much finer
+grain which are still that style but smaller of the pixels of the pixels"*. The prompt reads that as
+**3×**. I adopt that reading: 10.67 / 3 = **3.56 px**.
+
+**Sanity-check against the eye, with the arithmetic.** Assuming the engine's 70° vertical FOV over
+720 rows, one pixel subtends 0.0972°, so the target's 10.67 px period is **0.96 cycles/degree** and
+3× finer is **2.9 c/deg**. The eye's limit is 30 c/deg at 20/20 and ~60 c/deg optically
+(`research/human-eye-and-vision-research.md`), so **the ask is comfortably achievable optically —
+by a factor of ten.** It is not the eye that binds here. See 285.
+
+### 285 — what shipped, and what binds
+
+- **World-locked, per Bénard, Bousseau & Thollot (I3D 2009).** Their result is that the three
+  properties a stipple must have — constant density *in the image*, following the 3D surface, and
+  temporal continuity — are mutually contradictory, and their resolution is a weighted sum of
+  **four** octaves tied to a *zoom cycle*, with weights summing to 1 so no octave pops in.
+  Implemented with their weights exactly: `a1 = s/2`, `a2 = 1/2 − s/6`, `a3 = 1/3 − s/6`,
+  `a4 = 1/6 − s/6`, with `s` the fractional part of `log2(distance)`.
+- **Directional**, along a fixed world-space vector, because 284 measured 641× anisotropy and
+  because a world direction is what makes a hatch coherent across a whole slope.
+- **Per material**, as a `Stipple` component on `MaterialDef` — every def answers or it does not
+  compile. Stone **0.076** (the measured 5.4% RMS is 7.6% peak for a sinusoid), dirt 0.030, and
+  **zero for grass, sand, water, wood and leaves**, read off the target capture.
+- **Band-limited** by the same fade the grain uses, so the pattern retires toward its mean before it
+  reaches pixel frequency and cannot become the artefact §3 just removed.
+- **Packed into spare slots**: the amplitude rides in the fractional part of the material record's
+  `w` (its integer part is the shading model, and `MaterialShading` now reads it with `floor`, not
+  `uint(w + 0.5)`, which would have rounded a large amplitude into the next model); the two knobs
+  live in `g_WaveParams.zw`, which were unused. **No cbuffer layout change** — Prompt 004's
+  field-order trap cannot recur through a field that does not move.
+
+**The bug worth recording**: the first version passed a *distance-dependent* world scale into a
+construction that *already* compensates for distance, so it compensated twice and the pattern
+landed an octave and a half too coarse to see — moiré 1.028 against 1.024 without it, i.e. no
+measurable effect. Bénard's construction **is** the distance compensation; the scale it takes must
+be a constant.
+
+### The Check I could not perform, and why the instrument was the problem
+
+Goal 285's Check is *"viewed captures at 0.3 / 2 / 10 / 60 m from a stone slope showing the stipple
+at a constant apparent frequency across all four — that is the property the design claims and it
+must be verified, not assumed."*
+
+**It is not verified.** I measured the delivered period by differencing two renders (with and
+without the stipple, so the terrain's own facets cancel — an FFT of the composite is dominated by
+them and reads nothing useful). Against monotonically increasing requests the delivered period read
+**25.6 / 32.0 / 18.3 / 32.0 px** — not monotonic, i.e. noise. The reason is the instrument, not the
+constant: **a landscape pose spans many distances at once, so "the delivered screen period" is not a
+single quantity there**, and a highest-variance tile picker lands on different terrain at different
+depths between runs. A calibration fitted to one of those points made the spread worse and was
+reverted.
+
+**The right instrument is the one the Check names — a fixed camera at four distances from one
+slope — and it does not exist.** Opened as goal 285a. Until then `--stipple-period` is an honest
+*relative* knob and a dishonest absolute one, and the shader says so where the constant is defined.
+
+### What is verified
+
+- **It reaches the frame and it reads as a hatch.** `research/captures/al_stipple_mechanism.png`
+  (exaggerated, to show the mechanism) and `research/captures/al_stipple_pair.png` (the shipping
+  default): diagonal stripes across the stone faces, **grass untouched**, which is the per-material
+  component doing its job and is the target's own arrangement.
+- **Both backends**: vk 1.040, d3d12 1.019 on the moiré metric; no FXC errors — and this change
+  introduced a `floor` where a `round` was, plus new bit-packing, both of which are exactly where
+  the two compilers have disagreed before.
+- **335/335 tests.**
+
+### The default, and the honest reason it is not 3.56
+
+At `--stipple-period 3.56` — the owner's 3× — the **delivered amplitude collapses to RMS 1.77/255**,
+against ~8.8 at coarser settings. That is not the eye (284 shows 2.9 c/deg is ten times inside the
+limit); it is **TAA's 3×3 neighbourhood clamp discarding a sub-pixel feature**, which is precisely
+the mechanism the TAA survey names and which §2 of the prompt flags as *"actively destroying the
+grain this prompt is trying to create."*
+
+**So: the owner's 3× is achievable optically and not achievable through this engine's TAA.**
+`stipple_period_px` ships at **7.0**, the nearest setting that survives the clamp, with
+`--stipple-period 3.56` available and its consequence recorded. The published fixes — variance-based
+clamping, a reactive mask, or applying the grain *after* the resolve — are the way to get 3× back,
+and applying it post-resolve is the cheapest of the three. Opened as goal 285b.
+
+### 286 — directionality, kept
+
+284 measured it rather than leaving it to taste (641×), so this is not the open question the prompt
+allowed it to be. The direction is a fixed world-space vector; per-material hatch directions are not
+implemented and are not needed by anything measured here.
+
+### 289 — not done
+
+`SvoRenderer::Settings` gained three fields this pass and now has more than twenty. The `--look`
+preset collapse is **not implemented**; the individual knobs all work and are in `--help`. Recorded
+as owed, not as done.

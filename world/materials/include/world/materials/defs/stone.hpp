@@ -9,6 +9,7 @@ struct Stone {
     static constexpr const char* name = "Stone";
     static constexpr Color albedo{0.52f, 0.49f, 0.44f};
     static constexpr Phase phase = Phase::Solid;
+    static constexpr Stipple stipple{0.076f}; // the measured target: 7.6% peak (5.4% RMS in the capture)
     static constexpr Shading shading = Shading::Lit;
     static constexpr LiquidPhysics liquid{};
     static constexpr bool yields_to_trees = false;

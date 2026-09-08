@@ -13,7 +13,8 @@ namespace world::materials {
 template <MaterialDefinition T>
 [[nodiscard]] constexpr MaterialDef make_def() noexcept {
     return MaterialDef{
-        T::name, T::albedo, T::phase, T::shading, T::liquid, T::yields_to_trees, T::overrides_terrain};
+        T::name,   T::albedo,          T::phase,          T::shading,
+        T::stipple, T::liquid,         T::yields_to_trees, T::overrides_terrain};
 }
 
 // The compile-time composition of material components. A material's id is its position in the

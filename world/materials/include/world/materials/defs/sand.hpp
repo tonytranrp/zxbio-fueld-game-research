@@ -10,6 +10,7 @@ struct Sand {
     static constexpr const char* name = "Sand";
     static constexpr Color albedo{0.78f, 0.70f, 0.46f};
     static constexpr Phase phase = Phase::Solid;
+    static constexpr Stipple stipple{0.0f}; // the target capture's beaches read smooth
     static constexpr Shading shading = Shading::Lit;
     static constexpr LiquidPhysics liquid{};
     static constexpr bool yields_to_trees = false;

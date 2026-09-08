@@ -24,12 +24,23 @@ inline void add_material_macros(Diligent::ShaderMacroHelper& macros) {
 }
 
 // One float4 per material -- the record layout BOTH palettes upload (the terrain PSO's
-// MaterialPalette cbuffer and the svo march's MarchConstants tail): rgb = linear albedo, w = the
-// shading model as an exact small integer, read back in HLSL as uint(w + 0.5).
+// MaterialPalette cbuffer and the svo march's MarchConstants tail): rgb = linear albedo, and w
+// carries TWO values since Prompt 005 goal 285 -- the shading model in its integer part and the
+// material's stipple amplitude in its fractional part.
+//
+// Packed rather than given a second array because a new cbuffer field is a new chance at the
+// field-ORDER mismatch Prompt 004 lost hours to (a size static_assert cannot catch one, and the
+// symptom was an empty world). The amplitude is clamped below 1 so the integer part stays exact,
+// and the HLSL side reads the model with floor(), NOT uint(w + 0.5), which would round a large
+// amplitude into the next shading model.
 using MaterialRecord = std::array<float, 4>;
 
 [[nodiscard]] constexpr MaterialRecord material_record(const world::materials::MaterialDef& m) noexcept {
-    return {m.albedo.r, m.albedo.g, m.albedo.b, static_cast<float>(static_cast<int>(m.shading))};
+    const float amplitude = m.stipple.amplitude < 0.0f    ? 0.0f
+                            : m.stipple.amplitude > 0.99f ? 0.99f
+                                                          : m.stipple.amplitude;
+    return {m.albedo.r, m.albedo.g, m.albedo.b,
+            static_cast<float>(static_cast<int>(m.shading)) + amplitude};
 }
 
 [[nodiscard]] constexpr std::array<MaterialRecord, world::materials::kMaterialCount>

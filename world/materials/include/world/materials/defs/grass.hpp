@@ -9,6 +9,7 @@ struct Grass {
     static constexpr const char* name = "Grass";
     static constexpr Color albedo{0.23f, 0.48f, 0.13f};
     static constexpr Phase phase = Phase::Solid;
+    static constexpr Stipple stipple{0.0f}; // the target capture's green is broad and faceted, with no stipple at all
     static constexpr Shading shading = Shading::Lit;
     static constexpr LiquidPhysics liquid{};
     static constexpr bool yields_to_trees = false;

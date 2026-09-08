@@ -109,7 +109,8 @@ constexpr std::uint32_t kFlagAO = 4u;
 constexpr std::uint32_t kFlagTree = 8u;
 constexpr std::uint32_t kFlagSky = 16u;
 constexpr std::uint32_t kFlagGrain = 32u;
-constexpr std::uint32_t kFlagFilterAlbedo = 64u; // goal 278; mirrored in svo_march.psh.hlsl
+constexpr std::uint32_t kFlagFilterAlbedo = 64u;  // goal 278; mirrored in svo_march.psh.hlsl
+constexpr std::uint32_t kFlagStipple = 128u;      // goal 285; mirrored in svo_march.psh.hlsl
 constexpr std::uint32_t kViewShift = 8u;
 constexpr std::uint32_t kJitterSamples = 8u;
 
@@ -1217,6 +1218,7 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         flags |= s.sky ? kFlagSky : 0u;
         flags |= s.grain ? kFlagGrain : 0u;
         flags |= s.filter_albedo ? kFlagFilterAlbedo : 0u;
+        flags |= s.stipple ? kFlagStipple : 0u;
         flags |= static_cast<std::uint32_t>(s.debug_view) << kViewShift;
         cb->treeInts = glm::uvec4(static_cast<std::uint32_t>(g.voxel_bits()),
                                   static_cast<std::uint32_t>(g.max_brick_level()), impl_->rootOffset, flags);
@@ -1249,8 +1251,10 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
                                    0.0f);
         cb->gridDims = glm::vec4(impl_->gridDims, impl_->gridCellEdge);
         cb->gridOrigin = glm::vec4(impl_->gridOrigin, 0.0f);
+        // zw were spare, which is why goal 285's two knobs live here rather than in a new field.
         cb->waveParams = glm::vec4(waveField.waves[0].steepness,
-                                   beam ? static_cast<float>(beamTile) : 0.0f, 0.0f, 0.0f);
+                                   beam ? static_cast<float>(beamTile) : 0.0f, s.stipple_amount,
+                                   s.stipple_period_px);
         cb->materials = detail::kMaterialRecords;
     }
     {

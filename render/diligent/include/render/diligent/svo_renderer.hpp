@@ -57,6 +57,23 @@ public:
         // sampling as 59% of the moire -- the largest single contributor, and the only one of
         // the six candidates the prompt named that was not measured at zero.
         bool filter_albedo = true;
+        // Prompt 005 goal 285: the deliberate directional stipple -- the half of the owner's
+        // request that AL-A's filtering spent. Amplitude scales every material's own value
+        // (a component, world/materials); the period is the wanted SCREEN period in pixels,
+        // which is what Benard's octave construction holds constant with distance.
+        bool stipple = true;
+        // 2.5, not 1.0: at 1.0 the term reaches the frame but is not visible against the
+        // filtered albedo and the fog. Chosen from viewed captures, and the honest caveat is
+        // that it is a LOOK value judged by eye, not a match to a measured amplitude.
+        float stipple_amount = 2.5f;
+        // The target capture's stone stipple measures a 10.67 px period and the owner asked for
+        // "much finer", which the prompt reads as 3x -> 3.56. Measured against that: at 3.56 the
+        // delivered amplitude COLLAPSES (RMS 1.77/255 against 8.8 at coarser settings) because
+        // TAA's 3x3 neighbourhood clamp discards a sub-pixel feature -- the mechanism the TAA
+        // survey names. 7.0 is the nearest setting that survives it, so the owner's 3x is
+        // achievable optically and not achievable through THIS engine's TAA, and 7.0 ships with
+        // that said out loud rather than 3.56 shipping invisibly.
+        float stipple_period_px = 7.0f;
         bool taa = true;            // temporal anti-aliasing resolve (goal 168)
         // Goal 266: the coarse start-t pre-pass. One conservative cone bound per `beam_tile`
         // square of pixels, computed at 1/beam_tile resolution, from which every primary ray in

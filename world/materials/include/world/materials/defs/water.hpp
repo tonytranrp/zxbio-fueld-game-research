@@ -11,6 +11,7 @@ struct Water {
     static constexpr const char* name = "Water";
     static constexpr Color albedo{0.09f, 0.33f, 0.58f};
     static constexpr Phase phase = Phase::Liquid;
+    static constexpr Stipple stipple{0.0f}; // a surface, not a rock face; it has its own shading model
     static constexpr Shading shading = Shading::Water;
     // Upthrust at >= 1 voxel submersion is 2x gravity -- i.e. a NET +1 g upward when fully under --
     // so the equilibrium floats the feet half a meter under the surface with the eyes above it; the
