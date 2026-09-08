@@ -110,6 +110,11 @@ struct SvoWorldOptions {
     // than the implicit box+octahedron. 0 = every tree implicit, which is what the tools and the
     // equivalence test use.
     float skeleton_radius = 128.0f;
+    // Prompt 007 goal 338: metres of voxel ground cover. Far smaller than the skeleton radius --
+    // a 0.28 m blade is only representable inside the finest LOD ring.
+    float grass_radius = 24.0f;
+    // How many real plants one voxel tuft stands for. Lower is denser and more expensive.
+    float grass_plants_per_tuft = 20.0f;
     std::size_t worker_threads = 0; // 0 = three quarters of the hardware threads (goal 170)
 
     // ---- when to rebuild (Prompt 004 goals 249, 250) ---------------------------------------------

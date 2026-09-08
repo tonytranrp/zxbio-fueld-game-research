@@ -1,10 +1,59 @@
 #include "world/svo/brick.hpp"
 
+#include <atomic>
 #include <bit>
 
 #include "world/materials/materials.hpp"
 
 namespace world::svo {
+
+namespace {
+// Not per-brick state and not per-thread: the question this answers is "did this BUILD produce any
+// overflow at all", and a build runs on the pool. Relaxed because nothing orders on it -- it is
+// read once, after the build, by a test or a log line.
+std::atomic<std::uint64_t> g_paletteOverflows{0};
+} // namespace
+
+std::uint64_t brick_palette_overflows() noexcept {
+    return g_paletteOverflows.load(std::memory_order_relaxed);
+}
+
+void brick_reset_palette_overflows() noexcept {
+    g_paletteOverflows.store(0, std::memory_order_relaxed);
+}
+
+namespace detail {
+
+std::uint32_t brick_overflow_slot(const std::uint32_t* words,
+                                  world::chunk::MaterialID material) noexcept {
+    g_paletteOverflows.fetch_add(1, std::memory_order_relaxed);
+    const world::chunk::MaterialID fallback = world::materials::palette_fallback_of(material);
+    if (fallback != material) {
+        for (std::size_t e = 1; e < kBrickPaletteSize; ++e) {
+            if (brick_palette_entry(words, e) == fallback) {
+                return static_cast<std::uint32_t>(e);
+            }
+        }
+    }
+    // Entry 1, the brick's first material: mis-shaded, never a hole. See brick.hpp.
+    return 1u;
+}
+
+std::uint32_t brick_overflow_slot_packed(const std::int8_t* slotOf,
+                                         world::chunk::MaterialID material) noexcept {
+    g_paletteOverflows.fetch_add(1, std::memory_order_relaxed);
+    const world::chunk::MaterialID fallback = world::materials::palette_fallback_of(material);
+    if (fallback != material) {
+        const std::int8_t slot = slotOf[static_cast<std::size_t>(fallback)];
+        if (slot > 0) {
+            return static_cast<std::uint32_t>(slot);
+        }
+    }
+    return 1u;
+}
+
+} // namespace detail
+
 
 world::chunk::MaterialID Brick::representative() const noexcept {
     std::array<std::uint16_t, 256> counts{};

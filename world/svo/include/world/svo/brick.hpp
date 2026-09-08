@@ -55,14 +55,54 @@ inline constexpr std::size_t kBrickIndexWord0 = kBrickMaskWords;        // 16
 inline constexpr std::size_t kBrickPaletteWord0 = kBrickIndexWord0 + kBrickIndexWords; // 68
 inline constexpr std::size_t kBrickWords = kBrickPaletteWord0 + kBrickPaletteWords;    // 70
 
-// The palette holds Air plus one slot per other material. If the registry ever grows past this, a
-// single brick could hold more distinct materials than the palette can name and there is no
-// non-lossy answer inside a fixed-size brick -- so this fires at BUILD time and forces the
-// decision (a wider index, or a second size class in the pool) rather than corrupting a rare
-// brick at run time. See the log for both alternatives and their costs.
-static_assert(world::chunk::kMaterialCount <= kBrickPaletteSize,
-              "brick palette has one entry per material (entry 0 = Air); widen kBrickPaletteBits "
-              "or add a fallback size class before adding a ninth material");
+// THE PALETTE INVARIANT IS PER BRICK, NOT GLOBAL -- and it used to be the other way round.
+//
+// Until Prompt 007 goal 338 this was a static_assert that kMaterialCount <= 8, on the reasoning
+// that seven non-Air slots provably cover seven possible non-Air materials. Goal 338 needs a ninth
+// (a grass blade must be Phase::Foliage where ground grass is Phase::Solid, and one material cannot
+// be both), so the guarantee had to give. Its own text named two ways out and both are expensive:
+//
+//   * A WIDER INDEX. Four bits divides 32 exactly -- 8 indices per word, no straddle, no waste --
+//     but 512 four-bit indices is 64 words against 52, and the palette doubles to 4: 84 words,
+//     336 B, against 280. That is +20% on every brick in the world, which is most of goal 275's
+//     measured -264.2 MB given back to add one material.
+//   * A SECOND SIZE CLASS. BrickPool is a fixed-size slot allocator and the whole AK-D resident
+//     cache is built on that; two sizes is a different allocator.
+//
+// The third way, which is what is here: keep 3 bits and 280 B, and make the invariant a PER-BRICK
+// one backed by measurement. tools/palette_probe on a real shipping build found 98.6% of bricks
+// hold three or fewer distinct materials and NOTHING exceeds five, against eight slots. A brick
+// that overflows is therefore not merely rare, it has never been observed -- but "never observed"
+// is not "cannot happen", so overflow has a defined, deterministic answer and a counter:
+//
+//   * the material's palette_fallback (world/materials), if that is already interned -- a grass
+//     blade becomes the ground grass it stands in, not Air;
+//   * failing that, entry 1, the brick's first material. Wrong shading, never a hole: a voxel that
+//     read back as Air with its occupancy bit set would desync geometry from material, which is far
+//     worse than a mis-shaded voxel.
+//   * and brick_palette_overflows() counts every one, so a build can assert zero. test_brick.cpp
+//     asserts it is zero over a real build and non-zero on a deliberately-overflowing brick, which
+//     is what makes the counter evidence rather than decoration.
+static_assert(kBrickPaletteSize >= 6,
+              "the measured worst case is five distinct materials in one brick; a palette smaller "
+              "than that would overflow on real content rather than on a constructed test");
+
+// Process-wide count of palette overflows since start. Not per-brick state: an overflow is a
+// global-health question ("did this build produce any?"), and a counter in the brick would cost
+// bytes on every brick to record something that should always be zero.
+[[nodiscard]] std::uint64_t brick_palette_overflows() noexcept;
+void brick_reset_palette_overflows() noexcept;
+
+namespace detail {
+// The slot to use when the palette is full. Declared here and defined in brick.cpp so the header
+// stays free of the registry's lookup tables.
+[[nodiscard]] std::uint32_t brick_overflow_slot(const std::uint32_t* words,
+                                                world::chunk::MaterialID material) noexcept;
+// The same policy for the bulk pack, which knows its palette as a material->slot table rather than
+// as packed words.
+[[nodiscard]] std::uint32_t brick_overflow_slot_packed(const std::int8_t* slotOf,
+                                                       world::chunk::MaterialID material) noexcept;
+} // namespace detail
 
 // Linear voxel index, X innermost (the chunk module's own convention) -- keep bit-compatible
 // with svo_march.psh.hlsl's BrickIndex().
@@ -120,23 +160,25 @@ inline void brick_word_set(std::uint32_t* words, std::size_t index,
         return;
     }
     bit |= 1u << (index & 31u);
-    // Intern: an existing entry with this material, else the first never-assigned one. Seven slots
-    // for at most seven non-Air materials (the static_assert above), so `free` is always found --
-    // the clamp to 1 exists so a hypothetically-overflowing brick shades wrong rather than reading
-    // back as Air with its occupancy bit set, which would desync geometry from material.
-    std::uint32_t slot = 1u;
+    // Intern: an existing entry with this material, else the first never-assigned one, else the
+    // overflow policy documented above.
+    std::uint32_t slot = 0u;
+    bool placed = false;
     for (std::size_t e = 1; e < kBrickPaletteSize; ++e) {
         const world::chunk::MaterialID held = brick_palette_entry(words, e);
         if (held == material) {
-            slot = static_cast<std::uint32_t>(e);
-            brick_word_index_set(words, index, slot);
+            brick_word_index_set(words, index, static_cast<std::uint32_t>(e));
             return;
         }
         if (held == world::chunk::MaterialID::Air) {
             brick_palette_set(words, e, material);
             slot = static_cast<std::uint32_t>(e);
+            placed = true;
             break;
         }
+    }
+    if (!placed) {
+        slot = detail::brick_overflow_slot(words, material);
     }
     brick_word_index_set(words, index, slot);
 }
@@ -163,8 +205,15 @@ inline void brick_pack_materials(std::uint32_t* words, const std::uint8_t* mater
             const std::size_t m = materials[v];
             std::int8_t slot = slotOf[m];
             if (slot < 0) {
-                slot = next++;
-                slotOf[m] = slot;
+                if (next < static_cast<std::int8_t>(kBrickPaletteSize)) {
+                    slot = next++;
+                    slotOf[m] = slot;
+                } else {
+                    // Same policy as the per-voxel path, and it must be the same or the bulk and
+                    // incremental fills would disagree about a brick nobody has ever seen.
+                    slot = static_cast<std::int8_t>(detail::brick_overflow_slot_packed(
+                        slotOf.data(), static_cast<world::chunk::MaterialID>(m)));
+                }
             }
             packed |= static_cast<std::uint32_t>(slot) << (k * kBrickPaletteBits);
             if (m != static_cast<std::size_t>(world::chunk::MaterialID::Air)) {

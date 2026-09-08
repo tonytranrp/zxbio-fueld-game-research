@@ -55,11 +55,18 @@ MaterialID old_sampler_rule(float surfaceHeight, bool beach, bool grassy, float 
 // The composition's own invariants are compile-time facts, stated as such.
 static_assert(static_cast<std::size_t>(MaterialID::Air) == 0);
 static_assert(static_cast<std::size_t>(MaterialID::Stone) == Registry::index_of<defs::Stone>());
-static_assert(static_cast<std::size_t>(MaterialID::Grass) == kMaterialCount - 1);
+static_assert(static_cast<std::size_t>(MaterialID::GrassBlade) == kMaterialCount - 1);
 static_assert(Registry::table.size() == kMaterialCount);
 static_assert(properties_of(MaterialID::Water).is_liquid());
 static_assert(!properties_of(MaterialID::Water).is_solid());
 static_assert(std::string_view{name_of(MaterialID::Leaves)} == "Leaves");
+
+// Prompt 007 goal 338: the palette fallback. Most materials are their own; a grass blade falls back
+// to the ground grass it stands in, so a brick that cannot name it shows grass rather than a hole.
+static_assert(palette_fallback_of(MaterialID::Stone) == MaterialID::Stone);
+static_assert(palette_fallback_of(MaterialID::Leaves) == MaterialID::Leaves);
+static_assert(palette_fallback_of(MaterialID::GrassBlade) == MaterialID::Grass);
+
 
 TEST_CASE("every material is reachable by its enumerator and named after its component", "[materials]") {
     CHECK(std::string_view{name_of(MaterialID::Air)} == "Air");
@@ -119,14 +126,22 @@ TEST_CASE("only Water is a liquid, and it carries the swim physics", "[materials
     CHECK(properties_of(MaterialID::Water).liquid.buoyancy_acceleration > 9.81f);
 }
 
-TEST_CASE("only Water is shaded as water and only Leaves as foliage", "[materials]") {
+TEST_CASE("only Water is shaded as water, and foliage shading means leaves or blades", "[materials]") {
+    // Prompt 007 goal 338 widened the foliage set from "only Leaves" to "Leaves and GrassBlade",
+    // and it matters which materials are in it: `Shading::Foliage` is what gates the marcher's
+    // canopy domain warp (goal 337). Ground Grass is deliberately NOT in it -- it is
+    // `wind_responsive` for the shimmer and `Shading::Lit` for everything else, which is the
+    // distinction `material_def.hpp` exists to keep.
     for (std::size_t i = 0; i < kMaterialCount; ++i) {
         const auto id = static_cast<MaterialID>(i);
-        const Shading expected = id == MaterialID::Water    ? Shading::Water
-                                 : id == MaterialID::Leaves ? Shading::Foliage
-                                                            : Shading::Lit;
+        const Shading expected = id == MaterialID::Water ? Shading::Water
+                                 : (id == MaterialID::Leaves || id == MaterialID::GrassBlade)
+                                     ? Shading::Foliage
+                                     : Shading::Lit;
         CHECK(properties_of(id).shading == expected);
     }
+    CHECK(properties_of(MaterialID::Grass).shading == Shading::Lit);
+    CHECK(properties_of(MaterialID::Grass).wind_responsive);
     // The macro names the shaders test against exist for every model and are distinct.
     CHECK(std::string_view{shading_macro_name(Shading::Lit)} == "MAT_SHADING_LIT");
     CHECK(std::string_view{shading_macro_name(Shading::Water)} == "MAT_SHADING_WATER");
@@ -135,16 +150,28 @@ TEST_CASE("only Water is shaded as water and only Leaves as foliage", "[material
 
 TEST_CASE("tree voxelization priority: air and water yield, the trunk overrides, terrain wins otherwise",
           "[materials]") {
-    // The rule terrain_sampler.cpp used to spell inline:
+    // The rule terrain_sampler.cpp used to spell inline was:
     //   terrainSolid = current != Air && current != Water; replace = !terrainSolid || tree == Wood
+    //
+    // That restatement is now WRONG, and goal 338 is what proved it. It named the two yielding
+    // materials by identity, so a ninth material that also yields -- a grass blade, which a trunk
+    // grows straight through -- made the hand-written rule disagree with the registry. The
+    // component flags are the rule; this asserts against them, which is what Group AC was for.
     for (std::size_t c = 0; c < kMaterialCount; ++c) {
         for (const MaterialID tree : {MaterialID::Wood, MaterialID::Leaves}) {
             const auto current = static_cast<MaterialID>(c);
-            const bool terrainSolid = current != MaterialID::Air && current != MaterialID::Water;
-            const bool expected = !terrainSolid || tree == MaterialID::Wood;
+            const bool expected =
+                properties_of(current).yields_to_trees || properties_of(tree).overrides_terrain;
             CHECK(tree_replaces(current, tree) == expected);
         }
     }
+    // ...and the identities that rule resolves to, so a flag flipped by accident still fails.
+    CHECK(properties_of(MaterialID::Air).yields_to_trees);
+    CHECK(properties_of(MaterialID::Water).yields_to_trees);
+    CHECK(properties_of(MaterialID::GrassBlade).yields_to_trees);
+    CHECK_FALSE(properties_of(MaterialID::Stone).yields_to_trees);
+    CHECK(properties_of(MaterialID::Wood).overrides_terrain);
+    CHECK_FALSE(properties_of(MaterialID::Leaves).overrides_terrain);
 }
 
 TEST_CASE("exactly one component claims every terrain voxel", "[materials]") {

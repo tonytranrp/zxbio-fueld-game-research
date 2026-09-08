@@ -44,6 +44,8 @@ struct Options {
     // Goal 336: metres within which trees voxelize from their grown skeleton. 0 = implicit shapes,
     // which is what the CI smoke test and every determinism check use.
     float skeleton_radius = 0.0f;
+    float grass_radius = 0.0f;
+    float grass_plants_per_tuft = 20.0f;
     bool shadows = true;
     bool ao = true;
     // Prompt 005 goal 277: the albedo mottle is two octaves of world-XZ value noise with NO

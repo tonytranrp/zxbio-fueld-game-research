@@ -157,6 +157,8 @@ void SvoWorld::build_job(glm::vec3 camera) {
         // what the player is close enough to see branch structure on.
         sp.skeleton_radius_m = options_.skeleton_radius;
         sp.skeleton_centre = camera;
+        sp.grass_radius_m = options_.grass_radius;
+        sp.grass.plants_per_tuft = options_.grass_plants_per_tuft;
         const world::svo::Box region{g.origin, g.max_corner()};
         const auto samplerStart = std::chrono::steady_clock::now();
         world::svo::TerrainSampler sampler(heightmap_, sp, region);
@@ -450,6 +452,8 @@ void SvoWorld::pump_stream(std::size_t max) {
     sp.trees = options_.trees;
     sp.skeleton_radius_m = options_.skeleton_radius;
     sp.skeleton_centre = streamCamera_;
+    sp.grass_radius_m = options_.grass_radius;
+    sp.grass.plants_per_tuft = options_.grass_plants_per_tuft;
     world::svo::BuildParams bp;
     bp.lod_center = streamCamera_;
     bp.lod_radius = options_.effective_lod_radius();

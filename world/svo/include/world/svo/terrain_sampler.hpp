@@ -11,6 +11,7 @@
 #include "world/generation/heightmap_generator.hpp"
 #include "world/svo/caves.hpp"
 #include "world/generation/tree_placement.hpp"
+#include "world/generation/grass_cover.hpp"
 #include "world/generation/tree_volume.hpp"
 #include "world/materials/terrain_query.hpp"
 #include "world/svo/brick.hpp"
@@ -44,6 +45,12 @@ struct TerrainSamplerParams {
     // passes is larger than 41 m only because the octree is built once and the camera keeps walking.
     float skeleton_radius_m = 0.0f;
     glm::vec3 skeleton_centre{0.0f};
+    // Prompt 007 goal 338: metres of VOXEL GRASS around `skeleton_centre`. 0 = none, which is what
+    // the equivalence test and every determinism check run with. Much smaller than the skeleton
+    // radius on purpose: a 0.28 m blade at 7.8 mm is only representable inside the finest ring, and
+    // the ring is where the octree's own distance culling already does the work.
+    float grass_radius_m = 0.0f;
+    world::generation::GrassCoverParams grass{};
 };
 
 // The world as a resolution-independent material field (research/micro-voxel-pivot-log.md §2.5):
@@ -129,6 +136,12 @@ public:
         std::size_t primitives = 0;
         std::size_t memory_bytes = 0;
         double seconds = 0.0;
+        // Goal 338's half of the same accounting: grass patches, tufts and blades.
+        std::size_t grass_patches = 0;
+        std::size_t grass_tufts = 0;
+        std::size_t grass_blades = 0;
+        std::size_t grass_bytes = 0;
+        double grass_seconds = 0.0;
     };
     [[nodiscard]] SkeletonStats skeleton_stats() const noexcept { return skeletonStats_; }
 
@@ -159,6 +172,8 @@ private:
     };
     void collect_trees(const Box& region);
     void grow_skeletons();
+    void place_grass();
+    void build_tree_grid(const Box& region);
     void trees_touching(const Box& box, std::vector<std::uint32_t>& out) const;
 
     // Column material rule shared by fill_brick and material_at.

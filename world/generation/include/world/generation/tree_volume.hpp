@@ -65,6 +65,12 @@ struct TreeVolumeParams {
     // capsule that thin at a 7.8 mm voxel grid is a dotted line, and a dotted branch reads as an
     // artefact rather than as a fine one.
     float min_branch_radius = 0.02f;
+    // What a capsule and a ball are MADE OF. Defaulted to a tree so nothing that already used this
+    // had to change, and parameterised so goal 338's grass can be the same volume with a different
+    // material rather than a second voxelizer, a second box classifier and a second acceleration
+    // structure that would all have to agree with these.
+    world::chunk::MaterialID wood_material = world::chunk::MaterialID::Wood;
+    world::chunk::MaterialID leaf_material = world::chunk::MaterialID::Leaves;
 };
 
 // One primitive: a capsule when `leaf` is false (a branch), a ball around `b` when it is true.
@@ -97,6 +103,8 @@ private:
 
     std::vector<TreePrimitive> primitives_;
     TreeBounds bounds_{};
+    world::chunk::MaterialID woodMaterial_ = world::chunk::MaterialID::Wood;
+    world::chunk::MaterialID leafMaterial_ = world::chunk::MaterialID::Leaves;
 
     glm::vec3 gridMin_{0.0f};
     float cellSize_ = 1.0f;

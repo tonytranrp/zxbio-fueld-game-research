@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "world/chunk/chunk_voxels.hpp" // kChunkSize
+#include "world/generation/field/field_sampler.hpp"
 
 namespace world::svo {
 
@@ -36,7 +37,13 @@ TerrainSampler::TerrainSampler(const world::generation::HeightmapGenerator& heig
     if (params_.trees) {
         collect_trees(region);
         grow_skeletons();
+    } else {
+        treeVolumes_.clear();
     }
+    // Grass rides the tree acceleration structure as pseudo-tree entries, so it must be appended
+    // BEFORE the grid is built -- and the grid build moved out of collect_trees for exactly that.
+    place_grass();
+    build_tree_grid(region);
 }
 
 void TerrainSampler::collect_trees(const Box& region) {
@@ -60,6 +67,9 @@ void TerrainSampler::collect_trees(const Box& region) {
         }
     }
 
+}
+
+void TerrainSampler::build_tree_grid(const Box& region) {
     treeGrid_.xMin = region.min.x - kTreeReach;
     treeGrid_.zMin = region.min.z - kTreeReach;
     treeGrid_.cell = 16.0f;
@@ -123,6 +133,79 @@ void TerrainSampler::grow_skeletons() {
         treeVolumes_[i] = std::move(volume);
     }
     skeletonStats_.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+}
+
+
+void TerrainSampler::place_grass() {
+    if (params_.grass_radius_m <= 0.0f) {
+        return;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const world::generation::GrassCoverParams& gp = params_.grass;
+    const float radius = params_.grass_radius_m;
+    const glm::vec3 centre = params_.skeleton_centre;
+
+    // Ground and slope come from the SAME field the terrain does. A tuft placed against a different
+    // surface floats or buries, and the two would have to be kept in step forever.
+    const auto height_at = [this](float x, float z) { return heightmap_->height_at(x, z); };
+    const auto slope_at = [this](float x, float z) { return field_.slope_at(x, z); };
+    // The biome plane, read the same way `tree_placement.cpp` reads it -- Catmull-Rom through the
+    // macro field, rounded to an index. A world with no macro field (a tool, a test) gets
+    // Grassland, which is the density the pre-biome world had.
+    const world::generation::field::TerrainField* macro = heightmap_->macro_field();
+    const auto biome_at = [macro](float x, float z) {
+        if (macro == nullptr) {
+            return world::generation::field::Biome::Grassland;
+        }
+        const auto index = static_cast<std::uint8_t>(std::lround(
+            world::generation::field::FieldSampler{*macro, world::generation::field::Plane::Biome}
+                .value_at(x, z)));
+        return index < static_cast<std::uint8_t>(world::generation::field::Biome::Count)
+                   ? static_cast<world::generation::field::Biome>(index)
+                   : world::generation::field::Biome::Grassland;
+    };
+
+    const auto patchOf = [&](float v) { return static_cast<std::int32_t>(std::floor(v / gp.patch_edge_m)); };
+    const std::int32_t px0 = patchOf(centre.x - radius);
+    const std::int32_t px1 = patchOf(centre.x + radius);
+    const std::int32_t pz0 = patchOf(centre.z - radius);
+    const std::int32_t pz1 = patchOf(centre.z + radius);
+
+    std::vector<world::generation::GrassTuft> tufts;
+    for (std::int32_t pz = pz0; pz <= pz1; ++pz) {
+        for (std::int32_t px = px0; px <= px1; ++px) {
+            const glm::vec2 origin{static_cast<float>(px) * gp.patch_edge_m,
+                                   static_cast<float>(pz) * gp.patch_edge_m};
+            // Whole-patch reject on distance, so the ring is a ring and not a square.
+            const glm::vec2 mid = origin + glm::vec2{0.5f * gp.patch_edge_m};
+            const float dx = mid.x - centre.x;
+            const float dz = mid.y - centre.z;
+            if (dx * dx + dz * dz > (radius + gp.patch_edge_m) * (radius + gp.patch_edge_m)) {
+                continue;
+            }
+            tufts = world::generation::grass_tufts_in_patch(params_.seed, origin, gp, height_at, slope_at,
+                                                            biome_at);
+            if (tufts.empty()) {
+                continue;
+            }
+            world::generation::TreeVolume volume = world::generation::grass_patch_volume(tufts, gp);
+            if (volume.empty()) {
+                continue;
+            }
+            // A pseudo-tree entry: the PLACEMENT is never consulted, because every consumer checks
+            // `treeVolumes_[i].empty()` first and takes the volume when it is not. That is what
+            // lets grass reuse the tree grid, the box classifier and the voxelizer unchanged.
+            skeletonStats_.grass_patches += 1;
+            skeletonStats_.grass_tufts += tufts.size();
+            skeletonStats_.grass_blades += volume.primitives().size();
+            skeletonStats_.grass_bytes += volume.memory_bytes();
+            trees_.emplace_back();
+            treeBounds_.push_back(Box{volume.bounds().min, volume.bounds().max});
+            treeVolumes_.push_back(std::move(volume));
+        }
+    }
+    skeletonStats_.grass_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 }
 
 void TerrainSampler::trees_touching(const Box& box, std::vector<std::uint32_t>& out) const {

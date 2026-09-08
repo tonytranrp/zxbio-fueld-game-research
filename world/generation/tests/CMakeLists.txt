@@ -10,6 +10,7 @@ add_executable(world_generation_tests
     test_tree_sway.cpp
     test_tree_volume.cpp
     test_playable_field.cpp
+    test_grass_cover.cpp
     test_terrain_field.cpp
     test_fluvial.cpp
     test_rivers.cpp

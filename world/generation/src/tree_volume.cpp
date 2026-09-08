@@ -36,6 +36,8 @@ constexpr float kPi = 3.14159265358979323846f;
 } // namespace
 
 TreeVolume::TreeVolume(const TreeSkeleton& skeleton, const TreeVolumeParams& params) {
+    woodMaterial_ = params.wood_material;
+    leafMaterial_ = params.leaf_material;
     if (skeleton.empty()) {
         return;
     }
@@ -265,9 +267,9 @@ MaterialID TreeVolume::material_at(const glm::vec3& p) const {
             continue;
         }
         if (!prim.leaf) {
-            return MaterialID::Wood; // wood wins outright, as it does in the implicit shape
+            return woodMaterial_; // wood wins outright, as it does in the implicit shape
         }
-        out = MaterialID::Leaves;
+        out = leafMaterial_;
     }
     return out;
 }

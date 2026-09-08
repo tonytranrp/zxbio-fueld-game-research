@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "world/materials/materials.hpp"
 #include "world/svo/brick.hpp"
 
 using namespace world::svo;
@@ -73,8 +74,12 @@ TEST_CASE("brick set/get round-trips every voxel and keeps the occupancy mask in
     for (int z = 0; z < 8; ++z) {
         for (int y = 0; y < 8; ++y) {
             for (int x = 0; x < 8; ++x) {
+                // kBrickPaletteSize, not kMaterialCount: a brick's palette names eight materials
+                // and the registry now holds nine (goal 338). Cycling through all nine would test
+                // the OVERFLOW policy, which has its own case below -- this one is about the
+                // round-trip, and it must stay inside what a brick can represent exactly.
                 const auto m = static_cast<MaterialID>((x + 3 * y + 5 * z) %
-                                                       static_cast<int>(world::chunk::kMaterialCount));
+                                                       static_cast<int>(kBrickPaletteSize));
                 brick.set(x, y, z, m);
             }
         }
@@ -83,8 +88,12 @@ TEST_CASE("brick set/get round-trips every voxel and keeps the occupancy mask in
     for (int z = 0; z < 8; ++z) {
         for (int y = 0; y < 8; ++y) {
             for (int x = 0; x < 8; ++x) {
+                // kBrickPaletteSize, not kMaterialCount: a brick's palette names eight materials
+                // and the registry now holds nine (goal 338). Cycling through all nine would test
+                // the OVERFLOW policy, which has its own case below -- this one is about the
+                // round-trip, and it must stay inside what a brick can represent exactly.
                 const auto m = static_cast<MaterialID>((x + 3 * y + 5 * z) %
-                                                       static_cast<int>(world::chunk::kMaterialCount));
+                                                       static_cast<int>(kBrickPaletteSize));
                 CHECK(brick.at(x, y, z) == m);
                 CHECK(brick.occupied(x, y, z) == (m != MaterialID::Air));
                 // Raw-word accessors (what the traversal uses) agree with the object accessors.
@@ -165,8 +174,8 @@ TEST_CASE("every voxel index round-trips through the ten-per-word packing", "[sv
 
 TEST_CASE("the palette interns: entry 0 is Air and each material takes one slot", "[svo][brick]") {
     Brick brick;
-    // Every non-Air material in the registry, twice over, in a scrambled order.
-    const std::size_t materials = world::chunk::kMaterialCount;
+    // As many non-Air materials as the palette has slots, twice over, in a scrambled order.
+    const std::size_t materials = kBrickPaletteSize;
     for (std::size_t rep = 0; rep < 2; ++rep) {
         for (std::size_t m = 1; m < materials; ++m) {
             brick.set((m * 37 + rep * 11) % kBrickVoxels, static_cast<MaterialID>(m));
@@ -180,6 +189,60 @@ TEST_CASE("the palette interns: entry 0 is Air and each material takes one slot"
             seen += brick_palette_entry(brick.words().data(), e) == static_cast<MaterialID>(m) ? 1 : 0;
         }
         CHECK(seen == 1);
+    }
+}
+
+TEST_CASE("a brick that overflows its palette falls back rather than holing", "[svo][brick]") {
+    // Prompt 007 goal 338. The registry has nine materials and a brick's palette names eight, so
+    // this case became REPRESENTABLE rather than impossible. It has still never been observed on
+    // real content -- 98.6% of bricks hold three or fewer distinct materials and nothing exceeds
+    // five -- but a policy nobody has tested is not a policy.
+    //
+    // Constructed deliberately: every non-Air material in the registry, in one brick.
+    brick_reset_palette_overflows();
+    Brick brick;
+    for (std::size_t m = 1; m < world::chunk::kMaterialCount; ++m) {
+        brick.set(m * 37, static_cast<MaterialID>(m));
+    }
+    const std::uint64_t overflows = brick_palette_overflows();
+    INFO(overflows << " overflow(s) filling one brick with all " << world::chunk::kMaterialCount
+                   << " registry materials");
+    CHECK(overflows > 0);
+
+    // The first seven non-Air materials are exact.
+    for (std::size_t m = 1; m < kBrickPaletteSize; ++m) {
+        CHECK(brick.at(m * 37) == static_cast<MaterialID>(m));
+    }
+    // The overflowing one becomes its declared fallback, and -- the property that actually matters
+    // -- it is NEVER Air with its occupancy bit set, which would desync geometry from material.
+    for (std::size_t m = kBrickPaletteSize; m < world::chunk::kMaterialCount; ++m) {
+        const MaterialID got = brick.at(m * 37);
+        INFO("material " << m << " stored as " << static_cast<int>(got));
+        CHECK(got != MaterialID::Air);
+        CHECK(brick_word_occupied(brick.words().data(), m * 37));
+        CHECK(got == world::materials::palette_fallback_of(static_cast<MaterialID>(m)));
+    }
+}
+
+TEST_CASE("the bulk pack and the per-voxel set agree, overflow included", "[svo][brick]") {
+    // The two fill paths must produce the SAME brick or a bulk-filled world and an
+    // incrementally-edited one would disagree about a voxel. That is easy to get right in the
+    // common case and easy to get wrong in the overflow case, which is why this covers both.
+    std::array<std::uint8_t, kBrickVoxels> materials{};
+    for (std::size_t i = 0; i < kBrickVoxels; ++i) {
+        materials[i] = static_cast<std::uint8_t>((i * 7 + i / 13) % world::chunk::kMaterialCount);
+    }
+    Brick incremental;
+    for (std::size_t i = 0; i < kBrickVoxels; ++i) {
+        incremental.set(i, static_cast<MaterialID>(materials[i]));
+    }
+    std::array<std::uint32_t, kBrickWords> packed{};
+    brick_pack_materials(packed.data(), materials.data());
+
+    for (std::size_t i = 0; i < kBrickVoxels; ++i) {
+        REQUIRE(brick_word_material(packed.data(), i) == incremental.at(i));
+        REQUIRE(brick_word_occupied(packed.data(), i) ==
+                brick_word_occupied(incremental.words().data(), i));
     }
 }
 

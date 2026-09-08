@@ -175,6 +175,8 @@ int run(int argc, char** argv) {
     sp.trees = opt.trees;
     sp.skeleton_radius_m = opt.skeleton_radius;
     sp.skeleton_centre = r.pos;
+    sp.grass_radius_m = opt.grass_radius;
+    sp.grass.plants_per_tuft = opt.grass_plants_per_tuft;
     const Box region{g.origin, g.max_corner()};
     const auto samplerStart = std::chrono::steady_clock::now();
     TerrainSampler sampler(heightmap, sp, region);
