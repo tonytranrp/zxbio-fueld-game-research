@@ -1,3 +1,5 @@
+#include "world/generation/field/biome.hpp"
+#include "world/generation/field/field_sampler.hpp"
 #include "world/generation/tree_placement.hpp"
 
 #include <algorithm>
@@ -59,6 +61,38 @@ std::vector<TreePlacement> compute_tree_placements(std::int32_t chunkX, std::int
             const float h = heightmap.height_at(worldX, worldZ);
             if (h < kTreeMinHeight || h > kTreeMaxHeight) {
                 continue; // no water/beach trees, no trees above the tree line
+            }
+
+            // GOAL 323: DENSITY COMES FROM THE BIOME NOW, not from the height/slope mask alone.
+            //
+            // The candidate grid above offers ~37% of cells a tree, which was the whole density
+            // model: one number for the entire world. The biome field carries a measured stems/ha
+            // per biome (Part 6 §1, and goal 316's table cites every one), so the candidate is now
+            // kept with a probability that reproduces that density.
+            //
+            // The height and slope tests stay: they are about whether a tree can STAND there, which
+            // no biome makes true. This adds the question of whether a tree BELONGS there.
+            //
+            // Determinism is unchanged -- the accept/reject reads the same `key` every other
+            // property does, so the same seed still gives the same trees, and a tree's identity
+            // still does not depend on which LOD band asked for it.
+            const field::TerrainField* macro = heightmap.macro_field();
+            if (macro != nullptr) {
+                const auto biome = static_cast<std::uint8_t>(
+                    std::lround(field::FieldSampler{*macro, field::Plane::Biome}.value_at(worldX, worldZ)));
+                const float target =
+                    field::stems_per_hectare(biome < static_cast<std::uint8_t>(field::Biome::Count)
+                                                 ? static_cast<field::Biome>(biome)
+                                                 : field::Biome::Grassland);
+                // One candidate per 8x8 m cell at ~37% acceptance is 578 stems/ha, which is what
+                // the old single-density world produced. Scale the acceptance so the biome's own
+                // target comes out instead.
+                constexpr float kCandidateDensityPerHa = 578.0f;
+                const float keep = std::min(1.0f, target / kCandidateDensityPerHa);
+                const float roll = static_cast<float>((key >> 48) & 0xFFFFu) / 65536.0f;
+                if (roll >= keep) {
+                    continue;
+                }
             }
             const float slopeX = std::abs(heightmap.height_at(worldX + 1.0f, worldZ) -
                                           heightmap.height_at(worldX - 1.0f, worldZ)) *
