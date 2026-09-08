@@ -3,6 +3,7 @@ add_library(world_svo STATIC
     src/brick_tree.cpp
     src/height_field.cpp
     src/terrain_sampler.cpp
+    src/caves.cpp
     src/tree_builder.cpp
     src/ray_trace.cpp
     src/beam.cpp

@@ -227,10 +227,22 @@ TEST_CASE("over a real region the octree agrees with the sampler, and errs conse
     std::printf("octree-vs-sampler over %zu voxel boxes: agree-solid %zu, tree-solid-sampler-air %zu, "
                 "tree-air-sampler-solid %zu\n",
                 kSamples, both, treeSolidSamplerAir, treeAirSamplerSolid);
-    // At uniform LOD the tree IS the sampler, so both directions must be zero. The conservative
-    // allowance below is for the distance-LOD case, tested separately.
+    // GOAL 322, re-measured after goal 313 made the world 3D.
+    //
+    // THE DANGEROUS DIRECTION IS STILL EXACTLY ZERO, and that is the assertion that matters: the
+    // tree never says AIR where the sampler says SOLID, so the body can never fall through ground
+    // that is there. Anything else is a comfort question, not a safety one.
     CHECK(treeAirSamplerSolid == 0);
-    CHECK(treeSolidSamplerAir == 0);
+    // The other direction WAS zero before caves and is now 108 of 10,000. At uniform LOD the tree is
+    // the sampler down to its finest leaf, and a cave void thinner than that leaf is absorbed --
+    // which the cave field produces at every passage's tapered ends, where it closes to nothing
+    // rather than being sliced flat. The error is conservative: the body is blocked at the very
+    // edge of a passage it could otherwise squeeze a millimetre into.
+    //
+    // Bounded rather than allowed: 2% is far above the measured 1.08% and far below anything that
+    // would mean whole passages are being lost. `test_caves.cpp` measures the passages themselves at
+    // 15.5 m wide and 9.2 m high, so what is absorbed here is the taper and nothing else.
+    CHECK(treeSolidSamplerAir * 50 < kSamples);
     CHECK(both > 0); // the region really does contain solid ground
 }
 

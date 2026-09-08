@@ -125,8 +125,24 @@ void TerrainSampler::trees_touching(const Box& box, std::vector<std::uint32_t>& 
     }
 }
 
-MaterialID TerrainSampler::column_material(float surfaceHeight, bool beach, bool grassy, float voxelBottom,
-                                           float voxelEdge) const noexcept {
+MaterialID TerrainSampler::column_material(float worldX, float worldZ, float surfaceHeight, bool beach,
+                                           bool grassy, float voxelBottom, float voxelEdge) const noexcept {
+    // GOAL 313: the carve, at the one place both the brick fill and the pointwise query pass
+    // through -- so they cannot disagree about where a cave is.
+    //
+    // The voxel's CENTRE is the sample point, not its bottom corner. The occupancy rule uses the
+    // bottom face because that is what makes the sparse-brick and 1 m chunk worlds byte-identical,
+    // but a cave is a volume and sampling its boundary at a face would make a voxel's fate depend
+    // on which side of the face the noise fell.
+    if (params_.caves.enabled() && voxelBottom <= surfaceHeight) {
+        const glm::vec3 centre{worldX + 0.5f * voxelEdge, voxelBottom + 0.5f * voxelEdge,
+                               worldZ + 0.5f * voxelEdge};
+        if (cave_at(params_.caves, centre, surfaceHeight)) {
+            // Below the water table nothing is carved (cave_at enforces it), so a carved voxel is
+            // always above it and always dry: air, not water.
+            return MaterialID::Air;
+        }
+    }
     // The band rule is the materials' own (Group AC): each component claims its band at this voxel
     // size -- the same function fill_terrain evaluates at 1 m, which is what makes the two worlds
     // byte-identical there (test_terrain_sampler.cpp).
@@ -180,6 +196,18 @@ BoxClassification TerrainSampler::classify(const Box& box) const {
     }
     if (insideLobe) {
         return {BoxClass::Mixed, MaterialID::Air}; // a lobe overlapping terrain: sample it
+    }
+    // GOAL 313, AND THE ONE PLACE CAVES CAN PUT A HOLE IN THE WORLD. Every conclusion below this
+    // line says "this whole box is solid" WITHOUT SUBDIVIDING, which is exactly the reasoning a
+    // cave invalidates. `caves_possible_in_band` is conservative -- false means provably cave-free
+    // -- so a box the band cannot reach keeps its fast path unchanged and a box the band touches is
+    // subdivided until the per-voxel carve in `fill_columns` can see it.
+    //
+    // The subdivision cost is confined to the band: with the shipped 6-55 m depths that is 49 m of
+    // a world whose columns run to ~60 m, and nothing above the surface or below the water table
+    // pays anything.
+    if (caves_possible_in_band(params_.caves, box.min.y, box.max.y, r.min, r.max)) {
+        return {BoxClass::Mixed, MaterialID::Air};
     }
     if (box.max.y <= r.min - kSoilDepth) {
         // Even the topmost voxel is deeper than the soil band under the lowest column: stone.
@@ -379,8 +407,10 @@ void TerrainSampler::fill_columns(const glm::vec3& origin, float voxelEdge, cons
             std::uint8_t* column = bytes.data() + brick_voxel_index(i, 0, k);
             for (int j = 0; j < N; ++j) {
                 const float bottom = origin.y + static_cast<float>(j) * voxelEdge;
-                column[static_cast<std::size_t>(j) * N] =
-                    static_cast<std::uint8_t>(column_material(surface, beach, grassy, bottom, voxelEdge));
+                column[static_cast<std::size_t>(j) * N] = static_cast<std::uint8_t>(
+                    column_material(origin.x + static_cast<float>(i) * voxelEdge,
+                                    origin.z + static_cast<float>(k) * voxelEdge, surface, beach, grassy,
+                                    bottom, voxelEdge));
             }
         }
     }
@@ -441,7 +471,7 @@ MaterialID TerrainSampler::material_at(const glm::vec3& voxelMin, float voxelEdg
     const float slope = field_.slope_at(voxelMin.x, voxelMin.z);
     const bool beach = h <= params_.sea_level + kBeachBand;
     const bool grassy = !beach && slope <= kGrassMaxSlope;
-    MaterialID m = column_material(h, beach, grassy, voxelMin.y, voxelEdge);
+    MaterialID m = column_material(voxelMin.x, voxelMin.z, h, beach, grassy, voxelMin.y, voxelEdge);
     if (params_.trees) {
         const Box voxel{voxelMin, voxelMin + glm::vec3{voxelEdge}};
         thread_local std::vector<std::uint32_t> touching;

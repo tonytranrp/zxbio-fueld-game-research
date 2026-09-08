@@ -9,9 +9,11 @@
 #include "engine/core/math.hpp"
 #include "world/chunk/material.hpp"
 #include "world/generation/heightmap_generator.hpp"
+#include "world/svo/caves.hpp"
 #include "world/generation/tree_placement.hpp"
 #include "world/materials/terrain_query.hpp"
 #include "world/svo/brick.hpp"
+#include "world/svo/caves.hpp"
 #include "world/svo/height_field.hpp"
 
 #include "world/svo/sampler.hpp"
@@ -25,6 +27,10 @@ struct TerrainSamplerParams {
     float sea_level = 0.0f;
     bool trees = true;
     float height_field_cell = 0.5f; // HeightField base cell size (meters)
+    // Goal 313, reopening goal 80. `threshold = 0` disables caves entirely and restores the exact
+    // 2.5D world -- which is what `test_terrain_sampler.cpp`'s byte-equivalence against
+    // `fill_terrain` runs with, since the mesh path has no cave rule.
+    CaveParams caves{};
 };
 
 // The world as a resolution-independent material field (research/micro-voxel-pivot-log.md §2.5):
@@ -131,8 +137,11 @@ private:
     void trees_touching(const Box& box, std::vector<std::uint32_t>& out) const;
 
     // Column material rule shared by fill_brick and material_at.
-    [[nodiscard]] world::chunk::MaterialID column_material(float surfaceHeight, bool beach, bool grassy,
-                                                           float voxelBottom, float voxelEdge) const noexcept;
+    // Takes the world x/z as well as the column's height, because goal 313's cave carve is a
+    // function of all three coordinates. Both callers already have them.
+    [[nodiscard]] world::chunk::MaterialID column_material(float worldX, float worldZ, float surfaceHeight,
+                                                           bool beach, bool grassy, float voxelBottom,
+                                                           float voxelEdge) const noexcept;
     // fill_brick's surface-straddling path: banded fill of every column from the 8x8 height grid
     // `h` plus four 1 m-offset slope grids.
     void fill_columns(const glm::vec3& origin, float voxelEdge, const std::array<float, 64>& h,

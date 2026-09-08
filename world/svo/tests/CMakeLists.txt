@@ -2,6 +2,7 @@
 set(CMAKE_CXX_CLANG_TIDY "")
 add_executable(world_svo_tests
     test_brick.cpp
+    test_caves.cpp
     test_tree_layout.cpp
     test_height_field.cpp
     test_tree_builder.cpp
