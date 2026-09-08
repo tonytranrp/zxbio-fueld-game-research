@@ -2179,7 +2179,7 @@ than papered over: ten runs spread 5.50–6.51 ms (18%), with consecutive runs 1
 survives the spread and fails a 20% tighten. d3d12's gate is a regression guard only. Goal 273's
 falsification Check is carried by vk — the backend `ctest -L scenario` actually runs.
 
-### The fix this points at, recorded as goal 281
+### The fix this points at, recorded as goal 275e
 
 A gate on wall-clock GPU milliseconds measures the machine as much as the renderer. The
 clock-independent alternative already half-exists: **`mean_primary_steps`**, the mean primary
@@ -2193,5 +2193,5 @@ gates to do what they are actually good for: catching a shader that got slower a
 
 The 30% regression in §23 was caught by this gate and would otherwise have shipped. A gate that
 cries wolf one run in three gets ignored, and then it catches nothing. Widening it to stop flaking
-was not optional; the honest bookkeeping is that the widening cost real sensitivity, and goal 281 is
+was not optional; the honest bookkeeping is that the widening cost real sensitivity, and goal 275e is
 how to get that sensitivity back without buying the noise.
