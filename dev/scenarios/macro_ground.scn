@@ -22,3 +22,19 @@ capture end macro_ground
 
 assert frames > 0
 assert contrast_percent > 6
+
+# ------------------------------------------------- Prompt 005 goal 291: the ALIASING gate
+# A DIFFERENT question from contrast_percent above, and the two move in opposite directions:
+# contrast_percent asks "is there texture", moire_ratio asks "how much of that texture is
+# energy piled against the pixel Nyquist limit rather than spread over resolvable
+# frequencies". A deliberate stipple raises the first and leaves the second alone; aliasing
+# raises both. Gate on both or a change that trades one for the other passes unnoticed.
+#
+# CALIBRATED, and this metric is far tighter than the GPU-time gate above because it is a
+# DETERMINISTIC IMAGE MEASUREMENT rather than a clock reading -- no boost state, no
+# contention. Three consecutive runs:
+#   measured 1.670, spread under 0.05%
+#   with --no-filter-albedo (goal 278 off): 2.367
+# The gate is 2.0 -- about 1.2x the measured value, and it FAILS at 2.367, which is
+# goal 291's own falsification and was verified by running it rather than assumed.
+assert moire_ratio < 2.0

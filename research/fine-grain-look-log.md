@@ -699,3 +699,49 @@ began with `--`, and `catch_discover_tests` registers a test by passing its name
 argument — so **Catch2's own parser read `--look selects an appearance preset` as an unknown
 OPTION**, not a test name. Renaming them fixed it. A test name is an argument; do not start one with
 a dash. Noted at the test site so the next person does not spend the same twenty minutes.
+
+---
+
+## 12. Goal 291's other half — the aliasing gate, and a metric with a real noise floor
+
+`assert moire_ratio < N` now stands on `stress_pose`, `valley_far` and `macro_ground`, which are the
+three poses goal 276 baselined and all three are in `ctest -L scenario`.
+
+### It is calibrated, and the calibration is the interesting part
+
+| pose | shipping (3 runs) | spread | with `--no-filter-albedo` | gate |
+|---|---|---|---|---|
+| `stress_pose` | 1.8426 / 1.8435 / 1.8432 | **0.05%** | 3.814 | **2.2** |
+| `valley_far` | 1.7712 / 1.7710 / 1.7713 | **0.015%** | 4.333 | **2.1** |
+| `macro_ground` | 1.6700 / 1.6702 / 1.6700 | **0.01%** | 2.367 | **2.0** |
+
+**Compare that with Prompt 004's frame-time gate, whose noise floor is ~18% and belongs to the
+laptop's GPU boost state.** This metric has a 0.01–0.05% floor because it is a **deterministic image
+measurement, not a clock reading** — no boost state, no thermal drift, no contention. It is the gate
+Prompt 004's goal 275e wishes it had, arrived at from the other direction.
+
+So the thresholds sit at ~1.2× the measured value, which is 24 000× the noise floor rather than the
+uncomfortable 1.1× that a millisecond gate is forced into.
+
+### Falsified, by running it
+
+Goal 291's Check says *"fails when the [filter] is deliberately disabled — verify it, don't assume
+it."* Verified, on a scenario copy with `--no-filter-albedo` injected:
+
+```
+stress_pose    ASSERTION FAILED: moire_ratio < 2.2  (measured 3.792)
+valley_far     ASSERTION FAILED: moire_ratio < 2.1  (measured 4.245)
+macro_ground   ASSERTION FAILED: moire_ratio < 2.0  (measured 2.361)
+```
+
+**All three fail.** And note the specific falsification changed from the one the prompt anticipated:
+it names *"the mottle's distance fade"*, and §2 measured the mottle at zero contribution, so
+disabling its fade would have proved nothing. The gate is falsified against **the change that
+actually moves the metric**, which is the change it exists to guard.
+
+### And the pairing rule, stated in the scenario files themselves
+
+`contrast_percent` and `moire_ratio` ask opposite questions and a change can trade one for the
+other — §3's albedo filter did exactly that, halving the contrast while halving the aliasing.
+**Both assertions now stand in the same file, so that trade cannot pass unnoticed in either
+direction.**

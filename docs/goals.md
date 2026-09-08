@@ -2511,9 +2511,23 @@ unfiltered quantity is the **material**. That reframing is AL-A's actual content
      march median vk 3.89 vs 3.94 and d3d12 5.32 vs 5.34, both inside noise. Goal 285's stipple adds
      four `sin` per shaded pixel behind a flag and no storage at all. **The shipped default remains
      above the target: vk march median 3.89 ms at `stress_pose`**, against Prompt 004's gate of 4.8.
-291. [x] Goldens re-accepted on both backends for every scenario, since the look changed on purpose.
-     The moiré metric is available as a `moire_ratio` scenario assertion; **it is NOT yet wired as a
-     standing gate with a calibrated threshold**, which is the second half of this goal and is owed.
+291. [x] Goldens re-accepted on both backends for every scenario the change moved, since the look
+     changed on purpose — and **the standing aliasing gate is wired and calibrated**.
+     **Check PERFORMED**: `assert moire_ratio < N` on `stress_pose` (2.2), `valley_far` (2.1) and
+     `macro_ground` (2.0), all three in `ctest -L scenario`.
+     Calibrated from three consecutive runs each: measured **1.8426/1.8435/1.8432**,
+     **1.7712/1.7710/1.7713**, **1.6700/1.6702/1.6700** — a spread of **0.01–0.05%**, because this
+     is a deterministic IMAGE measurement rather than a clock reading. **Contrast that with
+     Prompt 004's frame-time gate, whose ~18% noise floor belongs to the GPU's boost state**: this
+     is the gate goal 275e wishes it had, reached from the other direction.
+     **Falsified by running it, not assumed**: with `--no-filter-albedo` injected, all three fail
+     (3.792, 4.245, 2.361). The specific falsification differs from the one the prompt anticipated
+     — it names the mottle's distance fade, and goal 277 measured the mottle at zero, so disabling
+     it would have proved nothing; the gate is falsified against the change that actually moves
+     the metric.
+     **And `contrast_percent` now stands beside it in the same files**, because the two ask
+     opposite questions and goal 278 traded one for the other — halving the contrast while halving
+     the aliasing. Gating both is what makes that trade impossible to slip through unnoticed.
 292. [x] The three standing defects re-checked — **and two of them are not this renderer's**.
      **Check PERFORMED**: `research/captures/al_standing_defects.png`, viewed.
      **`banding_slope.png` and `sliver_closeup.png` are MESH-PATH captures** — both carry the mesh
