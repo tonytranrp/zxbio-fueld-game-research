@@ -25,7 +25,31 @@ struct SvoWorldOptions {
     int seed = 1337;
     int voxel_size_log2 = -7; // 7.8 mm: sub-centimeter, the pivot's whole point
     int root_size_log2 = 9;   // 512 m region around the camera
+    // Prompt 007 goal 328. THE KNOB IS AN ANGULAR SIZE, and always was: the LOD rule
+    // `target(d) = max(finest, d * finest / lod_radius)` makes target(d)/d constant beyond the
+    // radius, so `lod_radius` is the denominator of a fixed angular voxel size expressed in the
+    // least legible possible units.
+    //
+    // `lod_quality_arcmin` states it directly. **0 means "use lod_radius"**, which is what keeps
+    // --lod-radius a faithful alias rather than an approximation of one: at 0 nothing is
+    // recomputed and the tree is byte-identical to the pre-change build (asserted in
+    // test_lod_quality.cpp).
+    //
+    // The shipped default is 6.71 arcmin, which is exactly what lod_radius = 4.0 has always meant
+    // at a 7.8 mm finest voxel -- stated rather than changed, because changing it is a cost
+    // decision and goal 328 measures that separately.
     float lod_radius = 4.0f;  // full resolution within this distance, halving per doubling beyond
+    float lod_quality_arcmin = 0.0f; // 0 = derive from lod_radius
+
+    /// The radius the builder should actually use: the angular quality when one was asked for,
+    /// otherwise `lod_radius` untouched. One function so the four call sites cannot diverge.
+    [[nodiscard]] float effective_lod_radius() const noexcept {
+        if (lod_quality_arcmin <= 0.0f) {
+            return lod_radius;
+        }
+        const float finest = std::exp2(static_cast<float>(voxel_size_log2));
+        return world::svo::BuildParams::radius_for_quality(finest, lod_quality_arcmin);
+    }
     // Prompt 004 goals 254-256: build the region as a GRID of cells this size instead of one tree.
     // 0 keeps the single tree. 5 is 32 m, the size goal 254's arithmetic settled on: 12 levels per
     // cell against 16 for a 512 m region, which measured 21.7 -> 10.5 octree steps per ray on the

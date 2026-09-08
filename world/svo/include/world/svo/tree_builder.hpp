@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -23,6 +25,25 @@ namespace world::svo {
 struct BuildParams {
     glm::vec3 lod_center{0.0f};
     float lod_radius = 4.0f;
+    // Prompt 007 goal 328. `lod_radius` is not really a distance -- it is the DENOMINATOR of a
+    // constant angular size, because target(d)/d = finest/lod_radius for every d beyond it. So the
+    // knob has always been "how big may a voxel look", expressed in the least legible possible
+    // units. `lod_quality_arcmin()` states it in the units the eye research uses, and
+    // `radius_for_quality()` converts back.
+    //
+    // Today's 4.0 m at a 7.8 mm finest voxel is **6.71 arcmin** -- 6.7x coarser than the 1-arcmin
+    // limit of 20/20 vision. That is the number the shipped default has always meant and nobody
+    // could see.
+    [[nodiscard]] float lod_quality_arcmin(float finestVoxelEdge) const noexcept {
+        return lod_radius <= 0.0f
+                   ? 0.0f
+                   : std::atan(finestVoxelEdge / lod_radius) * (180.0f * 60.0f / 3.14159265358979f);
+    }
+    [[nodiscard]] static float radius_for_quality(float finestVoxelEdge, float arcmin) noexcept {
+        return arcmin <= 0.0f
+                   ? 0.0f
+                   : finestVoxelEdge / std::tan(arcmin * (3.14159265358979f / (180.0f * 60.0f)));
+    }
     bool uniform_lod = false; // full resolution everywhere (tests, tiny regions)
     // Prompt 004 goal 257: build at ONE voxel size instead of a distance ramp. > 0 replaces the
     // distance rule entirely, so the result depends only on this number and not on where the

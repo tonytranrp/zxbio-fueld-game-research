@@ -295,11 +295,29 @@ constexpr std::array kTable{
            .default_text = "9 (512 m)",
            .group = "SVO world",
            .alias = "root-log2"},
+    // Prompt 007 goal 328 keeps this as the DEPRECATED ALIAS. It stays because it appears in
+    // CLAUDE.md and a dozen research logs, and because `--lod-radius 4` must keep producing today's
+    // tree byte-for-byte -- which it does, since a radius set here leaves lod_quality_arcmin at 0
+    // and nothing is recomputed.
     Option{.name = "lod-radius",
            .set = bind<&AppOptions::svo, &SvoWorldOptions::lod_radius>(),
            .kind = ValueKind::Float,
-           .help = "full resolution within this many metres",
+           .help = "DEPRECATED alias for --lod-quality; full resolution within this many metres",
            .default_text = "4",
+           .group = "SVO world"},
+    // NAMED --lod-arcmin, NOT --lod-quality, and the distinction is real rather than a collision
+    // worked around: `--lod-quality` already exists and scales the MARCHER's LOD pixel angle at
+    // shading time, while this sets the BUILDER's target angular voxel size at tree-construction
+    // time. Two different stages, and giving them one name would make "quality" mean two things
+    // depending on which subsystem read it.
+    //
+    // The units are the eye research's: 1 arcmin is 20/20's limit, 0.64 the 94-ppd young-observer
+    // ceiling, and 6.71 is what the shipped default has always been.
+    Option{.name = "lod-arcmin",
+           .set = bind<&AppOptions::svo, &SvoWorldOptions::lod_quality_arcmin>(),
+           .kind = ValueKind::Float,
+           .help = "refine voxels until they subtend this many arcminutes (1 = 20/20's limit)",
+           .default_text = "0 (derive from --lod-radius)",
            .group = "SVO world"},
     Option{.name = "trees",
            .set = bind<&AppOptions::svo, &SvoWorldOptions::trees>(),

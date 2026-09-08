@@ -181,13 +181,13 @@ void SvoWorld::build_job(glm::vec3 camera) {
         // construction (the goal 249 trigger), so a moving camera never revisits one and a
         // stationary camera never rebuilds. It was removed rather than left in -- machinery that
         // provably cannot fire is worse than none, because it reads as coverage.
-        sampler.set_focus(camera, 4.0f * options_.lod_radius);
+        sampler.set_focus(camera, 4.0f * options_.effective_lod_radius());
         const double samplerSeconds =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - samplerStart).count();
 
         world::svo::BuildParams bp;
         bp.lod_center = camera;
-        bp.lod_radius = options_.lod_radius;
+        bp.lod_radius = options_.effective_lod_radius();
         world::svo::BuildStats stats;
 
         // ---- the cell-grid path (goals 254-256) -------------------------------------------------
@@ -264,7 +264,7 @@ void SvoWorld::build_grid_job(const world::svo::TreeGeometry& g,
     // continuous rule made "rebuild what changed" mean "rebuild everything".
     std::vector<int> bands(count);
     for (std::size_t i = 0; i < count; ++i) {
-        bands[i] = world::svo::cell_band(bp.lod_center, grid.coord_of(i), cellEdge, options_.lod_radius);
+        bands[i] = world::svo::cell_band(bp.lod_center, grid.coord_of(i), cellEdge, options_.effective_lod_radius());
     }
 
     // A cell can be carried over when the previous grid had it AND its band is unchanged AND the
@@ -438,7 +438,7 @@ void SvoWorld::start_stream(const world::svo::CellGrid& shape, glm::vec3 camera)
     sp.trees = options_.trees;
     world::svo::TerrainSampler seed(heightmap_, sp,
                                     world::svo::Box{shape.world_min(), shape.world_max()});
-    seed.set_focus(camera, 4.0f * options_.lod_radius);
+    seed.set_focus(camera, 4.0f * options_.effective_lod_radius());
     streamTiers_ = seed.focus_tiers();
 }
 
@@ -451,7 +451,7 @@ void SvoWorld::pump_stream(std::size_t max) {
     sp.trees = options_.trees;
     world::svo::BuildParams bp;
     bp.lod_center = streamCamera_;
-    bp.lod_radius = options_.lod_radius;
+    bp.lod_radius = options_.effective_lod_radius();
 
     const world::svo::CellGrid shape = streamShape_;
     const float cellEdge = shape.cell_edge();
@@ -473,7 +473,7 @@ void SvoWorld::pump_stream(std::size_t max) {
             sampler.adopt_focus(streamTiers_);
             world::svo::BuildParams cellParams = bp;
             cellParams.quantized_voxel_edge = world::svo::band_voxel_edge(
-                world::svo::cell_band(camera, shape.coord_of(index), cellEdge, options_.lod_radius),
+                world::svo::cell_band(camera, shape.coord_of(index), cellEdge, options_.effective_lod_radius()),
                 finest, cellEdge);
             world::svo::BrickTree cell =
                 world::svo::build_tree(sampler, cg, cellParams, nullptr, nullptr);

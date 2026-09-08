@@ -3,6 +3,7 @@ set(CMAKE_CXX_CLANG_TIDY "")
 add_executable(world_svo_tests
     test_brick.cpp
     test_caves.cpp
+    test_lod_quality.cpp
     test_tree_layout.cpp
     test_height_field.cpp
     test_tree_builder.cpp
@@ -18,7 +19,7 @@ add_executable(world_svo_tests
 )
 # detail/tree_builder_impl.hpp: the tests instantiate build_tree for their own analytic samplers.
 target_include_directories(world_svo_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(world_svo_tests PRIVATE world_svo world_generation engine_jobs Catch2::Catch2WithMain project_warnings)
+target_link_libraries(world_svo_tests PRIVATE render_lod world_svo world_generation engine_jobs Catch2::Catch2WithMain project_warnings)
 
 include(Catch)
 catch_discover_tests(world_svo_tests)
