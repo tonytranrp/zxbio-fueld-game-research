@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <memory>
 
+#include "world/generation/field/terrain_field.hpp"
+
 namespace world::generation {
 
 struct HeightmapMinMax {
@@ -17,6 +19,36 @@ struct HeightmapMinMax {
 class HeightmapGenerator {
 public:
     explicit HeightmapGenerator(int seed);
+
+    // Prompt 006 Group AM-A: the same generator, reading a BAKED MACRO FIELD for its
+    // low-frequency shape instead of the low octaves of a noise stack.
+    //
+    // The interface above is unchanged, deliberately -- `height_at` has twelve callers
+    // including a per-tick collision query and the per-brick SIMD grid path, and option (c)
+    // of goal 295 (region-scoped queries) would have touched all of them for no gain. What
+    // changes is only what sits behind it:
+    //
+    //     height(x, z) = macro(x, z)   <- Catmull-Rom from the baked field
+    //                  + detail(x, z)  <- analytic, high-frequency, ALWAYS PRESENT
+    //
+    // Both terms are always present and both are deterministic. That is what distinguishes
+    // this from goal 295's option (b), whose residual is absent until a tile is baked and
+    // whose world therefore has a shape that depends on where the player has been -- a
+    // determinism hazard, and determinism is this pass's first rule.
+    HeightmapGenerator(int seed, std::shared_ptr<const field::TerrainField> macro);
+
+    /// The gradient of the same surface `height_at` returns, in metres per metre.
+    ///
+    /// It exists because several callers already finite-difference `height_at` with their
+    /// OWN epsilon -- TerrainSampler at 1 m, the collider at its own -- so "the slope" is
+    /// three slightly different quantities depending on who asks. This is one answer, and
+    /// it is the analytic derivative of the reconstruction the height came from rather than
+    /// a difference of two samples of it.
+    [[nodiscard]] glm::vec2 slope_at(float worldX, float worldZ) const;
+
+    /// Null until a macro field is attached, which is what the analytic-only constructor
+    /// leaves it as. Exposed so a tool can report which world it is looking at.
+    [[nodiscard]] const field::TerrainField* macro_field() const noexcept;
     ~HeightmapGenerator();
 
     HeightmapGenerator(const HeightmapGenerator&) = delete;

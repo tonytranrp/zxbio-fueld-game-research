@@ -2,6 +2,8 @@
 
 #include <stdexcept>
 
+#include "world/generation/field/field_sampler.hpp"
+
 #include <FastNoise/FastNoise.h>
 
 namespace world::generation {
@@ -70,13 +72,51 @@ FastNoise::SmartNode<> build_terrain_noise() {
 
 } // namespace
 
+// Prompt 006 goal 297: the DETAIL half of the split. The macro field carries everything at and
+// above the 16 m cell size; this carries what a 16 m grid provably cannot, and it is analytic
+// because there is nowhere to bake it that would not be the same noise call again.
+//
+// Two octaves at 50 m and 25 m -- the two the shipped 4-octave stack had below the macro pair --
+// at the same gain, so the summed character matches what the world had before rather than being a
+// new choice made in passing.
+constexpr float kDetailScaleA = 50.0f;
+constexpr float kDetailScaleB = 25.0f;
+constexpr float kDetailAmplitude = 64.0f * 0.25f; // octaves 3 and 4 of a gain-0.5 stack
+
+FastNoise::SmartNode<> build_detail_noise() {
+    auto simplex = new_pinned_node<FastNoise::Simplex>();
+    simplex->SetScale(kDetailScaleA);
+    auto fractal = new_pinned_node<FastNoise::FractalFBm>();
+    fractal->SetSource(simplex);
+    fractal->SetOctaveCount(2);
+    fractal->SetLacunarity(kDetailScaleA / kDetailScaleB);
+    fractal->SetGain(kGain);
+    auto remap = new_pinned_node<FastNoise::Remap>();
+    remap->SetSource(fractal);
+    remap->SetFromMin(kNoiseOutputMin);
+    remap->SetFromMax(kNoiseOutputMax);
+    remap->SetToMin(-kDetailAmplitude);
+    remap->SetToMax(kDetailAmplitude);
+    return remap;
+}
+
 struct HeightmapGenerator::Impl {
-    FastNoise::SmartNode<> root;
+    FastNoise::SmartNode<> root;   // the whole analytic field, when there is no macro field
+    FastNoise::SmartNode<> detail; // the high-frequency half, when there is
+    std::shared_ptr<const field::TerrainField> macro;
     int seed;
 };
 
 HeightmapGenerator::HeightmapGenerator(int seed)
-    : impl_(std::make_unique<Impl>(Impl{build_terrain_noise(), seed})) {}
+    : impl_(std::make_unique<Impl>(Impl{build_terrain_noise(), nullptr, nullptr, seed})) {}
+
+HeightmapGenerator::HeightmapGenerator(int seed, std::shared_ptr<const field::TerrainField> macro)
+    : impl_(std::make_unique<Impl>(
+          Impl{build_terrain_noise(), build_detail_noise(), std::move(macro), seed})) {}
+
+const field::TerrainField* HeightmapGenerator::macro_field() const noexcept {
+    return impl_->macro.get();
+}
 
 HeightmapGenerator::~HeightmapGenerator() = default;
 HeightmapGenerator::HeightmapGenerator(HeightmapGenerator&&) noexcept = default;
@@ -103,7 +143,45 @@ HeightmapMinMax HeightmapGenerator::generate_column_heights_spaced(float xStart,
 }
 
 float HeightmapGenerator::height_at(float worldX, float worldZ) const {
-    return impl_->root->GenSingle2D(worldX, worldZ, impl_->seed);
+    if (impl_->macro == nullptr) {
+        return impl_->root->GenSingle2D(worldX, worldZ, impl_->seed);
+    }
+    // macro + detail, both always present. See the header for why this is a SUM and not a
+    // fallback: a term that is absent until something is baked makes the world's shape depend on
+    // where the player has been.
+    const field::FieldSampler macro{*impl_->macro, field::Plane::Elevation};
+    return macro.value_at(worldX, worldZ) + impl_->detail->GenSingle2D(worldX, worldZ, impl_->seed);
+}
+
+glm::vec2 HeightmapGenerator::slope_at(float worldX, float worldZ) const {
+    // Without a macro field there is nothing analytic to differentiate, so this falls back to a
+    // central difference at 1 m -- which is what TerrainSampler already did, kept here so the two
+    // paths answer the same question rather than differing by which constructor was used.
+    if (impl_->macro == nullptr) {
+        constexpr float kEps = 0.5f;
+        const float dx = height_at(worldX + kEps, worldZ) - height_at(worldX - kEps, worldZ);
+        const float dz = height_at(worldX, worldZ + kEps) - height_at(worldX, worldZ - kEps);
+        return glm::vec2{dx / (2.0f * kEps), dz / (2.0f * kEps)};
+    }
+    const field::FieldSampler macro{*impl_->macro, field::Plane::Elevation};
+    const glm::vec2 macroGradient = macro.gradient_at(worldX, worldZ);
+    // The detail term has no closed-form derivative here (it is inside FastNoise2), so its
+    // contribution is a central difference -- at 1 m, which is NOT an arbitrary choice: CLAUDE.md
+    // records that the walkable-slope decision already reads "the ANALYTIC heightfield by central
+    // difference at 1 m", so this is the existing, documented behaviour kept rather than a new
+    // number introduced in passing.
+    //
+    // A first version used 6.25 m ("half the finest detail wavelength"), reasoning from the signal
+    // rather than from the consumer. It is the wrong scale: a slope query asks "is this walkable",
+    // which is a question about the metre the body occupies, and 6.25 m smoothed away most of the
+    // detail term's contribution -- measured as a 0.9 disagreement with a central difference of
+    // height_at over the same ground.
+    constexpr float kDetailEps = 1.0f;
+    const float dx = impl_->detail->GenSingle2D(worldX + kDetailEps, worldZ, impl_->seed) -
+                     impl_->detail->GenSingle2D(worldX - kDetailEps, worldZ, impl_->seed);
+    const float dz = impl_->detail->GenSingle2D(worldX, worldZ + kDetailEps, impl_->seed) -
+                     impl_->detail->GenSingle2D(worldX, worldZ - kDetailEps, impl_->seed);
+    return macroGradient + glm::vec2{dx / (2.0f * kDetailEps), dz / (2.0f * kDetailEps)};
 }
 
 } // namespace world::generation

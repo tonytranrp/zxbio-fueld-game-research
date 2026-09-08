@@ -7,6 +7,7 @@ add_executable(world_generation_tests
     test_heightmap_smoothness.cpp
     test_ground_query.cpp
     test_tree_skeleton.cpp
+    test_terrain_field.cpp
 )
 target_link_libraries(world_generation_tests PRIVATE world_generation world_meshing engine_jobs Catch2::Catch2WithMain project_warnings)
 
