@@ -22,7 +22,8 @@ struct Name {
 struct CameraLens {
     float fov_y_radians = 1.2217305f; // 70 degrees
     float near_plane = 0.1f;
-    float far_plane = 2000.0f;
+    // Prompt 007 goal 330: matches render::interface::Camera, which carries the arithmetic.
+    float far_plane = 4096.0f;
 };
 
 } // namespace engine::ecs
