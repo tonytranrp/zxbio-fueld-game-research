@@ -1,5 +1,7 @@
 #include "world/generation/field/macro_pipeline.hpp"
 
+#include "world/generation/field/fluvial.hpp"
+
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -74,8 +76,45 @@ void stage_continents(TerrainField& out, const MacroParams& params) {
     }
 }
 
+// Group AM-B stages 3a-3e. Split into named stages rather than one "erode" call so that
+// --field-stages N can stop between them: goal 306's before/after capture is exactly "run
+// everything up to diffusion, then run diffusion", and a single stage could not express that.
+void stage_fill_depressions(TerrainField& out, const MacroParams&) { priority_flood(out); }
+
+void stage_flow(TerrainField& out, const MacroParams&) {
+    const FlowNetwork net = build_flow_network(out);
+    accumulate_flow(out, net);
+}
+
+void stage_incise(TerrainField& out, const MacroParams& params) {
+    FluvialParams p;
+    p.sea_level = params.sea_level;
+    // The network is rebuilt here rather than carried from the previous stage: incision changes
+    // elevations, so the receivers it started from are stale by the time it finishes. Rebuilding
+    // between incision passes is what lets a valley capture a neighbouring one -- drainage
+    // reorganisation, which is a real landscape behaviour and not an implementation detail.
+    for (int pass = 0; pass < 4; ++pass) {
+        priority_flood(out);
+        const FlowNetwork net = build_flow_network(out);
+        accumulate_flow(out, net);
+        FluvialParams sub = p;
+        sub.steps = p.steps / 4;
+        incise_stream_power(out, net, sub);
+    }
+}
+
+void stage_diffuse(TerrainField& out, const MacroParams& params) {
+    FluvialParams p;
+    p.sea_level = params.sea_level;
+    diffuse_hillslopes(out, p);
+}
+
 constexpr std::array kStageTable{
     Stage{"continents", &stage_continents},
+    Stage{"fill_depressions", &stage_fill_depressions},
+    Stage{"flow", &stage_flow},
+    Stage{"incise", &stage_incise},
+    Stage{"diffuse", &stage_diffuse},
 };
 
 } // namespace

@@ -235,3 +235,99 @@ detail.** That is precisely what this group was for: the architecture changed an
 **Both halves still show the noise cones the prompt complains about, and that is correct at this
 point.** The physics that removes them is goals 300+; putting it in the same commit would have meant
 that a wrong-looking world afterwards had two candidate causes.
+
+---
+
+## 5. The fluvial core (goals 300, 303–307)
+
+`world/generation/field/fluvial.{hpp,cpp}` — priority-flood, D8 flow routing and accumulation,
+implicit Braun–Willett stream-power incision, linear hillslope diffusion. Eight acceptance tests in
+`test_fluvial.cpp`, 16,840 assertions.
+
+### Goal 300 — the determinism strategy, and it is "serial", not as a concession
+
+The prompt asks for this before the first solver and warns that retrofitting determinism onto a
+parallel reduction costs more than designing for it. **Every stage is serial, and each has a
+specific reason rather than one general one:**
+
+- **Priority-flood is a priority queue**: the order cells pop in *is* the algorithm. A parallel
+  version needs Cordonnier's basin-graph decomposition to be *correct*, not merely fast.
+- **Flow accumulation adds each cell into its receiver in stack order.** Two threads adding into
+  one receiver is a float reduction whose result depends on scheduling — exactly rule 1's hazard.
+- **The implicit incision sweep reads each node's receiver after that receiver has been updated.**
+  That dependency is *why* the method is unconditionally stable; breaking it to parallelise would
+  break the stability, not just the reproducibility.
+
+And the cost says there is nothing to buy: **the whole fluvial core runs in 0.41 s over 250,000
+cells** (fill 0.034, flow 0.034, incise 0.312, diffuse 0.034).
+`concurrency-and-parallelism.md` rule 36 says check for `std::execution::par` before reaching for a
+pool; the honest answer is that neither is warranted, and a serial pass that is bit-identical *by
+construction* beats a parallel one that needs a test to prove it. The determinism test asserts
+`a == b` on the raw float vectors — byte-identical, not approximately equal.
+
+### Goal 304 — D8, and why, given the research says D∞ is smoother
+
+D8 is chosen and the reasons are recorded rather than defaulted:
+
+1. **Every downstream consumer wants a single receiver.** The implicit SPIM sweep solves `h_i`
+   against one `h_receiver`; a partitioned receiver turns that O(n) solve into a linear system.
+2. **The artefact D8 is criticised for** — diagonal striping in accumulation on smooth hillslopes —
+   is suppressed here by the diffusion stage and by the channel threshold, which discards exactly
+   the low-accumulation cells where it shows.
+3. **D∞ is not the bias-free alternative it is usually presented as**: the 2025 re-evaluation the
+   research cites measures it carrying its own ~25% cardinal/ordinal bias.
+
+### The tool that had to exist before any of it could be judged (goal 318, early)
+
+**The first attempt to evaluate the erosion was a rendered game frame**, `--field-stages 1` against
+`--field-stages 5`, and the difference was barely visible
+(`research/captures/am_erosion_ingame.png`). That is not evidence the erosion did nothing — **it was
+measuring the wrong surface.** The macro field is 16 m cells and the playable region is 32 cells
+across, so what fills a game frame at that pose is mostly the **analytic detail term, which no stage
+erodes**.
+
+`tools/terrain_dump` dumps the field itself in false colour with §9's statistics printed beside it.
+`research/captures/am_fluvial_field.png`, viewed, and it settles the question in one look:
+
+- **Left, continents only**: an isotropic speckle of small islands. No continents, no coherent
+  landmasses — the noise-terrain failure the research names.
+- **Middle, after the full pipeline**: **visibly consolidated** into larger connected masses with
+  smoothed interiors and coherent relief. The erosion is real.
+- **Right, flow accumulation**: **a genuine dendritic river network**, branching across the whole
+  field. Unmistakably tree-structured rather than noise. That is the thing this pass exists to
+  produce and it is there.
+
+### Two measured negatives, both stated with the number
+
+**Goal 307's Check asks which side of the drainage-density band the first attempt lands on, "because
+that is the finding". It lands on the "no rivers" side.**
+
+| A_c | measured drainage density | research band |
+|---|---|---|
+| 0.1 km² | **0.86 km/km²** | 2–12 |
+| 1.0 km² | 0.24 | 2–12 |
+| 5.0 km² | 0.08 | 2–12 |
+
+Measured at **30 m-equivalent** by striding the 16 m field, because the band is quoted at that
+resolution and measuring at 16 m would bias it high. The network in the flow dump is clearly real,
+so this is not "no rivers" in the literal sense — it is **too few channel cells per unit area**,
+which points at the incision budget rather than at the routing: 40 steps × 1000 yr = 40 kyr, where a
+landscape reaches stream-power steady state over millions.
+
+**And the hypsometry is not Earth's**: land fraction **50.8%** against §9.3's ~29% target, moving
+only to 53.7% after erosion. That is expected and is goal 301's job — stage 1 is currently a
+symmetric noise field cut at zero, with no separate ocean and land crust and no hypsometric
+construction. **Measured now so goal 301 has a before number.**
+
+### What is done and what is not, in this group
+
+**Done**: 300 (determinism strategy and its test), 303 (priority-flood; zero internal basins
+asserted over every cell, and a companion test that the fill only ever *raises* terrain), 304 (D8,
+accumulation exactly conservative to 1e-4 over 16,384 cells, plus a no-cycles assertion), 305
+(implicit incision; slope–area exponent measured negative), 306 (diffusion; worst ridge curvature
+falls, and L_c is derived from D/K rather than written down).
+
+**Not done, and named**: 301 (Earth hypsometry and orogenic belts — the land fraction above is its
+before number), 302 (Smith–Barstad orographic climate; needs an FFT and a written case for it),
+307's tuning (the density is measured and outside the band; the band is not yet met), 308 (the
+constant-drop t-test), 309 (meanders, base level and deltas).
