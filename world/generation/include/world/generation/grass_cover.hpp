@@ -98,6 +98,24 @@ template <typename HeightFn, typename SlopeFn, typename BiomeFn>
 grass_tufts_in_patch(int seed, glm::vec2 origin, const GrassCoverParams& params, HeightFn&& height_at,
                      SlopeFn&& slope_at, BiomeFn&& biome_at);
 
+/// ONE blade of one tuft, as a segment. Prompt 007 goal 340's whole mechanism.
+///
+/// Both tiers call THIS -- the voxelizer to build a capsule, the raster overlay to build an
+/// instance -- so "the same tuft is in the same place in both tiers" is true by construction rather
+/// than by two pieces of arithmetic being kept in step by hand. That was the first version: the
+/// overlay re-derived the fan from the tuft's id with its own copy of the turn angle, and two copies
+/// of a formula is exactly how a boundary ring appears six months later.
+struct GrassBladeSegment {
+    glm::vec3 start{0.0f};
+    glm::vec3 end{0.0f};
+    float radius = 0.0f;
+};
+[[nodiscard]] GrassBladeSegment grass_blade(const GrassTuft& tuft, int bladeIndex, int bladeCount,
+                                            const GrassCoverParams& params) noexcept;
+
+/// The wind phase a tuft animates with, shared by every tier that moves.
+[[nodiscard]] float grass_wind_phase(const GrassTuft& tuft) noexcept;
+
 /// The patch as a volume the sampler can voxelize, with every primitive carrying `GrassBlade`.
 [[nodiscard]] TreeVolume grass_patch_volume(std::span<const GrassTuft> tufts, const GrassCoverParams& params);
 

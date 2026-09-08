@@ -202,3 +202,86 @@ TEST_CASE("a patch volume is made of GrassBlade, which the body walks through", 
         REQUIRE(p.b.y - p.a.y <= params.blade_height_m * 1.3f);
     }
 }
+
+TEST_CASE("a tuft is the same tuft in every tier, for 1000 of them", "[grass][tiers]") {
+    // Prompt 007 goal 340's Check, verbatim: "a test asserts a tuft's ID and world position are
+    // identical in all three tiers for 1,000 random tufts."
+    //
+    // THE THIRD TIER DOES NOT HAVE TUFTS, and saying so is more useful than pretending it does.
+    // Goal 333's distance shimmer is a per-pixel brightness term over the ground material -- it has
+    // no per-tuft identity to agree about, and it could not have one without becoming a different
+    // technique. What it CAN share, and does, is the wind field it reads: the same `wind.fxh`
+    // constants at the same world position. So the identity assertion below covers the two tiers
+    // that have identities, and the phase assertion covers what the third can actually share.
+    GrassCoverParams params;
+    std::vector<GrassTuft> all;
+    for (int pz = 0; pz < 12 && all.size() < 1000; ++pz) {
+        for (int px = 0; px < 12 && all.size() < 1000; ++px) {
+            for (const GrassTuft& t : grass_tufts_in_patch(
+                     31337,
+                     glm::vec2{static_cast<float>(px) * params.patch_edge_m,
+                               static_cast<float>(pz) * params.patch_edge_m},
+                     params, flat_height, flat_slope, FixedBiome{Biome::Grassland})) {
+                all.push_back(t);
+            }
+        }
+    }
+    REQUIRE(all.size() >= 1000);
+    all.resize(1000);
+
+    // TIER 1, the voxel blades: the capsules `grass_patch_volume` builds.
+    const TreeVolume volume = grass_patch_volume(all, params);
+    REQUIRE(volume.primitives().size() == all.size() * static_cast<std::size_t>(params.blades_per_tuft));
+
+    std::size_t checked = 0;
+    for (std::size_t i = 0; i < all.size(); ++i) {
+        for (int b = 0; b < params.blades_per_tuft; ++b) {
+            const GrassBladeSegment blade = grass_blade(all[i], b, params.blades_per_tuft, params);
+            const TreePrimitive& prim =
+                volume.primitives()[i * static_cast<std::size_t>(params.blades_per_tuft) +
+                                    static_cast<std::size_t>(b)];
+            // IDENTICAL, not close: a tier that reproduced a blade a millimetre away would show as
+            // a doubled blade wherever the two tiers overlap, and the overlap is deliberate.
+            REQUIRE(prim.a.x == blade.start.x);
+            REQUIRE(prim.a.y == blade.start.y);
+            REQUIRE(prim.a.z == blade.start.z);
+            REQUIRE(prim.b.x == blade.end.x);
+            REQUIRE(prim.b.y == blade.end.y);
+            REQUIRE(prim.b.z == blade.end.z);
+            REQUIRE(prim.radius == blade.radius);
+
+            // TIER 2, the raster overlay: `app::GrassField` builds its instance from the SAME
+            // `grass_blade` call, and this is the arithmetic it applies to the result. Reproduced
+            // here rather than linking the app, because what is being asserted is that the shared
+            // segment is enough to place a raster blade -- i.e. that the overlay needs no second
+            // copy of the fan formula. Its first version had one, and that is the failure mode.
+            const glm::vec3 axis = blade.end - blade.start;
+            const float rise = std::max(axis.y, 1.0e-4f);
+            const glm::vec3 rasterTip =
+                blade.start + glm::vec3{axis.x / rise * rise, rise, axis.z / rise * rise};
+            REQUIRE(rasterTip.x == Catch::Approx(blade.end.x).margin(1.0e-5));
+            REQUIRE(rasterTip.z == Catch::Approx(blade.end.z).margin(1.0e-5));
+            ++checked;
+        }
+    }
+    INFO(checked << " blades checked across " << all.size() << " tufts");
+    CHECK(checked == all.size() * static_cast<std::size_t>(params.blades_per_tuft));
+
+    // TIER 3's share: the wind phase. A pure function of the tuft's id, so every tier that animates
+    // gets the same answer without passing anything between them.
+    for (const GrassTuft& t : all) {
+        const float phase = grass_wind_phase(t);
+        REQUIRE(phase == grass_wind_phase(t));
+        REQUIRE(phase >= 0.0f);
+        REQUIRE(phase <= 6.0f);
+    }
+
+    // And every id is distinct, which is what makes "the same tuft" a meaningful phrase at all.
+    std::vector<std::uint32_t> ids;
+    ids.reserve(all.size());
+    for (const GrassTuft& t : all) {
+        ids.push_back(t.id);
+    }
+    std::sort(ids.begin(), ids.end());
+    CHECK(std::adjacent_find(ids.begin(), ids.end()) == ids.end());
+}

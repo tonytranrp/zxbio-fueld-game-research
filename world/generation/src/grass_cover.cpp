@@ -46,6 +46,29 @@ float plants_per_m2(Biome b) noexcept {
     return ground_cover_of(b).plants_per_m2;
 }
 
+GrassBladeSegment grass_blade(const GrassTuft& tuft, int bladeIndex, int bladeCount,
+                              const GrassCoverParams& params) noexcept {
+    const int count = std::max(1, bladeCount);
+    // Blades fan around the tuft's centre at a fixed angular spacing, offset by the tuft's OWN id --
+    // deterministic, and no two neighbouring tufts point the same way.
+    const float turn = 6.2831853f * (static_cast<float>(bladeIndex) / static_cast<float>(count) +
+                                     static_cast<float>(tuft.id & 0xFFu) / 256.0f);
+    const float rx = params.tuft_radius_m * std::cos(turn);
+    const float rz = params.tuft_radius_m * std::sin(turn);
+    GrassBladeSegment seg;
+    seg.start = tuft.base + glm::vec3{rx * 0.25f, 0.0f, rz * 0.25f};
+    seg.end =
+        tuft.base + glm::vec3{rx + tuft.lean_x * tuft.height, tuft.height, rz + tuft.lean_z * tuft.height};
+    seg.radius = params.blade_radius_m;
+    return seg;
+}
+
+float grass_wind_phase(const GrassTuft& tuft) noexcept {
+    // Shared for the same reason the geometry is: the voxel tier does not move, but the overlay and
+    // the shading shimmer both do, and they must agree about WHEN a given tuft is leaning.
+    return static_cast<float>(tuft.id & 0xFFFFu) / 65535.0f * 6.0f;
+}
+
 TreeVolume grass_patch_volume(std::span<const GrassTuft> tufts, const GrassCoverParams& params) {
     if (tufts.empty()) {
         return {};
@@ -59,18 +82,14 @@ TreeVolume grass_patch_volume(std::span<const GrassTuft> tufts, const GrassCover
     const auto blades = std::max(1, params.blades_per_tuft);
     for (const GrassTuft& tuft : tufts) {
         for (int b = 0; b < blades; ++b) {
-            // Blades fan around the tuft's centre at a fixed angular spacing, offset by the tuft's
-            // own id -- deterministic, and no two neighbouring tufts point the same way.
-            const float turn = 6.2831853f * (static_cast<float>(b) / static_cast<float>(blades) +
-                                             static_cast<float>(tuft.id & 0xFFu) / 256.0f);
-            const float rx = params.tuft_radius_m * std::cos(turn);
-            const float rz = params.tuft_radius_m * std::sin(turn);
+            // THE SHARED CALL (goal 340). The raster overlay builds its instance from this same
+            // function, so the two tiers cannot place the same tuft's blade in two places.
+            const GrassBladeSegment blade = grass_blade(tuft, b, blades, params);
             SkeletonSegment seg;
             seg.parent = -1; // every blade is its own root; nothing walks this skeleton's hierarchy
-            seg.start = tuft.base + glm::vec3{rx * 0.25f, 0.0f, rz * 0.25f};
-            seg.end = tuft.base +
-                      glm::vec3{rx + tuft.lean_x * tuft.height, tuft.height, rz + tuft.lean_z * tuft.height};
-            seg.radius = params.blade_radius_m;
+            seg.start = blade.start;
+            seg.end = blade.end;
+            seg.radius = blade.radius;
             seg.leaf_count = 0.0f; // no leaf clouds: a blade IS the geometry
             skeleton.segments.push_back(seg);
         }

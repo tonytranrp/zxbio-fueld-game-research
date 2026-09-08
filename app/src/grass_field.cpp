@@ -69,24 +69,18 @@ void GrassField::refresh(glm::vec3 camera) {
                 }
                 ++tufts_;
                 for (std::size_t b = 0; b < blades; ++b) {
-                    // The same fan the voxel tier builds, from the same id and the same arithmetic
-                    // (world/generation/grass_cover.cpp's `grass_patch_volume`). Two tiers drawing
-                    // the same tuft in two different places is exactly the ring goal 340 forbids.
-                    const float turn = 6.2831853f * (static_cast<float>(b) / static_cast<float>(blades) +
-                                                     static_cast<float>(tuft.id & 0xFFu) / 256.0f);
+                    // THE SHARED CALL (goal 340). The voxel tier builds its capsule from this same
+                    // function, so the two tiers cannot place the same tuft's blade in two places.
+                    const world::generation::GrassBladeSegment seg = world::generation::grass_blade(
+                        tuft, static_cast<int>(b), static_cast<int>(blades), cover);
+                    const glm::vec3 axis = seg.end - seg.start;
                     render::diligent::GrassBladeInstance inst;
-                    inst.base_height =
-                        glm::vec4(tuft.base.x + 0.25f * cover.tuft_radius_m * std::cos(turn), tuft.base.y,
-                                  tuft.base.z + 0.25f * cover.tuft_radius_m * std::sin(turn), tuft.height);
-                    // The lean carries the fan direction as well as the tuft's own tilt, so a raster
-                    // blade ends where the voxel capsule of the same index ends.
-                    inst.lean_width_phase =
-                        glm::vec4(tuft.lean_x + cover.tuft_radius_m * std::cos(turn) / tuft.height,
-                                  tuft.lean_z + cover.tuft_radius_m * std::sin(turn) / tuft.height,
-                                  2.0f * cover.blade_radius_m,
-                                  // A per-tuft wind phase, from the same id: neighbours are not in
-                                  // lockstep, and the offset is reproducible in every tier.
-                                  static_cast<float>(tuft.id & 0xFFFFu) / 65535.0f * 6.0f);
+                    inst.base_height = glm::vec4(seg.start, axis.y);
+                    // The raster blade's lean is the shared segment's own horizontal run over its
+                    // rise, so its tip lands where the capsule's does.
+                    const float rise = std::max(axis.y, 1.0e-4f);
+                    inst.lean_width_phase = glm::vec4(axis.x / rise, axis.z / rise, 2.0f * seg.radius,
+                                                      world::generation::grass_wind_phase(tuft));
                     blades_.push_back(inst);
                 }
             }
