@@ -488,3 +488,126 @@ implemented and are not needed by anything measured here.
 `SvoRenderer::Settings` gained three fields this pass and now has more than twenty. The `--look`
 preset collapse is **not implemented**; the individual knobs all work and are in `--help`. Recorded
 as owed, not as done.
+
+---
+
+## 6. Cost, regression and what this pass did not do (goals 290–294)
+
+### 290 — the cost table
+
+| option | bucket (`release-codegen-and-tradeoffs.md` §1) | GPU | memory |
+|---|---|---|---|
+| **per-node average albedo** (278) | **free** | vk 3.89 vs 3.94 ms, d3d12 5.32 vs 5.34 — noise | **zero** (unused header bits) |
+| **directional stipple** (285) | **free** | four `sin` per shaded pixel, behind a flag | **zero** (spare cbuffer slots + a `MaterialDef` field) |
+| a second attribute word (278, **rejected**) | pay-to-save | — | ~5.0 MB — measured, then not taken |
+
+**The shipped default stays inside Prompt 004's budget**: vk march median **3.89 ms** at
+`stress_pose` against that pass's gate of 4.8 ms.
+
+### 291 — goldens, and the half that is owed
+
+Goldens re-accepted on both backends for every scenario, because the look changed on purpose.
+`moire_ratio` is available as a scenario assertion and appears in every harness report.
+
+**The standing gate is NOT wired**, and it needs a calibration this pass has not done: a threshold
+set above the measured noise floor, the way Prompt 002 goal 217 calibrated the image metric, plus
+the falsification the goal asks for (it must fail when the filter is deliberately disabled). Owed.
+
+### 293 — the backends agree
+
+| change | vk | d3d12 | difference |
+|---|---|---|---|
+| goal 278's filtered albedo | 1.79963 | 1.80010 | **0.03%** |
+| goal 285's stipple | 1.040 | 1.019 | 2.0% |
+
+**No FXC errors through either change**, which is the check that matters rather than a formality:
+goal 285 moved a `round` to a `floor` and added two new bit-field unpackings, and bit manipulation
+plus rounding is precisely where these two compilers have diverged in this repo before (X3500).
+
+### 294 — what this pass did not do
+
+**Named, with a Check each, in `docs/goals.md` Group AL:** goal 287 (close-range edge quality with
+and without TAA), **goal 288 (the reference reproduced side by side — which the prompt calls "the
+deliverable of this prompt")**, goal 289 (the `--look` presets), goal 292 (the three standing
+defects re-checked), 291's gate, and the two the stipple opened — 285a (the fixed-slope instrument
+that would make `--stipple-period` absolute) and 285b (applying the grain post-resolve so the
+owner's 3× survives TAA).
+
+**And the four standing decisions the prompt requires be honoured or reopened with evidence:**
+
+- **Textures / an asset pipeline: still decided against, and this pass added no pressure to reopen.**
+  The stipple is procedural and the albedo filter is a per-node average computed at build time;
+  neither wants an authored image.
+- **SSAO / a G-buffer: goal 41's gate is *"reopen with textures or a real G-buffer need"*, and the
+  answer is still no.** This is worth stating rather than skipping, because a filtered-NDF approach
+  *would* arguably have been a G-buffer need — and that is not what shipped. The filtering here is
+  per-node and lives in the octree; nothing was added that wants a screen-space buffer.
+- **Path tracing / GI: still excluded, and the reasoning is now better evidenced than when it was
+  made.** `research/micro-voxel-creators-research.md` confirms from Lin's own text that his method
+  *is* a real-time path tracer with 5-bounce GI, so "make it look like Lin" cannot mean "copy Lin's
+  method" at this budget. The gap is deliberate.
+- **ACES, RG16 normals, and fog converging on the sky gradient**: untouched, and nothing here bears
+  on them.
+
+**NAADF's 32-frame history**: measured free and deliberately not adopted — see §4's goal 280.
+
+---
+
+## 7. The honest state of this prompt
+
+**Answered.** The aliasing half. The metric exists, is falsifiable and is validated at 9.51×
+separation; the cause is attributed to a term nobody had named, with every named candidate measured
+at zero; the fix is free in both memory and GPU time; both backends agree to 0.03%; 335/335 tests.
+
+**Half-answered.** The grain. A deliberate, world-locked, per-material, directional hatch exists and
+reads as one — but its central claim, *constant apparent frequency with distance*, is **not
+verified**, because the instrument that would verify it does not exist. Saying "the design claims it"
+is exactly what goal 285's Check forbids.
+
+**Not answered.** Goal 288 — the side-by-side against the reference at the finer grain. That is the
+image the owner asked for and it is the one thing this pass most owed him. The measurements to aim
+it exist now (10.67 px, 5.4% RMS, 641× anisotropy at 30–45°, stone only); the pose match and the
+capture do not.
+
+**And the number that should temper all of it**: with TAA on, at `stress_pose`, the frame now
+measures **1.024 against the reference capture's 1.144** — it is *smoother* than the target, not
+merely less aliased than before. The pass removed more texture than it put back. Goal 288 is where
+that becomes visible, and it is the first thing the next pass should do.
+
+---
+
+## 8. Goal 288 — the reference, side by side
+
+`research/captures/al_reference_side_by_side.png`, committed and viewed. This is the capture the
+prompt calls *"the deliverable of this prompt"*, and §7 above was written before it existed — it is
+left standing as written, because "not answered" was the honest state at that moment and revising it
+away would hide how the pass actually went.
+
+**The pose was chosen twice.** First for matching *composition* — water, shoreline, green slopes and
+exposed stone in one frame — which produced a wide aerial view whose terrain was about **four times
+smaller on screen** than the reference's. **No grain comparison is meaningful across a 4× scale
+difference**, so it was re-shot closer, at a matching apparent scale.
+
+**What matched:**
+
+- **The stone carries a fine, dense, directional diagonal hatch** that reads as the same *kind of
+  mark* as the reference's. This is the thing the owner asked for and it is there.
+- **The grass is broad and calm, with no stipple at all**, and the stipple is on **stone only** —
+  which is the arrangement 284 measured in the reference rather than a choice.
+- No individual voxel reads as a cube at this distance in either image.
+
+**What did not match, separated by whose problem it is:**
+
+- **The forms.** Ours is a smooth cone; the reference has rounded organic shapes with real
+  large-scale structure. **This is Prompt 006's subject and the prompt is explicit that this
+  comparison must not be used to judge it.** Recorded, not fixed.
+- **Tonal variation within the stone.** The reference's rock has light and dark patches at a scale
+  well above the hatch; ours is more uniform. Not investigated.
+- **The reference's green carries a red speckle** — that is its own *aliasing*, the artefact this
+  pass removed, and ours deliberately lacks it. Worth stating plainly: **on this axis ours is
+  cleaner than the target**, and "match the reference exactly" would mean putting a defect back.
+
+**Verdict.** The grain question this pass exists to answer is answered: the mark is reproduced, on
+the right material, at a visible amplitude, and without the aliasing that used to accompany it.
+What separates the two images now is **form**, not grain — which is the correct hand-off to
+Prompt 006 and is the most useful thing this comparison establishes.

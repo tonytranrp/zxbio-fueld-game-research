@@ -482,6 +482,52 @@ deltas ONLY:
   `ctest ... -LE scenario`.
 
 
+## The look (2026-09-07, Prompt 005 Group AL) -- operational deltas
+
+Full record: `research/fine-grain-look-log.md`; what each appearance term is and what filters it:
+`docs/the-look.md`. Machine-relevant deltas ONLY:
+
+- **`voxel_harness --moire FILE.png [--moire-crop-top N]`** measures the ALIASING metric on any PNG,
+  with no GPU and no scenario. `--verify-frame`'s local contrast answers a DIFFERENT question and
+  cannot do this job -- a deliberate stipple and a field of moire both raise it. The two move in
+  OPPOSITE directions; report both or the report is misleading.
+  Validated: the owner's target capture **1.144**, the frame he complained about **10.877**,
+  **separation 9.51x**. Below a carrier floor it reports `n/a` rather than a number -- a textureless
+  frame scores 4.57 on numerical noise, so a caller MUST check `valid`.
+- **Every attribution number in that log is measured with TAA OFF**, because that is what the
+  golden-comparing scenarios use. TAA off is NOT what ships, and with TAA on the albedo filter's
+  benefit at `stress_pose` is **6%, not 53%**. When measuring a shading change, use
+  `tools/svo_render` (which has no TAA) for attribution and the app for the shipping answer, and say
+  which one a number came from.
+- **New flags**: `--filter-albedo`/`--no-filter-albedo` (goal 278, on by default), `--stipple` /
+  `--no-stipple`, `--stipple-amount F` (default 2.5), `--stipple-period F` (default **7.0**).
+  `tools/svo_render` additionally has `--mottle`/`--no-mottle`, `--flat-albedo` and
+  `--filter-albedo` -- the bisection handles, and `--flat-albedo` is the one that found goal 277's
+  answer because every other toggle removes a term applied AFTER the material is chosen.
+- **`--stipple-period` is a RELATIVE knob, not an absolute one.** The delivered screen period is not
+  verified: measured on a landscape pose it reads 25.6 / 32.0 / 18.3 / 32.0 px for monotonically
+  increasing requests, because such a pose spans many distances at once and the quantity does not
+  exist there. Goal 285a builds the fixed-slope instrument that would make it absolute.
+- **A NODE HEADER'S BITS 10-15 AND 24-31 ARE NO LONGER FREE**: they hold the node's area-weighted
+  average albedo, R4 G6 B4 (`tree_layout.hpp`'s `pack_node_albedo`/`node_albedo`). `brick.hpp`,
+  `tree_builder_impl.hpp`, `ray_trace.cpp` and `svo_march.psh.hlsl` change together, and the
+  7,000-ray oracle is the check.
+- **`g_Materials[i].w` now carries TWO values**: the shading model in its integer part and the
+  material's stipple amplitude in its fraction. HLSL reads the model with **`floor`**, never
+  `uint(w + 0.5)` -- rounding would push a large amplitude into the next shading model.
+- **`g_WaveParams.zw` are no longer spare** (stipple amount and period). They were chosen precisely
+  BECAUSE they already existed: a field that does not move cannot repeat Prompt 004's cbuffer
+  field-ORDER trap, which a size `static_assert` cannot catch and whose symptom was an empty world.
+- **`MaterialDef` gained a `Stipple` component**, so a new material must answer for its hatch
+  amplitude or it does not compile. Stone 0.076 (measured off the reference capture), dirt 0.030,
+  everything else 0.
+- **New baseline at `stress_pose`, vk, shipping (TAA on)**: moire ratio **1.04**, local contrast
+  **8.9%**, GPU march median **3.89 ms**. Local contrast fell from ~18% -- the filter removes texture,
+  which is what a filter does, and the stipple is what pays it back.
+- **338 tests** (335 unit + the scenario set); four of the new ones are the moire metric's own, and
+  two of those exist to pin limitations rather than features.
+
+
 ## Phase status
 
 **Phase 0 (repo scaffold + dependency fetch/build smoke test): DONE.** Clean configure+build

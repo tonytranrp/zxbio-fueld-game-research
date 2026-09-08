@@ -446,6 +446,71 @@ about variance**, and that reframing is why the pass is shaped the way it is.
   found** — the honest reading is that it stayed unexplored because AK-C/AK-D consumed the structural
   budget, not because it lost an argument.
 
+## Prompt 005 — the look, half answered (Group AL, goals 276–294)
+
+Full reasoning: `research/fine-grain-look-log.md`. What each appearance term is and what filters it:
+[`docs/the-look.md`](the-look.md).
+
+**Current state.** The moiré is measured rather than argued about, and the dominant cause turned out
+to be the one nobody had named. A **per-node area-weighted average albedo**, packed into the node
+header's previously unused bits for **zero bytes and zero measurable GPU time**, band-limits the
+material at the pixel footprint: `stress_pose` **3.814 → 1.800**, `valley_far` **4.333 → 1.756**,
+the two backends agreeing to **0.03%**. On top of it sits a **deliberate directional stipple** —
+world-locked, four octaves per Bénard, per-material (stone only, as the reference capture is), and
+band-limited so it cannot become the thing just removed.
+
+**Goal 288's side-by-side against the owner's own reference is committed and viewed**, and its
+usefulness is what it isolates: the stone hatch is reproduced on the right material at a visible
+amplitude, so **what now separates the two images is FORM, not grain** -- a clean hand-off to
+Prompt 006. **The half that is not done is named**: the stipple's constant-apparent-frequency claim is
+**not verified** because the instrument for it does not exist (285a), and the owner's requested 3×
+grain is **achievable optically and not through this engine's TAA** (285b).
+
+### Decisions that survived contact with evidence (Prompt 005's additions)
+
+- **Build the metric first, then try to break it — twice.** The first moiré metric scored the target
+  57.4 and the bad frame 114.7 and was **wrong**: restricted to textured pixels its separation
+  collapsed to 1.28×, and an intermediate version's apparent 3.9× was a peak-finder locking onto its
+  own band edge. The one that shipped separates **9.51×** and is validated against synthetics whose
+  answer is known by construction — including two that falsified it (a pure 5 px sinusoid scores
+  12,957 because its *radial* period is 3.54 px; a textureless frame scores 4.57 on numerical noise,
+  so it now refuses rather than lying).
+- **The prompt named six suspects and all six measured zero.** `--no-grain` and `--no-lod-march` were
+  *identical* to base; `--no-mottle` — the prompt's *"strongest suspect"* — moved it 0.2%; removing
+  every term together made it **worse**. The cause was **discrete sampling of the per-hit material**,
+  at **59% of the excess**: Laine & Karras' *"blockiness caused by discrete sampling of shading
+  attributes"*, which the research names but which both the research and the prompt then organise
+  away from, because Crassin's famous open question is about **normals**. The normals here were
+  already clean (1.279 against a 1.144 target).
+- **A representative is not a filter.** Every node already carried a representative material, and
+  shading from the ancestor's was the free fix — it improved the metric (3.127 → 1.795) and made the
+  picture **visibly worse**, turning fine speckle into large blotches, because a majority vote is a
+  coarser quantiser. *The metric improved and the image got worse* is a real failure mode and it
+  happened here; only a genuine average is a filter.
+- **Two quantities, two correct scales.** Reading the average albedo at the *normal's* 6 px smoothing
+  ancestor blurred the terrain flat — local contrast **5.7% against a 6% floor**. A normal needs a
+  wide ancestor because a staircase must be averaged over several steps; an albedo needs the pixel's
+  own footprint.
+- **Average what is visible, not what is there.** Weighting the node average by *volume* included the
+  stone buried under a grass cap and turned every green hillside olive. The weight is **exposed face
+  count**, the same quantity the normal accumulation already uses.
+- **Report the number that undercuts your own result.** Every attribution figure in this pass is
+  measured with TAA **off**. With TAA **on** — what ships — the filter's benefit at `stress_pose` is
+  **6%, not 53%**, because TAA was already averaging away most of the flicker. It is still worth
+  having (it is free, the residual speckle is visible, and TAA's help is rejected under motion while
+  the pre-filter's is not) — but reporting 53% without this would have been true and misleading.
+- **When the measurement is noise, fix the instrument, do not fit the constant.** The stipple's
+  delivered screen period read 25.6 / 32.0 / 18.3 / 32.0 px for monotonically increasing requests. A
+  landscape pose spans many distances at once, so that quantity does not exist there. A calibration
+  fitted to one of those points made the spread worse and was **reverted**; the shipped constant is
+  the derivation, and the shader says which it is.
+- **A limit can be the engine rather than the eye.** The owner's *"3× finer"* is **2.9 c/deg against
+  a 30 c/deg acuity limit** — ten times inside what the eye can resolve — and it still does not
+  survive, because **TAA's 3×3 neighbourhood clamp discards a sub-pixel feature** and the delivered
+  amplitude collapses from ~8.8 to 1.77 RMS. The honest answer is the arithmetic plus the nearest
+  achievable setting, not a silent substitution.
+
+
 ## Decided against, Prompt 003 Group AJ-C/AJ-D (goals 239, 243)
 
 These are decisions, not omissions. Each is written down so the next pass does not spend a day

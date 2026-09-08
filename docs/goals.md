@@ -2309,6 +2309,208 @@ to prevent. Commit `ed273cf`'s message refers to "goal 281", which is 275e here.
      recovering the lost stretch into the research appendix (§9); §8.4 was closed by goal 271 as a
      negative. The remainder is not closed and is not claimed to be.
 
+## AL. The fine-grain look (Prompt 005)
+
+Every measurement, every rejected version and every honest negative:
+`research/fine-grain-look-log.md`. What each appearance term is and what filters it:
+`docs/the-look.md`.
+
+The prompt's own framing was that the moiré would be one of six named shading terms and that the
+structural fix would be about **normals**, following Crassin's open question. **Both turned out
+wrong, measured**: all six candidates contribute zero, the normals are already clean, and the
+unfiltered quantity is the **material**. That reframing is AL-A's actual content.
+
+### AL-A. Find the moiré, then filter it properly (goals 276–283)
+
+276. [x] A moiré metric, built first and **falsified twice before it was trusted**. The first
+     hypothesis — that ring moiré is a low-frequency ENVELOPE on a high-frequency carrier — scored
+     57.4 vs 114.7 and was **refuted**: restricted to textured pixels the separation collapsed to
+     1.28×, and the two envelope spectra are nearly identical. What the same printout showed is the
+     textbook signature: the target's high-frequency energy is spread over 2–8 px, the aliased
+     frame's is **91.5% crammed into 2–4 px**. So the metric is
+     **E(2–4 px) / E(4–8 px) over textured pixels**, computed with a difference-of-box filter bank
+     rather than an FFT (validated against the FFT form: 9.5× vs 9.2× separation).
+     **Check PERFORMED**: known-good `lin_water_checkerboard_after.png` **1.144**, known-bad
+     `svo_ground_hilltop.png` **10.877**, **separation 9.51×**. Band-limited-noise synthetics whose
+     answer is known by construction: 6 px **1.19**, 4 px 5.84, 2.3 px **34.88**, white noise 9.71 —
+     and the target's 1.144 lands on the 6 px synthetic, which independently gives goal 284 its
+     number. Responds to supersampling (4.72 at 1 spp → 3.52 at 9 spp — **only 25% for 9× the rays**,
+     which independently confirms the Luanti report that SSAA does not fix lattice moiré).
+     Baseline on the three named poses: `stress_pose` **3.816**, `macro_ground` 2.368,
+     `valley_far` 4.333. `voxel_harness --moire FILE.png` reproduces every number above; four unit
+     tests; a `moire_ratio` scenario assertion and report field.
+     **Two limitations pinned by tests rather than hidden**: a pure 5 px sinusoid scores 12,957 (its
+     *radial* period is 3.54 px — the synthetic was wrong, not the metric), and a textureless frame
+     scores 4.57 on numerical noise, so `valid` is false below a carrier floor.
+     **And a finding handed back to Prompt 004**: `svo_ground_hilltop.png` measures 10.877 and the
+     same pose today measures 3.816 — **two thirds of the moiré was already removed by goal 268's AO
+     changes**, made for frame-time reasons. Said now so this pass cannot claim it later.
+277. [x] The attribution — **and it is none of the six candidates the prompt names**.
+     **Check PERFORMED**, CPU reference, `stress_pose`, TAA off: `--no-grain` **3.127** (identical to
+     base), `--no-mottle` **3.134** (the prompt's *"strongest suspect"*, innocent), `--no-ao` 3.140,
+     `--no-shadows` 3.179, `--no-lod-march` 3.127, **everything off together 3.218 — worse than the
+     full shading**. The debug views killed three more in one look: `lodcube` uniform, `level` bands
+     large and smooth, `smooth` populated almost everywhere (so the 804,157 solid leaves are **not**
+     the hole the prompt expects), `lit` near-uniform.
+     The CPU reference gained **`--flat-albedo`**, because no existing flag could test the one
+     remaining term — every other toggle removes something applied *after* the material is chosen:
+     base **3.127** → **1.962**, carrier RMS −38%. **Discrete sampling of the per-hit MATERIAL is the
+     dominant cause at 59% of the excess over the target** — Laine & Karras' *"blockiness caused by
+     discrete sampling of shading attributes"* under its published name. Captures:
+     `al_debug_views_attribution.png`, `al_moire_material_attribution.png`.
+     One masking effect recorded: with the material sampled per hit, removing every other term makes
+     the metric *worse*; with a flat albedo it makes it better. The material aliasing swamps the
+     others, which is why all six read zero against the shipping configuration.
+278. [x] Pre-filtered shading — **an average, not a representative**, and **three rejected versions**
+     on the way, each rejected by a viewed capture or a test rather than by argument.
+     **Rejected 1**: the smoothing ancestor's *representative* material. Metric 3.127 → 1.795,
+     **image worse** — fine speckle became large blotches, because a majority vote is a coarser
+     quantiser, not a filter, and no ancestor span fixes it (2.41 / 1.95 / 1.80 / 2.04 at 2/4/6/12 px,
+     non-monotonic). *The metric improved and the picture got worse* — the case the prompt warns
+     about, recorded rather than shipped.
+     **Rejected 2**: a real average read at the normal's 6 px ancestor. **Local contrast fell to 5.7%
+     against a 6% floor** and a test went red. Two quantities, two correct scales.
+     **Rejected 3**: the average read at the hit node, weighted by *volume* — every green hillside
+     turned **olive**, because a volume average includes the stone buried under a grass cap.
+     **SHIPPED**: `Brick::exposed_albedo_sum()` weights by **exposed face count**, the same quantity
+     `exposed_face_sum()` already accumulates as a vector; `NodeSummary` carries the sum and its
+     denominator in world units² so children mix by real surface area; **solid leaves get one too**,
+     which is what reaches the 804,157 of them.
+     **Check PERFORMED**: `stress_pose` **3.814 → 1.800 (−53%)**, `macro_ground` 2.367 → 1.665
+     (−30%), `valley_far` 4.333 → 1.756 (−59%); **the two backends agree to 0.03%**; GPU march median
+     vk 3.89 on / 3.94 off and d3d12 5.32 / 5.34 — **free**; **memory zero** (packed R4 G6 B4 into
+     the node header's unused bits — a second attribute word would have cost ~5.0 MB, and the prompt
+     asked for it to be measured rather than assumed). 335/335 tests, oracle included.
+     **And the cost that is not free, stated rather than buried**: local contrast drops 47–56% at the
+     distant poses. The filter cannot tell wanted texture from unwanted, and `valley_far`'s "before"
+     carries a hatching that genuinely resembles the target. AL-B owes that back.
+279. [x] Filter the albedo — **answered by 277's negative**. Goal 279 is conditional on 277
+     confirming the mottle; it did not (`--no-mottle` 3.134 against a base of 3.127). The mottle's
+     features are 1/24 m and 1/7 m in world XZ, far larger than a pixel at these poses, so it does
+     not alias and needs no distance fade. **A completed negative, not an unimplemented task.**
+280. [x] The reconstruction question, decided. Prompt 004 goal 270 settled the cost — an exponential
+     history is two buffers and a blend weight, so **32 frames costs exactly what 8 costs**.
+     **Check PERFORMED**: at rest, 8 frames **1.009** vs 32 frames 1.042 — indistinguishable — and
+     goal 270 measured 32 as **19% softer one second after motion**. **Decision: keep 8 frames**, and
+     the reason is a budget rather than a preference: goal 278 has already spent half the local
+     contrast and a longer history spends more of the same currency.
+281. [x] The shadow-lift discontinuity — **conditional, and the condition was not met**.
+     `--no-shadows` measured **3.179** against a base of **3.127**: removing shadows entirely makes
+     the metric *worse*, so the LOD-quantised lift is not a contributor at these poses. No change
+     made, recorded as unmet rather than silently skipped.
+282. [x] The AO dither — **partially answered**. `--no-ao` measured **3.140** against **3.127**: no
+     measurable contribution on a still. The *crawl* question a still cannot answer is left open, and
+     note that Prompt 004 goal 268 already halved the AO rays and clamped their length, so the
+     pattern the prompt describes is not the one that ships.
+283. [x] The total, reported — **including the number that qualifies all of it**. Every attribution
+     figure above is TAA-**off**, because that is what the golden scenarios use. With TAA **on**, the
+     shipping configuration, `stress_pose` reads **1.090 filter-off vs 1.024 filter-on — a 6%
+     difference, not 53%**, and on `taa_pan`'s moving captures the filtered version measures slightly
+     *worse*. **TAA was already averaging away most of the pixel-scale flicker.** Reporting the 53%
+     without this would have been true and misleading.
+     What survives: the residual speckle is visible and it goes away
+     (`al_taa_masks_the_filter.png`, viewed); it is free; and **TAA's help is conditional where the
+     filter's is not** — a temporal average is rejected at silhouettes and under fast motion, which
+     is when this world moves.
+     `stress_pose` now measures **1.024 with TAA on, against the target capture's 1.144** — i.e.
+     **smoother than the reference**, which is the arithmetic form of the contrast cost.
+
+### AL-B. The grain, as a deliberate style (goals 284–289)
+
+284. [x] The target capture characterised numerically. **Check PERFORMED**, radial FFT of a
+     100%-stone 128×128 window: **dominant radial period 10.67 px** (0.0938 cycles/px), **amplitude
+     RMS 6.37/255 = 5.4% modulation**, **anisotropy 641× max/min** with energy at 30–45°.
+     **The prompt asks me to confirm or refute that it is directional: CONFIRMED, and not
+     marginally.** It is a hatch, not a dither — and it is on **stone only**; the reference's green
+     is broad and faceted and its sand smooth, which is why the amplitude became a per-material
+     component. **The multiplier, in writing as demanded**: I adopt the prompt's reading of *"much
+     finer"* as **3× → 3.56 px**. Sanity-checked against the eye at 70°/720 rows: the target is
+     **0.96 c/deg** and 3× finer **2.9 c/deg**, against a 30 c/deg acuity limit — **achievable
+     optically by a factor of ten**. The eye is not what binds; see 285.
+285. [x] A world-locked stipple at a chosen angular frequency. **Bénard, Bousseau & Thollot (I3D
+     2009)** with their four octaves and their exact weights on a zoom cycle — the published
+     resolution of the three mutually contradictory constraints; directional along a world vector
+     (because 641×); **per material** via a new `Stipple` component every def must answer (stone
+     0.076, dirt 0.030, everything else 0); band-limited below 2 px so it cannot become the artefact
+     278 removed. Packed into spare slots — the amplitude in the fractional part of the material
+     record's `w` (`MaterialShading` now reads the model with `floor`, not `uint(w + 0.5)`, which
+     would have rounded a large amplitude into the next model) and the knobs in `g_WaveParams.zw`,
+     which were unused: **no cbuffer layout change**, so Prompt 004's field-order trap cannot recur.
+     **Check PARTLY PERFORMED, and the gap is named.** Verified: it reaches the frame and reads as a
+     directional hatch on stone with grass untouched (`al_stipple_pair.png`,
+     `al_stipple_mechanism.png`, both viewed); both backends (vk 1.040, d3d12 1.019, no FXC errors —
+     and this change moved a `round` to a `floor` and added bit-packing, exactly where they have
+     diverged before); 335/335 tests.
+     **NOT verified: that the apparent frequency is constant with distance.** Measured by
+     differencing two renders (the terrain's own facets cancel), monotonically increasing requests
+     delivered **25.6 / 32.0 / 18.3 / 32.0 px** — noise. **The instrument is the problem, not the
+     constant**: a landscape pose spans many distances at once, so "the delivered screen period" is
+     not a single quantity there. A calibration fitted to one of those points made the spread worse
+     and was reverted; the shipped constant is the derivation and the shader says so.
+     **A bug worth recording**: the first version passed a distance-dependent world scale into a
+     construction that *already* compensates for distance, so it compensated twice and landed an
+     octave and a half too coarse to see (1.028 against 1.024 — no effect at all).
+285a. Build the instrument goal 285's Check actually needs: **a fixed camera at 0.3 / 2 / 10 / 60 m
+     from ONE stone slope**, so "constant apparent frequency" is a measurable claim. Until it exists
+     `--stipple-period` is an honest relative knob and a dishonest absolute one. **Check**: the four
+     captures, and the measured screen period equal across all four within 10%.
+285b. Apply the stipple **after** the TAA resolve, or add a reactive mask. **Check**: the delivered
+     amplitude at `--stipple-period 3.56` reaches the ~8.8 RMS the coarser settings manage, instead
+     of collapsing to 1.77.
+286. [x] Directionality — **kept, and not a judgement call**: 284 measured 641× anisotropy, so the
+     prompt's *"if directionality does not visibly help, drop it"* was settled by measurement rather
+     than taste. A fixed world-space direction; per-material hatch directions are not implemented and
+     nothing measured here needs them.
+287. Close-range edge quality with and without TAA — **NOT PERFORMED**. **Check**: `macro_ground` and
+     `macro_tree` at 0.3 m and 2 m, both backends, with and without TAA, viewed, with a written
+     judgement on edge quality.
+288. [x] The reference reproduced side by side — *"the capture the owner asked for"*.
+     **Check PERFORMED**: `research/captures/al_reference_side_by_side.png`, committed and viewed.
+     A pose was chosen for matching COMPOSITION (water, shoreline, green slopes and exposed stone
+     in one frame) and then re-shot at matching APPARENT SCALE, because the first attempt framed
+     the terrain four times smaller than the reference and no grain comparison is meaningful
+     across a 4x scale difference.
+     **What matched**: the stone carries a fine, dense, DIRECTIONAL diagonal hatch that reads as
+     the same kind of mark as the reference's; the grass is broad and calm with no stipple at all;
+     the stipple is on stone only. That is the arrangement 284 measured in the reference and it is
+     reproduced.
+     **What did not**: the FORMS (ours is a smooth cone where the reference has rounded organic
+     shapes) — **Prompt 006 owns that and this comparison must not be used to judge it**; the
+     reference's stone has more tonal variation between light and dark patches than ours; and the
+     reference's green carries a red speckle which is its own ALIASING and which ours deliberately
+     lacks. **The grain question this pass exists to answer is answered; the form question is not
+     this pass's.**
+289. **One knob, not fifteen — NOT DONE.** `SvoRenderer::Settings` gained three fields this pass and
+     is over twenty. `--look NAME` does not exist; every individual knob works and is in `--help`.
+     **Check**: `--look NAME` selects a preset, individual flags still override, presets enumerated
+     in `--help`, and a test asserts each preset's field values.
+
+### AL-C. Cost, regression and handoff (goals 290–294)
+
+290. [x] The cost table. **Check PERFORMED**: goal 278's filter is **free** in
+     `release-codegen-and-tradeoffs.md` §1's classification — zero memory (unused header bits), GPU
+     march median vk 3.89 vs 3.94 and d3d12 5.32 vs 5.34, both inside noise. Goal 285's stipple adds
+     four `sin` per shaded pixel behind a flag and no storage at all. **The shipped default remains
+     above the target: vk march median 3.89 ms at `stress_pose`**, against Prompt 004's gate of 4.8.
+291. [x] Goldens re-accepted on both backends for every scenario, since the look changed on purpose.
+     The moiré metric is available as a `moire_ratio` scenario assertion; **it is NOT yet wired as a
+     standing gate with a calibrated threshold**, which is the second half of this goal and is owed.
+292. Re-check the three standing defects (shadow rings, sliver curtains, slope banding) — **NOT
+     PERFORMED**. **Check**: one viewed capture per defect against its historical capture, with a
+     verdict of better/same/worse.
+293. [x] Both backends agree. **Check PERFORMED**: goal 278 vk 1.79963 vs d3d12 1.80010 (**0.03%**),
+     goal 285 vk 1.040 vs d3d12 1.019, no FXC errors through two changes that are exactly the kind
+     the two compilers have disagreed over (a `round`→`floor`, and new bit-field unpacking).
+294. [x] What this pass did not do — 287, 288, 289, 292, 291's gate, 285a and 285b above, plus:
+     **textures and an asset pipeline** stay decided against and the gate is unchanged (this pass
+     added no texture need — the stipple is procedural and the albedo filter is a per-node average);
+     **SSAO / a G-buffer** — goal 41's gate is *"reopen with textures or a real G-buffer need"*, and
+     **the answer is still no**: the filtering added here is per-node and lives in the octree, not in
+     a screen-space buffer, so it creates no G-buffer need; **path tracing / GI** stays excluded, and
+     the reasoning is unchanged and now better evidenced — `research/micro-voxel-creators-research.md`
+     confirms Lin's own method *is* a path tracer, so the gap is deliberate rather than an oversight;
+     **NAADF's 32-frame history** is measured as free and deliberately not adopted (goal 280).
+
 ## Tooling defects found in passing (goal 101's standing expectation)
 
 200. [x] `--dump-every` wrote nothing and reported nothing — `dump_frame`'s result was
