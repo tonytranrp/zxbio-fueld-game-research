@@ -910,3 +910,111 @@ answers, and nothing would have caught it but merging them.**
 The tool keeps the *sweeps* (drainage density and |t| across six channel thresholds), because a suite
 reports one threshold and a sweep answers which threshold the test selects — which is where both of
 goals 307 and 308's findings came from.
+
+---
+
+## 12. Goals 319 and 320: five seeds, and the before column — which contains two surprises and one regression
+
+### Why this is not "assert all ten pass"
+
+Five of the ten fail. **A gate that fails on the day it is written is not a gate.** Per the prompt's
+own rule on legitimate negatives — *report the measured value, the band, the cost, and open a goal;
+do not widen the band to pass* — `test_acceptance_seeds.cpp` asserts the four that currently pass, on
+every seed, and **records** the five that do not, with their spread.
+
+Goal 319's Check asks for the spread rather than the mean, "because that spread is what tells you
+whether a band is being met robustly or narrowly". Across five seeds:
+
+| # | test | min .. max | seeds passing |
+|---|---|---|---|
+| 1 | slope skew sign | −0.564 .. −0.489 | **5/5** |
+| 2 | spectral β | 0.397 .. 0.588 | 0/5 |
+| 3 | hypsometry median/max | 0.139 .. 0.275 | **5/5** |
+| 4 | drainage density | 2.689 .. 8.698 | **5/5** |
+| 5 | valley exponent b | 1.331 .. 3.046 | 1/5 |
+| 6 | constant-drop \|t\| | 6.28 .. 29.13 | 0/5 |
+| 7 | slope–area exponent | −1.349 .. −0.678 | 0/5 |
+| 8 | variogram Hurst | 0.068 .. 0.195 | 0/5 |
+| 9 | hydrological coherence | 0 .. 0 | **5/5** |
+
+**Drainage density's spread is the one to watch: 2.69 to 8.70 against a band of 2–12.** It passes on
+every seed, but the low end is within 0.7 of the floor — met, but not robustly. That is exactly what
+running five seeds is for, and it would have read as a comfortable 5.58 on the shipped seed alone.
+
+### Goal 320: the before column, and a methodology error worth recording
+
+The first version compared internal-basin counts **after** running the new priority-flood over both
+columns, and got 0 versus 0. That proves only that the fill works. **The old terrain was never filled
+or routed at all**, so the honest comparison is before any fill:
+
+| | noise (4-octave) | pipeline |
+|---|---|---|
+| **internal basins, unfilled** | **3,536** | **80** |
+
+That is the headline, and it is a 44× reduction. The rest, all five-seed means:
+
+| # | test | noise | pipeline | prompt's prediction |
+|---|---|---|---|---|
+| 1 | slope skew sign | −1.001 (5/5) | −0.538 (5/5) | "wrong end" — both pass |
+| 2 | spectral β | **2.268 (5/5)** | 0.498 (0/5) | — **noise passes, pipeline fails** |
+| 3 | hypsometry | 0.277 (5/5) | 0.208 (5/5) | both pass, pipeline better |
+| 4 | drainage density | 2.611 (5/5) | 5.471 (5/5) | expected noise to fail |
+| 5 | valley b | 1.880 (0/5) | 2.099 (1/5) | both fail |
+| 6 | constant-drop | **1.570 (4/5)** | 14.509 (0/5) | expected noise to fail |
+| 7 | slope–area | +0.017 (0/5) | −1.111 (0/5) | ✓ predicted noise failure |
+| 8 | Hurst | 0.208 (0/5) | 0.129 (0/5) | ✓ both at the wrong end |
+| 9 | coherence (post-fill) | 0 (5/5) | 0 (5/5) | — see the unfilled row above |
+
+### Surprise one: pure fractal noise PASSES Tarboton's constant-drop test, and the eroded terrain fails it
+
+Noise reads |t| = 1.57 and passes on 4 of 5 seeds. The physically eroded pipeline reads 14.5 and
+fails on all five.
+
+The research introduces §9.6 as the test that "ties network extraction to physics". **On this world it
+does the opposite: it certifies noise and rejects erosion.** Combined with §8's finding — that the
+test only passes where its sample sizes have collapsed below any statistical power — the honest
+conclusion is that **the constant-drop test is not discriminating on an 8 km field**, and goal 308's
+open item should be read as "this instrument needs a larger domain", not "the terrain is wrong".
+
+### Surprise two: the pipeline made the spectrum WORSE, and the R² says exactly why
+
+β goes from 2.268 (in band, on 5/5 seeds) to 0.498 (0/5). That is a real regression this pass
+introduced, and it would have been invisible without goal 320's before column.
+
+The cause is in the fit quality, not the slope:
+
+| | spectrum log-log R² |
+|---|---|
+| noise | **0.917** |
+| pipeline | **0.539** |
+
+**Four-octave noise is self-similar by construction, so it fits a power law cleanly and honestly
+reports β = 2.27.** The new surface is a macro field plus a *two-octave* detail term, which is **not
+self-similar at all** — it has a spectral break where the macro's roll-off meets the detail's band,
+and no single β describes it. The 0.498 is a straight line drawn through a bent curve.
+
+So the finding is not "the detail term is white noise", which is what §11 concluded from the pipeline
+column alone. It is sharper: **the detail term was never re-tuned to CONTINUE the macro field's
+spectrum after the macro field was introduced.** It went from four octaves carrying the whole surface
+to two octaves sitting on top of something with a different slope, and nothing checked the join.
+
+That is a well-defined fix — make the detail term span the octaves between the macro's cutoff and the
+voxel size, matching amplitude and slope at the join — and it is opened as a goal rather than
+attempted here, because it changes every height in the world and belongs beside its own before/after
+capture.
+
+The same explanation covers metric 8: Hurst falls 0.208 → 0.129 for the same reason, and its R²
+(0.70) is likewise mediocre. **Two instruments, one cause, and neither of them would have been
+believable alone.**
+
+### What the pass bought, stated plainly
+
+- **Hydrology, decisively**: 3,536 → 80 unfilled internal basins; drainage density from the band's
+  very edge (2.61) to mid-band (5.47); a real dendritic network with 1,160 reaches that all
+  terminate and 170 lakes that all spill, where before there were no rivers at all.
+- **Hypsometry**, modestly: 0.277 → 0.208, both in band.
+- **A slope–area relationship where there was none**: noise reads +0.017 with no relationship at all
+  (R² ≈ 0); the pipeline reads −1.11 with R² = 0.83 and a hillslope plateau. The exponent is steeper
+  than the band, for the reason §11 gives (uplift is zero, so this is a decaying landscape and not a
+  graded one), but the *structure* the band describes now exists.
+- **And it cost spectral fidelity**, measured above, with a named cause and a named fix.

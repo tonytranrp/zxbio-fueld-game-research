@@ -11,6 +11,7 @@ add_executable(world_generation_tests
     test_fluvial.cpp
     test_rivers.cpp
     test_acceptance.cpp
+    test_acceptance_seeds.cpp
 )
 target_link_libraries(world_generation_tests PRIVATE world_generation world_meshing engine_jobs Catch2::Catch2WithMain project_warnings)
 
