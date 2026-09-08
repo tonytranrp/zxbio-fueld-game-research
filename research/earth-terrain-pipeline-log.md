@@ -420,12 +420,12 @@ and has chosen which one to satisfy.**
 - **The diffusion had a sea-level guard that skipped exactly the cells that needed it.** It skipped
   every cell at or below sea level, reasoning that hillslope diffusion is a subaerial process. But
   the sharpest curvature in the field is at the **coastline** -- the land/ocean crust boundary is a
-  step -- so the guard skipped precisely the worst cells, and goal 306'''s ridge-curvature test
+  step -- so the guard skipped precisely the worst cells, and goal 306's ridge-curvature test
   measured the worst Laplacian as **bit-identical before and after diffusing**. Removed: smoothing
   the seabed is harmless and smoothing the shore is physically right, since waves and mass wasting
   soften a coast.
 - **The fluvial tests were measuring a hillside, not a landscape.** They ran on a 2 km field, and
-  stage 1'''s continent mask is 4 km -- so the field sat entirely inside one lobe, the slope-area fit
+  stage 1's continent mask is 4 km -- so the field sat entirely inside one lobe, the slope-area fit
   ran on 329 cells of a single slope, and the exponent came out **+0.18**, which is not a landscape
   at all. The test was too small, not the solver wrong. At 6.1 km the exponent is negative again.
-  **A test whose domain is smaller than the feature it is testing measures the feature'''s absence.**
+  **A test whose domain is smaller than the feature it is testing measures the feature's absence.**
