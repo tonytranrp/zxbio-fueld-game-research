@@ -7,6 +7,7 @@ add_library(world_generation STATIC
     src/validation/acceptance.cpp
     src/field/climate.cpp
     src/field/biome.cpp
+    src/field/stencils.cpp
     src/terrain_fill.cpp
     src/tree_placement.cpp
     src/tree_skeleton.cpp
@@ -25,6 +26,7 @@ target_sources(world_generation PUBLIC
         include/world/generation/validation/acceptance.hpp
         include/world/generation/field/climate.hpp
         include/world/generation/field/biome.hpp
+        include/world/generation/field/stencils.hpp
         include/world/generation/terrain_fill.hpp
         include/world/generation/tree_placement.hpp
         include/world/generation/tree_skeleton.hpp
