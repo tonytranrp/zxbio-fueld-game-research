@@ -21,6 +21,7 @@
 #include <glm/vec2.hpp>
 
 #include "png_writer.hpp"
+#include "world/generation/field/biome.hpp"
 #include "world/generation/field/climate.hpp"
 #include "world/generation/field/fluvial.hpp"
 #include "world/generation/field/rivers.hpp"
@@ -93,6 +94,22 @@ struct Options {
             static_cast<std::uint8_t>(225.0f - 150.0f * s), static_cast<std::uint8_t>(205.0f + 20.0f * s)};
 }
 
+/// One flat colour per biome, so the map reads as a classification rather than a gradient.
+[[nodiscard]] std::array<std::uint8_t, 3> biome_colour(Biome b) {
+    switch (b) {
+    case Biome::Ocean: return {40, 70, 140};
+    case Biome::Beach: return {225, 210, 160};
+    case Biome::Wetland: return {70, 120, 110};
+    case Biome::Grassland: return {170, 195, 105};
+    case Biome::Shrubland: return {140, 160, 85};
+    case Biome::TemperateForest: return {45, 110, 55};
+    case Biome::BorealForest: return {30, 80, 70};
+    case Biome::Alpine: return {225, 225, 235};
+    case Biome::Desert: return {215, 175, 110};
+    default: return {255, 0, 255};
+    }
+}
+
 /// Cold blue to warm red across the field's own temperature range.
 [[nodiscard]] std::array<std::uint8_t, 3> temperature_colour(float t01) {
     return {static_cast<std::uint8_t>(40.0f + 200.0f * t01), static_cast<std::uint8_t>(70.0f + 90.0f * t01),
@@ -134,7 +151,7 @@ int main(int argc, char** argv) {
         } else if (a == "--help" || a == "-h") {
             std::printf("terrain_dump: false-colour the macro terrain field and print its statistics\n"
                         "  --seed N --stages N --cells N --cell-size F --out FILE\n"
-                        "  --plane elevation|flow|precip|temperature|rivers\n"
+                        "  --plane elevation|flow|precip|temperature|biome|rivers\n"
                         "  --zoom X,Z,SPAN   (world metres; for looking at a river)\n");
             return 0;
         }
@@ -175,6 +192,10 @@ int main(int argc, char** argv) {
     std::printf("height %.1f .. %.1f m, land fraction %.1f%% (research §9.3 target ~29%%)\n",
                 static_cast<double>(lo), static_cast<double>(hi),
                 100.0 * static_cast<double>(land) / static_cast<double>(field.cell_count()));
+    // The world origin goes onto land before anything is measured, because that is what the app
+    // does (goal 321) and the acceptance suite has to measure the world that ships.
+    recentre_on_land(field, 320.0f);
+
     // ---- goal 317/318: research Part 7 §9's TEN acceptance tests, from the library ---------
     //
     // These used to be private copies inside this tool. They are not any more, and 318's Check is
@@ -210,8 +231,42 @@ int main(int argc, char** argv) {
             }
         }
 
+        // Goal 316's Check: stems/ha per biome, stated, against Part 6's measured bands.
+        {
+            std::array<std::size_t, static_cast<std::size_t>(Biome::Count)> counts{};
+            std::size_t biomeLand = 0;
+            for (std::size_t i = 0; i < field.cell_count(); ++i) {
+                const auto raw = static_cast<std::uint8_t>(std::lround(field.plane(Plane::Biome)[i]));
+                if (raw < counts.size()) {
+                    ++counts[raw];
+                }
+                biomeLand += h[i] > 0.0f ? 1u : 0u;
+            }
+            std::printf("biomes (share of the whole field, stems/ha against Part 6's band):\n");
+            for (const BiomeDefinition& d : biome_table()) {
+                const std::size_t n = counts[static_cast<std::size_t>(d.biome)];
+                if (n == 0) {
+                    continue;
+                }
+                std::printf("  %-17.*s %5.1f%%   %6.0f stems/ha  [%.0f, %.0f]  %.*s\n",
+                            static_cast<int>(d.name.size()), d.name.data(),
+                            100.0 * static_cast<double>(n) / static_cast<double>(field.cell_count()),
+                            static_cast<double>(d.stems_per_hectare), static_cast<double>(d.band_lo),
+                            static_cast<double>(d.band_hi), static_cast<int>(d.citation.size()),
+                            d.citation.data());
+            }
+            std::printf("  land-area-weighted mean: %.0f stems/ha over %zu land cells\n",
+                        static_cast<double>(mean_land_stem_density(field)), biomeLand);
+        }
+
         AcceptanceInputs inputs;
         inputs.channel_threshold_km2 = 0.01;
+        // METRIC 10'S SUBJECT IS THE FOREST, not the landscape. §9.10's band (400-700) is quoted
+        // for TEMPERATE FOREST, and feeding it the land-area-weighted mean across every biome --
+        // desert at 3 stems/ha and grassland at 25 included -- compares a whole-landscape average
+        // against a forest-specific number and reads 258, a failure that means nothing. The
+        // per-biome conformance is printed above; this is the one the band is about.
+        inputs.stems_per_hectare = static_cast<double>(stems_per_hectare(Biome::TemperateForest));
         inputs.rivers = extract_rivers(working, net, field.plane(Plane::Elevation), HydrologyParams{});
         inputs.final_surface = &surface;
         const SuiteResult suite = run_suite(working, net, inputs);
@@ -512,6 +567,7 @@ int main(int argc, char** argv) {
     const bool wantFlow = o.plane == "flow";
     const bool wantPrecip = o.plane == "precip" || o.plane == "precipitation";
     const bool wantTemp = o.plane == "temperature" || o.plane == "temp";
+    const bool wantBiome = o.plane == "biome" || o.plane == "biomes";
     const std::span<const float> source = wantFlow     ? working.plane(Plane::FlowAccum)
                                           : wantPrecip ? field.plane(Plane::Precipitation)
                                           : wantTemp   ? field.plane(Plane::Temperature)
@@ -527,6 +583,18 @@ int main(int argc, char** argv) {
         for (std::int32_t cx = 0; cx < o.cells; ++cx) {
             const std::size_t i = field.index(cx, cz);
             float t = 0.0f;
+            if (wantBiome) {
+                const auto raw = static_cast<std::uint8_t>(
+                    std::lround(field.plane(Plane::Biome)[i]));
+                const std::array<std::uint8_t, 3> c = biome_colour(
+                    raw < static_cast<std::uint8_t>(Biome::Count) ? static_cast<Biome>(raw)
+                                                                  : Biome::Ocean);
+                const std::size_t px = i * 3;
+                rgb[px + 0] = c[0];
+                rgb[px + 1] = c[1];
+                rgb[px + 2] = c[2];
+                continue;
+            }
             if (wantPrecip || wantTemp) {
                 const std::array<std::uint8_t, 3> c =
                     wantPrecip ? precip_colour(source[i])

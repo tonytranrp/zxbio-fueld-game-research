@@ -1,5 +1,6 @@
 #include "world/generation/field/macro_pipeline.hpp"
 
+#include "world/generation/field/biome.hpp"
 #include "world/generation/field/climate.hpp"
 #include "world/generation/field/fluvial.hpp"
 
@@ -183,6 +184,23 @@ void stage_incise(TerrainField& out, const MacroParams& params) {
     }
 }
 
+void stage_biomes(TerrainField& out, const MacroParams& params) {
+    // The classifier needs contributing area for its wetlands, and the pipeline's `flow` stage ran
+    // before the incision changed the surface. Re-route here so the wetlands sit in the valleys the
+    // finished terrain actually has.
+    TerrainField routed = out;
+    priority_flood(routed);
+    const FlowNetwork net = build_flow_network(routed);
+    accumulate_flow(routed, net);
+    std::copy(routed.plane(Plane::FlowAccum).begin(), routed.plane(Plane::FlowAccum).end(),
+              out.plane(Plane::FlowAccum).begin());
+
+    BiomeParams p;
+    p.sea_level = params.sea_level;
+    p.seed = static_cast<std::uint32_t>(params.seed);
+    classify_biomes(out, p);
+}
+
 void stage_diffuse(TerrainField& out, const MacroParams& params) {
     FluvialParams p;
     p.sea_level = params.sea_level;
@@ -206,6 +224,10 @@ constexpr std::array kStageTable{
     // practice in coupled fastscape work; this is the cheapest honest version of that, and the
     // stage is O(n) so a second pass costs a few milliseconds.
     Stage{"climate_final", &stage_climate},
+    // Goal 316. LAST, because it reads the final elevation, the final precipitation and the flow
+    // accumulation -- a biome classified before the incision would describe a landscape that no
+    // longer exists by the time anything reads it.
+    Stage{"biomes", &stage_biomes},
 };
 
 } // namespace

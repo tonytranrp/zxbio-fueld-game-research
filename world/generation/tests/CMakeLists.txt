@@ -13,6 +13,7 @@ add_executable(world_generation_tests
     test_acceptance.cpp
     test_acceptance_seeds.cpp
     test_detail_spectrum.cpp
+    test_biome.cpp
 )
 target_link_libraries(world_generation_tests PRIVATE world_generation world_meshing engine_jobs Catch2::Catch2WithMain project_warnings)
 
