@@ -7,10 +7,30 @@ backend both
 # 0.341% -- see dev/harness/src/image_compare.hpp for the full four-case table.
 option --no-taa
 
+# Prompt 007 goal 344: --no-wind, and it is a CAPTURE-REPRODUCIBILITY requirement rather than a
+# preference. Goals 333/335/338 put moving content in every frame -- a ground shimmer, swaying trees
+# and grass -- and all of it is driven by an animation clock that is the WALL CLOCK by default. So a
+# golden of this pose stopped being reproducible: the "final" capture measured 9.27% of pixels
+# changed against a 1.5% gate on a scene where nothing moves but the wind. `--anim-step` makes the
+# clock deterministic per FRAME, which is not enough on its own, because `capture end` lands on a
+# different frame index between runs (goal 337 records that limit). Killing the wind for the capture
+# scenarios is what the project already does for every wind A/B -- goal 332's own 0.0012% number was
+# measured that way -- and it leaves the golden measuring everything else: terrain, tree shape,
+# grass geometry, shading, LOD.
+option --no-wind
+
 pose_ground 48,0 -90 -10 1.7
 wait 3
 
-capture event world-ready first_light
+# Prompt 007 goal 344: NO GOLDEN on this one, and the reason is what it is timed on. `first_light`
+# fires on the world-ready EVENT, whose frame index moves between runs -- the build is threaded and
+# finishes when it finishes. With a static world that did not matter; with goal 338's grass and
+# goal 335's trees in the frame it does, and re-taken it still reads 1.652% of pixels changed
+# against a 1.5% gate (at a mean distance of 0.502/255, i.e. everywhere-slightly rather than
+# somewhere-badly). Prompt 003's rule applies: a capture that is not reproducible does not get a
+# golden, it gets a note. `final` below IS golden-compared, because `capture end` lands on a settled
+# world.
+capture event world-ready first_light no-golden
 capture end final
 
 assert frames > 0

@@ -244,6 +244,15 @@ among the visual work.
     this project's current scope, or is it a later addition given trees+terrain+water is already a
     substantial visual jump — write the decision down either way with reasoning, don't silently
     expand scope or silently skip it.
+    **REOPENED AND ANSWERED THE OTHER WAY by Prompt 007 goals 338/339, and the reopening rule's note
+    applies**: the original verdict — "needs instancing+textures" — was correct about a RASTER
+    overlay and goal 339 is that overlay, which does need both. What changed is
+    `research/grass-rendering-research.md`, which ranks "grass AS voxels in the SVO, finest levels
+    only" as this engine's #2 option and shows it needs no new pipeline at all: the octree already
+    does distance culling by construction and a voxel blade inherits the march's shadows, AO, grain
+    and materials for free. So goal 338 shipped the voxel tier ON by default at +1.29% memory, and
+    goal 339 shipped the raster tier present and OFF — not for its 0.21 ms of GPU but for a 10 ms
+    synchronous instance rebuild. See Group AN-D.
 
 ## F. SSAO & G-buffer (visual Stage 4 — conditional)
 
@@ -1313,15 +1322,15 @@ what they were going to consume) and the one non-obvious design question waiting
      between seeds (34 at one, 245 at another), so the same species came out at LAI 0.3 or 8.7
      depending on the seed, and the original single-seed test had simply been lucky. Leaf area is a
      property of the crown; tip count is only how finely it is subdivided.
-190. [ ] Hierarchical spring sway (trunk fundamental from the cantilever formula, branches
+190. [x] **Closed by Prompt 007 goal 335 — see Group AN-C.** Hierarchical spring sway (trunk fundamental from the cantilever formula, branches
      semi-independent so multiple-resonance damping emerges structurally). **Check**: step response
      and resonance near the predicted f0 ≈ 0.26 Hz for sycamore-scale parameters; determinism;
      ≤ 0.5 ms/frame for all in-ring trees, measured with the attributor.
-191. [ ] Skeleton-driven voxelization into the svo tree — capsule trunks, per-segment leaf clouds.
+191. [x] **Closed by Prompt 007 goal 336 — see Group AN-C.** Skeleton-driven voxelization into the svo tree — capsule trunks, per-segment leaf clouds.
      **Check**: brick/MB growth measured BEFORE committing (the research names vegetation as the
      worst-case SVO content class); `--verify-frame` stays ≥ 25%; the terrain-sampler equivalence
      test still passes byte-for-byte; viewed captures at 2/10/60 m on both backends.
-192. [ ] Geometric canopy motion in the marcher (C6.2's bounded experiment — domain-warping the
+192. [x] **Closed by Prompt 007 goal 337, as an honest negative — see Group AN-C.** Geometric canopy motion in the marcher (C6.2's bounded experiment — domain-warping the
      sample position inside canopy bricks). The SHADING half (C6.1) is already done and shipped as
      part of goal 185's field; this is the half with no public prior art. **Check**: captures at
      2 m and 10 m, TAA ghosting evaluated in a slow pan, oracle still 0/7,000 (the warp applies at
@@ -1347,15 +1356,15 @@ canopy sway. The materials-as-components answer is a new `MaterialDef` member (`
 exported to shaders alongside the shading model — not made, because making it without a consumer
 would be speculative.
 
-193. [ ] Deterministic blade-cluster placement voxelized into the finest LOD ring only, with a
+193. [x] **Closed by Prompt 007 goal 338 — see Group AN-D.** Deterministic blade-cluster placement voxelized into the finest LOD ring only, with a
      `GrassBlade` material (`Phase::Foliage`). **Check**: determinism; < +15% build time and < +10%
      tree MB at the default pose, or halve density and log the tradeoff; viewed captures at
      1/4/15 m; walk through it with no collision and no aim-readout lie.
-194. [ ] Instanced raster grass overlay composed against the march's depth, with layered wind and a
+194. [x] **Closed by Prompt 007 goal 339 — see Group AN-D.** Instanced raster grass overlay composed against the march's depth, with layered wind and a
      player-position bend. **Check**: correct occlusion both ways on a hillside; wind sweep visible
      in a sequence; walking bends it; frame cost measured and inside the 60 fps budget; both
      backends.
-195. [ ] Distant grass tint — Grass-material hits modulated by the wind field, sharing the foliage
+195. [x] **Closed by Prompt 007 goal 333 — see Group AN-B.** Distant grass tint — Grass-material hits modulated by the wind field, sharing the foliage
      shimmer's code. **Check**: viewed capture at 60 m across a valley; `--no-wind` kills it; debug
      views unaffected.
 
@@ -2809,6 +2818,363 @@ any number, which is the pass's own vindication of rule 2.
      capture can show it. **Check**: `--verify-frame` reads 34.7%/34.6% without it, and every
      crosshair capture was taken with it.
 
+
+
+## Group AN — View distance and living cover (Prompt 007, goals 326–345)
+
+Full record: `research/view-distance-and-cover-log.md`. The operating manual is
+`docs/view-distance.md`. This group closes Group AF's 190–192 and Group AG's 193–195 in place, and
+reopens goal 40.
+
+### AN-A. The perceptual criterion (goals 326–332)
+
+326. [x] `render/lod/perceptual.hpp` — every distance criterion as a named constant or function with
+     its citation beside it. Header-only, dependency-free, registered OUTSIDE the renderer guard
+     because `world/svo`'s LOD ladder cites it and it must build in the no-GPU CI job.
+     **Check PERFORMED**: it reproduces every worked number in the eye research — 1 cm resolvable to
+     **34.0 m** at 20/20 and **54.0 m** at the 94-ppd ceiling, an 18 cm face to **619 m**, contrast
+     transmission **82/68/46%** at 0.5/1/2 km in V = 10 km and **91/82%** in V = 20 km, own horizon
+     **5.03 km** at 1.7 m eye height, a 1000 m massif to **127 km** and a 4000 m peak to **249 km**.
+     Three corrections are pinned as tests so they cannot drift back: 20/20 is **60 ppd** and not
+     Campbell & Green's 120 (a 2x budget error); the CENTRE pixel subtends **10.3%** more angle than
+     deg/px, which is exactly where the player is looking; and the two visibility conventions are one
+     model with two thresholds — WMO-No. 8 prints **3/sigma** and 3.912 appears nowhere in it — with
+     the **1.3059** ratio asserted.
+327. [x] Fog derived from an authored visibility. What was there: `0.0030 * (0.80 + 0.20*exp2(-y*0.012))`
+     with a falloff SQUARED in distance — a bare constant, a Gaussian where Koschmieder's law is an
+     exponential, and an unexplained 1/58 m height e-fold. Now sigma from `--visibility` and the
+     BAROMETRIC `exp(-y/H)` with H = 8500 m (1.3% of sigma over this world's relief — physically
+     right, practically negligible, correct in advance if the world ever gets mountains). The lerp
+     toward `SkyGradient(dir)` STAYS: it is Narasimhan & Nayar's two-term model with the airlight
+     radiance being the sky in that direction.
+     **Check PERFORMED**, pixel-sampled rather than formula-read, and the first attempt was wrong in
+     an instructive way — solving a linear interpolation in tonemapped sRGB 8-bit space read
+     T = 0.603 against a predicted 0.679. Re-measured with `--no-tonemap --no-bloom`, sRGB-linearised,
+     looking straight down from 1000 m: V = 5/10/20/40 km gave T = **0.4102 / 0.6301 / 0.7898 /
+     0.8884**, implying one ray distance of **1139 / 1181 / 1206 / 1210 m** — agreement to within 6%
+     across an 8x span of V, which is the distance-INDEPENDENT form of the check and the stronger
+     one. My assumed 990 m was wrong; the shader was not.
+328. [x] The LOD knob expressed as an angle. `target(d)/d` is CONSTANT beyond the radius, so
+     `lod_radius` was never a distance — it was the denominator of an angle in the least legible
+     possible units. The shipped 4.0 m at a 7.8 mm finest voxel **IS 6.71 arcmin**, 6.7x coarser than
+     20/20 resolves; stated, not changed. `--lod-arcmin` is the knob in the research's units, and NOT
+     `--lod-quality`, which already exists and scales the MARCHER's pixel angle at shading time while
+     this sets the BUILDER's target at construction time.
+     **Check PERFORMED**: `--lod-radius 4` produces today's tree byte-for-byte, because a zero
+     `lod_quality_arcmin` recomputes NOTHING. (Round-tripping 4.0 m through a rounded 6.71 arcmin
+     lands 4.0026 m instead — a 0.16% difference that showed up as 219,703 bricks against 219,344,
+     which is exactly why the alias does not go through the conversion.) And the measured answer to
+     "why not just use the eye's limit": **6.71' = 219,703 bricks / 69.0 MB / 0.98 s; 4.50' = 449,958
+     / 143.2 / 2.38; 3.00' = 1,233,952 / 406.8 / 7.83; 1.00' did not complete in 900 frames.** A 2.24x
+     radius costs 5.6x the bricks — an exponent of **2.1**, between the area and volume laws. The
+     eye's own limit is roughly an ORDER OF MAGNITUDE outside the budget, and a test pins the exponent.
+329. [x] The region at 4096 m, 8x the view. **V was never the binding constraint**: V = 19 at 4 km
+     against `kMaxVoxelBits = 24`, and V stays under 24 well past the research's 3.44 km criterion,
+     so no cascaded root was needed and none was built. Cost was the constraint.
+     **Check PERFORMED**: 512 / 1024 / 2048 / 4096 / 8192 m gave **219,344 / 316,179 / 392,109 /
+     445,038 / 498,334 bricks**, **68.9 / 98.4 / 121.6 / 138.0 / 154.6 MB**, march **2.69 / 3.21 /
+     3.33 / 4.09 / 5.55 ms**, at 165 fps except the last at 107. **256x the area for 2.27x the
+     bricks**, because everything a larger region adds is at coarse LOD — the exact inverse of goal
+     328's finding. Frame verification **32.0% -> 51.2%**.
+     **THE CHECK'S NEGATIVE, REPORTED**: it asked for a capture showing the far edge is beyond where
+     fog has taken the image to sky. **It is not.** At clear-air V = 20 km, transmission at the
+     2048 m boundary is **0.670** — a visible line. Hiding it needs V = 2670 m, i.e. thick haze,
+     which throws away goal 327's whole point. Clear air and a 2 km region are incompatible; the far
+     silhouette tier is what the boundary needs, and goal 345 lists it.
+330. [x] The far plane, which goal 329 had made smaller than the region. The marcher has no far clip
+     but the depth it writes comes from the projection, so geometry it had already found was being
+     clipped in depth; 1.42% of pixels change.
+     **Check PERFORMED**: one float32 ULP of [0,1] depth in metres, far = 2000 vs 4096 — at 100 m
+     0.51 vs 0.48 cm, at 500 m 19.2 vs 13.6, at 1000 m **65.4 vs 40.4**, at 2000 m 238.1 vs 133.2.
+     Raising the far plane IMPROVES precision at every distance that matters, which is the opposite
+     of the usual intuition: in a standard [0,1] projection the NEAR plane dominates the distribution.
+     **Reversed-Z assessed and DEFERRED with its reason**: nothing z-fights, because the marcher is
+     the only writer of terrain depth; switching touches the projection, every PSO's depth state, the
+     TAA reprojection and the post chain — real risk against no present symptom.
+331. [x] Fixed foveation, measured at 23.8%, shipped OFF.
+     **A REAL CONCEPTUAL ERROR ON THE WAY, and only the capture caught it.** The first version wrote
+     `lodAngle *= 1 + m*e`, treating Guenter's tolerated MAR as a multiplier — but that model is
+     stated against a 1-arcmin fovea and this renderer's foveal LOD is already 6.71 arcmin, so it
+     compounded a **53x** factor at the screen edge onto an already-coarse baseline. GPU fell
+     5.35 -> 0.20 ms, a 27x "saving", and the image became metre-wide blocks edge to edge. The RATIO
+     form — coarsen only where the eye tolerates MORE than the renderer already delivers — is what
+     foveation means. Then Hsu et al. 2017's **7.5 degree** inner radius, because the corrected
+     version still started coarsening at 4.3 degrees.
+     **Check PERFORMED**: at Guenter's 1.32 arcmin/degree with Hsu's inner radius, **5.33 -> 4.06 ms,
+     23.8% saved**, clearing the prompt's 10% bar. **And the periphery is still visibly degraded** —
+     the outer thirds are plainly blockier in a still image without hunting for it. So it ships off.
+     Not "the saving was too small"; "the saving is real and the cost is visible", and on a desktop
+     the cost is paid wherever the player happens to be looking. Tursun et al.'s 1.1-1.8x on a 1440p
+     desktop and 0.9x — slower — on a simple-shader scene reached the same place from the other side.
+332. [x] The distance fades in arcminutes. The smooth-normal blend and the grain fade thresholded
+     `cubePixels` at 1.5 / 4.5 / 4.0 — resolution-DEPENDENT in the worst way, since the same cube at
+     the same distance is filtered differently at a different viewport. At 4x resolution the old
+     "1.5 px" is 2.507 arcmin, a quarter of the angular size.
+     **Check PERFORMED**: both fades now threshold ANGULAR size, at 10.030 / 30.089 and 10.030 /
+     26.746 arcmin at every viewport, and the shipped image is unchanged — **11 of 921,600 pixels
+     differ (0.0012%)**. Getting there took two tries: the first conversion used 4.0 px where
+     `(cubePixels - 1.5) / 3.0` means 4.5, a supposedly no-op refactor that moved **42%** of pixels.
+     **AND A MEASUREMENT GOTCHA**: comparing two builds with wind ON showed 38% differing even after
+     the threshold was right, because the shimmer is driven by WALL-CLOCK seconds — any A/B involving
+     it must pass `--no-wind`, which is how the 0.0012% was measured. Goal 337 later made that a
+     flag rather than a discipline.
+
+### AN-B. The world reads as alive at distance (goals 333–334)
+
+333. [x] (= goal 195) The distance shimmer. **Check PERFORMED**: a viewed capture across a valley —
+     the ground carries visible wind-swept brightness variation at zero geometry cost; `--no-wind`
+     kills it (**21.24%** of pixels differ) and is bit-identical to the pre-change image by
+     construction, because the block is gated on `g_WindDirSpeed.z > 0.0`. Both backends differ by
+     **0.77%** at the same pose, inside Prompt 002 goal 217's 12.8% floor.
+334. [x] `wind_responsive` as a material component, exported to shaders as a registry-derived
+     bitmask. A MEMBER rather than a shading model, and the distinction is the whole point: the
+     marcher's wind block was gated on `Shading::Foliage`, so making ground grass respond would have
+     reclassified Grass and given a lawn a tree crown's sway.
+     **Check PERFORMED**: a test asserts the mask equals the registry for every material and
+     recomputes it independently — a test that called the renderer's own function would agree by
+     construction and prove nothing. **IT IMMEDIATELY EARNED ITSELF**: the mask came out ZERO,
+     because `make_def` used POSITIONAL initialisers and the new trailing member was silently
+     value-initialised for every material. Nothing failed to compile. `make_def` now uses DESIGNATED
+     initialisers, which turns exactly that omission into a compile error.
+
+### AN-C. Trees that move (goals 335–337 = goals 190–192 completed)
+
+335. [x] (= goal 190) Hierarchical spring sway, as BRANCH CHAINS rather than segments — and that was
+     measured, not assumed. The first version gave every segment its own oscillator and **the pole
+     rang at 1.03 Hz against a predicted 0.26**: a serial chain is `M theta.. + K theta = Q` with K
+     diagonal but **M DENSE**, so dropping the off-diagonals leaves each joint at `sqrt(k_i/J_i)`,
+     3x the collective mode for a 40-segment pole. The fix is fewer, better coordinates. Within a
+     chain, segment j takes `w_j ~ (L-s_j)*ds_j` — the static tip-load curvature — which makes
+     `K/lever^2 = 3EI/L^3` exact and `omega^2 = 12 EI/(rho A L^4)` land **2.9%** from Rayleigh's
+     12.727, from two independent shape functions.
+     **Check PERFORMED**: closed form **0.260064 Hz** for a 20 m sycamore at 25.2 cm dbh (slenderness
+     79, inside the forest-broadleaf band) against §3.1's FE-simulated 0.26; leaf-off shift
+     **18.4964%** against §3.4's measured 18-19%; the log-decrement instrument recovers a given zeta
+     to 0.02% (asked 0.039, measured 0.039009); **damping by branching is real but modest** —
+     child-reaction on vs off gives zeta_eff **0.0861 -> 0.0901** and f0 0.914 -> 0.831 Hz;
+     determinism bit-exact. **FRAME BUDGET, with the attributor**: 129 trees / 3,650 chains /
+     13,272 segments in the 120 m ring cost **0.049 ms/frame mean, 0.246 worst** against a 0.5 ms
+     budget, and 1,552 trees at a 400 m ring cost **0.585 mean, 2.933 worst** — over. Cost is linear
+     in stepped chains, so the ring could reach ~370 m before the budget binds. **120 m is that
+     number, not a taste.** Captures: `an_sway_period.png` (four frames across one period at 14 m/s,
+     rest pose in grey behind) and `an_sway_breeze_4ms.png`.
+     **TWO THINGS ONLY A PICTURE FOUND**: a horizontal branch could not move sideways, because
+     rotation vectors were projected onto the HORIZONTAL plane (true of a trunk, false of everything
+     else — a horizontal branch broadside to the wind has a purely vertical bending torque and the
+     projection deleted all of it); and **the wind field had a hole exactly where trees resonate** —
+     a 0.05 Hz gust, a 4 Hz flutter, and nothing between, against fundamentals of 0.26-1.0 Hz. Fixed
+     in `world/wind` as `wind_buffet`, three waves at 0.17/0.59/1.87 Hz at a stated 0.20 turbulence
+     intensity; mean crossings in 60 s went **6 -> 28**.
+336. [x] (= goal 191) Skeleton-driven voxelization — capsule branches and leaf clouds from the pipe
+     model's own radii and leaf areas.
+     **Check PERFORMED, growth measured BEFORE committing**, two runs each at 2 m from a trunk:
+     bricks 1,061,035 -> 1,063,288 (**+0.21%**), tree memory 350.3 -> 350.9 MB (**+0.6 MB, +0.17%**),
+     build 10.09/9.85 -> 10.54/10.88 s (**+8%**), plus 183 skeletons / 29,465 primitives / 1.84 MB /
+     38 ms. **Against Prompt 004's resident-cache budget (279.46 MB resident, 333.14 MB peak GPU),
+     0.6 MB is 0.21% of it** — and the research names vegetation as the worst-case SVO content class,
+     which on this world it is not, because a crown of overlapping leaf balls has less surface than a
+     smooth octahedron of the same volume. `--verify-frame` **24.19 -> 25.17%** (note the Check's
+     ">= 25%" is cleared by the SKELETON run and not by the implicit baseline). The terrain-sampler
+     byte-equivalence test is untouched, because it runs at skeleton_radius 0; the oracle stays
+     **0/7,000**. Viewed captures at 2 / 10 / 60 m on both backends.
+     **The build cost was +37% and is now +8%**, from two fixes found by measuring: `material_at` ran
+     `std::sort` to deduplicate a POINT query that lands in exactly one cell, and the acceleration
+     grid's cells were sized to the LARGEST primitive (a metre-wide leaf cloud), so every cell held a
+     dozen clouds that every voxel distance-tested. **The canopy took three tries and a picture each
+     time**, ending with the leaf-area density DERIVED as `total leaf area / crown volume` — a fixed
+     2.0 m^2/m^3 had been packing a whole crown's leaf into a fifth of its volume.
+     **AND THE THING THIS GOAL ACTUALLY FOUND**: `tools/svo_render` and the harness's `pose_ground`
+     resolver were working in the pre-Prompt-006 NOISE world, because the macro-field bake lived in
+     an anonymous namespace inside the app. Measured: over a 320 m square the two surfaces differ by
+     a **mean of 35.5 m and a worst of 107.1 m**. The CPU reference renderer had been a reference for
+     nothing since Prompt 006, and every `pose_ground` had been resolving against ground that is not
+     there — the collision counter had been reporting it all along as "ticks ended INSIDE solid".
+     Found by putting a CPU frame and a GPU frame of the same coordinates side by side. Fixed by
+     extracting `bake_playable_field`, with three tests pinning it.
+337. [x] (= goal 192) Geometric canopy motion: **attempted, measured, REJECTED, shipped off**, which
+     the goal named in advance as an acceptable outcome.
+     **Check PERFORMED**: captures at 2 m and 10 m — the warp changes 17.9% and 28.2% of pixels and
+     **none of it says the tree is in motion**, because a crown reads as moving when its EDGE moves,
+     the edge is where traversal stopped, and this goal excludes warping traversal. **TAA ghosting:
+     none** after a 50-degree pan, because the warp changes shading without changing motion vectors —
+     the good half of the same fact that makes it invisible. Oracle **0/7,000 and 0/4,000**, by
+     construction rather than by luck. FXC accepts it, so both backends run it.
+     **Two real finds**: the first version gated on `wind_responsive`, and ground grass IS
+     wind-responsive (goal 334, deliberately) — a 6 cm domain warp on a lawn reads as the ground
+     CRAWLING and was the dominant change in the difference image. And **the animation clock was the
+     wall clock**, so no wind-driven A/B was reproducible: three runs capturing at the same scripted
+     second measured 0.122 / 0.255 / 0.192% — a spread three times the effect. `--anim-step` fixes it
+     for scripted runs, with the stated limit that a capture at a scripted TIME still lands on a
+     different frame index, so a reproducible wind-driven capture needs `capture frame N` too.
+
+### AN-D. Ground cover (goals 338–340 = goals 193–195)
+
+338. [x] (= goal 193) Voxel blade clusters in the finest ring. **THIS REOPENS GOAL 40** — "grass
+     ground-cover geometry, needs instancing+textures" — and the new evidence is
+     `research/grass-rendering-research.md`, which ranks grass-as-voxels #2 for this engine and notes
+     it needs no new pipeline at all. Its two stated costs are accepted rather than argued away.
+     **THE PALETTE WAS THE REAL WORK.** A blade must be `Phase::Foliage` where ground grass is
+     `Phase::Solid`, so this needed a NINTH material against an eight-entry brick palette whose
+     static_assert named two ways out, both expensive: a wider index is **+20% on every brick in the
+     world** (84 words / 336 B against 70 / 280), most of goal 275's measured -264.2 MB handed back;
+     a second size class is a different allocator. The third way shipped: keep 3 bits and 280 B and
+     make the invariant PER BRICK, backed by `tools/palette_probe`'s own measurement that 98.6% of
+     bricks hold three or fewer distinct materials and nothing exceeds five. Overflow has a
+     deterministic answer and a counter that a test asserts is zero on real content and non-zero on a
+     constructed nine-material brick. **Two existing tests had encoded the old guarantee and both
+     were WRONG rather than stale** — `tree_replaces` was asserted against a hand-written restatement
+     naming the yielding materials by identity.
+     **Check PERFORMED, per-biome density against the research**: the table is Part 6 §7's plants/m^2
+     with each citation beside it, and the two entries the research measured as COVER rather than a
+     count say DERIVED in theirs. A TUFT stands for `plants_per_tuft` real plants, named as the LOD
+     device it is, because 60 plants/m^2 over a 24 m ring is 108,600 of them. Cost at 24 m:
+     **20 plants/tuft (3 tufts/m^2) = +1.54% bricks, +1.29% MB, +4.6% build** — ships; 6 = +5.08% /
+     +4.27% / +14.9%; 2 = +14.06% / **+11.72%** / +18.7%, which exceeds the Check's <+10% MB and is
+     the documented ceiling. Viewed captures at **1 / 4 / 15 m on both backends**. **Walked through
+     it**: 420 ticks sprinting, **0 frames below the ground surface**, collision **0.0359 ms/tick**
+     against a 0.20 ms budget — a blade is Phase::Foliage so the collider never sees it, asserted at
+     the registry. **The honest look note**: at an affordable density this reads as scattered dark
+     tussocks, not a sward. That is what 10 plants/m^2 IS.
+339. [x] (= goal 194) The instanced raster overlay. **The research's recommended technique assumes a
+     depth buffer this marcher does not write** — goal 267 removed SV_Depth after measuring it at 17%
+     of the march on vk. The engine already exports what is needed under another name: the march's
+     second render target is the hit distance, so a blade compares its own view distance against that
+     texture and discards where the world is nearer. Grass-against-grass gets the otherwise-untouched
+     DSV. Two mechanisms, each doing the half it can.
+     **Check PERFORMED**: 22,950 blades, its own GPU timer — vk march 6.80, **grass 0.21**, whole
+     frame 6.92 -> 7.09; d3d12 march 9.99, **grass 0.05**, 10.10 -> 10.22. **32 B/blade** against
+     Ghost of Tsushima's 16 floats (64 B) for ~83,000 blades in 2.5 ms, i.e. **0.0092 us/blade on vk
+     against GoT's 0.030** — 3.3x cheaper per blade on vk and 14x on d3d12, which is a desktop GPU a
+     decade newer, a 6-triangle blade against GoT's 15-vertex one, and no compute culling. Occlusion
+     correct both ways on a hillside; wind on vs off moves **49.7%** of pixels; the player bend moves
+     **1.79%** looking down (0.30% at a level pose, because a 1.5 m radius from a 1.7 m eye is a small
+     patch at the bottom edge); **TAA does not ghost**, and that is a design decision rather than
+     luck — the overlay writes its OWN distance so the resolve reprojects a blade against the blade's
+     distance. Both backends.
+     **It ships OFF, and not for the GPU cost**: a full instance rebuild is **10 ms worst, 0.148
+     ms/frame mean**, once per quarter-radius of camera movement — a dropped frame every few seconds
+     at walking pace. That cost was also MIS-ATTRIBUTED at first, appearing as a 17.3 ms `sway` phase
+     against the 0.049 ms goal 335 measured; it is now timed separately.
+     **A bug worth recording**: the first version drew nothing at all. `mul(v, M)` compiles fine and
+     silently transposes (this project uses `mul(M, v)`), and then, while bisecting THAT with a debug
+     constant colour, the pixel cbuffer went unreferenced, the compiler stripped it, and
+     `GetStaticVariableByName` threw at PSO setup. Two independent invisibilities stacked.
+340. [x] The three tiers agree at their boundaries — **structurally**. `grass_blade(tuft, index,
+     count, params)` is the ONE place a blade's geometry exists and both geometric tiers call it;
+     `grass_wind_phase(tuft)` is the same for the phase. The first version of goal 339 re-derived the
+     fan from the tuft's id with its own copy of the turn angle, which is exactly how a ring appears
+     six months later when one copy is tuned.
+     **THE THIRD TIER DOES NOT HAVE TUFTS**, and saying so is more useful than pretending: the
+     distance shimmer is a per-pixel brightness term with no per-tuft identity, and what it shares is
+     the wind field.
+     **Check PERFORMED**: 1,000 tufts, 5,000 blades, every endpoint asserted IDENTICAL (not
+     approximately) between the voxel capsule and the shared segment the raster instance is built
+     from, every id distinct, every phase reproducible — **48,004 assertions**. **No ring, measured**:
+     the overlay ends at 14 m and the voxel tier at 24 m, which at the capture's pose fall at image
+     rows 335 and 301; the per-row fraction of blade-dark pixels ramps 0.247 -> 0.338 with a largest
+     smoothed step of **0.0103 at ROW 634** — a hill crest, 4.1x the mean step and three hundred rows
+     from either boundary. The reason is the shared call: crossing the overlay edge removes the extra
+     raster blades and leaves the shared ones standing as voxels, in the same place.
+
+### AN-E. The budget, and the whole view (goals 341–345)
+
+341. [x] The frame budget, spent and accounted. Measured at `stress_pose` by turning this prompt's
+     default-on features off one at a time: shipped default **845,260 bricks, vk march 5.83, d3d12
+     8.77**; minus voxel grass 841,994 / 5.80 / 8.55; minus skeletons too 844,486 / 5.69 / 8.37;
+     minus sway and back to a 512 m region **772,906 / 4.69 / 6.92**.
+     **THE REGION IS THE SPEND** — everything else this prompt turned on is at or below the 18%
+     run-to-run noise floor `stress_pose`'s own comments record for this machine. That was not the
+     expectation: trees that move and ground that is covered SOUND expensive, and goal 329's own
+     table made the region look free.
+     **Check PERFORMED against the 150 fps target**: vk's whole GPU frame is **6.32 ms (158 fps),
+     inside**; d3d12's is 9.19 ms (109 fps), outside — **and d3d12 with every one of this prompt's
+     features off AND the old 512 m region is 7.35 ms (136 fps), still outside.** Goal 244's
+     measurement, which set the target, reads "`stress_pose`, vk". So no feature comes off the
+     default on account of d3d12, because taking every one off does not bring d3d12 to target; the
+     gap is the backend's and it is a goal rather than a knob (345).
+     A note on reading frame numbers rather than GPU ones: **vsync is on by default and this panel is
+     165 Hz**, so any frame whose GPU work exceeds 6.06 ms lands at 12.1 ms — which is why every
+     frame median at these poses is 12.02-12.10. `--no-vsync` is not the answer either: the run then
+     hits the harness's frame cap before the script finishes.
+342. [x] The hilltop shot: `research/captures/an_hilltop_{vk,d3d12}.png`, the shipped default from
+     high ground at (48, 0) looking down the valley, `contrast_percent` 27.26 / 27.5.
+     **Check PERFORMED, and the backend comparison nearly reported the opposite**: vk against d3d12
+     reads **34.0%** of pixels differing — three times Prompt 002 goal 217's 12.8% floor — and with
+     `--no-wind` the same pair reads **1.375%**. The whole difference was the wind's phase, because
+     the two backends reach a scripted capture at different frame counts and `--anim-step` ties the
+     clock to frame count. The honest number is 1.375%, well inside the floor.
+     **What is not in the frame, reported rather than dropped: no river.** `docs/terrain-pipeline.md`
+     §6 already records sub-cell rivers as a limitation of this world at a 16 m field, so at a
+     hilltop's distance there is nothing to see. Inherited, not caused.
+343. [x] Four new scenarios: `grass_walk` (both ground-cover tier boundaries in one frame),
+     `tree_sway` (one tree at a real wind with a fixed animation clock), `horizon` (the far
+     region-edge check), `valley_far_v` (the fog sweep, run under
+     `--ramp visibility:10000,20000,50000,100000`). `grass_walk` and `tree_sway` are registered in
+     `ctest -L scenario`; **`horizon` and `valley_far_v` deliberately are not** — horizon exists to
+     show a boundary that is still visible (goal 330's honest negative), so gating on it would gate
+     on a known failure, and valley_far_v is meant to be ramped rather than run once.
+344. [x] Regression cross-check against the three named old defects. **Check PERFORMED**, nine
+     scenarios on vk: moire ratio **0.883 - 2.321** across the whole library (stress_pose 1.920
+     against its 2.2 gate, valley_far 1.872 against 2.1, walk_cliff 1.369, spawn_stand 1.913/1.920,
+     macro_ground 1.689, clip_stress 1.592, fly_transect 2.321/1.409/0.883, grass_walk 1.851) — **no
+     new aliasing anywhere**, and valley_far's own gate now PASSES where it had been failing at 2.304
+     under the mis-resolved pose goal 336 found. No shadow ringing and no sliver curtains in any
+     capture; the sliver curtains were a mesh-path artefact and this path does not have it.
+     **Two gates failed and both were CALIBRATION rather than regression**: `stress_pose`'s
+     `gpu_ms_median < 4.8` measured 5.924 and `valley_far`'s `< 3.6` measured 5.781, against gates
+     set before the 4 km region. Recalibrated on this shipped default with the measurement recorded
+     in the scenario file, exactly as goal 273's own text describes.
+     **And every golden in the library was re-taken, then VERIFIED rather than assumed.** Four more
+     scenarios (`valley_far`, `macro_ground`, `macro_tree`, `fly_orbit`) needed `option --no-wind` for
+     the same reason `spawn_stand` and `stress_pose` did, and `valley_far` had been failing standalone
+     at **2.824% of pixels / mean 2.253/255 against gates of 1.500% / 1.200**. Final state: **all
+     sixteen scenario runs PASS on both backends, and all ten golden comparisons read 0.0000% of
+     pixels changed** at mean distances of 0.000-0.039/255. No gate was loosened to get there.
+     **One more capture lost its golden rather than being loosened**: `fly_orbit`'s `quarter` fires at
+     frame 120 mid-orbit and, re-taken wind-free, STILL promoted at **53.707% on vk / 2.719% on
+     d3d12** -- worse than Prompt 003's 5.3-35.5% post-motion band, because the dominant term there is
+     the rebuild storm and `--no-wind` cannot touch it. The scenario's own GOLDEN POLICY block already
+     required this of moving captures; `capture end final` honoured it and `quarter` had been missed.
+     It is `no-golden` now and its two reference PNGs are deleted.
+345. [x] The deliberate-omissions list, each with a reason: **the far silhouette tier** (the region's
+     2 km boundary IS visible at clear air and hiding it needs V = 2.67 km, which throws away goal
+     327); **foveation on by default** (23.8% real, visible degradation real, and on a desktop the
+     eyes roam); **geometric canopy motion** (a silhouette cannot move without warping traversal);
+     **the raster overlay on by default** (the 10 ms synchronous rebuild, not the 0.21 ms of GPU);
+     **moving voxel grass** (no published way to animate stored ray-marched voxels, and this pass did
+     not invent one); **rivers you can see** (Prompt 006's channels are sub-cell at a 16 m field);
+     **d3d12 at the fps target** (it was outside before this prompt and removing every feature does
+     not bring it in); **a threaded grass-instance rebuild** (the fix for 339's hitch); and
+     **reversed-Z** (goal 330 assessed it — nothing z-fights, so the benefit is unclaimable until
+     something distant needs composing).
+
+### AN-F. Found in passing, filed rather than fixed
+
+346. [ ] **Voxel ground cover costs 4.9x the collision time AT A POSE STANDING IN IT, taking it from
+     inside the 0.20 ms budget to ~2x over — and essentially nothing at a walking pose.** Measured at `macro_tree` with the harness's own `--ramp` so both arms
+     share a build and a pose: shipped default **0.3465-0.4299 ms/tick at 151.9 nodes/query**;
+     `--grass-radius 0` **0.0688-0.0791 ms/tick at 85.9 nodes/query**; `--skeleton-radius 0`
+     **0.3485-0.3546 at 151.9 nodes/query, i.e. no effect at all** — so goal 338 is the whole cause
+     and goal 336 is not implicated. `nodes/query` reads identically on vk and d3d12, which is what
+     places the cause in the octree's contents rather than in timing noise.
+     The mechanism is the one Prompt 003 recorded for deep water: `overlaps_solid` early-outs on the
+     first SOLID voxel, and `GrassBlade` is `Phase::Foliage` deliberately, so a 24 m ring of
+     occupied-but-not-solid voxels turns every query into a descent that finds nothing and runs to
+     exhaustion.
+     **The scope is narrower than that sounds, and checking it was the point.** Three walking/flying
+     scenarios measure INSIDE budget on the shipped default — `clip_stress` 0.0562, `walk_cliff`
+     0.0392, `fly_transect` 0.0233 ms/tick at 26.7/34.3/36.2 nodes/query — all below even
+     `macro_tree`'s grass-OFF 85.9. The same A/B at `clip_stress` moves nodes/query **26.7 -> 25.7 and
+     time 0.037 -> 0.033**: grass is **3.7%** of the visits there against **77%** at `macro_tree`. It
+     needs a body standing still in dense cover. `macro_tree`'s grass-free baseline is itself 3.3x
+     `clip_stress`'s, so that pose is the deeper one before grass enters.
+     **Node visits rise 1.77x while time rises 4.9x** at `macro_tree`, so the added descents are
+     individually more expensive too — measured, not yet explained.
+     The likely fix is a node-summary bit answering "is anything in this subtree SOLID", so a
+     foliage-only brick is skipped whole — the same shape of answer `caves_possible_in_band` already
+     is for caves. **Nothing gates on collision cost today** (`app_run.cpp` logs it at Error level and
+     no scenario asserts it), which is why this would otherwise have shipped as a number nobody read;
+     a gate belongs with the fix.
 
 ## Sources
 

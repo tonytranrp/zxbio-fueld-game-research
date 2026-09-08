@@ -1,0 +1,20 @@
+name hilltop
+describe Prompt 007 goal 342. THE frame the whole arc exists to produce: the shipped default, from high ground, down a valley, at the new 2 km view distance -- with Prompt 006's terrain and rivers under it, goal 338's ground cover on it, goal 335's trees moving in it, and goal 327's derived fog taking the far end. Nothing is turned off for this shot except TAA, which is off for the same reason it is off in every capture scenario.
+backend both
+
+# TAA off for every scenario that compares a capture against a golden. Measured, not assumed:
+# with TAA on, vk-vs-vk moves 0.996% of pixels at this pose against a 1.5% gate, and with it off
+# 0.341% -- see dev/harness/src/image_compare.hpp for the full four-case table.
+option --no-taa
+# A fixed animation clock so the wind is at the same phase in the vk and d3d12 captures. Without it
+# the two backends sample the gust at whatever wall-clock moment they reached the capture, and the
+# backend-agreement number below would be measuring the wind rather than the backends (goal 337).
+option --anim-step 0.0166667
+
+pose_ground 48,0 -90 -8 12
+wait 3
+
+capture end hilltop no-golden
+
+assert frames > 0
+assert contrast_percent > 6

@@ -1,0 +1,15 @@
+name valley_far_v
+describe Prompt 007 goal 343. valley_far's pose, swept across the named visibility bands. Run it with `--ramp visibility:10000,20000,50000,100000` -- the eye research's light-haze, clear, very-clear and exceptional values -- and the four captures are the fog's whole authored range at one pose.
+backend both
+
+option --no-taa
+option --no-auto-exposure
+option --visibility 20000
+
+pose_ground 48,0 -90 -8 12
+wait 2
+
+capture end valley_far_v no-golden
+
+assert frames > 0
+assert contrast_percent > 6

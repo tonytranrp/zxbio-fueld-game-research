@@ -7,6 +7,18 @@ backend both
 # 0.341% -- see dev/harness/src/image_compare.hpp for the full four-case table.
 option --no-taa
 
+# Prompt 007 goal 344: --no-wind, and it is a CAPTURE-REPRODUCIBILITY requirement rather than a
+# preference. Goals 333/335/338 put moving content in every frame -- a ground shimmer, swaying trees
+# and grass -- and all of it is driven by an animation clock that is the WALL CLOCK by default. So a
+# golden of this pose stopped being reproducible: the "final" capture measured 9.27% of pixels
+# changed against a 1.5% gate on a scene where nothing moves but the wind. `--anim-step` makes the
+# clock deterministic per FRAME, which is not enough on its own, because `capture end` lands on a
+# different frame index between runs (goal 337 records that limit). Killing the wind for the capture
+# scenarios is what the project already does for every wind A/B -- goal 332's own 0.0012% number was
+# measured that way -- and it leaves the golden measuring everything else: terrain, tree shape,
+# grass geometry, shading, LOD.
+option --no-wind
+
 pose_ground 48,0 -90 -6 1.7
 wait 5
 
@@ -88,7 +100,24 @@ assert moire_ratio < 2.2
 # 5.50 runs pass. So d3d12's gate is a REGRESSION GUARD ONLY, set 10% above the worst observed.
 # Goal 273's falsification Check is carried by vk -- which is the backend `ctest -L scenario`
 # actually runs -- where ten runs spread 0.3% and the same tightening fails every time.
-assert gpu_ms_median < 4.8 vk
-assert gpu_ms_median < 7.2 d3d12
-assert gpu_ms_p95 < 5.2 vk
-assert gpu_ms_p95 < 10.0 d3d12
+
+# ------------------------------------------------ Prompt 007 goal 344: RECALIBRATED, not relaxed
+# The gates below were set before goal 329 took the region from 512 m to 4096 m, which goal 341
+# measures at +1.00 ms of vk march and +1.45 ms of d3d12 at this very pose. So they failed --
+# stress_pose measured 5.924 against a 4.8 median gate -- and the failure is CALIBRATION rather than
+# regression: the thing being gated changed on purpose, with a cost table behind it.
+#
+# Re-measured on the shipped default, three runs each, RelWithDebInfo, vsync on (the GPU range is
+# vsync-independent; the FRAME range is not, which is why these gates are on the GPU one):
+#
+#   vk      median 5.90 5.94 5.94    p95 6.11 6.30 6.70
+#   d3d12   median 9.04 9.05 9.08    p95 9.26 9.29 9.41
+#
+# The medians are within 0.7% of each other on both backends, which is far tighter than the 18%
+# power-state spread the note above records -- these three runs happened in one power state and the
+# gates are set with the note's warning in mind rather than against it. Median gates at ~1.15x the
+# measured value, p95 gates above the worst observed.
+assert gpu_ms_median < 6.8 vk
+assert gpu_ms_median < 10.4 d3d12
+assert gpu_ms_p95 < 7.6 vk
+assert gpu_ms_p95 < 11.5 d3d12

@@ -1,0 +1,16 @@
+name horizon
+describe Prompt 007 goal 343. Looks at the far edge of the 4 km region from a hilltop. Goal 330's honest negative lives here: at clear-air visibility the region boundary IS visible, and this is the scenario that will show it stop being visible when a far silhouette tier exists.
+backend both
+
+option --no-taa
+option --no-auto-exposure
+option --noclip
+# The authored visibility, not a fog density (goal 327). 20 km is the "clear" band.
+option --visibility 20000
+
+pose 0,90,0 90 -3
+wait 3
+
+capture end horizon no-golden
+
+assert frames > 0

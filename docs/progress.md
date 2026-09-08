@@ -1012,3 +1012,52 @@ records), `research/baked-ao-design.md`, `research/water-foliage-design.md`,
 plus the earlier subagent reports (`research/diligent-core-api-surface.md`,
 `research/radient-tessera-investigation.md`, `research/gpu-driven-voxel-rendering-survey.md`,
 `research/profiling-tooling-integration.md`).
+
+## Prompt 007 — view distance and living cover (2026-09-08)
+
+Group AN, goals 326–345. Full record: `research/view-distance-and-cover-log.md`; the operating manual
+is `docs/view-distance.md`.
+
+**What the world does now that it did not.** It sees 2 km instead of 256 m, through fog derived from
+an authored visibility rather than a magic 0.0030. Its trees are grown skeletons voxelized into the
+octree, and they sway as a hierarchy of branch springs at their measured cantilever frequency. Its
+ground is covered — voxel blades in the finest ring, an instanced raster tier available for the near
+one, and a shading shimmer everywhere — at densities taken from the terrain research's own
+plants-per-square-metre table with each citation beside it.
+
+**What it cost**: vk's whole GPU frame at `stress_pose` went 4.69 → 6.32 ms, and **the region is
+essentially all of it**. The tree and grass work together is at or below this machine's 18%
+run-to-run noise floor.
+
+### Decisions that survived contact with evidence (this pass's additions)
+
+- **A serial chain's mass matrix is dense, and a diagonal approximation is not a refinement — it is a
+  different answer.** Per-segment sway rang at 1.03 Hz against a predicted 0.26. The fix was not a
+  bigger solve, it was fewer and better coordinates: one oscillator per branch chain, with the
+  in-chain rotation shared by the static tip-load curvature, which makes `K/lever² = 3EI/L³` come out
+  exactly.
+- **Growing the region is nearly free; growing the LOD radius is superlinear.** 256× the area for
+  2.27× the bricks, against 2.24× the radius for 5.6×. Every future attempt to spend headroom on
+  "more detail near the camera" has to argue against that exponent, which is now a test.
+- **A saving can be real and still not worth taking.** Foveation is 23.8%, measured, and the
+  periphery is visibly blocky in a still image. On a desktop the player's eyes roam and a crosshair
+  is not a gaze point.
+- **A silhouette cannot be moved by shading.** The canopy domain warp works, costs nothing, survives
+  TAA without ghosting, and does not read as motion — because a crown reads as moving when its EDGE
+  moves, and the edge is where traversal stopped.
+- **An eight-entry palette did not need a ninth bit; it needed a per-brick invariant.** The
+  static_assert's two named ways out cost +20% of every brick or a second allocator. The measurement
+  already in the file — nothing exceeds five distinct materials in a brick — supported a third way at
+  zero cost, with a counter that makes "never observed" checkable.
+- **Two tiers of the same thing must call one function, not two matching copies.** That is the whole
+  of goal 340, and the first version of the grass overlay had the second copy.
+- **A tool that renders a different world from the app is worse than no tool.** The macro-field bake
+  lived in the app's own anonymous namespace, so the CPU reference renderer — the thing this
+  project's rules say to reproduce an artefact on *before* touching a shader — had been a reference
+  for nothing since Prompt 006, at a mean surface difference of 35.5 m. Found by putting two frames
+  of the same coordinates side by side.
+- **A wall-clock animation clock makes every wind-driven A/B irreproducible**, and the spread is
+  larger than the effects being measured. Three runs of one scenario at the same scripted second
+  measured 0.122 / 0.255 / 0.192%.
+- **A debug edit that removes every reference to a cbuffer removes the cbuffer** — and then the PSO
+  setup throws on a variable that "exists" in the source.

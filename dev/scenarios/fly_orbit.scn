@@ -7,6 +7,16 @@ backend both
 # 0.341% -- see dev/harness/src/image_compare.hpp for the full four-case table.
 option --no-taa
 
+# Prompt 007 goal 344: --no-wind, and it is a CAPTURE-REPRODUCIBILITY requirement rather than a
+# preference. Goals 333/335/338 put moving content in every frame -- a ground shimmer, swaying trees
+# and grass -- driven by an animation clock that is the WALL CLOCK by default, so a golden of this
+# pose stopped being reproducible. `--anim-step` makes the clock deterministic per FRAME and that is
+# not enough on its own, because `capture end` lands on a different frame index between runs (goal
+# 337 records that limit). Killing the wind for a golden-comparing capture is what the project
+# already does for every wind A/B -- goal 332's own 0.0012% number was measured that way -- and it
+# leaves the golden measuring everything else: terrain, tree shape, grass geometry, shading, LOD.
+option --no-wind
+
 pose_ground 48,0 -90 -20 60
 look 135 -20 2
 hold forward 3
@@ -32,7 +42,13 @@ wait 3
 # reproduce to 0.0001-0.11%, well under the 1.5% gate. So the moving captures here are written for
 # eyeballing and deliberately have no golden until Prompt 004 removes the rebuild storm.
 
-capture frame 120 quarter
+# ...and `quarter` is one of those moving captures, which this file had missed: it fires at
+# frame 120, a third of the way through the orbit, with the body at speed. Prompt 007 goal 344
+# re-took it wind-free and it STILL promoted at **53.707% of pixels changed on vk** (2.719% on
+# d3d12) -- worse than the 35.5% upper bound the policy block above records, because the wind
+# was never the dominant term here; the rebuild storm is. `--no-wind` fixes a capture taken at
+# REST and cannot fix one taken at speed. So it follows `final`: no golden, eyeball it.
+capture frame 120 quarter no-golden
 capture end final no-golden
 assert frames > 0
 assert contrast_percent > 6

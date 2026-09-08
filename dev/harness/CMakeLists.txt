@@ -90,7 +90,12 @@ if(BUILD_TESTING)
   # stress_pose and fly_transect joined this list for goal 273: they carry the frame-time regression
   # gate, and a gate that is not in `ctest` is a number in a log file. They are the two most
   # expensive scenarios here (11 s and 13 s on vk) and that is the price of the gate.
-  foreach(scenario_name spawn_stand macro_ground valley_far clip_stress walk_cliff stress_pose fly_transect)
+  # Prompt 007 goal 343 added grass_walk and tree_sway to the cheap set. `horizon` and
+  # `valley_far_v` are deliberately NOT here: horizon exists to show a boundary that is still
+  # visible (goal 330's honest negative), so gating on it would gate on a known failure, and
+  # valley_far_v is meant to be run under `--ramp visibility:...` rather than once.
+  foreach(scenario_name spawn_stand macro_ground valley_far clip_stress walk_cliff stress_pose fly_transect
+                        grass_walk tree_sway)
     add_test(NAME "scenario.${scenario_name}"
              COMMAND voxel_harness --scenario ${scenario_name} --headless --backend vk
                      --out-dir "${CMAKE_CURRENT_BINARY_DIR}/scenario-out"

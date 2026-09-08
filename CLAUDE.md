@@ -666,5 +666,30 @@ Machine-relevant deltas ONLY:
   extinction, the `D = c(sqrt h + sqrt H)` horizon, the centre-pixel spread angle). `--visibility`
   replaced the fog density; `--lod-arcmin` is the LOD radius stated as an angle (`--lod-radius` is a
   faithful alias, and 4 m IS 6.71 arcmin).
-- **The region is 4096 m** (was 512). `valley_far`'s `moire_ratio < 2.1` and `gpu_ms_median < 3.6`
-  assertions FAIL at 2.30 and 3.88 as a result; confirmed pre-existing by stashing and re-running.
+- **The region is 4096 m** (was 512), and it is essentially the whole cost of this pass: at
+  `stress_pose`, turning off voxel grass, skeleton voxelization AND sway together moves the vk march
+  5.83 -> 5.69 ms, while going back to a 512 m region moves it to 4.69. vk's whole GPU frame is
+  **6.32 ms (158 fps), inside the 150 fps target**; d3d12's is 9.19 ms, outside -- **and d3d12 with
+  every one of this prompt's features off and the old region is still 7.35 ms**, so nothing comes off
+  the default on its account.
+- **The 4 km region moved two gates, and both were RECALIBRATED rather than relaxed** (the scenario
+  files carry the three-run measurement inline). `valley_far`'s `moire_ratio` gate is the opposite
+  story: it had been failing at 2.30 because the harness was resolving `pose_ground` against the
+  pre-Prompt-006 noise world, and now measures 1.872 against an unchanged 2.1.
+- **Voxel grass makes collision 4.9x more expensive AT A POSE STANDING IN IT, and ~nothing at a
+  walking one** (goal 346, open). `macro_tree`: 0.35-0.43 ms/tick at 151.9 nodes/query shipped, vs
+  **0.069-0.079 at 85.9** with `--grass-radius 0`; `--skeleton-radius 0` changes NOTHING (151.9 either
+  way), so goal 338 is the cause and 336 is not. `clip_stress` walking moves only 26.7 -> 25.7
+  nodes/query. Cause is Prompt 003's deep-water mode: `overlaps_solid` early-outs on the first SOLID
+  voxel and `GrassBlade` is `Phase::Foliage`, so a ring of occupied-but-not-solid voxels runs every
+  query to exhaustion. **Nothing gates on collision cost** -- `app_run.cpp` logs it at Error level and
+  no scenario asserts it -- so a regression here ships as a number nobody reads.
+- **A GOLDEN-COMPARING CAPTURE NEEDS `--no-wind`, and that is a reproducibility requirement rather
+  than a preference.** Goals 333/335/338 put moving content in every frame -- ground shimmer, swaying
+  trees, grass -- driven by an animation clock that is the WALL CLOCK by default. A `spawn_stand`
+  capture of a scene where "nothing moves" measured **9.27% of pixels changed against a 1.5% gate**;
+  with `--no-wind` it reads 0.0000%. **`--anim-step` is necessary and NOT sufficient**: it makes the
+  clock deterministic per FRAME, and `capture end` still lands on a different frame index between
+  runs. The same effect makes a backend comparison lie -- the hilltop shot reads 34.0% vk-vs-d3d12
+  with wind and **1.375% without**. Every scenario in `dev/scenarios` that promotes a golden now
+  carries `option --no-wind` with that reason written above it.

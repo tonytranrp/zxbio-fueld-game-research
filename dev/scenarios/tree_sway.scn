@@ -1,0 +1,21 @@
+name tree_sway
+describe Prompt 007 goal 343. One tree, one sway period. The sway model's fundamental for this tree is ~0.94 Hz, so the two captures a second apart are near-antiphase -- which is the point: a still image of a swaying tree looks exactly like a still tree, and two do not.
+backend both
+
+option --no-taa
+option --no-auto-exposure
+# A fixed animation clock, or the two captures sample the wind at whatever phase the frame rate
+# happened to land on (goal 337 measured that spread at three times the effect being looked for).
+option --anim-step 0.0166667
+# A real wind, not the default breeze: at 4 m/s the per-period swing is about two pixels at this
+# scale and a fresh breeze reads as a LEAN. Goal 335's own measurement.
+option --wind-speed 14
+option --noclip
+
+pose 27,41.0,43 -90 -2
+wait 4
+
+capture end tree_sway no-golden
+
+assert frames > 0
+assert contrast_percent > 6
