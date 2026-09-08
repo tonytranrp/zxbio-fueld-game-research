@@ -611,3 +611,29 @@ difference**, so it was re-shot closer, at a matching apparent scale.
 the right material, at a visible amplitude, and without the aliasing that used to accompany it.
 What separates the two images now is **form**, not grain — which is the correct hand-off to
 Prompt 006 and is the most useful thing this comparison establishes.
+
+---
+
+## 9. Goal 292 — the three standing defects, re-checked (and two of them are not this renderer's)
+
+`research/captures/al_standing_defects.png`, viewed. The three artefacts the prompt names as
+historically breaking when shading or the attribute layout moves, checked against their committed
+captures.
+
+**The finding that reframes two of them: `banding_slope.png` and `sliver_closeup.png` are MESH-PATH
+captures.** Both carry the mesh renderer's own overlay — *"chunks ready: 294"*, *"visible after
+culling: 32 / 95"*, *"chunk GPU memory"* — none of which the svo path has or prints. The sliver
+curtains (goals 73/105) and the slope banding were diagnosed on `--renderer mesh`, which this pass
+does not touch at all. **They cannot regress from a change to `svo_march.psh.hlsl`**, and comparing
+an svo frame against them would be comparing two different renderers and calling the difference a
+verdict.
+
+| defect | verdict | basis |
+|---|---|---|
+| **shadow rings** (goal 164) | **same — no regression** | `--debug-view lit` at the hilltop is **uniformly white over every terrain pixel**: no discs, no terraced darkening, no rings. This is the direct check, on the right renderer, and goal 164's fix is holding through both of this pass's changes. |
+| **slope banding** | **not applicable to this renderer**, and better anyway | The historical capture is the mesh path's heavy terracing. Today's svo grazing view of the same kind of slope shows smooth shading with no terracing — but that is a property of the svo path, not evidence about the mesh path. |
+| **sliver curtains** (goals 73/105) | **not applicable to this renderer** | Same reasoning. They remain open on the mesh path, and Prompt 004 goal 272a already records what they are now blocked on: installing RenderDoc, nothing else. |
+
+**So the honest answer to *"did any of them get worse"* is: the one that is on this renderer did not,
+verified on the right instrument; the other two are not reachable from anything this pass changed,
+and saying "unchanged" about them would have been an unearned claim rather than a measurement.**

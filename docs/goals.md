@@ -2495,9 +2495,19 @@ unfiltered quantity is the **material**. That reframing is AL-A's actual content
 291. [x] Goldens re-accepted on both backends for every scenario, since the look changed on purpose.
      The moiré metric is available as a `moire_ratio` scenario assertion; **it is NOT yet wired as a
      standing gate with a calibrated threshold**, which is the second half of this goal and is owed.
-292. Re-check the three standing defects (shadow rings, sliver curtains, slope banding) — **NOT
-     PERFORMED**. **Check**: one viewed capture per defect against its historical capture, with a
-     verdict of better/same/worse.
+292. [x] The three standing defects re-checked — **and two of them are not this renderer's**.
+     **Check PERFORMED**: `research/captures/al_standing_defects.png`, viewed.
+     **`banding_slope.png` and `sliver_closeup.png` are MESH-PATH captures** — both carry the mesh
+     renderer's own overlay (*"chunks ready: 294"*, *"visible after culling"*, *"chunk GPU
+     memory"*), none of which the svo path prints. The sliver curtains and the slope banding were
+     diagnosed on `--renderer mesh`, which this pass does not touch, so they cannot regress from a
+     change to `svo_march.psh.hlsl` and an svo-vs-mesh comparison would not be a verdict.
+     **Shadow rings (goal 164): SAME, no regression** — `--debug-view lit` at the hilltop is
+     uniformly white over every terrain pixel, with no discs, no terraced darkening and no rings.
+     That is the direct check on the right renderer, and goal 164's fix holds through both of this
+     pass's changes.
+     The honest form of the answer: the defect that is on this renderer did not get worse, and
+     claiming "unchanged" for the other two would have been unearned.
 293. [x] Both backends agree. **Check PERFORMED**: goal 278 vk 1.79963 vs d3d12 1.80010 (**0.03%**),
      goal 285 vk 1.040 vs d3d12 1.019, no FXC errors through two changes that are exactly the kind
      the two compilers have disagreed over (a `round`→`floor`, and new bit-field unpacking).
