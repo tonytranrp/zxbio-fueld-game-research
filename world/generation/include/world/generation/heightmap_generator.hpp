@@ -44,22 +44,27 @@ struct DetailParams {
     /// and both move monotonically with it because the amplitude is what decides whether the macro
     /// field or the detail term owns each scale:
     ///
-    ///     6 m -> beta 1.23 (R² 0.80), H 0.291      4 m -> beta 1.55 (R² 0.85), H 0.391
-    ///     3 m -> beta 1.78 (R² 0.88), H 0.463      2 m -> beta 2.11 (R² 0.91), H 0.558
+    ///     6 m -> beta 1.78 (R² 0.88), H 0.448      4 m -> beta 2.11 (R² 0.91), H 0.546
+    ///     3 m -> beta 2.34 (R² 0.93), H 0.610      2 m -> beta 2.66 (R² 0.95), H 0.686
     ///
-    /// 2 m is shipped: it is the only value that puts BOTH comfortably inside their bands
-    /// ([1.6, 2.5] and [0.46, 0.77]), lands beta near §9.2's stated target of 2, and has the best
-    /// log-log linearity of the four. 3 m clears Hurst's floor by three thousandths, which is not
-    /// clearing it.
+    /// 4 m is shipped: of the values that put BOTH inside their bands ([1.6, 2.5] and [0.46, 0.77])
+    /// it lands beta closest to §9.2's stated target of 2, with Hurst mid-band. 6 m puts Hurst at
+    /// 0.448, below its floor.
     ///
-    /// THE SWEEP IS MEASURED ON THE RECENTRED (LAND) WINDOW, and that matters: run on the raw field
-    /// centre -- which for the shipped seed is a bay -- the same amplitudes read 1.12 / 1.43 / 1.66
-    /// / 1.98, and an intermediate version that stamped a land bump under the origin instead read
-    /// 1.97 / 2.29 / 2.51 / 2.82. Three different tables for one parameter, because **the detail
-    /// amplitude is not independent of the macro relief underneath it**. The five-seed spread says
-    /// the same thing from the other direction: an absolute amplitude cannot track a varying macro,
-    /// and expressing it as a fraction of local relief is the open goal.
-    float amplitude_m = 2.0f;
+    /// THE SWEEP MUST BE RUN ON THE WORLD THAT SHIPS, and this parameter has now moved FOUR times
+    /// because the sweep's own conditions moved:
+    ///
+    ///   raw field centre (a bay on the shipped seed)   1.12 / 1.43 / 1.66 / 1.98  -> chose 2 m
+    ///   with a stamped land bump under the origin      1.97 / 2.29 / 2.51 / 2.82  -> chose 4 m
+    ///   recentred onto land, 5.1 km field              1.23 / 1.55 / 1.78 / 2.11  -> chose 2 m
+    ///   recentred, shipped 8 km field, with strata     1.78 / 2.11 / 2.34 / 2.66  -> chose 4 m
+    ///
+    /// Four tables for one parameter, and the pattern in them is the finding: **the detail amplitude
+    /// is not independent of the macro relief underneath it, nor of the field's extent.** The
+    /// five-seed spread says the same thing from a third direction. An absolute amplitude cannot
+    /// track a varying macro; expressing it as a fraction of local relief is the open goal, and
+    /// until it exists this constant must be re-swept whenever the macro stages change.
+    float amplitude_m = 4.0f;
 };
 
 class HeightmapGenerator {

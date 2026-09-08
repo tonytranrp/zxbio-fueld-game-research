@@ -119,4 +119,38 @@ void diffuse_hillslopes(TerrainField& out, const FluvialParams& p);
 /// down, because goal 306 checks the measured spacing against it.
 [[nodiscard]] float characteristic_valley_spacing(const FluvialParams& p) noexcept;
 
+
+// ----------------------------------------------------------------------------------------- 315
+//
+// Stratigraphy: horizontal beds of differing hardness, and the erosion look that follows from them.
+//
+// Research Part 7 §10.2(5) asks for "cliff stratigraphy from a warped layer field with per-layer
+// hardness feeding the erosion look", and Part 2 records that K spans NINE ORDERS OF MAGNITUDE
+// across lithologies. That span is the whole mechanism: a hard bed resists and stands out as a
+// bench, a soft one retreats into a slope behind it, and the alternation is what makes a cliff
+// read as rock rather than as a steep hill.
+//
+// THE BEDS ARE HORIZONTAL AND UNWARPED here, deliberately. A warp needs a per-column offset sampled
+// from a field, which would have to reach `world/materials`' band predicates -- and those take a
+// `TerrainQuery` that deliberately carries no x/z, because that is what keeps the sparse-brick and
+// chunk paths byte-identical (test_terrain_sampler.cpp). Horizontal beds need nothing new: they are
+// a pure function of world Y, which `TerrainQuery` already has. The warp is an open goal.
+
+/// One bed in the stack.
+struct Stratum {
+    float top_m;         ///< world Y of the bed's top surface
+    float erodibility;   ///< multiplier on K; 1.0 is the baseline the fluvial parameters assume
+    const char* name;
+};
+
+/// The stack, hardest-to-softest alternating, spanning this world's elevation range.
+///
+/// The multipliers are deliberately modest against Part 2's nine-order span: a factor of 5 between
+/// adjacent beds already produces a visible bench, and a factor of 10^9 would erode the soft beds to
+/// nothing within one timestep and make the solver's stability the thing being demonstrated.
+[[nodiscard]] std::span<const Stratum> strata() noexcept;
+
+/// The erodibility multiplier at a world elevation. 1.0 above and below the stack.
+[[nodiscard]] float stratum_erodibility(float worldY) noexcept;
+
 } // namespace world::generation::field

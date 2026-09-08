@@ -479,3 +479,75 @@ TEST_CASE("the climate stage is deterministic", "[generation][climate]") {
     };
     CHECK(bake() == bake());
 }
+
+// ------------------------------------------------------------ Prompt 006 goal 315: stratigraphy
+
+TEST_CASE("hard beds resist incision and soft beds do not", "[generation][fluvial]") {
+    // Goal 315's substantive claim, measured rather than looked at.
+    //
+    // The Check asks for "a viewed capture of a cliff with visible differential erosion (benches on
+    // hard layers)". THIS WORLD HAS NO CLIFF: goal 311 measured its coast at 1,423 cells of which
+    // ZERO are cliffed, and its mean land slope is 8 degrees. At that gradient a bench is an
+    // inflection of a few metres, not a visible ledge, and no camera pose will show one. The
+    // capture is reported as the negative it is (research/captures/am_strata.png -- a wooded hill,
+    // correct and benchless), and the mechanism is asserted here instead.
+    //
+    // The assertion: run the incision over a slope that spans several beds, and the elevation lost
+    // must be smaller in the hard beds than in the soft ones. That is the whole of "per-layer
+    // hardness feeding the erosion look" and it is true or not regardless of whether a camera can
+    // see it.
+    TerrainField f{geometry(256)};
+    {
+        // A long uniform ramp from 0 to 120 m, so every bed gets the same drainage treatment and
+        // the only thing that differs between them is their erodibility.
+        const std::span<float> h = f.plane(Plane::Elevation);
+        for (std::int32_t cz = 0; cz < f.cells(); ++cz) {
+            for (std::int32_t cx = 0; cx < f.cells(); ++cx) {
+                h[f.index(cx, cz)] = 120.0f * static_cast<float>(cz) / static_cast<float>(f.cells() - 1);
+            }
+        }
+    }
+    const std::vector<float> before(f.plane(Plane::Elevation).begin(), f.plane(Plane::Elevation).end());
+
+    priority_flood(f);
+    const FlowNetwork net = build_flow_network(f);
+    accumulate_flow(f, net);
+    FluvialParams p;
+    p.steps = 200;
+    incise_stream_power(f, net, p);
+
+    // Group the incision by the bed each cell started in.
+    double hardLost = 0.0;
+    double softLost = 0.0;
+    std::size_t hardCells = 0;
+    std::size_t softCells = 0;
+    const std::span<const float> after = f.plane(Plane::Elevation);
+    for (std::size_t i = 0; i < f.cell_count(); ++i) {
+        const float e = stratum_erodibility(before[i]);
+        const double lost = static_cast<double>(before[i]) - after[i];
+        if (e < 1.0f) {
+            hardLost += lost;
+            ++hardCells;
+        } else if (e > 1.0f) {
+            softLost += lost;
+            ++softCells;
+        }
+    }
+    REQUIRE(hardCells > 1000);
+    REQUIRE(softCells > 1000);
+    hardLost /= static_cast<double>(hardCells);
+    softLost /= static_cast<double>(softCells);
+    INFO("mean incision: hard beds " << hardLost << " m, soft beds " << softLost << " m");
+    CHECK(softLost > hardLost);
+
+    // And the beds are a partition with a real contrast, not a rounding difference.
+    CHECK(strata().size() >= 4);
+    float hardest = 1.0f;
+    float softest = 1.0f;
+    for (const Stratum& s : strata()) {
+        hardest = std::min(hardest, s.erodibility);
+        softest = std::max(softest, s.erodibility);
+    }
+    INFO("erodibility spans " << hardest << " .. " << softest);
+    CHECK(softest / hardest > 2.0f);
+}

@@ -31,7 +31,11 @@ constexpr std::int32_t kSurfaceCells = 512;
 constexpr float kSurfaceSpacing = 7.8125f;
 
 [[nodiscard]] std::shared_ptr<const TerrainField> macro(int seed) {
-    constexpr std::int32_t kCells = 320;
+    // THE SHIPPED FIELD SIZE, not a smaller one. The macro spectrum depends on the field's extent,
+    // so a sweep run at 5.1 km selects an amplitude for a world the app does not build -- measured:
+    // the same parameters read beta 2.11 at 320 cells and 2.66 at the shipped 500. Same reasoning
+    // as recentring the origin: the selection has to be made on the world that ships.
+    constexpr std::int32_t kCells = 500;
     const float half = 0.5f * 16.0f * static_cast<float>(kCells);
     TerrainField f{FieldGeometry{.origin_x = -half, .origin_z = -half, .cell_size = 16.0f, .cells = kCells}};
     run_pipeline(f, MacroParams{.seed = seed}, -1);
