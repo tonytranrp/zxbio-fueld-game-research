@@ -15,12 +15,36 @@ namespace render::diligent::detail {
 // same source the C++ palette upload reads -- instead of literals (`[8]`, `min(m, 7u)`, `== 3u`,
 // `== 5u`) that had to be kept in sync by comment. A shader that names a macro this does not define
 // fails to compile, which is the point.
+/// The wind-responsive bitmask, bit i set when material id i is wind_responsive.
+///
+/// `static_assert`ed against the id width: with more than 32 materials this silently truncates, and
+/// silently is the one thing a registry-derived constant must never be.
+[[nodiscard]] constexpr std::uint32_t wind_responsive_mask() noexcept {
+    static_assert(world::materials::kMaterialCount <= 32,
+                  "MAT_WIND_MASK is a uint32 bitmask over material ids; widen it or pack differently");
+    std::uint32_t mask = 0;
+    for (std::size_t i = 0; i < world::materials::kMaterialCount; ++i) {
+        if (world::materials::Registry::table[i].wind_responsive) {
+            mask |= 1u << i;
+        }
+    }
+    return mask;
+}
+
 inline void add_material_macros(Diligent::ShaderMacroHelper& macros) {
     macros.AddShaderMacro("MATERIAL_COUNT", static_cast<Diligent::Uint32>(world::materials::kMaterialCount));
     for (const world::materials::Shading shading : world::materials::kAllShadings) {
         macros.AddShaderMacro(world::materials::shading_macro_name(shading),
                               static_cast<Diligent::Uint32>(shading));
     }
+    // Prompt 007 goal 334: which materials the wind moves, as a BITMASK over material ids.
+    //
+    // A mask rather than another field in the material record because the record's `w` already
+    // carries the shading model and the stipple amplitude packed into one float, and a third value
+    // there would be one trick too many. A mask is one uint, costs the shader a shift and an and,
+    // and -- like MATERIAL_COUNT and MAT_SHADING_* -- it is DERIVED FROM THE REGISTRY, so a new
+    // wind-responsive material is one `static constexpr bool` in its def file and nothing else.
+    macros.AddShaderMacro("MAT_WIND_MASK", static_cast<Diligent::Uint32>(wind_responsive_mask()));
 }
 
 // One float4 per material -- the record layout BOTH palettes upload (the terrain PSO's

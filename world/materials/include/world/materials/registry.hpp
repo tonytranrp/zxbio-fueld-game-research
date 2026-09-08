@@ -12,9 +12,19 @@ namespace world::materials {
 
 template <MaterialDefinition T>
 [[nodiscard]] constexpr MaterialDef make_def() noexcept {
-    return MaterialDef{
-        T::name,   T::albedo,          T::phase,          T::shading,
-        T::stipple, T::liquid,         T::yields_to_trees, T::overrides_terrain};
+    // DESIGNATED INITIALISERS, not positional. The positional form silently dropped
+    // `wind_responsive` when it was added (goal 334) -- the aggregate simply value-initialised the
+    // new trailing member to false, every material came out still, and the only symptom was a
+    // wind mask of zero. Named members make that a compile error instead of a silent default.
+    return MaterialDef{.name = T::name,
+                       .albedo = T::albedo,
+                       .phase = T::phase,
+                       .shading = T::shading,
+                       .stipple = T::stipple,
+                       .liquid = T::liquid,
+                       .yields_to_trees = T::yields_to_trees,
+                       .overrides_terrain = T::overrides_terrain,
+                       .wind_responsive = T::wind_responsive};
 }
 
 // The compile-time composition of material components. A material's id is its position in the

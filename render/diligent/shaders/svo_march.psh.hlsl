@@ -82,6 +82,16 @@ float3 MaterialAlbedo(uint material)
     return g_Materials[min(material, MATERIAL_COUNT - 1u)].rgb;
 }
 
+// Prompt 007 goal 334: does the wind move this material's appearance?
+//
+// MAT_WIND_MASK is a bitmask over material ids, derived from the registry's `wind_responsive`
+// member and passed at shader creation exactly like MATERIAL_COUNT and MAT_SHADING_*. No material
+// literal appears here, and adding a wind-responsive material is one bool in its def file.
+bool MaterialWindResponsive(uint material)
+{
+    return (MAT_WIND_MASK & (1u << min(material, 31u))) != 0u;
+}
+
 uint MaterialShading(uint material)
 {
     // floor, NOT round: goal 285 packs the material's stipple amplitude into this float's
@@ -1130,7 +1140,12 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     // (research/tree-motion-growth-and-appearance.md §6.2). Gust and flutter together: the gust
     // sweeps whole canopies light and dark as it crosses them, the flutter shimmers their surface.
     // At distance, with TAA, this is what makes a valley read as alive at zero geometry cost.
-    if (MaterialShading(hit.material) == MAT_SHADING_FOLIAGE && g_WindDirSpeed.z > 0.0)
+    // GATED ON THE MATERIAL MEMBER, not the shading model (goal 334). Grass is Shading::Lit and
+    // must stay that way -- reclassifying it as Foliage would have given ground grass the mesh
+    // path's canopy sway, which is a tree crown's motion and not a lawn's. This is goal 333's
+    // distance shimmer and goal 190's canopy shimmer sharing one code path, which is what they
+    // should have shared all along.
+    if (MaterialWindResponsive(hit.material) && g_WindDirSpeed.z > 0.0)
     {
         const float t = g_CameraPosWorld.w;
         const float gust = WindGust(p, g_WindDirSpeed.xy, t, g_WindGustFlutter.x, g_WindGustFlutter.y);

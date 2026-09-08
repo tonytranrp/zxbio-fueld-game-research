@@ -14,6 +14,7 @@ struct Leaves {
     static constexpr Stipple stipple{0.0f}; // ditto, and its own shading model already breaks it up
     static constexpr Shading shading = Shading::Foliage;
     static constexpr LiquidPhysics liquid{};
+    static constexpr bool wind_responsive = true;
     static constexpr bool yields_to_trees = false;   // a second canopy does not carve the first
     static constexpr bool overrides_terrain = false; // terrain wins: no carving grass out of a hillside
 

@@ -14,6 +14,7 @@ struct Air {
     static constexpr Stipple stipple{0.0f}; // never shaded
     static constexpr Shading shading = Shading::Lit;
     static constexpr LiquidPhysics liquid{};
+    static constexpr bool wind_responsive = false;
     static constexpr bool yields_to_trees = true;
     static constexpr bool overrides_terrain = false;
 

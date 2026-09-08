@@ -14,6 +14,7 @@ struct Wood {
     static constexpr Stipple stipple{0.0f}; // too small on screen for a hatch to be anything but noise
     static constexpr Shading shading = Shading::Lit;
     static constexpr LiquidPhysics liquid{};
+    static constexpr bool wind_responsive = false;
     static constexpr bool yields_to_trees = false;
     static constexpr bool overrides_terrain = true;
 

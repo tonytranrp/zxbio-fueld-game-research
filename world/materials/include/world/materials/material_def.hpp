@@ -73,6 +73,20 @@ struct MaterialDef {
     LiquidPhysics liquid;
     bool yields_to_trees;   // a tree's voxel may replace this one (air, water)
     bool overrides_terrain; // this material replaces even solid terrain (the trunk, sunk on purpose)
+    // Prompt 007 goal 334. Does the wind move this material's appearance?
+    //
+    // A MEMBER RATHER THAN A SHADING MODEL, and the distinction is the whole reason this exists.
+    // The marcher's foliage-wind block was gated on `Shading::Foliage`, so making ground grass
+    // respond to wind would have meant reclassifying Grass -- which would ALSO have given it the
+    // mesh path's canopy sway, a motion that belongs to a tree crown and not to a lawn. Group AG's
+    // note called that out and deferred the fix until there was a consumer. Goal 333 is the
+    // consumer.
+    //
+    // Exported to shaders as a BITMASK (MAT_WIND_MASK) rather than as another field in the material
+    // record, because the record's `w` already carries two packed values -- the shading model in its
+    // integer part and the stipple amplitude in its fraction -- and a third would be one packing
+    // trick too many.
+    bool wind_responsive;
 
     [[nodiscard]] constexpr bool is_solid() const noexcept { return phase == Phase::Solid; }
     [[nodiscard]] constexpr bool is_liquid() const noexcept { return phase == Phase::Liquid; }
@@ -93,6 +107,7 @@ concept MaterialDefinition = requires(const TerrainQuery& q) {
     { T::shading } -> std::convertible_to<Shading>;
     { T::stipple } -> std::convertible_to<Stipple>;
     { T::liquid } -> std::convertible_to<LiquidPhysics>;
+    { T::wind_responsive } -> std::convertible_to<bool>;
     { T::yields_to_trees } -> std::convertible_to<bool>;
     { T::overrides_terrain } -> std::convertible_to<bool>;
     { T::fills(q) } -> std::same_as<bool>;

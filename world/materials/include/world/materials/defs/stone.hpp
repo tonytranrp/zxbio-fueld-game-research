@@ -12,6 +12,7 @@ struct Stone {
     static constexpr Stipple stipple{0.076f}; // the measured target: 7.6% peak (5.4% RMS in the capture)
     static constexpr Shading shading = Shading::Lit;
     static constexpr LiquidPhysics liquid{};
+    static constexpr bool wind_responsive = false;
     static constexpr bool yields_to_trees = false;
     static constexpr bool overrides_terrain = false;
 

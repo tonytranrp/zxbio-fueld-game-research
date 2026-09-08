@@ -12,6 +12,7 @@ struct Grass {
     static constexpr Stipple stipple{0.0f}; // the target capture's green is broad and faceted, with no stipple at all
     static constexpr Shading shading = Shading::Lit;
     static constexpr LiquidPhysics liquid{};
+    static constexpr bool wind_responsive = true;
     static constexpr bool yields_to_trees = false;
     static constexpr bool overrides_terrain = false;
 

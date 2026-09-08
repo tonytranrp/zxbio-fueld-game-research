@@ -2,6 +2,7 @@
 set(CMAKE_CXX_CLANG_TIDY "")
 add_executable(world_materials_tests
     test_registry.cpp
+    test_wind_responsive.cpp
 )
 target_link_libraries(world_materials_tests PRIVATE world_materials Catch2::Catch2WithMain project_warnings)
 

@@ -29,6 +29,7 @@ struct Water {
     // the better part of a minute to surface from. +1 g is a game-scale choice, and it is the SAME
     // choice that shipped before; only its spelling changed.
     static constexpr LiquidPhysics liquid{19.62f, 2.5f, 0.5f};
+    static constexpr bool wind_responsive = false;
     static constexpr bool yields_to_trees = true; // a canopy leaning over the shore fills the water
     static constexpr bool overrides_terrain = false;
 

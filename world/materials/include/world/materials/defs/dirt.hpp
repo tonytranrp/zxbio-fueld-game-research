@@ -12,6 +12,7 @@ struct Dirt {
     static constexpr Stipple stipple{0.030f}; // a trace, so an exposed bank is not conspicuously smoother than the rock beside it
     static constexpr Shading shading = Shading::Lit;
     static constexpr LiquidPhysics liquid{};
+    static constexpr bool wind_responsive = false;
     static constexpr bool yields_to_trees = false;
     static constexpr bool overrides_terrain = false;
 
