@@ -138,7 +138,8 @@ private:
     void fill_columns(const glm::vec3& origin, float voxelEdge, const std::array<float, 64>& h,
                       Brick& brick) const;
     void voxelize_trees(const glm::vec3& origin, float voxelEdge, Brick& brick) const;
-    static void fill_layer(Brick& brick, int j, world::chunk::MaterialID material) noexcept;
+    // Writes one Y layer of the 512-byte material scratch; the brick is packed once afterwards.
+    static void fill_layer(std::uint8_t* materials, int j, world::chunk::MaterialID material) noexcept;
 
     const world::generation::HeightmapGenerator* heightmap_;
     TerrainSamplerParams params_;

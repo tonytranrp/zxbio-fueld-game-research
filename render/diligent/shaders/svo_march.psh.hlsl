@@ -159,8 +159,14 @@ static const uint kViewSmoothNormal = 9u;
 static const uint kViewLodCube = 10u;
 static const uint kViewMaterial = 11u;
 static const uint kViewDistance = 12u;
-static const uint kBrickWords = 144u;
+// Goal 258: the brick is palette-compressed -- 16 mask words, 52 index words holding ten 3-bit
+// palette indices each, then a 2-word 8-entry palette. Mirrors world/svo/brick.hpp; the two change
+// together and the 7,000-ray oracle is what proves they agree.
+static const uint kBrickWords = 70u;
 static const uint kBrickMaskWords = 16u;
+static const uint kBrickIndexWord0 = 16u;
+static const uint kBrickIndicesPerWord = 10u;
+static const uint kBrickPaletteWord0 = 68u;
 // A ceiling on the grid walk, the same kind of safety bound kMaxIterations is for the octree.
 // 16x16x16 cells is 48 steps along an axis and at most ~90 on a diagonal; 256 is generous.
 static const uint kMaxGridSteps = 256u;
@@ -647,7 +653,15 @@ Hit TraceCell(Cell cell, float3 rayOrigin, float3 rayDir, float lodPixelAngle, f
                         Hit h = MakeMiss();
                         h.hit = true;
                         h.t = t;
-                        h.material = (CellBrick(cell, brickBase + kBrickMaskWords + (index >> 2)) >> ((index & 3u) * 8u)) & 0xFFu;
+                        // Two dependent loads instead of one: the voxel's 3-bit palette index,
+                        // then the palette entry. Only ever executed on a HIT, which is why the
+                        // measured march cost of this change is far below the 2.06x it saves in
+                        // brick bandwidth -- see the log's section on goal 258.
+                        const uint iw = index / kBrickIndicesPerWord;
+                        const uint slot = (CellBrick(cell, brickBase + kBrickIndexWord0 + iw) >>
+                                           ((index - iw * kBrickIndicesPerWord) * 3u)) & 7u;
+                        h.material = (CellBrick(cell, brickBase + kBrickPaletteWord0 + (slot >> 2)) >>
+                                      ((slot & 3u) * 8u)) & 0xFFu;
                         h.normal = NormalFrom(lastAxis, step, d);
                         h.level = level;
                         h.lodCube = false;

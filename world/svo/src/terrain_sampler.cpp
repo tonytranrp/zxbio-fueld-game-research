@@ -308,23 +308,31 @@ void TerrainSampler::fill_brick(const glm::vec3& origin, float voxelEdge, Brick&
     const std::array<float, kBrickVoxels / kBrickEdge>& h = cached.h; // 64 column heights
     const world::generation::HeightmapMinMax hRange = cached.range;
     const float brickTop = origin.y + static_cast<float>(N - 1) * voxelEdge; // highest voxel bottom
+    // Goal 258: every path below writes into this byte scratch and packs ONCE. Before the palette
+    // the uniform paths could write material words straight into the brick, because a material was
+    // a byte at a fixed offset; a palette index is 3 bits and its value depends on what else the
+    // brick holds, so "write this layer" is no longer a local edit. Packing once from a scratch is
+    // both correct and the same shape `fill_columns` already used for the general case.
+    std::array<std::uint8_t, kBrickVoxels> materials{};
     // The builder's box classification is deliberately conservative, so many bricks it asks for
     // turn out homogeneous. Decide those from the ONE height grid just fetched and skip the four
     // slope grids -- the only per-column work left is water vs. air (no material band involved).
     if (origin.y > hRange.max) {
         if (origin.y <= params_.sea_level) {
-            // Water fills every layer whose bottom is at or below sea level: whole-layer writes.
+            // Water fills every layer whose bottom is at or below sea level.
             for (int j = 0; j < N; ++j) {
                 if (origin.y + static_cast<float>(j) * voxelEdge <= params_.sea_level) {
-                    fill_layer(brick, j, MaterialID::Water);
+                    fill_layer(materials.data(), j, MaterialID::Water);
                 }
             }
         }
+        brick_pack_materials(brick.words().data(), materials.data());
     } else if (brickTop <= hRange.min - kSoilDepth - voxelEdge) {
         // Every voxel is at least kSoilDepth + voxelEdge below the lowest column: solid stone.
         for (int j = 0; j < N; ++j) {
-            fill_layer(brick, j, MaterialID::Stone);
+            fill_layer(materials.data(), j, MaterialID::Stone);
         }
+        brick_pack_materials(brick.words().data(), materials.data());
     } else {
         fill_columns(origin, voxelEdge, h, brick);
     }
@@ -335,17 +343,15 @@ void TerrainSampler::fill_brick(const glm::vec3& origin, float voxelEdge, Brick&
     voxelize_trees(origin, voxelEdge, brick);
 }
 
-void TerrainSampler::fill_layer(Brick& brick, int j, MaterialID material) noexcept {
-    // One Y layer = 8 runs of 8 consecutive linear indices (x innermost): 8 bits of a mask word and
-    // 2 material words per run -- whole-word writes, no per-voxel read-modify-write.
-    const auto m = static_cast<std::uint32_t>(material);
-    const std::uint32_t materialWord = m | (m << 8) | (m << 16) | (m << 24);
-    std::uint32_t* words = brick.words().data();
+void TerrainSampler::fill_layer(std::uint8_t* materials, int j, MaterialID material) noexcept {
+    // One Y layer = 8 runs of 8 consecutive linear indices (x innermost), so it is eight 8-byte
+    // stores into the scratch. The brick itself is written once, by brick_pack_materials.
+    const auto m = static_cast<std::uint8_t>(material);
     for (int k = 0; k < kBrickEdge; ++k) {
-        const std::size_t index = brick_voxel_index(0, j, k); // multiple of 8
-        words[index >> 5] |= 0xFFu << (index & 31u);
-        words[kBrickMaskWords + (index >> 2)] = materialWord;
-        words[kBrickMaskWords + (index >> 2) + 1] = materialWord;
+        std::uint8_t* run = materials + brick_voxel_index(0, j, k);
+        for (int i = 0; i < kBrickEdge; ++i) {
+            run[i] = m;
+        }
     }
 }
 
@@ -378,17 +384,7 @@ void TerrainSampler::fill_columns(const glm::vec3& origin, float voxelEdge, cons
             }
         }
     }
-    std::uint32_t* words = brick.words().data();
-    for (std::size_t index = 0; index < kBrickVoxels; index += 4) {
-        const std::uint32_t packed = static_cast<std::uint32_t>(bytes[index]) |
-                                     (static_cast<std::uint32_t>(bytes[index + 1]) << 8) |
-                                     (static_cast<std::uint32_t>(bytes[index + 2]) << 16) |
-                                     (static_cast<std::uint32_t>(bytes[index + 3]) << 24);
-        words[kBrickMaskWords + (index >> 2)] = packed;
-        const std::uint32_t bits = (bytes[index] != 0 ? 1u : 0u) | (bytes[index + 1] != 0 ? 2u : 0u) |
-                                   (bytes[index + 2] != 0 ? 4u : 0u) | (bytes[index + 3] != 0 ? 8u : 0u);
-        words[index >> 5] |= bits << (index & 31u);
-    }
+    brick_pack_materials(brick.words().data(), bytes.data());
 }
 
 void TerrainSampler::voxelize_trees(const glm::vec3& origin, float voxelEdge, Brick& brick) const {

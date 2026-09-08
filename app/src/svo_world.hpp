@@ -42,8 +42,10 @@ struct SvoWorldOptions {
     // whole region: at a 512 m region that is a 9-level tree, cheap to build once and small enough
     // to keep resident forever.
     int proxy_voxel_log2 = 0;
-    // Brick slots in the renderer's fixed pool. 1.2 M x 576 B is ~690 MB, comfortably above the
-    // 902,616 bricks the shipping 512 m world measures and comfortably inside the 7,180 MiB budget.
+    // Brick slots in the renderer's fixed pool. Kept at 1.2 M across goal 258's palette change, so
+    // the SLOT COUNT is a constant and the change shows up honestly as bytes: 1.2 M x 576 B was
+    // ~690 MB, 1.2 M x 280 B is ~336 MB. Still comfortably above the 902,616 bricks the shipping
+    // 512 m world measures, and now with 354 MB more of the 7,180 MiB budget left over.
     int brick_slots = 1200000;
     bool trees = true;
     std::size_t worker_threads = 0; // 0 = three quarters of the hardware threads (goal 170)

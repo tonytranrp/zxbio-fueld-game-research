@@ -11,7 +11,7 @@ TEST_CASE("brick voxel index is X-innermost with 8^3 extent", "[svo][brick]") {
     CHECK(brick_voxel_index(0, 1, 0) == 8);
     CHECK(brick_voxel_index(0, 0, 1) == 64);
     CHECK(brick_voxel_index(7, 7, 7) == kBrickVoxels - 1);
-    CHECK(kBrickWords == 144);
+    CHECK(kBrickWords == 70); // goal 258: 144 before palette compression
 }
 
 TEST_CASE("exposed face sum points out of the solid and ignores the brick boundary", "[svo][brick]") {
@@ -129,4 +129,88 @@ TEST_CASE("brick homogeneity and representative follow the topmost-occupied-per-
     CHECK(uniform.representative() == MaterialID::Dirt);
 
     CHECK(Brick{}.representative() == MaterialID::Air);
+}
+
+// ---------------------------------------------------------------- goal 258: palette compression
+
+TEST_CASE("brick is palette-compressed to 70 words and the layout constants agree", "[svo][brick]") {
+    // The number the goal is about: 576 B per brick became 280 B. Asserted rather than commented
+    // so a future layout change has to restate it deliberately.
+    CHECK(kBrickWords == 70);
+    CHECK(kBrickWords * sizeof(std::uint32_t) == 280);
+    CHECK(kBrickIndexWord0 == kBrickMaskWords);
+    CHECK(kBrickIndexWords == 52);
+    CHECK(kBrickPaletteWord0 == 68);
+    // Ten indices per word leaves two bits unused; that waste is the point (one load per fetch).
+    CHECK(kBrickIndicesPerWord * kBrickPaletteBits == 30);
+    CHECK(kBrickIndexWords * kBrickIndicesPerWord >= kBrickVoxels);
+}
+
+TEST_CASE("every voxel index round-trips through the ten-per-word packing", "[svo][brick]") {
+    // 512 does not divide by 10, so the last word is partial and voxel 510/511 sit at a boundary
+    // the arithmetic has to get right. Walk all 512 rather than sampling.
+    for (std::size_t i = 0; i < kBrickVoxels; ++i) {
+        Brick brick;
+        brick.set(i, MaterialID::Stone);
+        CHECK(brick.at(i) == MaterialID::Stone);
+        CHECK(brick.occupied_count() == 1);
+        // No neighbour was disturbed by the read-modify-write of a 3-bit field.
+        for (std::size_t j = 0; j < kBrickVoxels; ++j) {
+            if (j != i) {
+                REQUIRE(brick.at(j) == MaterialID::Air);
+            }
+        }
+    }
+}
+
+TEST_CASE("the palette interns: entry 0 is Air and each material takes one slot", "[svo][brick]") {
+    Brick brick;
+    // Every non-Air material in the registry, twice over, in a scrambled order.
+    const std::size_t materials = world::chunk::kMaterialCount;
+    for (std::size_t rep = 0; rep < 2; ++rep) {
+        for (std::size_t m = 1; m < materials; ++m) {
+            brick.set((m * 37 + rep * 11) % kBrickVoxels, static_cast<MaterialID>(m));
+        }
+    }
+    CHECK(brick_palette_entry(brick.words().data(), 0) == MaterialID::Air);
+    // Each material appears exactly once among entries 1..7 -- interning, not appending.
+    for (std::size_t m = 1; m < materials; ++m) {
+        int seen = 0;
+        for (std::size_t e = 1; e < kBrickPaletteSize; ++e) {
+            seen += brick_palette_entry(brick.words().data(), e) == static_cast<MaterialID>(m) ? 1 : 0;
+        }
+        CHECK(seen == 1);
+    }
+}
+
+TEST_CASE("clearing a voxel to Air clears its bit and its index", "[svo][brick]") {
+    Brick brick;
+    brick.set(std::size_t{100}, MaterialID::Water);
+    brick.set(std::size_t{101}, MaterialID::Stone);
+    brick.set(std::size_t{100}, MaterialID::Air);
+    CHECK(brick.at(std::size_t{100}) == MaterialID::Air);
+    CHECK_FALSE(brick.occupied(0, 4, 1)); // voxel 100 = (4, 4, 1)
+    CHECK(brick.at(std::size_t{101}) == MaterialID::Stone);
+    CHECK(brick.occupied_count() == 1);
+}
+
+TEST_CASE("the same fill produces byte-identical words -- determinism survives the palette",
+          "[svo][brick]") {
+    const auto fill = [](Brick& b) {
+        for (std::size_t i = 0; i < kBrickVoxels; ++i) {
+            b.set(i, static_cast<MaterialID>((i * 7 + 3) % world::chunk::kMaterialCount));
+        }
+    };
+    Brick a;
+    Brick b;
+    fill(a);
+    fill(b);
+    CHECK(a.words() == b.words());
+    // And a cleared brick is a valid empty brick with an empty palette -- the invariant that lets
+    // interning work without a separate "entries used" counter.
+    a.clear();
+    for (std::size_t e = 0; e < kBrickPaletteSize; ++e) {
+        CHECK(brick_palette_entry(a.words().data(), e) == MaterialID::Air);
+    }
+    CHECK(a.empty());
 }
