@@ -419,6 +419,14 @@ constexpr std::array kTable{
            .help = "meteorological visibility in metres (10000 haze, 20000 clear, 50000 very clear)",
            .default_text = "20000",
            .group = "SVO shading"},
+    // Prompt 007 goal 331. Guenter et al. 2012's slope budget is 1.32-1.65 arcmin/degree. OFF by
+    // default; the log records the measured saving and why it is off.
+    Option{.name = "foveation",
+           .set = bind<&AppOptions::svo_settings, &Settings::foveation_arcmin_per_deg>(),
+           .kind = ValueKind::Float,
+           .help = "fixed crosshair foveation slope, arcmin per degree of eccentricity (0 = off)",
+           .default_text = "0",
+           .group = "SVO shading"},
     Option{.name = "grain",
            .set = bind<&AppOptions::svo_settings, &Settings::grain_amplitude>(),
            .kind = ValueKind::Float,

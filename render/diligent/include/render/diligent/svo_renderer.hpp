@@ -112,6 +112,10 @@ public:
         // relief it changes extinction by ~1.3%; it is here because it is the right model, not
         // because it is visible.
         float atmosphere_scale_height_m = 8500.0f;
+        // Prompt 007 goal 331. Foveation slope in arcmin per degree of eccentricity; 0 is off.
+        // Guenter et al. 2012's budget is 1.32-1.65. DEFAULT OFF -- see the log: the measured
+        // saving on this hardware does not clear the 10% bar the prompt set for keeping it.
+        float foveation_arcmin_per_deg = 0.0f;
         SvoDebugView debug_view = SvoDebugView::None;
         // The ONE wind field (world/wind, Prompt 001 Group B). Everything that moves reads it;
         // --no-wind sets still_wind(), which zeroes the field itself rather than making each

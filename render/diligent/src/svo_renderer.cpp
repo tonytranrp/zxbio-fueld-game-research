@@ -1261,7 +1261,7 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         cb->fogParams = glm::vec4(
             static_cast<float>(render::lod::extinction_from_visibility(
                 static_cast<double>(s.visibility_m), render::lod::VisibilityConvention::Koschmieder)),
-            s.atmosphere_scale_height_m, 0.0f, 0.0f);
+            s.atmosphere_scale_height_m, s.foveation_arcmin_per_deg, camera.fov_y_radians);
         cb->markParams = glm::vec4(static_cast<float>(impl_->frameCounter),
                                    s.mark_cell_usage && impl_->gridDims.x > 0.0f ? 1.0f : 0.0f, 0.0f,
                                    0.0f);

@@ -63,6 +63,8 @@ cbuffer MarchConstants
     uint4 g_ProxyInts; // x = root node offset, y = voxel bits V, zw spare
     // Prompt 007 goal 327. x = extinction coefficient sigma at sea level (1/m), derived on the CPU
     // from an authored meteorological visibility; y = atmospheric scale height (m); zw spare.
+    // z = foveation slope in arcmin/degree (0 = off, goal 331); w = vertical FOV in radians, which
+    // the foveation needs to turn a normalised screen offset into an eccentricity angle.
     float4 g_FogParams;
     // One record per material (render/diligent/detail/material_macros.hpp's material_record):
     // rgb = linear albedo, w = shading model. MATERIAL_COUNT and MAT_SHADING_* are macros the C++
@@ -1006,7 +1008,52 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const uint flags = g_TreeInts.w;
     const uint view = (flags >> kViewShift) & 0xFu;
 
-    const float lodAngle = (flags & kFlagLodMarch) != 0u ? g_TreeParams.x : 0.0;
+    // PROMPT 007 GOAL 331: fixed crosshair-centred foveation, as an eccentricity-dependent LOD
+    // pixel angle.
+    //
+    // Eye research §5.4 gives the slope budget: Guenter et al. 2012's m = 1.32-1.65 arcmin/degree,
+    // and Hsu et al. 2017's "barely notice at >= 7.5 degrees eccentricity". §5.7(f) warns that a
+    // luminance vignette is the WRONG way to express peripheral degradation, which is why this
+    // coarsens the LOD rather than dimming anything.
+    //
+    // The lever is the natural one for a marcher: `g_TreeParams.x` becomes per-pixel instead of
+    // uniform. g_FogParams.z carries the slope in arcmin/degree; 0 is off and the expression
+    // collapses to the previous uniform value exactly.
+    //
+    // The aesthetics research is openly sceptical (§6, §6.5-6.6) and it is right to be: Guenter's
+    // 4.8-5.7x was gaze-tracked at 300 Hz, while Tursun et al. measured 1.1-1.8x on a 1440p desktop
+    // and 0.9x -- SLOWER than not foveating -- on a simple-shader scene, and no shipped flat-screen
+    // game does crosshair-centred fixed foveation. The measurement is in the log.
+    float lodAngle = (flags & kFlagLodMarch) != 0u ? g_TreeParams.x : 0.0;
+    if (g_FogParams.z > 0.0 && lodAngle > 0.0)
+    {
+        // Eccentricity as a real ANGLE off the view axis, not a pixel radius, so it is correct at
+        // any FOV and aspect. g_Jitter.zw is 1/width, 1/height, so their ratio is the aspect.
+        const float tanHalfV = tan(0.5 * g_FogParams.w);
+        const float aspect = g_Jitter.w / max(g_Jitter.z, 1.0e-6);
+        const float2 tanOffset = float2(ndc.x * aspect * tanHalfV, ndc.y * tanHalfV);
+        const float eccentricityDeg = degrees(atan(length(tanOffset)));
+        // Guenter's linear model gives the TOLERATED angular size at this eccentricity: 1 arcmin
+        // at the fovea growing by `slope` per degree. The LOD must be coarsened to that value --
+        // NOT multiplied by it.
+        //
+        // The first version multiplied, and it destroyed the image: this renderer's foveal LOD is
+        // already 6.71 arcmin (goal 328), so `lodAngle *= 1 + m*e` compounded a 53x factor at the
+        // screen edge onto an already-coarse baseline. GPU fell 5.35 -> 0.20 ms and the periphery
+        // became metre-wide blocks. The ratio form below coarsens only where the eye tolerates MORE
+        // than the renderer already delivers, which is what foveation actually means.
+        const float kRadToArcmin = 3437.74677;
+        const float baseArcmin = atan(lodAngle) * kRadToArcmin;
+        // HSU'S INNER RADIUS. Guenter's slope alone starts coarsening at 4.3 degrees here (where
+        // 1 + m*e first exceeds this renderer's 6.71 arcmin foveal LOD), and the capture showed
+        // that plainly: sharp centre, blocky edges, an obvious transition. Hsu et al. 2017 measured
+        // that observers "barely notice at >= 7.5 degrees eccentricity", and on a DESKTOP the
+        // player's eyes roam the screen -- a fixed crosshair is not a gaze point -- so degrading
+        // anything nearer than that degrades what is actually being looked at.
+        const float kHsuInnerDeg = 7.5;
+        const float toleratedArcmin = 1.0 + g_FogParams.z * max(eccentricityDeg - kHsuInnerDeg, 0.0);
+        lodAngle *= max(1.0, toleratedArcmin / max(baseArcmin, 1.0e-6));
+    }
     const float smoothAngle = g_ShadeParams.x * g_ShadeParams.w;
     // Goal 266: the tile's conservative start distance. Load() at an explicitly computed tile
     // index, never a filtered or UV-rounded fetch -- a neighbouring tile's bound is NOT conservative
