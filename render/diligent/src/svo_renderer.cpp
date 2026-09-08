@@ -11,6 +11,8 @@
 
 #include "render/diligent/svo_renderer.hpp"
 
+#include "world/svo/resident_grid.hpp"
+
 #include "engine/core/log.hpp"
 #include "world/materials/materials.hpp"
 
@@ -71,10 +73,14 @@ struct MarchConstantsCpu {
     // Goal 261: x = the frame index the marcher stamps into g_CellUsage, y != 0 turns the marking
     // on. It is a knob so its cost can be measured against zero, which the goal's Check requires.
     glm::vec4 markParams;
+    // Goal 263: the coarse proxy's geometry. xyz = world min corner, w = root edge; w == 0 means
+    // there is no proxy and an absent cell is passed through.
+    glm::vec4 proxyOrigin;
+    glm::uvec4 proxyInts; // x = root node offset, y = voxel bits V
     std::array<detail::MaterialRecord, kMaterialCount> materials;
 };
 static_assert(sizeof(MarchConstantsCpu) ==
-                  64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * 3 + 16 * kMaterialCount,
+                  64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * 5 + 16 * kMaterialCount,
               "must match the HLSL cbuffer exactly");
 
 // Mirror of svo_beam.psh.hlsl's cbuffer BeamConstants -- update both together.
@@ -364,6 +370,16 @@ struct SvoRenderer::Impl {
     std::uint32_t lastUploadFrames = 0;
     std::uint32_t pendingFrames = 0;
 
+    // Goals 263-265: the streaming resident grid, its coarse proxy, and the GPU buffers that
+    // mirror them. Null unless begin_stream was called.
+    std::unique_ptr<world::svo::ResidentGrid> stream;
+    std::shared_ptr<const world::svo::BrickTree> streamProxy;
+    RefCntAutoPtr<IBuffer> proxyNodes;
+    RefCntAutoPtr<IBuffer> proxyBricks;
+    std::size_t streamNodeWordsSent = 0;
+    std::uint64_t streamBytesTotal = 0;
+    bool streamNodesDirty = false;
+
     world::svo::TreeGeometry geometry;
     std::uint32_t rootOffset = 0;
     // Goal 256: the resident grid's shape, zero when the single tree is resident. gridDims.x <= 0
@@ -427,12 +443,14 @@ void SvoRenderer::Impl::create_pipelines() {
             {SHADER_TYPE_PIXEL, "g_Bricks", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
             {SHADER_TYPE_PIXEL, "g_BeamStart", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
             {SHADER_TYPE_PIXEL, "g_Cells", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+            {SHADER_TYPE_PIXEL, "g_ProxyNodes", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+            {SHADER_TYPE_PIXEL, "g_ProxyBricks", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
             {SHADER_TYPE_PIXEL, "g_CellUsage", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
         };
         psoCI.PSODesc.ResourceLayout.Variables = vars;
         // The UAV variable exists only in the marking build -- declaring it on the plain one would
         // reintroduce exactly the binding this split exists to avoid.
-        psoCI.PSODesc.ResourceLayout.NumVariables = markUsage ? 6 : 5;
+        psoCI.PSODesc.ResourceLayout.NumVariables = markUsage ? 8 : 7;
 
         rc.device->CreateGraphicsPipelineState(psoCI, &outPso);
         if (!outPso) {
@@ -604,6 +622,14 @@ void SvoRenderer::Impl::bind_tree_buffers() {
         }
         if (IShaderResourceVariable* v = target->GetVariableByName(SHADER_TYPE_PIXEL, "g_CellUsage")) {
             v->Set(cellUsage->GetDefaultView(BUFFER_VIEW_UNORDERED_ACCESS));
+        }
+        // The proxy falls back to the pools' own buffers when there is none, so the variables are
+        // always bound; g_ProxyOrigin.w == 0 is what actually turns the fallback off.
+        if (IShaderResourceVariable* v = target->GetVariableByName(SHADER_TYPE_PIXEL, "g_ProxyNodes")) {
+            v->Set((proxyNodes ? proxyNodes : nodes)->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+        }
+        if (IShaderResourceVariable* v = target->GetVariableByName(SHADER_TYPE_PIXEL, "g_ProxyBricks")) {
+            v->Set((proxyBricks ? proxyBricks : bricks)->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
         }
     }
 
@@ -838,6 +864,163 @@ bool SvoRenderer::pump_upload() {
     return true;
 }
 
+// ---- Goals 263-265: the streaming path -------------------------------------------------------
+//
+// What this replaces: begin_upload/pump_upload staged a WHOLE tree across frames, because a whole
+// tree is what the old architecture produced. Here cells arrive one at a time and only the brick
+// slots that actually changed are sent. `--upload-budget` keeps its meaning exactly -- it is still
+// the per-frame byte ceiling -- which is why it is kept rather than deleted.
+void SvoRenderer::begin_stream(world::svo::CellGrid shape, std::size_t brick_slots,
+                               std::shared_ptr<const world::svo::BrickTree> proxy) {
+    Impl& im = *impl_;
+    auto& rc = im.context->impl();
+
+    im.stream = std::make_unique<world::svo::ResidentGrid>(shape, brick_slots);
+    im.stream->set_proxy(proxy);
+    im.streamProxy = std::move(proxy);
+    im.streamNodeWordsSent = 0;
+    im.streamBytesTotal = 0;
+    im.streamNodesDirty = true;
+
+    // The pools are allocated ONCE here, at their full capacity, and never grow -- that is goal
+    // 260's Check, and doing it anywhere else would make the resident footprint depend on what the
+    // camera has visited.
+    const std::size_t brickWords = brick_slots * world::svo::kBrickWords;
+    im.bricks = create_word_buffer(rc.device, "SVO brick pool", brickWords);
+    im.bricksCapacity = brickWords;
+    im.tracker.on_allocate(static_cast<std::uint64_t>(brickWords) * sizeof(std::uint32_t));
+
+    // Node storage is repacked and re-sent whole (5.4% of the bytes -- see resident_grid.hpp);
+    // sized generously once so it, too, never grows.
+    const std::size_t nodeWords = std::max<std::size_t>(1u << 22, brick_slots * 4);
+    im.nodes = create_word_buffer(rc.device, "SVO node arena", nodeWords);
+    im.nodesCapacity = nodeWords;
+    im.tracker.on_allocate(static_cast<std::uint64_t>(nodeWords) * sizeof(std::uint32_t));
+
+    const std::size_t cells = shape.cell_count();
+    im.cellRecords = create_cell_buffer(rc.device, "SVO cells", cells);
+    im.cellRecordsCapacity = cells;
+    im.cellUsage = create_usage_buffer(rc.device, "SVO cell usage", cells);
+    im.cellUsageCapacity = cells;
+    const std::vector<std::uint32_t> zeros(cells, 0u);
+    rc.context->UpdateBuffer(im.cellUsage, 0, static_cast<Uint64>(cells) * sizeof(std::uint32_t),
+                             zeros.data(), RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    // The coarse proxy rides in its own buffers: it is built once and never changes, so it has no
+    // business in the pools that churn.
+    if (im.streamProxy && !im.streamProxy->empty()) {
+        im.proxyNodes = create_word_buffer(rc.device, "SVO proxy nodes", im.streamProxy->nodes.size());
+        im.proxyBricks = create_word_buffer(rc.device, "SVO proxy bricks", im.streamProxy->bricks.size());
+        rc.context->UpdateBuffer(im.proxyNodes, 0,
+                                 static_cast<Uint64>(im.streamProxy->nodes.size()) * sizeof(std::uint32_t),
+                                 im.streamProxy->nodes.data(), RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        rc.context->UpdateBuffer(im.proxyBricks, 0,
+                                 static_cast<Uint64>(im.streamProxy->bricks.size()) * sizeof(std::uint32_t),
+                                 im.streamProxy->bricks.data(), RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        im.tracker.on_allocate(
+            static_cast<std::uint64_t>(im.streamProxy->nodes.size() + im.streamProxy->bricks.size()) *
+            sizeof(std::uint32_t));
+    }
+
+    im.geometry = shape.geometry_for(shape.origin_cell());
+    im.rootOffset = 0;
+    im.gridDims = glm::vec3{shape.dims()};
+    im.gridOrigin = shape.world_min();
+    im.gridCellEdge = shape.cell_edge();
+    im.hasTree = true; // the proxy alone is a world worth marching
+    im.bind_tree_buffers();
+}
+
+bool SvoRenderer::install_cell(std::size_t index, const world::svo::BrickTree& tree) {
+    if (!impl_->stream) {
+        return false;
+    }
+    const bool ok = impl_->stream->install(index, tree);
+    impl_->streamNodesDirty = impl_->streamNodesDirty || ok;
+    return ok;
+}
+
+void SvoRenderer::evict_cell(std::size_t index) {
+    if (impl_->stream) {
+        impl_->stream->evict(index);
+        impl_->streamNodesDirty = true;
+    }
+}
+
+std::uint64_t SvoRenderer::flush_cells() {
+    Impl& im = *impl_;
+    if (!im.stream) {
+        return 0;
+    }
+    auto& rc = im.context->impl();
+    std::uint64_t sent = 0;
+    const std::uint64_t budget = im.settings.upload_bytes_per_frame;
+
+    // Dirty brick runs first: this is the traffic the whole architecture exists to shrink. Bounded
+    // by the SAME --upload-budget knob the staged path used, so the flag keeps its meaning.
+    const std::vector<world::svo::DirtyRun>& runs = im.stream->dirty_brick_slots();
+    std::size_t consumed = 0;
+    for (const world::svo::DirtyRun& run : runs) {
+        const std::uint64_t bytes =
+            static_cast<std::uint64_t>(run.count) * world::svo::kBrickWords * sizeof(std::uint32_t);
+        if (sent > 0 && sent + bytes > budget) {
+            break; // the rest waits for the next frame; a cell is already whole in the pool
+        }
+        rc.context->UpdateBuffer(
+            im.bricks,
+            static_cast<Uint64>(run.first) * world::svo::kBrickWords * sizeof(std::uint32_t), bytes,
+            im.stream->brick_words().data() +
+                static_cast<std::size_t>(run.first) * world::svo::kBrickWords,
+            RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        sent += bytes;
+        ++consumed;
+    }
+    if (consumed == runs.size()) {
+        im.stream->clear_dirty();
+    } else if (consumed > 0) {
+        // Keep what did not fit. The runs are independent, so dropping the prefix is correct.
+        std::vector<world::svo::DirtyRun> remaining(runs.begin() + static_cast<std::ptrdiff_t>(consumed),
+                                                    runs.end());
+        im.stream->clear_dirty();
+        for (const world::svo::DirtyRun& run : remaining) {
+            im.stream->mark_dirty_run(run);
+        }
+    }
+
+    if (im.streamNodesDirty) {
+        im.stream->repack_nodes();
+        const std::vector<std::uint32_t>& words = im.stream->node_words();
+        if (!words.empty() && words.size() <= im.nodesCapacity) {
+            rc.context->UpdateBuffer(im.nodes, 0,
+                                     static_cast<Uint64>(words.size()) * sizeof(std::uint32_t),
+                                     words.data(), RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            sent += static_cast<std::uint64_t>(words.size()) * sizeof(std::uint32_t);
+        }
+        const std::vector<world::svo::FlatCell>& cells = im.stream->cells();
+        if (!cells.empty()) {
+            rc.context->UpdateBuffer(im.cellRecords, 0,
+                                     static_cast<Uint64>(cells.size()) * 4u * sizeof(std::uint32_t),
+                                     cells.data(), RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        }
+        im.streamNodesDirty = false;
+    }
+
+    im.streamBytesTotal += sent;
+    return sent;
+}
+
+bool SvoRenderer::streaming() const noexcept {
+    return impl_->stream != nullptr;
+}
+
+std::size_t SvoRenderer::resident_cells() const noexcept {
+    return impl_->stream ? impl_->stream->resident_cells() : 0;
+}
+
+std::uint64_t SvoRenderer::stream_bytes_total() const noexcept {
+    return impl_->streamBytesTotal;
+}
+
 bool SvoRenderer::read_cell_usage(std::vector<std::uint32_t>& out) {
     Impl& im = *impl_;
     if (im.cellUsageCapacity == 0 || im.gridDims.x <= 0.0f) {
@@ -1050,6 +1233,15 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         }
         // .y is goal 266's beam tile size (0 = no seed), taking one of the spare slots this
         // vector was reserved with rather than growing the cbuffer for a single float.
+        if (impl_->streamProxy && !impl_->streamProxy->empty()) {
+            const world::svo::TreeGeometry& pg = impl_->streamProxy->geometry;
+            cb->proxyOrigin = glm::vec4(pg.origin, pg.root_edge());
+            cb->proxyInts = glm::uvec4(impl_->streamProxy->root,
+                                       static_cast<std::uint32_t>(pg.voxel_bits()), 0u, 0u);
+        } else {
+            cb->proxyOrigin = glm::vec4(0.0f);
+            cb->proxyInts = glm::uvec4(0u);
+        }
         cb->markParams = glm::vec4(static_cast<float>(impl_->frameCounter),
                                    s.mark_cell_usage && impl_->gridDims.x > 0.0f ? 1.0f : 0.0f, 0.0f,
                                    0.0f);

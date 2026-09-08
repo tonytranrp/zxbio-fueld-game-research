@@ -56,6 +56,11 @@ cbuffer MarchConstants
     // the grid origin became garbage and the whole world rendered as an empty frame. A cbuffer
     // mirror is an ORDERED contract, not just a sized one.
     float4 g_MarkParams;
+    // Goal 263: the proxy's geometry. xyz = world min corner, w = root edge in metres; a w of 0
+    // means there is no proxy and an absent cell is passed through, which is the pre-263 behaviour
+    // kept so the two can be compared.
+    float4 g_ProxyOrigin;
+    uint4 g_ProxyInts; // x = root node offset, y = voxel bits V, zw spare
     // One record per material (render/diligent/detail/material_macros.hpp's material_record):
     // rgb = linear albedo, w = shading model. MATERIAL_COUNT and MAT_SHADING_* are macros the C++
     // side passes at shader creation from the material registry -- no material literal lives here.
@@ -85,6 +90,13 @@ Texture2D<float> g_BeamStart;
 // cell's words concatenated, and a cell's internal offsets stay exactly as the builder produced
 // them, so `tree_layout.hpp` is untouched and the CPU oracle still guards this encoding.
 StructuredBuffer<uint4> g_Cells;
+
+// Prompt 004 goal 263: the always-resident COARSE PROXY -- one tree over the whole region at a
+// coarse voxel size. A ray stepping into a cell that is not resident answers from this instead of
+// passing through, which is GigaVoxels' "if LOD not available -> pick next higher available level".
+// Its own buffers because it is built once and never churns, unlike the pools.
+StructuredBuffer<uint> g_ProxyNodes;
+StructuredBuffer<uint> g_ProxyBricks;
 
 // Prompt 004 goal 261: what the marcher records about the cells it steps into. One word per cell --
 // the frame index in the low 31 bits, bit 31 set when a ray wanted the cell and it was not resident.
@@ -240,6 +252,7 @@ struct Cell
     float edge;      // cell edge, metres
     int   V;         // voxel bits: log2 of voxels along one cell edge
     bool  present;
+    bool  isProxy;   // goal 263: read g_ProxyNodes/g_ProxyBricks instead of the pools
 };
 
 Cell MakeAbsentCell()
@@ -252,6 +265,22 @@ Cell MakeAbsentCell()
     c.edge = 0.0;
     c.V = 0;
     c.present = false;
+    c.isProxy = false;
+    return c;
+}
+
+// Goal 263: the coarse proxy as a Cell covering the whole region.
+Cell MakeProxyCell()
+{
+    Cell c = MakeAbsentCell();
+    c.nodeBase = 0u;
+    c.brickBase = 0u;
+    c.root = g_ProxyInts.x;
+    c.origin = g_ProxyOrigin.xyz;
+    c.edge = g_ProxyOrigin.w;
+    c.V = int(g_ProxyInts.y);
+    c.present = g_ProxyOrigin.w > 0.0;
+    c.isProxy = true;
     return c;
 }
 
@@ -265,6 +294,17 @@ Cell MakeWholeCell()
     c.V = int(g_TreeInts.x);
     c.present = (g_TreeInts.w & kFlagTree) != 0u;
     return c;
+}
+
+// One node word, from whichever array this cell lives in. The branch is uniform across a warp for
+// every ray in a cell, so it costs a predicted branch and not divergence.
+uint CellNode(Cell cell, uint offset)
+{
+    return g_Nodes[cell.nodeBase + offset];
+}
+uint CellBrick(Cell cell, uint offset)
+{
+    return g_Bricks[offset];
 }
 
 // Decodes the attribute word (three int8 snorm normal components + a uint8 coverage).
@@ -290,10 +330,10 @@ void ReadAttributes(inout Hit h, uint stack[kMaxLevels], int attrLevel, float sm
     if (L >= 0)
     {
         const uint node = stack[L];
-        const uint kind = (g_Nodes[cell.nodeBase + node] >> 8) & 3u;
+        const uint kind = (CellNode(cell, node) >> 8) & 3u;
         if (kind != 2u)
         {
-            const uint attr = g_Nodes[cell.nodeBase + node + (kind == 0u ? kAttrSlotInternal : kAttrSlotBrick)];
+            const uint attr = CellNode(cell, node + (kind == 0u ? kAttrSlotInternal : kAttrSlotBrick));
             h.smoothNormal = AttrNormal(attr);
             h.coverage = AttrCoverage(attr);
             h.smoothLevel = L;
@@ -316,6 +356,15 @@ Hit TraceCell(Cell cell, float3 rayOrigin, float3 rayDir, float lodPixelAngle, f
 // Measured on the CPU reference over 20,000 real-terrain rays: 21.7 octree steps per ray as one
 // 512 m tree becomes 10.5 steps plus 2.6 of these flat DDA steps -- a 52% cut in the pointer-chasing
 // half of the work.
+// The raw flag word, so the walk can tell NOT RESIDENT from RESIDENT-AND-EMPTY.
+uint FetchCellFlags(int3 coord)
+{
+    const int3 dims = int3(g_GridDims.xyz);
+    if (any(coord < int3(0, 0, 0)) || any(coord >= dims))
+        return 0u;
+    return g_Cells[uint(coord.x + dims.x * (coord.y + dims.y * coord.z))].w;
+}
+
 Cell FetchCell(int3 coord)
 {
     const int3 dims = int3(g_GridDims.xyz);
@@ -331,7 +380,10 @@ Cell FetchCell(int3 coord)
     c.origin = g_GridOrigin.xyz + float3(coord) * g_GridDims.w;
     c.edge = g_GridDims.w;
     c.V = int(g_TreeInts.x);
-    c.present = (record.w & 1u) != 0u;
+    // Bit 0 present, bit 1 resident-and-empty: an empty cell has nothing to trace but is NOT a
+    // candidate for the proxy fallback (world/svo/cell_grid.hpp's kFlatCellEmpty).
+    c.present = (record.w & 1u) != 0u && (record.w & 2u) == 0u;
+    c.isProxy = false;
     return c;
 }
 
@@ -401,10 +453,12 @@ Hit TraceGrid(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffse
         tDelta[c] = degenerate ? 1.0e30 : abs(invd[c]);
     }
 
+    float cellEnter = tEnter;
     [loop]
     for (uint walked = 0u; walked < kMaxGridSteps; ++walked)
     {
         const Cell cell = FetchCell(cellCoord);
+        const uint cellFlags = FetchCellFlags(cellCoord);
 #if SVO_MARK_USAGE
         if (g_MarkParams.y != 0.0)
         {
@@ -422,6 +476,20 @@ Hit TraceGrid(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffse
             if (hit.hit)
                 return hit;
         }
+        // Goal 263: NOT RESIDENT (flag bit 0 clear) -- answer from the coarse proxy over this
+        // cell's own span. A cell that is resident and EMPTY (bit 1) is skipped instead: the fine
+        // build looked there and found nothing, and the proxy's coarser voxels must not overrule
+        // that. The two look identical to the marcher and are opposites here.
+        else if ((cellFlags & 1u) == 0u && g_ProxyOrigin.w > 0.0)
+        {
+            const int axisNow = tMax.x < tMax.y ? (tMax.x < tMax.z ? 0 : 2) : (tMax.y < tMax.z ? 1 : 2);
+            const float cellExit = min(tMax[axisNow], tExit);
+            const Hit coarse = TraceCell(MakeProxyCell(), rayOrigin, rayDir, lodPixelAngle, tOffset,
+                                         min(maxT, cellExit), smoothPixelAngle, coverageThreshold,
+                                         max(tStart, cellEnter));
+            if (coarse.hit)
+                return coarse;
+        }
 
         const int axis = tMax.x < tMax.y ? (tMax.x < tMax.z ? 0 : 2) : (tMax.y < tMax.z ? 1 : 2);
         if (tMax[axis] > tExit)
@@ -432,6 +500,7 @@ Hit TraceGrid(float3 rayOrigin, float3 rayDir, float lodPixelAngle, float tOffse
         cellCoord += m * stepDir;
         if (any(cellCoord < int3(0, 0, 0)) || any(cellCoord >= dims))
             return miss;
+        cellEnter = tMax[axis];
         tMax += float3(m) * tDelta;
     }
     return miss;
@@ -534,7 +603,7 @@ Hit TraceCell(Cell cell, float3 rayOrigin, float3 rayDir, float lodPixelAngle, f
         for (;;)
         {
             const uint node = stack[level];
-            const uint header = g_Nodes[cell.nodeBase + node];
+            const uint header = CellNode(cell, node);
             const uint kind = (header >> 8) & 3u;
             if (kind == 2u)
             {
@@ -555,7 +624,7 @@ Hit TraceCell(Cell cell, float3 rayOrigin, float3 rayDir, float lodPixelAngle, f
             {
                 const int shift = V - level - 3;
                 const int cellShift = V - level;
-                const uint brickBase = (cell.brickBase + g_Nodes[cell.nodeBase + node + kBrickIndexSlot]) * kBrickWords;
+                const uint brickBase = (cell.brickBase + CellNode(cell, node + kBrickIndexSlot)) * kBrickWords;
                 int3 v = (c >> shift) & 7;
                 const int3 brickCell = (c >> cellShift) << cellShift;
                 const float voxelEdge = exp2(-float(level + 3));
@@ -573,12 +642,12 @@ Hit TraceCell(Cell cell, float3 rayOrigin, float3 rayDir, float lodPixelAngle, f
                 for (;;)
                 {
                     const uint index = uint(v.x + 8 * v.y + 64 * v.z);
-                    if (((g_Bricks[brickBase + (index >> 5)] >> (index & 31u)) & 1u) != 0u)
+                    if (((CellBrick(cell, brickBase + (index >> 5)) >> (index & 31u)) & 1u) != 0u)
                     {
                         Hit h = MakeMiss();
                         h.hit = true;
                         h.t = t;
-                        h.material = (g_Bricks[brickBase + kBrickMaskWords + (index >> 2)] >> ((index & 3u) * 8u)) & 0xFFu;
+                        h.material = (CellBrick(cell, brickBase + kBrickMaskWords + (index >> 2)) >> ((index & 3u) * 8u)) & 0xFFu;
                         h.normal = NormalFrom(lastAxis, step, d);
                         h.level = level;
                         h.lodCube = false;
@@ -610,7 +679,7 @@ Hit TraceCell(Cell cell, float3 rayOrigin, float3 rayDir, float lodPixelAngle, f
             {
                 const float childEdgeWorld = rootEdge * exp2(-float(childLevel));
                 if (childEdgeWorld < (t + tOffset) * lodPixelAngle &&
-                    (coverageThreshold <= 0.0 || AttrCoverage(g_Nodes[cell.nodeBase + node + kAttrSlotInternal]) >= coverageThreshold))
+                    (coverageThreshold <= 0.0 || AttrCoverage(CellNode(cell, node + kAttrSlotInternal)) >= coverageThreshold))
                 {
                     Hit h = MakeMiss();
                     h.hit = true;
@@ -631,7 +700,7 @@ Hit TraceCell(Cell cell, float3 rayOrigin, float3 rayDir, float lodPixelAngle, f
             if ((mask & (1u << uint(octant))) != 0u)
             {
                 const uint below = mask & ((1u << uint(octant)) - 1u);
-                stack[childLevel] = g_Nodes[cell.nodeBase + node + kFirstChildSlot + countbits(below)];
+                stack[childLevel] = CellNode(cell, node + kFirstChildSlot + countbits(below));
                 level = childLevel;
                 continue;
             }

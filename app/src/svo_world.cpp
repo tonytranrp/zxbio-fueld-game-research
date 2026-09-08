@@ -322,4 +322,139 @@ SvoWorld::LastBuild SvoWorld::last_build() const {
     return lastBuild_;
 }
 
+
+// ---- Goal 264: the streaming producer ---------------------------------------------------------
+//
+// The shape is fixed once from the camera, exactly as geometry_for does for the single tree, so a
+// cell's world position never changes underneath the renderer's resident slots.
+world::svo::CellGrid SvoWorld::stream_shape(glm::vec3 camera) const {
+    const world::svo::TreeGeometry g = geometry_for(camera);
+    const int cellLog2 = std::max(1, options_.cell_size_log2);
+    const auto cellEdge = static_cast<float>(std::ldexp(1.0, cellLog2));
+    const int perAxis = 1 << (options_.root_size_log2 - cellLog2);
+    const glm::ivec3 originCell{static_cast<int>(std::floor(g.origin.x / cellEdge)),
+                                static_cast<int>(std::floor(g.origin.y / cellEdge)),
+                                static_cast<int>(std::floor(g.origin.z / cellEdge))};
+    return world::svo::CellGrid{originCell, glm::ivec3{perAxis}, cellLog2, options_.voxel_size_log2};
+}
+
+// The coarse proxy: ONE tree over the whole region at a deliberately coarse voxel size. Built
+// synchronously and once -- it is what the first frame draws, so there is nothing to stream it
+// behind, and at 1 m voxels over 512 m it is a 9-level tree rather than a 16-level one.
+std::shared_ptr<const world::svo::BrickTree> SvoWorld::build_proxy(const world::svo::CellGrid& shape) {
+    world::svo::TreeGeometry g;
+    g.origin = shape.world_min();
+    g.root_size_log2 = options_.root_size_log2;
+    g.voxel_size_log2 = options_.proxy_voxel_log2;
+
+    world::svo::TerrainSamplerParams sp;
+    sp.seed = options_.seed;
+    sp.trees = options_.trees;
+    world::svo::TerrainSampler sampler(heightmap_, sp, world::svo::Box{g.origin, g.max_corner()});
+
+    world::svo::BuildParams bp;
+    bp.uniform_lod = true; // one level everywhere: it is the fallback, not the detail
+    return std::make_shared<const world::svo::BrickTree>(
+        world::svo::build_tree(sampler, g, bp, &pool_, nullptr));
+}
+
+void SvoWorld::start_stream(const world::svo::CellGrid& shape, glm::vec3 camera) {
+    streamShape_ = shape;
+    streamCamera_ = camera;
+    streamRequested_.assign(shape.cell_count(), 0);
+    streamQueueNext_ = 0;
+    {
+        const std::lock_guard guard(mutex_);
+        streamReady_.clear();
+    }
+
+    // Nearest-first, which is the ordering that makes the fallback converge where the eye is. The
+    // producer is otherwise unordered, so this is the only place priority is expressed.
+    streamQueue_.resize(shape.cell_count());
+    for (std::size_t i = 0; i < streamQueue_.size(); ++i) {
+        streamQueue_[i] = i;
+    }
+    const float cellEdge = shape.cell_edge();
+    std::sort(streamQueue_.begin(), streamQueue_.end(), [&](std::size_t a, std::size_t b) {
+        return world::svo::distance_to_cell(camera, shape.coord_of(a), cellEdge) <
+               world::svo::distance_to_cell(camera, shape.coord_of(b), cellEdge);
+    });
+
+    // The focus tiers, once, shared by every cell (goal 251).
+    world::svo::TerrainSamplerParams sp;
+    sp.seed = options_.seed;
+    sp.trees = options_.trees;
+    world::svo::TerrainSampler seed(heightmap_, sp,
+                                    world::svo::Box{shape.world_min(), shape.world_max()});
+    seed.set_focus(camera, 4.0f * options_.lod_radius);
+    streamTiers_ = seed.focus_tiers();
+}
+
+void SvoWorld::pump_stream(std::size_t max) {
+    if (streamQueueNext_ >= streamQueue_.size()) {
+        return;
+    }
+    world::svo::TerrainSamplerParams sp;
+    sp.seed = options_.seed;
+    sp.trees = options_.trees;
+    world::svo::BuildParams bp;
+    bp.lod_center = streamCamera_;
+    bp.lod_radius = options_.lod_radius;
+
+    const world::svo::CellGrid shape = streamShape_;
+    const float cellEdge = shape.cell_edge();
+    const float finest = static_cast<float>(std::ldexp(1.0, options_.voxel_size_log2));
+    const glm::vec3 camera = streamCamera_;
+
+    // BOUNDED. The queue is drained a few cells per frame rather than submitted whole, so the pool
+    // never holds more outstanding work than the renderer can consume -- and the frame loop never
+    // spends more than a few submissions' worth of time here.
+    const std::size_t end = std::min(streamQueueNext_ + max, streamQueue_.size());
+    for (; streamQueueNext_ < end; ++streamQueueNext_) {
+        const std::size_t index = streamQueue_[streamQueueNext_];
+        streamRequested_[index] = 1;
+        streamInFlight_.fetch_add(1, std::memory_order_relaxed);
+        (void)pool_.submit([this, index, shape, sp, bp, cellEdge, finest, camera] {
+            const world::svo::TreeGeometry cg = shape.geometry_for(shape.coord_of(index));
+            world::svo::TerrainSampler sampler(heightmap_, sp,
+                                               world::svo::Box{cg.origin, cg.max_corner()});
+            sampler.adopt_focus(streamTiers_);
+            world::svo::BuildParams cellParams = bp;
+            cellParams.quantized_voxel_edge = world::svo::band_voxel_edge(
+                world::svo::cell_band(camera, shape.coord_of(index), cellEdge, options_.lod_radius),
+                finest, cellEdge);
+            world::svo::BrickTree cell =
+                world::svo::build_tree(sampler, cg, cellParams, nullptr, nullptr);
+
+            BuiltCell out;
+            out.index = index;
+            if (!cell.empty()) {
+                out.tree = std::make_shared<const world::svo::BrickTree>(std::move(cell));
+            }
+            const std::lock_guard guard(mutex_);
+            streamReady_.push_back(std::move(out));
+            streamInFlight_.fetch_sub(1, std::memory_order_relaxed);
+        });
+    }
+}
+
+std::vector<SvoWorld::BuiltCell> SvoWorld::take_built_cells(std::size_t max) {
+    const std::lock_guard guard(mutex_);
+    std::vector<BuiltCell> out;
+    const std::size_t take = std::min(max, streamReady_.size());
+    out.reserve(take);
+    // From the FRONT: the queue fills in completion order, which for a nearest-first submission is
+    // approximately nearest-first arrival.
+    out.insert(out.end(), std::make_move_iterator(streamReady_.begin()),
+               std::make_move_iterator(streamReady_.begin() + static_cast<std::ptrdiff_t>(take)));
+    streamReady_.erase(streamReady_.begin(), streamReady_.begin() + static_cast<std::ptrdiff_t>(take));
+    return out;
+}
+
+std::size_t SvoWorld::stream_pending() const {
+    const std::lock_guard guard(mutex_);
+    return streamReady_.size() + streamInFlight_.load(std::memory_order_relaxed) +
+           (streamQueue_.size() - streamQueueNext_);
+}
+
 } // namespace app

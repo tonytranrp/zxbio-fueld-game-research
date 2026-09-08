@@ -30,6 +30,21 @@ struct SvoWorldOptions {
     // cell against 16 for a 512 m region, which measured 21.7 -> 10.5 octree steps per ray on the
     // CPU reference. A cell is an ordinary BrickTree, so nothing about the encoding changes.
     int cell_size_log2 = 0;
+    // Prompt 004 goal 264: stream cells one at a time instead of building the whole grid before
+    // showing anything. Requires cell_size_log2 > 0.
+    bool stream_cells = false;
+    // Cells handed to the renderer per frame. Bounded because the failure mode research §1.9(a)
+    // warns about is starvation of the GPU by an unbounded producer -- GigaVoxels DP reports a 2x
+    // gain purely from fixing that -- and because goal 170 measured 12 of 13 slow frames as
+    // `present` stalls with a build running.
+    int cells_per_frame = 8;
+    // The coarse always-resident proxy's voxel size, as a log2 in metres. 0 = 1 m voxels over the
+    // whole region: at a 512 m region that is a 9-level tree, cheap to build once and small enough
+    // to keep resident forever.
+    int proxy_voxel_log2 = 0;
+    // Brick slots in the renderer's fixed pool. 1.2 M x 576 B is ~690 MB, comfortably above the
+    // 902,616 bricks the shipping 512 m world measures and comfortably inside the 7,180 MiB budget.
+    int brick_slots = 1200000;
     bool trees = true;
     std::size_t worker_threads = 0; // 0 = three quarters of the hardware threads (goal 170)
 
@@ -116,6 +131,25 @@ public:
     // ever non-null for a given build -- `Options::cell_size_log2` decides which, and 0 means the
     // single-tree path this engine shipped with.
     [[nodiscard]] std::shared_ptr<const world::svo::FlatCellGrid> take_finished_grid();
+
+    // Goal 264: the streaming producer. `start_stream` fixes the grid shape and builds the coarse
+    // proxy; `take_built_cells` hands over whatever finished since the last call, nearest-first.
+    struct BuiltCell {
+        std::size_t index = 0;
+        std::shared_ptr<const world::svo::BrickTree> tree; // null = genuinely empty, still resident
+    };
+    [[nodiscard]] world::svo::CellGrid stream_shape(glm::vec3 camera) const;
+    [[nodiscard]] std::shared_ptr<const world::svo::BrickTree> build_proxy(const world::svo::CellGrid& shape);
+    void start_stream(const world::svo::CellGrid& shape, glm::vec3 camera);
+    /// Goal 264: submit at most `max` queued cell builds. Called once per frame.
+    ///
+    /// start_stream PLANS the order and pump_stream SUBMITS, and the split is the fix for a
+    /// measured failure rather than a style choice: submitting all 4,096 jobs from the frame loop
+    /// put 1,710 ms on one frame and left the pool saturated for seconds afterwards, which is
+    /// exactly the "synchronization and starvation of GPU cores" research 1.9(a) warns about.
+    void pump_stream(std::size_t max);
+    [[nodiscard]] std::vector<BuiltCell> take_built_cells(std::size_t max);
+    [[nodiscard]] std::size_t stream_pending() const;
     // True while a finished tree is waiting to be taken (diagnostics: the frame that takes it
     // pays for the GPU buffer creation).
     [[nodiscard]] bool take_finished_pending() const {
@@ -174,6 +208,17 @@ private:
     // Goal 257: what the LAST grid build produced, so the next one can reuse the cells whose band
     // did not change. Touched only on the build thread between builds (one at a time, enforced by
     // `building_`), so it needs no lock of its own.
+    // Goal 264's producer state. The queue is drained on the main thread and filled by the pool,
+    // so it takes the same mutex the finished-tree handoff does rather than inventing a second
+    // synchronisation scheme (skill rule 33-35: use the pattern that is already here).
+    std::vector<BuiltCell> streamReady_;
+    std::vector<char> streamRequested_;
+    std::vector<std::size_t> streamQueue_; // planned order, nearest first; drained by pump_stream
+    std::size_t streamQueueNext_ = 0;
+    world::svo::TerrainSampler::FocusTiers streamTiers_;
+    glm::vec3 streamCamera_{0.0f};
+    world::svo::CellGrid streamShape_;
+    std::atomic<std::size_t> streamInFlight_{0};
     std::vector<std::shared_ptr<const world::svo::BrickTree>> lastCells_;
     std::vector<int> lastBands_;
     glm::ivec3 lastOriginCell_{0};

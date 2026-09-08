@@ -1007,6 +1007,12 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     // Hands a finished build to the renderer's staged upload, and pumps that upload one slice per
     // frame; logs the tree the frame it lands.
     glm::vec3 lastCameraPos{0.0f};
+    // Goals 263-265: the streaming path. Started once, then fed a bounded number of finished cells
+    // per frame -- the producer never touches the render thread's critical path, which is the
+    // starvation failure research 1.9(a) warns about and goal 170 measured as `present` stalls.
+    bool streamStarted = false;
+    std::uint64_t streamedCells = 0;
+    std::uint64_t streamBytes = 0;
     // Goal 262: the words the marcher wrote, read back three frames later.
     std::vector<std::uint32_t> usageWords;
     world::svo::CellMarks usageMarks;
@@ -1275,6 +1281,30 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
         // goal 215's phase-coverage check circular -- it would have read 100% by construction and
         // proved nothing. It is emitted honestly instead, and the gap between the two is the
         // finding (research/dev-harness-log.md).
+        if (options.svo.stream_cells && options.svo.cell_size_log2 > 0) {
+            if (!streamStarted) {
+                const world::svo::CellGrid shape = world.stream_shape(lastCameraPos);
+                renderer.begin_stream(shape, options.svo.brick_slots > 0
+                                                 ? static_cast<std::size_t>(options.svo.brick_slots)
+                                                 : 1200000u,
+                                      world.build_proxy(shape));
+                world.start_stream(shape, lastCameraPos);
+                streamStarted = true;
+            }
+            // BOUNDED per frame. An unbounded drain would put the whole grid's installs on one
+            // frame and reproduce exactly the stall this architecture exists to remove.
+            // Submit a bounded slice of the queue, then take a bounded slice of what finished.
+            world.pump_stream(static_cast<std::size_t>(std::max(1, options.svo.cells_per_frame)) * 2u);
+            for (const app::SvoWorld::BuiltCell& built :
+                 world.take_built_cells(static_cast<std::size_t>(std::max(1, options.svo.cells_per_frame)))) {
+                const world::svo::BrickTree empty;
+                if (renderer.install_cell(built.index, built.tree ? *built.tree : empty)) {
+                    ++streamedCells;
+                }
+            }
+            streamBytes += renderer.flush_cells();
+        }
+
         // Goal 262: the usage readback, pipelined three frames deep so it never stalls. OUTSIDE
         // the hooks.on_frame block on purpose -- that block only runs under the harness, and a
         // readback that only happens when something is watching is not a readback.
@@ -1372,6 +1402,17 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     }
     if (hooks.on_invariants) {
         hooks.on_invariants(walkViolations, insideSolidEvents, stanceChanges);
+    }
+    if (streamStarted) {
+        // Goals 264/265: what the streaming path actually moved, against the 400 MB per 2 m of the
+        // staged whole-tree upload it replaces.
+        log(LogLevel::Info,
+            "cell stream: {} cells installed, {} resident, {:.1f} MB uploaded total ({:.2f} MB/frame "
+            "mean), {} still pending",
+            streamedCells, renderer.resident_cells(),
+            static_cast<double>(renderer.stream_bytes_total()) / 1.0e6,
+            static_cast<double>(renderer.stream_bytes_total()) / 1.0e6 / std::max(1.0, double(frame)),
+            world.stream_pending());
     }
     if (usageReadbacks > 0) {
         // Goal 262's headline: bytes per frame from GPU to CPU, against the 400 MB per 2 m of the

@@ -1815,3 +1815,101 @@ so a rebuild still lands wherever the flight happens to put it.
 **The rule this adds to §16's table, stated for the next author:** a scenario is gateable when its
 statistic is stable, and a *stationary* pose is what makes it stable. Frame count decides *which*
 statistic (p95 above ~800 frames, median below); motion decides whether **any** statistic works.
+
+---
+
+## 25. Never stall, the producer, and retiring the bulk upload (goals 263, 264, 265)
+
+These three are one change. Goal 263's Check needs a *genuinely un-resident* region to demonstrate,
+which needs 264's incremental producer to exist, which needs 265's per-cell upload to replace the
+staged whole-tree transfer. Building them separately would have meant building two of them twice.
+
+**All of it is behind `--stream-cells`, off by default.** The single-tree and whole-grid paths are
+measured and shipping; a new upload architecture that silently replaces a working one is how a late
+change becomes a regression nobody can bisect.
+
+### 263 — the artefact
+
+`research/captures/akd_never_stall_convergence.png`, and the numbers behind it: 29 dumps over a
+240-frame run, `--cells-per-frame` at the default 8.
+
+| frame | local contrast | **near-black pixels** |
+|---|---|---|
+| 8 | 17.24% | **0.00%** |
+| 16 | 16.91% | **0.00%** |
+| 40 | 20.02% | **0.00%** |
+| 56 | 23.37% | **0.00%** |
+| 96 | 25.26% | **0.00%** |
+
+**Frame 8 is the complete landscape at 1 m voxels with zero fine bricks resident** — the overlay in
+an earlier run of the same sequence reads `bricks: 0 (0.0 MB), 0 internal, 0 solid` while the whole
+horizon is drawn. Detail then arrives over the following ~90 frames, and **not one frame in the
+sequence contains a hole**: near-black stays at 0.00% throughout, which is the mechanical form of
+"no holes, no black, no sky where terrain should be".
+
+Honest caveat on the artefact: the camera drifts downward across the sequence because walk-mode
+gravity is active, so it is a convergence *and* a descent. A fixed-camera version was attempted and
+hit a separate defect — see the two instrumentation bugs below.
+
+### 264 — the producer, and the starvation it reproduced first
+
+The first working version put **1,710 ms on a single frame** and left the pool saturated for seconds
+after: `start_stream` built the coarse proxy synchronously on the frame loop *and* submitted all
+4,096 cell builds at once. That is research 1.9(a)'s warning reproduced exactly — "synchronization
+and starvation of GPU cores", the thing GigaVoxels DP reports a 2x gain from fixing — and it is the
+same shape as goal 170's measurement that 12 of 13 slow frames were `present` stalls with a build
+running.
+
+The fix is the split the header now describes: **`start_stream` PLANS, `pump_stream` SUBMITS**, a
+bounded slice per frame. Cells are ordered nearest-first, which is what makes the fallback converge
+where the eye is.
+
+| | before | after |
+|---|---|---|
+| worst frames | 1710 / 1308 / 940 / 257 ms | — |
+| slow frames (>20 ms) over 2,000 | essentially all | **7 (0.35%)** |
+| of those, `onSwap` | — | **0** |
+| of those, `whileUploading` | — | **0** |
+| of those, `whileBuilding` | — | 6 |
+
+### 265 — the bulk upload is gone from this path
+
+`begin_upload`/`pump_upload` and the spare-buffer pair are untouched on the legacy paths and are
+**not used at all** when streaming: cells install into fixed pools and only dirty brick runs are
+sent. **`--upload-budget` keeps its exact meaning** — it is still the per-frame byte ceiling, now
+applied to dirty runs instead of tree slices — which is why it was kept rather than deleted.
+
+Measured, 2,000 frames, stationary camera, `--cell-log2 5 --stream-cells`:
+
+- **4,090 of 4,096 cells installed and resident**
+- **3,011.6 MB uploaded in total, 1.51 MB/frame mean**
+- **zero** `onSwap` frames, **zero** `whileUploading` frames
+
+And the honest reading of that 3 GB, because it is larger than the 292.9 MB a single whole-tree
+upload would have cost this stationary camera: **almost all of it is the node array being re-sent
+whole on each of the ~511 install frames.** That is section 21's documented simplification — bricks
+are pooled, nodes are repacked and re-sent — meeting its bill. Pooling nodes too would cut this to
+roughly 300 MB, and this is the measurement that justifies doing it rather than the guess section 21
+left it as. **Streaming's win here is latency and smoothness (zero upload stalls, a complete first
+frame), not total bytes.**
+
+### Two instrumentation bugs found on the way, neither in the renderer
+
+- **`--dump-every` produces an all-black frame on alternate dumps** past roughly the fiftieth frame,
+  with TAA off and GPU timers off. It made a fixed-camera convergence sequence impossible to read.
+  Not attributed to this pass's changes and not fixed here; opened as a goal.
+- **The Vulkan timestamp query pool exhausts** (`Failed to allocate Vulkan query for type
+  QUERY_TYPE_TIMESTAMP`) during long runs with frequent dumps, which is new since `GpuPass::Beam`
+  took the count from four ranges to five. Opened as a goal.
+
+### And the trap that cost the most time here
+
+The shipping goldens went to **48.5% of pixels changed**, and the cause was neither the shader nor
+the constants: **`voxel_harness` is a different binary from `voxel_app`, and only the app had been
+rebuilt.** Shaders load at runtime, so a shader edit needs no rebuild — but the C++ cbuffer mirror
+does, and the harness renders with its own copy of it. The bisect ran four times before the shader
+was exonerated by reverting it and finding the *committed* shader passed with the *new* C++, which
+is only possible if the two binaries disagree.
+
+**Operational rule, now in CLAUDE.md: a cbuffer change means rebuilding every binary that renders,
+not just the one being run by hand.**

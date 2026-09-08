@@ -126,6 +126,24 @@ public:
     // CELL, so 4,096 cells is 16 KB per frame. GigaVoxels compacts because it has millions of
     // elements to report; this grid has thousands, and compacting 16 KB to reduce a 16 KB transfer
     // would be machinery with no subject. See research section 23 for the measured cost.
+    // Prompt 004 goals 263-265: the streaming path. Cells arrive one at a time and only the bricks
+    // that actually changed are sent, against the staged whole-tree transfer this replaces.
+    //
+    // BEHIND A FLAG AND OFF BY DEFAULT, deliberately. The single-tree and whole-grid paths are
+    // measured and shipping; this one changes the upload architecture, and a new architecture that
+    // silently replaces a working one is how a late change becomes a regression nobody can bisect.
+    void begin_stream(world::svo::CellGrid shape, std::size_t brick_slots,
+                      std::shared_ptr<const world::svo::BrickTree> proxy);
+    /// Install one built cell. False when the pool is full -- the caller evicts and retries.
+    bool install_cell(std::size_t index, const world::svo::BrickTree& tree);
+    void evict_cell(std::size_t index);
+    /// Repack the node array and send whatever is dirty, bounded by `upload_bytes_per_frame`.
+    /// Returns the bytes actually sent this frame.
+    std::uint64_t flush_cells();
+    [[nodiscard]] bool streaming() const noexcept;
+    [[nodiscard]] std::size_t resident_cells() const noexcept;
+    [[nodiscard]] std::uint64_t stream_bytes_total() const noexcept;
+
     [[nodiscard]] bool read_cell_usage(std::vector<std::uint32_t>& out);
     /// Bytes the last readback moved, and how long the copy itself cost on the GPU.
     [[nodiscard]] std::uint64_t last_usage_readback_bytes() const noexcept;
