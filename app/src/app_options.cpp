@@ -1,5 +1,7 @@
 #include "app_options.hpp"
 
+#include "render/diligent/look_preset.hpp"
+
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -20,6 +22,13 @@ using engine::cli::ValueKind;
 using Backend = render::diligent::Backend;
 using SvoDebugView = render::diligent::SvoDebugView;
 using Settings = render::diligent::SvoRenderer::Settings;
+
+constexpr std::array kLooks{
+    EnumEntry{"shipping", static_cast<int>(render::diligent::LookPreset::Shipping)},
+    EnumEntry{"raw", static_cast<int>(render::diligent::LookPreset::Raw)},
+    EnumEntry{"flat", static_cast<int>(render::diligent::LookPreset::Flat)},
+    EnumEntry{"hatched", static_cast<int>(render::diligent::LookPreset::Hatched)},
+};
 
 constexpr std::array kBackends{
     EnumEntry{"vk", static_cast<int>(Backend::Vulkan)},
@@ -330,6 +339,26 @@ constexpr std::array kTable{
            .help = "Laine-Karras early-out when a node projects under a pixel",
            .default_text = "on",
            .group = "SVO shading"},
+    // Goal 289. Applies AT THE POSITION IT APPEARS -- anything after it overrides it, and it
+    // overwrites anything before it. See look_preset.hpp for why that ordering rather than
+    // per-option provenance tracking in the parser.
+    Option{.name = "look",
+           .set = [](void* base, std::string_view token, const Option& self) -> engine::cli::Status {
+               for (const EnumEntry& entry : self.enum_values) {
+                   if (entry.name == token) {
+                       render::diligent::apply_look(
+                           static_cast<AppOptions*>(base)->svo_settings,
+                           static_cast<render::diligent::LookPreset>(entry.value));
+                       return engine::cli::Status::Ok;
+                   }
+               }
+               return engine::cli::Status::BadValue;
+           },
+           .kind = ValueKind::Enum,
+           .help = "an appearance preset, applied where it appears so later flags override it",
+           .default_text = "shipping",
+           .group = "Shading",
+           .enum_values = kLooks},
     Option{.name = "stipple",
            .set = bind<&AppOptions::svo_settings, &render::diligent::SvoRenderer::Settings::stipple>(),
            .kind = ValueKind::Toggle,

@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "render/diligent/look_preset.hpp"
+
 #include "app_options.hpp"
 #include "engine/cli/help.hpp"
 #include "engine/cli/parser.hpp"
@@ -329,4 +331,96 @@ TEST_CASE("renderer settings are independently constructible from a config file"
     CHECK(fromFile.upload_bytes_per_frame == fromApp.upload_bytes_per_frame);
     CHECK(fromFile.debug_view == fromApp.debug_view);
     std::filesystem::remove(path);
+}
+
+// ------------------------------------------------------- Prompt 005 goal 289: the look presets
+//
+// NOTE THE TEST NAMES do not start with "--". Catch2's own argument parser sees the name
+// ctest passes it, so a TEST_CASE called "--look ..." is read as an unknown OPTION and the test
+// fails under ctest while passing when the binary is run by hand -- which is exactly how it
+// presented here.
+//
+// These assert VALUES, not that the code runs. That is the point the goal asks for: a preset is
+// the shipped look expressed as data, and a refactor that quietly changed one would otherwise be
+// invisible until someone noticed the world looked different.
+
+TEST_CASE("the look flag selects an appearance preset", "[app][options][look]") {
+    using render::diligent::LookPreset;
+
+    SECTION("shipping is the default configuration, stated rather than assumed") {
+        AppOptions o;
+        render::diligent::apply_look(o.svo_settings, LookPreset::Shipping);
+        CHECK(o.svo_settings.filter_albedo);
+        CHECK(o.svo_settings.stipple);
+        CHECK(o.svo_settings.stipple_amount == Catch::Approx(2.5f));
+        CHECK(o.svo_settings.stipple_period_px == Catch::Approx(7.0f));
+        CHECK(o.svo_settings.grain);
+        CHECK(o.svo_settings.grain_amplitude == Catch::Approx(0.10f));
+        // A fresh AppOptions must already BE the shipping look, or "shipping" is a lie.
+        const AppOptions fresh;
+        CHECK(fresh.svo_settings.filter_albedo == o.svo_settings.filter_albedo);
+        CHECK(fresh.svo_settings.stipple == o.svo_settings.stipple);
+        CHECK(fresh.svo_settings.stipple_amount == Catch::Approx(o.svo_settings.stipple_amount));
+        CHECK(fresh.svo_settings.stipple_period_px == Catch::Approx(o.svo_settings.stipple_period_px));
+    }
+
+    SECTION("raw turns off everything Prompt 005 added -- the A/B for the whole pass") {
+        AppOptions o;
+        render::diligent::apply_look(o.svo_settings, LookPreset::Raw);
+        CHECK_FALSE(o.svo_settings.filter_albedo);
+        CHECK_FALSE(o.svo_settings.stipple);
+        CHECK(o.svo_settings.grain); // the OLD per-cube grain predates this pass and stays
+    }
+
+    SECTION("flat keeps the filtering and removes every deliberate pattern") {
+        AppOptions o;
+        render::diligent::apply_look(o.svo_settings, LookPreset::Flat);
+        CHECK(o.svo_settings.filter_albedo);
+        CHECK_FALSE(o.svo_settings.stipple);
+        CHECK_FALSE(o.svo_settings.grain);
+    }
+
+    SECTION("hatched aims at the reference capture's own measured period") {
+        AppOptions o;
+        render::diligent::apply_look(o.svo_settings, LookPreset::Hatched);
+        CHECK(o.svo_settings.stipple);
+        // 10.67 px is goal 284's measurement of lin_water_checkerboard_after.png, not a taste.
+        CHECK(o.svo_settings.stipple_period_px == Catch::Approx(10.67f));
+        CHECK(o.svo_settings.stipple_amount > 2.5f);
+    }
+
+    SECTION("a preset touches ONLY appearance -- never quality or performance") {
+        // The failure this guards against: a "look" that silently turns shadows off is a
+        // performance setting wearing a costume, and it would show up as a frame-time win nobody
+        // asked for.
+        for (LookPreset look : {LookPreset::Shipping, LookPreset::Raw, LookPreset::Flat,
+                                LookPreset::Hatched}) {
+            AppOptions o;
+            o.svo_settings.shadows = false;
+            o.svo_settings.ao = false;
+            o.svo_settings.taa = false;
+            o.svo_settings.lod_quality = 0.5f;
+            o.svo_settings.ao_radius_px = 11.0f;
+            render::diligent::apply_look(o.svo_settings, look);
+            CHECK_FALSE(o.svo_settings.shadows);
+            CHECK_FALSE(o.svo_settings.ao);
+            CHECK_FALSE(o.svo_settings.taa);
+            CHECK(o.svo_settings.lod_quality == Catch::Approx(0.5f));
+            CHECK(o.svo_settings.ao_radius_px == Catch::Approx(11.0f));
+        }
+    }
+}
+
+TEST_CASE("the look flag parses and position decides who wins", "[app][options][look]") {
+    // The documented ordering contract (look_preset.hpp): --look applies WHERE IT APPEARS.
+    const AppOptions later = parsed({"--look", "raw", "--filter-albedo"});
+    CHECK_FALSE(later.svo_settings.stipple); // from the preset
+    CHECK(later.svo_settings.filter_albedo); // the later flag won
+
+    const AppOptions earlier = parsed({"--filter-albedo", "--look", "raw"});
+    CHECK_FALSE(earlier.svo_settings.filter_albedo); // the preset came last and won
+}
+
+TEST_CASE("the look flag rejects a name it does not have", "[app][options][look]") {
+    CHECK(rejects({"--look", "cinematic"}));
 }

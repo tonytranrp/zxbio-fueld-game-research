@@ -2461,9 +2461,16 @@ unfiltered quantity is the **material**. That reframing is AL-A's actual content
      prompt's *"if directionality does not visibly help, drop it"* was settled by measurement rather
      than taste. A fixed world-space direction; per-material hatch directions are not implemented and
      nothing measured here needs them.
-287. Close-range edge quality with and without TAA — **NOT PERFORMED**. **Check**: `macro_ground` and
-     `macro_tree` at 0.3 m and 2 m, both backends, with and without TAA, viewed, with a written
-     judgement on edge quality.
+287. [x] Close-range edge quality, and **it depends on TAA**. **Check PERFORMED**:
+     `research/captures/al_close_range_taa.png`, viewed — `macro_ground` at 0.3 m, `--no-taa`
+     against `--taa`. Without TAA the cube edges **stairstep visibly**, with a fine crenellated
+     texture along every cube boundary; with it they are smooth. **Nothing else in the pipeline
+     antialiases a cube silhouette**: goal 278's albedo filter deliberately stands aside at close
+     range (`faceWeight` ~1 when cubes are several pixels across — the John Lin close-up the look
+     wants) and the stipple is a shading term that does not touch edges. So `--no-taa` is not a
+     neutral A/B here, and any future work that weakens TAA — a reactive mask, a shorter history,
+     goal 285b's post-resolve grain — has to keep the edges in mind. Recorded because it is a
+     dependency worth knowing, which is exactly what the goal asks for.
 288. [x] The reference reproduced side by side — *"the capture the owner asked for"*.
      **Check PERFORMED**: `research/captures/al_reference_side_by_side.png`, committed and viewed.
      A pose was chosen for matching COMPOSITION (water, shoreline, green slopes and exposed stone
@@ -2480,10 +2487,22 @@ unfiltered quantity is the **material**. That reframing is AL-A's actual content
      reference's green carries a red speckle which is its own ALIASING and which ours deliberately
      lacks. **The grain question this pass exists to answer is answered; the form question is not
      this pass's.**
-289. **One knob, not fifteen — NOT DONE.** `SvoRenderer::Settings` gained three fields this pass and
-     is over twenty. `--look NAME` does not exist; every individual knob works and is in `--help`.
-     **Check**: `--look NAME` selects a preset, individual flags still override, presets enumerated
-     in `--help`, and a test asserts each preset's field values.
+289. [x] One knob, not fifteen. **Check PERFORMED**: `--look shipping|raw|flat|hatched` selects a
+     preset, the individual flags still work and still override, the values are enumerated in
+     `--help`, and **five test sections assert each preset's field values** so a refactor cannot
+     silently change the shipped look.
+     **Only the seven APPEARANCE fields are in a preset**, not all nineteen — a test asserts that
+     every preset leaves shadows, AO, TAA and the LOD multipliers untouched, because a "look"
+     that silently turned shadows off would be a performance setting wearing a costume.
+     A plain function rather than a policy template parameter, for the reason
+     `templates-and-metaprogramming.md` §3 implies: every axis here is a bool or a float with
+     identical behaviour and only its value differs, so a policy would buy nothing and cost a
+     recompile per look. Ordering is a stated contract — `--look` applies where it appears — with
+     a test in each direction.
+     **A tooling bug found doing it**: the tests passed by hand and failed under `ctest`, because
+     `catch_discover_tests` passes a test's NAME to the binary as an argument and Catch2 read a
+     name beginning with `--` as an unknown option. A test name is an argument; do not start one
+     with a dash.
 
 ### AL-C. Cost, regression and handoff (goals 290–294)
 

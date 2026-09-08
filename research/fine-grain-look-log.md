@@ -637,3 +637,65 @@ verdict.
 **So the honest answer to *"did any of them get worse"* is: the one that is on this renderer did not,
 verified on the right instrument; the other two are not reachable from anything this pass changed,
 and saying "unchanged" about them would have been an unearned claim rather than a measurement.**
+
+---
+
+## 10. Goal 287 — close-range edges, and they depend on TAA
+
+`research/captures/al_close_range_taa.png`, viewed: `macro_ground` at **0.3 m**, `--no-taa` against
+`--taa`, same pose, same everything else.
+
+**Without TAA the cube edges stairstep visibly.** The slope carries a fine crenellated texture along
+every cube boundary, plus a few horizontal streak artefacts. **With TAA it is smooth** — the
+stepping is softened to the point where the surface reads as a surface rather than a staircase.
+
+**So the answer to the prompt's question is yes, and it is worth knowing: the close-range edge
+quality is carried by TAA alone.** Nothing else in the pipeline antialiases a cube silhouette — the
+albedo filter of §3 deliberately does *not* apply here (`faceWeight` is ~1 when cubes are several
+pixels across, which is the John Lin close-up the look wants), and the stipple is a shading term
+that does not touch edges. **That is a real dependency**: `--no-taa` is not a neutral A/B at close
+range, it is a visibly worse image, and any future work that weakens TAA — a reactive mask, a
+shorter history, applying the grain post-resolve (goal 285b) — has to keep the edges in mind.
+
+Also visible and by design: a few red dots survive at close range. `faceWeight` is high there, so
+the albedo filter correctly stands aside and lets each cube show its own material. The filter is for
+sub-pixel cubes; at 0.3 m these are not sub-pixel.
+
+---
+
+## 11. Goal 289 — one knob, and the tooling bug it surfaced
+
+`--look shipping|raw|flat|hatched` (`render/diligent/look_preset.hpp`).
+
+**Only the seven APPEARANCE fields are in a preset**, not the nineteen. `SvoRenderer::Settings` also
+holds shadows, AO, TAA, the LOD multipliers and the beam tile, and **a "look" that silently turned
+shadows off would be a performance setting wearing a costume** — it would show up as a frame-time
+win nobody asked for. A test asserts that property directly: every preset applied to a Settings with
+shadows/AO/TAA off and non-default LOD values leaves all of them untouched.
+
+**A plain function, not a policy template parameter.** `templates-and-metaprogramming.md` §3's
+policy-based design is the pattern when axes are *types with different behaviour*; here every axis is
+a bool or a float with identical behaviour and only its value differs, so a policy parameter buys
+nothing and costs a recompile per look. Same reasoning `PlayerTuning` already records for itself:
+these are art-direction values a capture session sweeps from the command line, so they are runtime
+data.
+
+**Ordering, stated as a contract rather than left emergent**: `--look` applies **at the position it
+appears**. Anything after overrides it; `--look` after a flag overwrites that flag. The alternative —
+tracking which options were explicitly set so a preset never clobbers them — needs per-option
+provenance in the parser, and this repo has exactly one argv-indexing site precisely because that is
+where CLI bugs live. Two tests pin both directions.
+
+The four presets: **shipping** (the defaults, and a test asserts a fresh `AppOptions` already *is*
+this look, or the name is a lie); **raw** (everything this prompt added, off — the A/B for the whole
+pass, and the configuration §2's attribution numbers were measured in); **flat** (filtering on, every
+deliberate pattern off — the control that shows how much of the frame's texture is deliberate);
+**hatched** (the stipple at the reference capture's own measured 10.67 px period, for look sessions).
+
+### And a tooling bug worth recording
+
+The three new tests **passed when the binary was run by hand and failed under `ctest`**. The names
+began with `--`, and `catch_discover_tests` registers a test by passing its name to the binary as an
+argument — so **Catch2's own parser read `--look selects an appearance preset` as an unknown
+OPTION**, not a test name. Renaming them fixed it. A test name is an argument; do not start one with
+a dash. Noted at the test site so the next person does not spend the same twenty minutes.
