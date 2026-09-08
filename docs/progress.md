@@ -511,6 +511,66 @@ grain is **achievable optically and not through this engine's TAA** (285b).
   achievable setting, not a silent substitution.
 
 
+
+## Prompt 006 — the terrain is a history now (Group AM, goals 295–325)
+
+Full record: `research/earth-terrain-pipeline-log.md`. Operating manual: `docs/terrain-pipeline.md`.
+
+The generator was four octaves of Simplex. It is now a **baked 8 km macro field** (500×500 at 16 m,
+8.00 MB, eight planes) built by an eight-stage pipeline — continents with Earth hypsometry,
+orographic climate, priority-flood, D8 flow routing, implicit stream-power incision modulated by
+stratigraphy, hillslope diffusion, a second climate pass on the eroded terrain, and biomes — read
+through the **same `height_at` interface** it always had, plus an always-present analytic detail term.
+
+Around it: rivers as polylines with real discharge and width, four surface stencils (glacial,
+coastal, karst, dunes), **caves** — which reopens and closes goal 80 the other way — and research
+Part 7 §9's ten acceptance tests as a library and a five-seed `ctest` gate.
+
+**Seven of the ten pass on the shipped seed.** Unfilled internal basins went 3,536 → 80. The world
+has 1,160 river reaches that all terminate and 170 lakes that all spill, where before it had no
+rivers at all.
+
+**The architecture map gains**: `world/generation/field/` (terrain_field, field_sampler,
+macro_pipeline, fluvial, climate, rivers, biome, stencils), `world/generation/validation/`,
+`world/svo/caves.{hpp,cpp}`, and `tools/terrain_dump`.
+
+### Decisions that survived contact with evidence (Prompt 006's additions)
+
+- **A pipeline the shipped binary does not run is not shipped.** For the whole of Groups AM-A and
+  AM-B the terrain pipeline was never rendering: the bulk column path ignored the macro field,
+  `macro_field` defaulted to `false`, and the playable region was in the sea. All three were found by
+  opening a PNG, not by any number — the numbers were reading a surface nobody could see. This is the
+  clearest vindication the standing "a visual change is verified by a VIEWED capture" rule has had.
+- **Goal 80's no-go was right on its own evidence, and the research changed the evidence.** Full 3D
+  density touches generation, meshing and streaming at once. Part 7 §7.5's heightfield-first hybrid
+  does not: the surface stays 2.5D and only a bounded band below it becomes 3D, so `classify`'s
+  solid-without-subdividing fast paths stay valid everywhere the band cannot reach. **Reopening a
+  closed goal is correct when the reason it was closed has moved.**
+- **Test the instrument before trusting its reading.** Across this pass the instrument was wrong
+  fifteen times against roughly four cases where the terrain was. Log §16 tabulates them. Goal 317's
+  Check said this before any of it happened.
+- **An invented band that a real landscape fails is worse than no band.** §9.1 gives unimodality and
+  a sign trend, not a numeric skewness range; a fabricated [-1.5, 2.5] reported a defect that had
+  never been established.
+- **A gate that fails on the day it is written is not a gate**, and a gate one seed sits 2% outside
+  is a flaky one. The acceptance suite asserts what holds on all five seeds and *records* the rest
+  with its spread.
+- **Measure the world that ships.** Three separate parameters were selected against a field that was
+  the wrong size, un-recentred, or pre-stratigraphy — and each moved when the measurement was
+  aligned. The detail amplitude has now been re-swept four times for exactly this reason.
+- **The research's own numbers can be mutually inconsistent, and saying so beats picking one
+  silently.** §11's channel-head band and §9.4's drainage-density band do not overlap for any
+  generator; the relation D ≈ 1/(2√A_c) shows why.
+- **This world is smaller than the landforms the research measures.** No snowline, no cliff, rivers
+  narrower than a cell, half a degree of temperature across the map. Several stencils work correctly
+  and have no subject here, which is a finding about the world rather than about them.
+- **A conservative bound is the only thing standing between a feature and a broken world.**
+  `caves_possible_in_band` returns false only when provably cave-free; every "this whole box is
+  solid" conclusion consults it, and 10,000 random boxes verify it against pointwise truth.
+- **The cheaper terrain was the physical one.** −35% bricks, −37% memory, −19% build time against the
+  noise it replaced, because erosion produces a smoother surface than fractal noise does — even after
+  caves add back exactly the +35% sampler time they were predicted to cost.
+
 ## Decided against, Prompt 003 Group AJ-C/AJ-D (goals 239, 243)
 
 These are decisions, not omissions. Each is written down so the next pass does not spend a day

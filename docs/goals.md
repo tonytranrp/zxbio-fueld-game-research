@@ -464,6 +464,15 @@ Named explicitly in `CLAUDE.md` as deferred, not forgotten — this group is whe
     cannot represent an overhang or a cave. **Check**: a written go/no-go with reasoning; if yes, this
     becomes its own future goals group rather than a single line item here, since it touches
     generation, meshing, AND streaming simultaneously.
+    **REOPENED AND CLOSED THE OTHER WAY by Prompt 006 goal 313, per the reopening rule.** The
+    original no-go was correct on its own evidence: full 3D density touches generation, meshing and
+    streaming at once. What changed is that the research supplied a way not to pay that — Part 7
+    §7.5's **heightfield-first hybrid**, `d = h - y + N3`, where the surface stays 2.5D and only a
+    bounded band below it becomes 3D. The band is what made it affordable: `classify`'s
+    solid-without-subdividing fast paths stay valid everywhere the band cannot reach, so the cost is
+    confined instead of global (measured: +35% sampler time, and net **−35% bricks** because the
+    new terrain is smoother). Caves ship, enterable, at 15.5 m mean passage width and 9.18 m height,
+    with the 10,000-box classification safety check green.
 81. [x] Biome variety beyond the current land/water/wood/leaves palette: at minimum a second terrain
     material (e.g. sand near shorelines, distinguished by height-relative-to-sea-level, reusing
     `HeightmapGenerator::height_at` the same way tree placement already does) — a concrete, bounded
@@ -2553,6 +2562,240 @@ unfiltered quantity is the **material**. That reframing is AL-A's actual content
      the reasoning is unchanged and now better evidenced — `research/micro-voxel-creators-research.md`
      confirms Lin's own method *is* a path tracer, so the gap is deliberate rather than an oversight;
      **NAADF's 32-frame history** is measured as free and deliberately not adopted (goal 280).
+
+
+---
+
+## Group AM — The terrain pipeline, rebuilt on Earth's own physics (Prompt 006, goals 295–325)
+
+Full record with every measurement: `research/earth-terrain-pipeline-log.md`. How to run it:
+`docs/terrain-pipeline.md`.
+
+**The pass's shape, stated once because it explains most of the entries below.** The generator was
+four octaves of Simplex; it is now a baked 8 km macro field carrying eight planes, built by an
+eight-stage pipeline, read through the same `height_at` interface. The research's ten acceptance
+tests are a library and a five-seed gate. **Seven of the ten pass on the shipped seed, up from an
+untested world.** Three do not, each with a measured cause and an open goal.
+
+**And the finding that outranks all of them: for the whole of Groups AM-A and AM-B the pipeline was
+never rendering.** Three independent reasons (goal 321), all found by opening a PNG rather than by
+any number, which is the pass's own vindication of rule 2.
+
+### AM-A. The baked field behind an analytic interface (goals 295–299)
+
+295. [x] The architecture chosen: a baked macro field plus an always-present analytic detail term,
+     behind an unchanged `height_at`. **Check PERFORMED**: option (b)'s absent-until-baked residual
+     was rejected in writing — a world whose shape depends on where the player has been is a
+     determinism hazard, and determinism is this pass's first rule.
+296. [x] Tile size from the research's own numbers. **Check PERFORMED**: 8 km at 16 m cells
+     (500×500, 8.00 MB). The arithmetic is in the log §1: A_c = 0.1–5 km² against a 512 m playable
+     region means the region holds 2.6 channel-head areas at best, so the erosion must run on
+     something much wider and the region is a window into it.
+297. [x] The detail term. **Check PERFORMED, and re-swept four times** — see 320's follow-up and
+     `DetailParams`' header, which carries all four tables and the reason they differ.
+298. [x] The field wired into the app and the tools. **Check PERFORMED**: bakes in 0.545 s.
+299. [x] Per-stage cost reported rather than one number. **Check PERFORMED**: continents 0.021,
+     climate 0.006, fill_depressions 0.018, flow 0.020, incise 0.365, diffuse 0.044, climate_final
+     0.009, biomes 0.050 s. **The incision is 67% of the bake.**
+
+### AM-B. Continents, climate and the fluvial core (goals 300–309)
+
+300. [x] Determinism under the solver. **Check PERFORMED**: same seed → identical field, asserted
+     per stage; the incision's summation order is fixed and serial.
+301. [x] Continents with Earth hypsometry. **Check PERFORMED**: land median/max **0.208** against a
+     Gaussian field's 0.5 — §9.3's land-half shape. **An adaptation stated, not slipped in**: §9.3's
+     ~29% land is a WHOLE-EARTH statistic and this field is 1.3×10⁻⁷ of the planet; land fraction is
+     reported without a band because a patch cannot carry a planetary number (log §6).
+302. [x] Orographic climate. **Check PERFORMED**: false-colour map viewed
+     (`research/captures/am_precip.png`) — ocean uniformly dry, wet bands on upwind-facing coasts,
+     dry tails downwind, dendritic wet fingers on incised valley walls. Wet/dry **10.3 : 1** against
+     §6.2's ~10:1 anchor. Lapse rate asserted at **6.5 °C/km** exactly. Spillover asserted as a test
+     (crest 2.47 → one drift length 1.07 → background 0.10). **No FFT to cost**: the substitute is
+     24 ms of a 485 ms pipeline. Four wrong answers on the way, each corrected by its own instrument
+     (log §9). **Latitude deliberately enters as a constant**: 8 km is 0.07 degrees of arc.
+302a. [ ] The real Smith–Barstad LT model, when there is a reason to trust a parameter set for it.
+303. [x] Priority-flood. **Check PERFORMED**: zero internal basins asserted mechanically over the
+     whole field, not sampled.
+304. [x] Flow routing and accumulation. **Check PERFORMED**: one pass, donor-before-receiver order
+     asserted.
+305. [x] Implicit stream-power incision. **Check PERFORMED**: a real dendritic network; slope–area
+     relationship where noise had none (R² 0 → 0.83).
+306. [x] Hillslope diffusion. **Check PERFORMED, and it exposed a bug**: the sea-level guard skipped
+     exactly the coastline, where the sharpest curvature is, so the ridge-curvature test measured
+     the worst Laplacian as **bit-identical before and after diffusing**. Guard removed.
+307. [x] The channel threshold. **Check PERFORMED**: D = **5.58 km/km²**, inside §9.4's 2–12 band.
+     **And a finding larger than the question**: the research's own two bands do not overlap —
+     A_c ∈ [0.1, 5] km² implies D ∈ [0.22, 1.58], while D ∈ [2, 12] implies A_c ∈ [0.0017, 0.0625].
+     The generator sits exactly where D ≈ 1/(2√A_c) says it should. A_c chosen from the density,
+     recorded rather than silently adopted.
+308. [ ] Tarboton's constant-drop t-test **FAILS**, swept rather than run at one threshold.
+     **Check PERFORMED**: |t| = 13.7 at the shipped A_c; the two thresholds that "pass" have five and
+     three higher-order samples, so they are the test running out of data, not converging. **And
+     pure fractal noise passes it (|t| 1.57, 4/5 seeds) while the eroded terrain fails** — on an
+     8 km field this test certifies noise and rejects erosion. Needs a larger domain, not a
+     different threshold.
+309. [x] Meanders, base level, lakes and deltas — **as polylines, because rivers here are sub-cell**.
+     **Check PERFORMED**: largest basin 5.10 km² → 0.48 m³/s bankfull → **2.42 m channel against a
+     16 m cell**. λ/W measured **11.9** (band 10–14); sinuosity 1.52 (band 1.2–2.2); 1,160 reaches
+     all terminating; **170 of 170 lakes spill**; viewed capture of a meandering river reaching its
+     delta at 0.44 m/pixel (`research/captures/am_river_delta.png`). Bankfull discharge from Petit &
+     Pauquet (1997), 4–2,700 km² Ardennes catchments — written up with CONFIRMED/INFERENCE labels in
+     `research/bankfull-discharge-ratio.md`. **An independent width route disagrees by a measured
+     2.8×**, printed alongside so the gap is visible.
+
+### AM-C. The stencil passes (goals 310–316)
+
+310. [x] Glacial carving — **the negative is the result**. **Check PERFORMED**: snowline computed
+     from the climate field at **2153.85 m**; the highest ground in the world is **44.55 m**, so the
+     stencil selects zero basins and carves zero cells. On a synthetic V above a snowline it works:
+     b 1.00 → 1.11, V-index up. **1.11 is below §9.5's glacial band of 1.5–2.0 and is reported, not
+     tuned** — the trough width comes from an ice-flux proxy that on a uniform synthetic does not
+     widen enough to dominate a ridge-to-ridge transect. Open.
+311. [x] Coastal erosion and deposition. **Check PERFORMED**: two synthetic coasts identical except
+     for slope are treated differently — cliffs get a shore platform cut at wave base (the
+     diagnostic feature; a cliff without one is just a steep slope), gentle coasts get a beach wedge.
+     Shipped world: **1,423 coast cells, 0 cliffed, 1,423 gentle** — which is what a coastal plain
+     is. **The material still comes from `TerrainBands::beach_band`**, not a new rule.
+312. [x] Karst on a lithology mask. **Check PERFORMED**: **229 dolines at 13.6/km², mean diameter
+     40.3 m**, on carbonate only. **Goal 312's Check demanded the drainage-sink question be answered
+     explicitly: this stage RE-RUNS THE FILL** rather than locally exempting them, because an
+     exempted sink would have to be carried as a special case through the flow router, the river
+     extractor and the coherence metric — and a filled doline is a shallow closed depression brimming
+     to its rim, which is what a doline with a blocked throat is. Zero internal basins asserted after.
+313. [x] **Caves — goal 80 reopened and closed.** **Check PERFORMED**: void fraction 0.90%, mean
+     passage **15.5 m wide and 9.18 m high** (enterable by a 1.8 m body with room), **zero samples
+     below the water table**, and **10,000 random boxes verified against pointwise truth — classify
+     never reports uniform over a box that is mixed.** The occupancy-rule plan is written at the top
+     of `caves.hpp` as the prompt required. The safety property is `caves_possible_in_band`:
+     conservative by construction, false means provably cave-free, so a box the band cannot reach
+     keeps its fast path and a box it touches is subdivided.
+314. [x] Deserts and dunes. **Check PERFORMED**: the phase diagram selects on **both** axes (asserted
+     — a diagram returning one answer everywhere is a sand texture with extra steps); the desert
+     carries **three** morphologies; wavelength and height inside Part 5 §3's bands; the dune field
+     sits where the biome says desert, which is where the rain shadow is — a check on 302 as much as
+     on this.
+315. [x] Stratigraphy feeding the erosion. **Check PERFORMED mechanically, because the capture
+     cannot show it**: over a ramp spanning every bed, soft beds lose **31.89 m** and hard beds
+     **30.36 m** — a 5% contrast, about 1.5 m of bench. **The Check's capture is a negative**: this
+     world has no cliff (0 cliffed coast cells, 8° mean land slope), so no pose shows a ledge.
+     `research/captures/am_strata.png` is a wooded hill — correct, and benchless. **The contrast is
+     calibrated against the acceptance suite**, not chosen for looks.
+315a. [ ] **The three new materials are NOT shipped and this is not a silent omission.** Limestone,
+     sandstone and clay would take the material count from 8 to 11, and Prompt 004's brick palette is
+     3 bits with `static_assert(kMaterialCount <= 8)`. The options are a 4-bit palette at a
+     calculable +17% brick size (70 → 82 words) or a packer that tolerates per-brick palette
+     overflow. That needs its own measured decision against Prompt 004's 279.5 MB result.
+315b. [ ] Warped beds. The warp needs a per-column offset reaching `world/materials`' band
+     predicates, and `TerrainQuery` carries no x/z on purpose — that is what keeps the sparse-brick
+     and chunk paths byte-identical. Horizontal beds needed nothing new.
+316. [x] Biomes and vegetation densities. **Check PERFORMED**: nine biomes, each carrying its
+     stems/ha target, the research band, and the citation — **a test asserts every target is inside
+     its own band**. Shipped field: ocean 32.6%, temperate forest 30.0%, desert 11.3%, grassland
+     10.4%, shrubland 8.6%, beach 5.7%, wetland 0.9%, alpine 0.5%. Forest's mean precipitation is
+     asserted at more than twice desert's. §6.4's "edge sharpness = f(cause)" implemented as the
+     difference it claims: moisture ecotones grade, elevation and waterlogging thresholds snap,
+     measured 0.0007 mixed-neighbourhood fraction at a threshold against a far higher one at the
+     ecotones. **Whittaker's temperature axis does not exist here** — 13.50 to 14.00 °C across the
+     entire world — so the biome map is honestly a moisture map with a thin alpine belt, and the
+     header says so.
+316a. [ ] Restore the temperature axis by raising the world's relief. At 112 m and 6.5 °C/km there is
+     half a degree to classify on, no snowline (310), and alpine covers 0.5% of the field.
+
+### AM-D. The acceptance suite as a permanent gate (goals 317–320)
+
+317. [x] `world/generation/validation`: the ten tests as a library. **Check PERFORMED**: all ten run;
+     **every band is a named constant with its citation in a comment beside it**; and every metric
+     has an instrument test against an analytically known answer — a plane reads 45.000°, a
+     synthesised k⁻² surface reads β 1.85, a bowl reads exactly one internal basin, a plane's
+     variogram reads H 1.00 and white noise 0.00, the FFT puts a pure tone in one bin and satisfies
+     Parseval, synthetic V and U valleys read b 1.0 and 2.0 apart. **The FFT is written, not
+     depended on** (rule 7), and only 1D — a 2D radial average of the same surface goes as
+     k^−(2H+2) and would read a full unit high against a band quoted for the 1D slope.
+318. [x] `tools/terrain_dump`. **Check PERFORMED**: every plane dumps (elevation, flow, precip,
+     temperature, biome, rivers, with `--zoom`); PNGs re-saved through PIL before committing; **and
+     the tool's two private copies of library metrics were deleted** — they had already diverged,
+     one sampling only link-end cells and reporting first-order drops LARGER than higher-order while
+     the library reports the opposite sign. Two implementations of one test, opposite answers.
+319. [x] The five-seed suite as a gate. **Check PERFORMED**: **three metrics hold on all five seeds**
+     (skew sign, drainage density, coherence) and three more are gated on their mean plus a majority
+     (β, hypsometry, Hurst) — each has one seed within 2% of a band edge, and a gate one seed sits
+     2% outside is a flaky gate. **Spread reported, not just the mean**, which is the point: at the
+     shipped field size β reads 1.51–2.13 (mean **1.967**, the research's target is 2) and drainage
+     density **4.56–6.29**. Runs in `ctest`, no GPU.
+320. [x] The old terrain measured as the before column. **Check PERFORMED, after fixing a
+     methodology error** — the first version compared internal basins AFTER filling both columns and
+     got 0 vs 0, which proves only that the fill works, since the old terrain was never filled at
+     all. Measured before any fill: **noise 3,536 internal basins, pipeline 80.** Two surprises
+     against the prompt's own predictions: **noise PASSES the constant-drop test** and it initially
+     **beat the pipeline on spectral β** — the latter a real regression this pass introduced and then
+     fixed (below).
+320a. [ ] Express the detail amplitude as a fraction of the macro's LOCAL RELIEF. It has now been
+     re-swept four times because the sweep's conditions moved; an absolute amplitude cannot track a
+     varying macro, nor a varying field extent.
+
+### AM-E. Integration and cost (goals 321–325)
+
+321. [x] **The pass's largest finding, and it was not on the list.** The pipeline was never
+     rendering, for three independent reasons, all caught by opening a PNG:
+     - `generate_column_heights_spaced` — the bulk path that fills every brick, essentially all the
+       world's geometry — called the raw four-octave noise and ignored the macro field. `height_at`
+       read macro + detail. **The world being rendered and the world being collided with were
+       different surfaces**, and every acceptance statistic in this pass was measured on the one
+       nobody could see.
+     - `macro_field` defaulted to **false**, so `voxel_app` ran the old terrain for the whole pass.
+     - The playable region is a 512 m window at world (0,0), and on the shipped seed that was open
+       ocean. Fixed by a SEARCH, not a stamp: `recentre_on_land` shifts the field's world origin onto
+       good ground without touching one elevation. (The stamp was tried first and measured worse than
+       the problem — a 2.5 km land bias took sampled land fraction to **100%** and the world lost its
+       coastline.)
+     **And a fourth, older bug it exposed**: the Remap treated FastNoise2's FBm as [-1,1] when an
+     N-octave stack spans ±Σgainⁱ, so five octaves at gain 0.71 delivered **2.82× the stated
+     amplitude** — measured as γ(7.8 m) = 16.6 m², a 5.8 m height change over 7.8 m of ground, **a
+     37° slope everywhere**. That single bug explains the "57–71° hillsides" CLAUDE.md records from
+     Prompt 003. Normalising dropped γ(7.8 m) to 2.10, the predicted 2.82².
+     **The equivalence test's fate, decided**: it runs with caves DISABLED. Its purpose is to prove
+     the two representations share the same BANDING RULES; caves are a feature the mesh fallback does
+     not have and is not getting. The property that makes that sound is asserted separately — at
+     threshold zero the sampler is bit-identical to the cave-free world, and with caves on it
+     genuinely differs (334 of 20,000 voxels). Not weakened, not deleted.
+322. [x] Collision agrees with the new terrain, including caves. **Check PERFORMED**: the octree
+     reads the built world so it inherits caves for free. **The dangerous direction is exactly zero**
+     — the tree never says AIR where the sampler says SOLID, so the body cannot fall through ground
+     that is there. The other direction moved from 0 to **108 of 10,000**: the finest leaf absorbing
+     cave tapers thinner than itself, which blocks the body at a passage's very edge rather than
+     letting it fall. Bounded at 2% against a measured 1.08%.
+323. [x] Trees read the biome. **Check PERFORMED**: density was one number for the whole world; it
+     now reads the biome's measured stems/ha and scales acceptance to reproduce it. Determinism
+     unchanged — the accept/reject reads the same key every other tree property does. Viewed:
+     `research/captures/am_biome_trees.png`, thin in foreground grassland, dense on the forested
+     ridge.
+324. [x] Cost, end to end. **Check PERFORMED, and it went the other way from the research's own
+     warning** that caves and vegetation are the worst-case SVO content classes:
+
+     | | old noise terrain | pipeline + caves + biome trees |
+     |---|---|---|
+     | macro field bake | — | **0.545 s** (8.00 MB) |
+     | bricks | 338,602 | **219,344** (−35%) |
+     | internal nodes | 183,618 | 91,685 (−50%) |
+     | solid leaves | 804,040 | 350,762 (−56%) |
+     | tree memory | 109.1 MB | **68.9 MB** (−37%) |
+     | build time | 1.25 s | **1.01 s** (−19%) |
+     | sampler time | 0.20 s | 0.27 s (**+35%**) |
+     | boxes classified | 1,575,541 | 769,889 (−51%) |
+     | bricks sampled | 1,024,654 | 525,141 (−49%) |
+
+     **Caves do cost what `caves.hpp` predicted** — +35% sampler time, the band's forced subdivision
+     — and it is swamped by the surface being smoother: mean land slope 42.6° → 8°, so there is far
+     less surface to represent. World-ready **1.56 s** against the prompt's ~2 s ceiling, so AM-A's
+     tiling answer is not needed yet.
+325. [x] What this pass deliberately did not do, each with a reason and a follow-up: real-time
+     erosion (the field is baked once); tectonic simulation (§10.1 puts it on the "fake convincingly"
+     side and the orogen is stamped); a glacial LEM (a stencil that passes the cross-section test is
+     a success, not a compromise — §10.1); vegetation succession (there is no clock in the world);
+     planet-scale worlds (Group S decided static and bounded, and it holds); rivers as flowing water
+     (this pass carves channels, it does not fill them); sediment transport as a live system (the
+     `Sediment` plane exists and is unwritten); seasons (the climate field is an annual mean by
+     construction).
 
 ## Tooling defects found in passing (goal 101's standing expectation)
 

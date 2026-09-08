@@ -1018,3 +1018,152 @@ believable alone.**
   than the band, for the reason §11 gives (uplift is zero, so this is a decaying landscape and not a
   graded one), but the *structure* the band describes now exists.
 - **And it cost spectral fidelity**, measured above, with a named cause and a named fix.
+
+---
+
+## 13. Group AM-C: the stencils, and testing a subject the world does not have
+
+Every stencil is tested on a **synthetic field that has its subject**, then measured on the shipped
+world. That split is not ceremony. This world is a gentle coastal plain, so some stencils have no
+subject in it, and a stencil tested only against the shipped world would be reported as broken when
+it is merely unemployed.
+
+| goal | on a synthetic that has the subject | on the shipped world |
+|---|---|---|
+| 310 glacial | b 1.00 → 1.11, V-index up | **snowline 2,153.85 m, highest ground 44.55 m — zero basins** |
+| 311 coastal | steep coasts get platforms, gentle ones beaches | 1,423 coast cells, **0 cliffed** |
+| 312 karst | dolines on carbonate only, fill re-run | 229 dolines, 13.6/km², mean 40.3 m |
+| 314 dunes | both phase axes select | **three morphologies** in the desert |
+
+**310's honest limit**: 1.11 is below §9.5's glacial band of 1.5–2.0. The trough width comes from an
+ice-flux proxy that on a synthetic V with uniform drainage does not widen enough to dominate a
+ridge-to-ridge transect. Reported, not tuned.
+
+**312's answer to the question goal 312 demanded be answered explicitly**: dolines are drainage
+sinks, which acceptance test 9 forbids. This stage **re-runs the fill** rather than exempting them,
+because an exempted sink would have to be carried as a special case through the flow router, the
+river extractor and the coherence metric — and because a filled doline is a shallow closed
+depression brimming to its rim, which is what a doline with a blocked throat actually is.
+
+---
+
+## 14. Goal 313: caves, and reopening goal 80
+
+Goal 80 said no to 3D density terrain, and **it was right on its own evidence** — full 3D touches
+generation, meshing and streaming at once. What changed is Part 7 §7.5's **heightfield-first
+hybrid**: the surface stays 2.5D and only a bounded band below it becomes 3D.
+
+**The plan, written before the code** (the prompt required it; it lives at the top of `caves.hpp`):
+
+`classify` returns Solid for a box entirely below every column's surface **without subdividing**. A
+cave inside such a box would never be looked for. So the change is not "subtract a noise field" — it
+is that every conclusion of "this whole box is solid" must first prove no cave can intersect it.
+
+`caves_possible_in_band` is that proof and is **conservative by construction**. A band rather than a
+noise bound because bounding 3D noise over a box needs either interval arithmetic FastNoise2 does not
+offer, or a Lipschitz bound so loose every box in the band would return Mixed anyway.
+
+Two design points worth keeping:
+
+- **The carve lives in `column_material`**, the one rule `fill_brick` and `material_at` share, so the
+  brick fill and the pointwise query cannot disagree about where a cave is. It samples the voxel
+  **centre**, not its bottom face — the occupancy rule uses the bottom because that is what makes the
+  two worlds byte-identical, but a cave is a volume and sampling its boundary at a face would make a
+  voxel's fate depend on which side of the face the noise fell.
+- **Two crossed tunnel fields, not one.** A single `|noise| < t` test carves a shell around a
+  zero-crossing SURFACE — a sheet, not a tunnel. The intersection of two shells is a curve, and a
+  thickened curve is a passage.
+
+Measured: void fraction 0.90%, passages **15.5 m wide and 9.18 m high**, zero samples below the water
+table, and **10,000 random boxes verified against pointwise truth**.
+
+---
+
+## 15. Goal 321: the pass's largest finding, and it was not on the list
+
+**For the whole of Groups AM-A and AM-B, the pipeline was never rendering.** Three independent
+reasons, all found by opening a PNG rather than by any number:
+
+1. **`generate_column_heights_spaced` ignored the macro field.** That is the bulk path — every brick,
+   every column, essentially all the world's geometry. It called the raw four-octave noise root while
+   `height_at` read macro + detail. **The world being rendered and the world being collided with were
+   different surfaces**, and every acceptance statistic in this pass was measured on the one nobody
+   could see.
+2. **`macro_field` defaulted to `false`.** A pipeline the shipped binary does not run is not shipped.
+3. **The playable region was in the sea.** A 512 m window at world (0,0) against a 4 km continent
+   mask; on the shipped seed, open water to the horizon.
+
+The trigger was rule 2. After the detail retune put mean slope at 4.8°, the rendered frame still
+showed near-vertical spires. Nothing in the numbers said so, because the numbers were reading
+`height_at`.
+
+**And a fourth, older bug it exposed.** The Remap treated FastNoise2's FBm as [-1,1] when an N-octave
+stack spans ±Σgainⁱ. Five octaves at gain 0.71 delivered **2.82× the stated amplitude** — measured as
+γ(7.8 m) = 16.6 m², a **5.8 m height change over 7.8 m of ground, a 37° slope everywhere**. That
+single bug explains the "57–71 degrees where it is called a hillside" that CLAUDE.md records from
+Prompt 003. Normalising dropped γ(7.8 m) to 2.10, exactly the predicted 2.82².
+
+**The fix for (3) was a search, not a stamp.** Stamping a broad land bump under the origin was tried
+first and measured **worse than the problem**: a 2.5 km bias took sampled land fraction to 100% and
+the world lost its coastline. `recentre_on_land` shifts the field's world origin onto good ground and
+touches no elevation.
+
+### The equivalence test's fate (goal 321's explicit question)
+
+It runs with **caves disabled**. Its purpose is to prove the two representations share the same
+BANDING RULES — that is what "byte-identical at 1 m" was ever evidence for — and caves are a feature
+the mesh fallback does not have and is not getting. The property that makes disabling sound is
+asserted separately: at threshold zero the sampler is bit-identical to the cave-free world, and with
+caves on it genuinely differs (334 of 20,000 voxels). **Not weakened, not deleted.**
+
+---
+
+## 16. The instrument was wrong more often than the terrain
+
+Counted across this pass, because the pattern is the lesson:
+
+| # | the instrument said | the truth was |
+|---|---|---|
+| 1 | rain shadow 1.02:1 | the sample point was past where moisture was exhausted |
+| 2 | a 1.06:1 shadow "which is to say none" | 5.33:1 — the prediction came from a superseded model |
+| 3 | the ocean is wet | the sweep read a rising **seabed** as forced ascent |
+| 4 | wet/dry 32:1 against a 10:1 anchor | the band is quoted against a windward **peak**, not the field mean |
+| 5 | λ/W 75.6 for a requested 12 | measured against the reach's chord, which a wandering D8 reach is not aligned to |
+| 6 | λ/W 17.2 | the research said "route then **smooth**/meander" and the smooth was skipped |
+| 7 | sinuosity 1.02 for a requested 1.4 | the sample budget was sized from the valley, but the channel is longer by exactly the sinuosity |
+| 8 | "every reach terminates: NO" | rejected sub-4-cell lakes kept their claim on cells |
+| 9 | 69% of junctions linked | a tributary joins **mid-reach**, and then the join cell is shared |
+| 10 | spectral β 5.30 | measuring the macro field, which is not the final surface |
+| 11 | slope–area R² = 0.001 | two thirds of the samples were **sea floor** |
+| 12 | skew 3.24 fails | the band was **invented**; §9.1 gives a sign, not a range |
+| 13 | β falls with every improvement | the fit weighted the top octave with half its points |
+| 14 | 0 modes, "unimodal = yes" | the mode counter ignored boundary bins |
+| 15 | the terrain is 4.8° | the renderer was not reading the pipeline at all |
+
+**Fifteen.** Against roughly four cases where the terrain itself was wrong. Goal 317's Check — "test
+the instrument before trusting its reading" — was the most valuable sentence in the prompt, and it
+was written before any of this happened.
+
+---
+
+## 17. Cost, and what the pass bought
+
+| | old noise terrain | pipeline + caves + biome trees |
+|---|---|---|
+| macro field bake | — | 0.545 s (8.00 MB) |
+| bricks | 338,602 | 219,344 (−35%) |
+| internal nodes | 183,618 | 91,685 (−50%) |
+| solid leaves | 804,040 | 350,762 (−56%) |
+| tree memory | 109.1 MB | 68.9 MB (−37%) |
+| build time | 1.25 s | 1.01 s (−19%) |
+| sampler time | 0.20 s | 0.27 s (**+35%**) |
+| boxes classified | 1,575,541 | 769,889 (−51%) |
+| bricks sampled | 1,024,654 | 525,141 (−49%) |
+| unfilled internal basins | 3,536 | **80** |
+
+**The research warned that caves and vegetation are the worst-case SVO content classes, and caves do
+cost exactly what `caves.hpp` predicted** — +35% sampler time, the band's forced subdivision. It is
+swamped by the surface being smoother: mean land slope 42.6° → 8°, so there is far less surface to
+represent.
+
+World-ready **1.56 s** against the prompt's ~2 s ceiling, so AM-A's tiling answer is not needed yet.
