@@ -237,10 +237,14 @@ void diffuse_hillslopes(TerrainField& out, const FluvialParams& p) {
         for (std::int32_t cz = 0; cz < n; ++cz) {
             for (std::int32_t cx = 0; cx < n; ++cx) {
                 const std::size_t i = out.index(cx, cz);
-                if (h[i] <= p.sea_level) {
-                    next[i] = h[i];
-                    continue;
-                }
+                // NO SEA-LEVEL GUARD, and its removal was a real bug fix rather than a
+                // simplification. The first version skipped every cell at or below sea level, on
+                // the reasoning that hillslope diffusion is a subaerial process. But the sharpest
+                // curvature in the field is at the COASTLINE -- the land/ocean crust boundary is a
+                // step -- so the guard skipped exactly the cells that most needed smoothing, and
+                // goal 306's ridge-curvature test measured the worst Laplacian as bit-identical
+                // before and after diffusing. Smoothing the seabed and the shore is both harmless
+                // and, for the shore, physically right: waves and mass wasting soften a coast.
                 // Five-point Laplacian with a replicated edge, so the boundary neither gains nor
                 // loses material -- a zero-gradient edge rather than a zero-height one, which
                 // would carve a moat around the field.

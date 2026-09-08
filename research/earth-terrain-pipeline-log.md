@@ -331,3 +331,101 @@ falls, and L_c is derived from D/K rather than written down).
 before number), 302 (Smith–Barstad orographic climate; needs an FFT and a written case for it),
 307's tuning (the density is measured and outside the band; the band is not yet met), 308 (the
 constant-drop t-test), 309 (meanders, base level and deltas).
+
+---
+
+## 6. Continents and hypsometry (goal 301) — and an adaptation that must be stated, not slipped in
+
+The first stage-1 was the shipped terrain's own 200 m feature scale, and `terrain_dump` showed what
+a game frame had hidden: **an isotropic speckle of small islands across the whole 8 km field, with
+no continent anywhere.** The macro scale is where that failure is glaring.
+
+Rewritten as three things, in the order they matter:
+
+1. **Coherent landmasses.** A 4 km continent mask, so an 8 km field holds one or two landmasses —
+   what a patch of real coast looks like. Separate ocean and land crust fields, per §10.2(1), so the
+   coastline is a **crust boundary** rather than a contour of one noise field.
+2. **The hypsometric shape** — see below.
+3. **An orogenic belt**, per §10.1's *"stamp linear orogenic belts … with fake roots … and let the
+   SPIM pass carve real drainage through the fake mountains"*: a ridge along a sinusoidal
+   plate-boundary curve with a wide low-pass root (isostatic-looking) and a narrow crest, plus a
+   lithology plane marking the hard core.
+
+### The adaptation: §9.3's 29% land is a planetary statistic and this is 8 km of ground
+
+Research §9.3 asks for a bimodal area-elevation curve with **~29% land**. That is a **whole-Earth**
+number. This field is 8 km across — **1.3 × 10⁻⁷ of the planet's surface**. A random 8 km patch of
+Earth is almost entirely land or almost entirely ocean; it cannot express a planetary land fraction,
+and forcing 29% onto it would be applying a statistic to a sample that cannot carry it.
+
+**What §9.3 does say that IS testable on a patch is the shape of the land half**: the land peak sits
+near sea level with a thinning tail, and the distribution is not Gaussian. That is what the
+hypsometric power curve produces and it is what is now measured:
+
+| | measured |
+|---|---|
+| land median | **28.7 m** |
+| land mean | 32.4 m |
+| land p90 | 61.1 m |
+| land max | 112.6 m |
+| **median / max** | **0.255** |
+
+**A Gaussian field puts its median at half its range; §9.3 wants the peak near sea level, i.e. well
+below 0.5. Measured 0.255.** The land fraction is 64.7% and is *not* reported as a pass or a fail,
+because at this scale it is not a meaningful quantity — it is stated as what it is.
+
+`research/captures/am_fluvial_field.png` (re-taken): coherent landmasses with a real coastline, a
+bay, beach bands, and a snow-capped orogenic belt — and, after the fluvial stages, **radial drainage
+visibly carved into the mountain flanks**, with a rich dendritic network draining to the sea.
+
+---
+
+## 7. Goal 307: the research's two bands do not overlap, and here is the curve
+
+Raising the incision budget from 40 steps to 200 (40 kyr → 200 kyr) barely moved drainage density:
+0.86 → 1.06 km/km². That was the clue that the limit is not the incision budget.
+
+For a space-filling channel network, drainage density and channel-head threshold are related by
+**D ≈ 1 / (2√A_c)**. Evaluating the research's own two bands against each other:
+
+| the research says | which implies |
+|---|---|
+| A_c ∈ [0.1, 5] km² (Part 2 §11) | **D ∈ [0.22, 1.58] km/km²** |
+| D ∈ [2, 12] km/km² (§9.4) | **A_c ∈ [0.0017, 0.0625] km²** |
+
+**They do not overlap.** And the generator sits exactly where the relation says it should:
+
+| A_c (km²) | D measured | D the relation predicts |
+|---|---|---|
+| 0.002 | **13.63** | 12.13 |
+| 0.0625 | 1.39 | 2.00 |
+| 0.1 | 1.06 | 1.58 |
+| 1.0 | 0.30 | 0.50 |
+| 5.0 | 0.06 | 0.22 |
+
+**So the generator is behaving correctly and the two published targets are mutually inconsistent.**
+Goal 307's Check asks which side of the density band the first attempt landed on "because that is
+the finding" — it landed on the low side, and **the finding is larger than the question**: at the
+A_c the research quotes, the density band it quotes is unreachable *by construction*, for any
+generator.
+
+**The engineering answer is to choose A_c from the density**, because the density is the acceptance
+test and A_c is a free parameter: **A_c ≈ 0.01 km² puts D mid-band at ~5 km/km²**, and 0.01 km² is
+39 cells at this resolution — a small but entirely reasonable channel head. Recorded here rather
+than silently adopted, because it means this pass **cannot satisfy both of the research's numbers
+and has chosen which one to satisfy.**
+
+### And two bugs the stage-1 rewrite exposed, both found by tests rather than by looking
+
+- **The diffusion had a sea-level guard that skipped exactly the cells that needed it.** It skipped
+  every cell at or below sea level, reasoning that hillslope diffusion is a subaerial process. But
+  the sharpest curvature in the field is at the **coastline** -- the land/ocean crust boundary is a
+  step -- so the guard skipped precisely the worst cells, and goal 306'''s ridge-curvature test
+  measured the worst Laplacian as **bit-identical before and after diffusing**. Removed: smoothing
+  the seabed is harmless and smoothing the shore is physically right, since waves and mass wasting
+  soften a coast.
+- **The fluvial tests were measuring a hillside, not a landscape.** They ran on a 2 km field, and
+  stage 1'''s continent mask is 4 km -- so the field sat entirely inside one lobe, the slope-area fit
+  ran on 329 cells of a single slope, and the exponent came out **+0.18**, which is not a landscape
+  at all. The test was too small, not the solver wrong. At 6.1 km the exponent is negative again.
+  **A test whose domain is smaller than the feature it is testing measures the feature'''s absence.**

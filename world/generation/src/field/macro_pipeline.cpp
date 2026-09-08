@@ -2,6 +2,7 @@
 
 #include "world/generation/field/fluvial.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -54,24 +55,97 @@ namespace {
     return (a + (b - a) * ux) + ((c + (d - c) * ux) - (a + (b - a) * ux)) * uz;
 }
 
+/// n octaves of value noise at a given base scale, gain 0.5, normalised to about [-1, 1].
+[[nodiscard]] float fbm(float x, float z, float scale, int octaves, std::uint32_t seed) noexcept {
+    float sum = 0.0f;
+    float amplitude = 1.0f;
+    float total = 0.0f;
+    float frequency = 1.0f / scale;
+    for (int i = 0; i < octaves; ++i) {
+        sum += amplitude * value_noise(x * frequency, z * frequency, seed + static_cast<std::uint32_t>(i));
+        total += amplitude;
+        amplitude *= 0.5f;
+        frequency *= 2.0f;
+    }
+    return sum / std::max(total, 1e-6f);
+}
+
 void stage_continents(TerrainField& out, const MacroParams& params) {
-    // Two octaves at the macro scale. The finer octaves of the shipped terrain are NOT baked --
-    // they stay analytic in `HeightmapGenerator` as the detail term, because a 16 m cell cannot
-    // carry a 25 m feature and baking it would low-pass the world by exactly the amount the
-    // sampling theorem says.
-    constexpr float kFeatureScale = 200.0f; // the shipped terrain's own, so the character matches
-    constexpr float kAmplitude = 64.0f;     // ditto
+    // GOAL 301. Three things, in the order they matter.
+    //
+    // ONE: COHERENT LANDMASSES, NOT SPECKLE. The first version used the shipped terrain's own
+    // 200 m feature scale, and `tools/terrain_dump` showed the result plainly -- an isotropic
+    // speckle of small islands across the whole 8 km field, with no continent anywhere. That is
+    // the noise-terrain failure the research names, and at macro scale it is glaring where a game
+    // frame hid it. The continent mask is now a 4 km feature: an 8 km field holds one or two
+    // landmasses, which is what a patch of a real coast looks like.
+    //
+    // TWO: THE HYPSOMETRY, AND AN ADAPTATION THAT HAS TO BE STATED RATHER THAN SILENTLY MADE.
+    // Research §9.3 asks for a BIMODAL area-elevation curve with ~29% land. **That is a
+    // whole-Earth statistic and this field is 8 km across -- 1.3e-7 of the planet's surface.** A
+    // random 8 km patch of Earth is almost entirely land or almost entirely ocean; it cannot
+    // express a planetary land fraction, and forcing 29% on it would be applying a statistic to a
+    // sample that cannot carry it.
+    //
+    // What §9.3 DOES say that is testable on a patch is the shape of the LAND half: the land peak
+    // sits within a few hundred metres of sea level with a tail to higher ground, and the
+    // distribution is not Gaussian. That is a hypsometric CURVE property, it is measurable here,
+    // and it is what the power curve below produces -- most land low, a thinning tail upward.
+    //
+    // THREE: AN OROGENIC BELT, per §10.1's instruction to stamp rather than simulate: a linear
+    // ridge along a plate-boundary curve with a low-pass "root" under it, and the fluvial stages
+    // then carve real drainage through the fake mountain. "The rivers will make the stamps
+    // credible; nothing else will."
+    constexpr float kContinentScale = 4000.0f; // one or two landmasses in an 8 km field
+    constexpr float kReliefScale = 700.0f;
+    constexpr float kLandAmplitude = 90.0f;
+    constexpr float kOceanDepth = 70.0f;
+    constexpr float kBeltAmplitude = 55.0f;
     const FieldGeometry& g = out.geometry();
     std::span<float> elevation = out.plane(Plane::Elevation);
+    std::span<float> lithology = out.plane(Plane::Lithology);
     const auto seed = static_cast<std::uint32_t>(params.seed);
+
     for (std::int32_t cz = 0; cz < g.cells; ++cz) {
         for (std::int32_t cx = 0; cx < g.cells; ++cx) {
             const glm::vec2 w = g.to_world(cx, cz);
-            const float o1 = value_noise(w.x / kFeatureScale, w.y / kFeatureScale, seed);
-            const float o2 =
-                value_noise(w.x / (kFeatureScale * 0.5f), w.y / (kFeatureScale * 0.5f), seed + 1u);
-            // Amplitudes 1 and 1/2, normalised -- the fBm gain of 0.5 the shipped terrain uses.
-            elevation[out.index(cx, cz)] = kAmplitude * (o1 + 0.5f * o2) / 1.5f + params.sea_level;
+            // The continent mask: >0 is land crust, <0 is ocean crust. Two separate fields, which
+            // is §10.2(1)'s "separate ocean and land crust" -- and the reason the coastline is a
+            // crust boundary rather than a contour of one noise field.
+            const float continent = fbm(w.x, w.y, kContinentScale, 3, seed);
+            const float relief = fbm(w.x, w.y, kReliefScale, 4, seed + 101u);
+
+            float height = 0.0f;
+            if (continent > 0.0f) {
+                // Land. The power curve is the hypsometry: `pow(t, 2.2)` maps a uniform-ish noise
+                // to a distribution concentrated near zero with a thinning tail, so most land sits
+                // near sea level and high ground is rare -- §9.3's land-half shape.
+                const float t = std::clamp(continent * 1.6f, 0.0f, 1.0f);
+                const float shelf = std::pow(t, 2.2f);
+                height = kLandAmplitude * shelf * (0.55f + 0.45f * relief);
+            } else {
+                // Ocean crust: deeper, and smoother, because the abyssal plain is.
+                const float t = std::clamp(-continent * 1.8f, 0.0f, 1.0f);
+                height = -kOceanDepth * std::pow(t, 1.4f) * (0.7f + 0.3f * relief);
+            }
+
+            // The orogenic belt: a ridge along a sinusoidal plate-boundary curve, with a wide
+            // low-pass root that lifts the whole region around it (isostatic-looking, per Part 1
+            // §2) and a narrow crest on top.
+            const float beltAxis = 0.35f * kContinentScale * std::sin(w.x / (0.6f * kContinentScale));
+            const float distance = std::abs(w.y - beltAxis);
+            const float root = std::exp(-(distance * distance) / (2.0f * 1400.0f * 1400.0f));
+            const float crest = std::exp(-(distance * distance) / (2.0f * 320.0f * 320.0f));
+            if (continent > 0.0f) {
+                height += kBeltAmplitude * (0.35f * root + 0.65f * crest * (0.6f + 0.4f * relief));
+            }
+
+            const std::size_t i = out.index(cx, cz);
+            elevation[i] = height + params.sea_level;
+            // Lithology: harder rock in the belt's core, softer on the plains. Erodibility reads
+            // this in a later goal; writing it here keeps the stage that KNOWS where the belt is
+            // as the stage that records it.
+            lithology[i] = crest > 0.5f ? 1.0f : 0.0f;
         }
     }
 }

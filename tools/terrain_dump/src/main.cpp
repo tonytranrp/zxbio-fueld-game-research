@@ -149,7 +149,40 @@ int main(int argc, char** argv) {
     std::printf("height %.1f .. %.1f m, land fraction %.1f%% (research §9.3 target ~29%%)\n",
                 static_cast<double>(lo), static_cast<double>(hi),
                 100.0 * static_cast<double>(land) / static_cast<double>(field.cell_count()));
-    for (const float ac : {0.1f, 1.0f, 5.0f}) {
+    // Research §9.3's LAND-HALF shape, which is the part of the hypsometric test that a patch can
+    // express. A whole-Earth land fraction cannot be measured on 8 km of ground (see the stage's
+    // own comment), but "most land near sea level with a thinning tail" is a property of THIS
+    // sample and is exactly what the hypsometric power curve claims to produce.
+    {
+        std::vector<float> heights;
+        heights.reserve(field.cell_count());
+        for (float v : h) {
+            if (v > 0.0f) {
+                heights.push_back(v);
+            }
+        }
+        if (!heights.empty()) {
+            std::sort(heights.begin(), heights.end());
+            const auto q = [&](double f) {
+                return heights[std::min(heights.size() - 1,
+                                     static_cast<std::size_t>(f * static_cast<double>(heights.size())))];
+            };
+            double mean = 0.0;
+            for (float v : heights) {
+                mean += v;
+            }
+            mean /= static_cast<double>(heights.size());
+            const double median = q(0.5);
+            std::printf("land hypsometry: median %.1f m, mean %.1f m, p90 %.1f m, max %.1f m\n",
+                        median, mean, static_cast<double>(q(0.9)), static_cast<double>(heights.back()));
+            // A Gaussian field puts its median at half its range. Research 9.3 wants the land
+            // peak near SEA LEVEL, so this ratio well below 0.5 is the property being claimed.
+            std::printf("  median/max = %.3f  (Gaussian ~0.5; 9.3 wants well below 0.5)\n",
+                        median / std::max<double>(heights.back(), 1e-6));
+        }
+    }
+
+    for (const float ac : {0.002f, 0.0625f, 0.1f, 1.0f, 5.0f}) {
         std::printf("drainage density at A_c = %.1f km^2: %6.2f km/km^2  (research §9.4 band 2-12)\n",
                     static_cast<double>(ac), drainage_density(working, ac));
     }

@@ -22,12 +22,18 @@ using namespace world::generation::field;
 
 namespace {
 
-[[nodiscard]] FieldGeometry geometry(std::int32_t cells = 128) {
-    return FieldGeometry{.origin_x = -1024.0f, .origin_z = -1024.0f, .cell_size = 16.0f, .cells = cells};
+// 32 m cells over 192 cells = 6.1 km. The size is load-bearing: stage 1 uses a 4 km continent
+// mask, so a field smaller than that sits entirely inside one lobe or one ocean and contains no
+// drainage network to measure. A first version used 2 km and the slope-area fit ran on 329
+// cells of what was effectively a single hillside -- and came out POSITIVE, which is not a
+// landscape. The test was too small, not the solver wrong.
+[[nodiscard]] FieldGeometry geometry(std::int32_t cells = 192) {
+    const float half = 0.5f * 32.0f * static_cast<float>(cells);
+    return FieldGeometry{.origin_x = -half, .origin_z = -half, .cell_size = 32.0f, .cells = cells};
 }
 
 /// A field with only the continental stage run -- rough, unfilled, full of pits.
-[[nodiscard]] TerrainField rough(int seed = 1337, std::int32_t cells = 128) {
+[[nodiscard]] TerrainField rough(int seed = 1337, std::int32_t cells = 192) {
     TerrainField f{geometry(cells)};
     run_pipeline(f, MacroParams{.seed = seed}, 1);
     return f;
@@ -137,7 +143,7 @@ TEST_CASE("incision produces a negative slope-area exponent", "[generation][fluv
     //
     // Measured on a small field, so the band is checked for SIGN AND ORDER rather than asserted
     // tightly; goal 305's Check reports the full-size number in the log.
-    TerrainField f = rough(1337, 128);
+    TerrainField f = rough(1337, 192);
     run_pipeline(f, MacroParams{}, -1); // the whole pipeline, including incision and diffusion
 
     priority_flood(f);
@@ -184,9 +190,9 @@ TEST_CASE("diffusion bounds ridge curvature", "[generation][fluvial]") {
     // Goal 306's Check. The research calls the absence of hillslope diffusion "the single most
     // recognizable 'procedural terrain' tell" -- knife-sharp ridges. A knife edge is unbounded
     // second derivative, so the test is that the worst curvature FALLS.
-    TerrainField sharp = rough(1337, 128);
+    TerrainField sharp = rough(1337, 192);
     priority_flood(sharp);
-    TerrainField smooth{geometry(128)};
+    TerrainField smooth{geometry(192)};
     std::copy(sharp.plane(Plane::Elevation).begin(), sharp.plane(Plane::Elevation).end(),
               smooth.plane(Plane::Elevation).begin());
     diffuse_hillslopes(smooth, FluvialParams{});
@@ -233,7 +239,7 @@ TEST_CASE("the whole pipeline is deterministic in the seed", "[generation][fluvi
     // 300 says to design for rather than retrofit. Every stage in fluvial.cpp is serial precisely
     // so this holds by construction.
     const auto bake = [](int seed) {
-        TerrainField f{geometry(96)};
+        TerrainField f{geometry(128)};
         run_pipeline(f, MacroParams{.seed = seed}, -1);
         return std::vector<float>(f.plane(Plane::Elevation).begin(), f.plane(Plane::Elevation).end());
     };

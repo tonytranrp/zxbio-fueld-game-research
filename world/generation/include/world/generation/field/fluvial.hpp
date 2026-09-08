@@ -37,8 +37,13 @@ struct FluvialParams {
     /// Years per step. The implicit incision is unconditionally stable at any dt; the EXPLICIT
     /// diffusion is not, and dt < dx²/(4D) = 16²/(4·0.01) = 6,400 yr is what bounds this.
     float dt = 1000.0f;
-    int steps = 40;
-    int diffusion_steps = 40;
+    // Raised from 40 after goal 307 measured drainage density at 0.86 km/km^2 against a 2-12
+    // band -- the "no rivers" side of the research's own diagnostic. 40 steps at dt = 1000 yr is
+    // 40 kyr, where a landscape reaches stream-power steady state over MILLIONS of years, so the
+    // channels had barely begun to cut. The implicit solver is unconditionally stable, so the only
+    // cost of more steps is wall time, and the whole core was 0.4 s.
+    int steps = 200;
+    int diffusion_steps = 60;
     float sea_level = 0.0f;
 };
 
