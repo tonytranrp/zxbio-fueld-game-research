@@ -156,6 +156,7 @@ bool write_report(const std::string& path, const scenario::Scenario& sc, const O
             json.field("frame_start_ms", record.phases.frame_start);
             json.field("upload_ms", record.phases.upload);
             json.field("camera_ms", record.phases.camera);
+            json.field("sway_ms", record.phases.sway);
             json.field("render_ms", record.phases.render);
             json.field("post_ms", record.phases.post);
             json.field("overlay_ms", record.phases.overlay);

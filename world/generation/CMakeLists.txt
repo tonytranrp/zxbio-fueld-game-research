@@ -11,6 +11,7 @@ add_library(world_generation STATIC
     src/terrain_fill.cpp
     src/tree_placement.cpp
     src/tree_skeleton.cpp
+    src/tree_sway.cpp
 )
 
 target_sources(world_generation PUBLIC
@@ -30,10 +31,14 @@ target_sources(world_generation PUBLIC
         include/world/generation/terrain_fill.hpp
         include/world/generation/tree_placement.hpp
         include/world/generation/tree_skeleton.hpp
+        include/world/generation/tree_sway.hpp
 )
 
 # engine_core for the GLM include convention (engine/core/math.hpp) tree_placement.hpp uses.
-target_link_libraries(world_generation PUBLIC project_warnings world_chunk engine_core)
+# world_wind: the sway model (tree_sway) reads the ONE wind field rather than inventing a
+# second one. render_lod: `sway_joint_budget` asks the perceptual module what is too small to see
+# instead of hard-coding a distance -- header-only INTERFACE targets, both.
+target_link_libraries(world_generation PUBLIC project_warnings world_chunk engine_core world_wind render_lod)
 target_link_libraries(world_generation PRIVATE FastNoise2)
 
 if(BUILD_TESTING)

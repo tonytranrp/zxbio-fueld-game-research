@@ -8,6 +8,7 @@ add_executable(voxel_app
     src/svo_world.cpp
     src/tree_decoration.cpp
     src/aim_query.cpp
+    src/sway_forest.cpp
     src/crash_handler.cpp
 )
 target_link_libraries(voxel_app PRIVATE dbghelp) # crash_handler's stack symbolization

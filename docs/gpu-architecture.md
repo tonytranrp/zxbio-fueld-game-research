@@ -232,7 +232,7 @@ Throughput, in the form Prompt 007 needs it: **457 million voxels at 7.8 mm, 544
 
 | what | how |
 |---|---|
-| frame attribution | `voxel_harness --scenario X --report R.json`; eight phases account for 99.9% of wall time. A frame that writes a PNG is **not a normal frame** — `capture` is 200+ ms. |
+| frame attribution | `voxel_harness --scenario X --report R.json`; nine phases account for 99.9% of wall time. A frame that writes a PNG is **not a normal frame** — `capture` is 200+ ms. |
 | march GPU ms | the report's `gpu_march_ms` percentiles; `--gpu-timers` on (cost measured at 0.16% of a frame) |
 | one shading term | `--debug-view lit\|ao\|normal\|facenormal\|level\|steps\|coverage\|cubepx\|smooth\|lodcube\|material\|distance` — reach for this **before** staring at a composite |
 | traversal steps/pixel | `--debug-view steps`; `run_ramp.cpp`'s `mean_steps_from()` reduces the capture to a number |

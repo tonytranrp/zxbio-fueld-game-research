@@ -271,10 +271,11 @@ std::string FrameReport::summary() const {
     out += "worst five frames:\n";
     for (const FrameRecord& r : worst(5)) {
         std::snprintf(line, sizeof(line),
-                      "  frame %u: %.1f ms = start %.1f + upload %.1f + camera %.1f + render %.1f + "
-                      "post %.1f + overlay %.1f + present %.1f + capture %.1f%s%s%s%s\n",
+                      "  frame %u: %.1f ms = start %.1f + upload %.1f + camera %.1f + sway %.1f + "
+                      "render %.1f + post %.1f + overlay %.1f + present %.1f + capture %.1f%s%s%s%s\n",
                       r.index, r.wall_ms, r.phases.frame_start, r.phases.upload, r.phases.camera,
-                      r.phases.render, r.phases.post, r.phases.overlay, r.phases.present, r.phases.capture,
+                      r.phases.sway, r.phases.render, r.phases.post, r.phases.overlay, r.phases.present,
+                      r.phases.capture,
                       r.causes.swapped ? " [tree swapped]" : "", r.causes.uploading ? " [uploading]" : "",
                       r.causes.building ? " [building]" : "", r.causes.refreshed ? " [cache refreshed]" : "");
         out += line;

@@ -1,10 +1,11 @@
 add_subdirectory(materials)
 add_subdirectory(chunk)
+# wind before generation: tree_sway reads the wind field, so world_wind must exist first.
+add_subdirectory(wind)
 add_subdirectory(generation)
 add_subdirectory(meshing)
 add_subdirectory(streaming)
 add_subdirectory(svo)
 add_subdirectory(collision)
-add_subdirectory(wind)
 add_subdirectory(water)
 add_subdirectory(player)

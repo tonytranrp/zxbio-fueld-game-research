@@ -18,18 +18,126 @@
 #include <cstdlib>
 #include <exception>
 #include <limits>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "dump_options.hpp"
 #include "engine/cli/help.hpp"
+#include "sway_frames.hpp"
 #include "world/generation/tree_skeleton.hpp"
+#include "world/generation/tree_sway.hpp"
+#include "world/wind/wind_field.hpp"
 
 namespace {
 
 using world::generation::SkeletonSegment;
 using world::generation::TreeSkeleton;
 using world::generation::TreeSpecies;
+
+
+// Prompt 007 goal 335's viewed capture. Drives the sway model with the real wind field, then writes
+// `sway_frames` orthographic side views evenly spaced across `sway_periods` fundamental periods --
+// and prints the numbers the calibration of `SwayParams::drag_pressure` rests on: "the tree leans
+// about 1.5% of its height in a fresh breeze" is a claim that has to be measurable from here.
+void write_sway_frames(const TreeSkeleton& tree, const tools::tree_dump::Options& opt,
+                       const std::string& speciesName) {
+    using world::generation::kSwayTick;
+
+    world::generation::SwayParams params =
+        world::generation::sway_params_for(world::generation::species_params(opt.species));
+    params.branch_reaction = opt.branch_reaction;
+    world::generation::SwayState state = world::generation::make_sway_state(tree, params);
+    if (state.empty()) {
+        std::fprintf(stderr, "the sway state is empty -- nothing to draw\n");
+        return;
+    }
+
+    world::wind::WindParams wind = world::wind::kDefaultWind;
+    wind.base_speed = opt.wind_speed;
+
+    const world::generation::TreeBounds bounds = tree.bounds();
+    const float height = bounds.max.y - bounds.min.y;
+    const float f0 = world::generation::fundamental_frequency_hz(tree, params);
+    const float period = f0 > 0.0f ? 1.0f / f0 : 4.0f;
+
+    std::size_t dynamic = 0;
+    for (const std::uint8_t q : state.quasi_static) {
+        dynamic += q == 0u ? 1u : 0u;
+    }
+    std::printf("  sway: %zu chains (%zu dynamic, %zu quasi-static) over %zu segments; f0 = %.3f Hz "
+                "(period %.2f s)\n",
+                state.size(), dynamic, state.size() - dynamic, state.segment_count(),
+                static_cast<double>(f0), static_cast<double>(period));
+
+    // Settle: drive from rest so the first written frame is not the transient of the tree being
+    // switched on. A step response is a different experiment and it lives in the unit test.
+    float t = 0.0f;
+    const auto settleSteps = static_cast<int>(opt.sway_settle_seconds / kSwayTick);
+    float peak = 0.0f;
+    for (int i = 0; i < settleSteps; ++i) {
+        world::generation::step_sway(state, wind, t, kSwayTick);
+        t += kSwayTick;
+        peak = std::max(peak, glm::length(world::generation::tip_displacement(state, tree)));
+    }
+    std::printf("  settled %.1f s at %.1f m/s: peak tip displacement %.3f m on a %.2f m tree (%.2f%% of "
+                "height)\n",
+                static_cast<double>(opt.sway_settle_seconds), static_cast<double>(opt.wind_speed),
+                static_cast<double>(peak), static_cast<double>(height),
+                static_cast<double>(100.0f * peak / std::max(height, 1.0e-3f)));
+
+    const std::string prefix =
+        opt.sway_png.empty() ? (speciesName + "_sway_" + std::to_string(opt.seed)) : opt.sway_png;
+    const tools::tree_dump::SideView view = tools::tree_dump::SideView::fit(
+        bounds, opt.sway_size.width, opt.sway_size.height, std::max(0.4f, 2.0f * peak));
+
+    std::vector<glm::vec3> posedStart;
+    std::vector<glm::vec3> posedEnd;
+    const float frameDt = opt.sway_periods * period / static_cast<float>(opt.sway_frames);
+
+    for (int f = 0; f < opt.sway_frames; ++f) {
+        tools::tree_dump::SwayCanvas canvas(opt.sway_size.width, opt.sway_size.height);
+        canvas.clear(18, 20, 26);
+
+        world::generation::pose_skeleton(state, tree, posedStart, posedEnd);
+        for (std::size_t i = 0; i < tree.segments.size(); ++i) {
+            const world::generation::SkeletonSegment& seg = tree.segments[i];
+            const float halfWidth = std::max(0.9f, seg.radius * view.scale);
+            // The rest pose first, in grey, so the posed one draws over it where they coincide.
+            canvas.line(view.px(seg.start.x), view.py(seg.start.y), view.px(seg.end.x),
+                        view.py(seg.end.y), halfWidth, 62, 66, 72);
+        }
+        for (std::size_t i = 0; i < tree.segments.size(); ++i) {
+            const world::generation::SkeletonSegment& seg = tree.segments[i];
+            const float halfWidth = std::max(0.9f, seg.radius * view.scale);
+            // Leaf-bearing tips green, wood brown -- the same two-material split the voxelizer will
+            // make, so a picture here and a picture there are comparable.
+            const bool foliage = seg.leaf_count > 0.0f && seg.radius < 0.04f;
+            canvas.line(view.px(posedStart[i].x), view.py(posedStart[i].y), view.px(posedEnd[i].x),
+                        view.py(posedEnd[i].y), halfWidth, foliage ? 96 : 150, foliage ? 190 : 112,
+                        foliage ? 84 : 66);
+        }
+
+        const std::string path = prefix + "_" + std::to_string(f) + ".png";
+        if (!canvas.write(path)) {
+            std::fprintf(stderr, "cannot write %s\n", path.c_str());
+            return;
+        }
+        const glm::vec3 tip = world::generation::tip_displacement(state, tree);
+        std::printf("  frame %d: t = %.3f s, tip %+.3f m x, %+.3f m z -> %s\n", f,
+                    static_cast<double>(t), static_cast<double>(tip.x), static_cast<double>(tip.z),
+                    path.c_str());
+
+        const auto steps = std::max(1, static_cast<int>(frameDt / kSwayTick));
+        for (int i = 0; i < steps; ++i) {
+            world::generation::step_sway(state, wind, t, kSwayTick);
+            t += kSwayTick;
+        }
+    }
+}
 
 int run(int argc, char** argv) {
     tools::tree_dump::Options opt;
@@ -87,6 +195,10 @@ int run(int argc, char** argv) {
                      static_cast<double>(tree.segments[i].leaf_count));
     }
     std::fclose(out);
+
+    if (opt.sway_frames > 0) {
+        write_sway_frames(tree, opt, speciesName);
+    }
 
     const world::generation::TreeBounds b = tree.bounds();
     std::printf("%s seed %d: %zu segments, %zu tips, %.2f m^2 leaf, trunk radius %.3f m\n",

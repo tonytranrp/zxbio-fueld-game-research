@@ -36,13 +36,27 @@ float wind_flutter(const WindParams& params, const glm::vec3& position, float ti
     return kFlutterW0 * std::sin(a * f + t) + kFlutterW1 * std::sin(b * f - t * kFlutterRatio);
 }
 
+float wind_buffet(const WindParams& params, const glm::vec3& position, float timeSeconds) noexcept {
+    if (params.turbulence_intensity <= 0.0f) {
+        return 0.0f;
+    }
+    const float px = position.x * params.buffet_frequency;
+    const float pz = position.z * params.buffet_frequency;
+    const float t = timeSeconds * kTwoPi;
+    return kBuffetW0 * std::sin(px * kBuffetK0x + pz * kBuffetK0z + t * kBuffetR0) +
+           kBuffetW1 * std::sin(px * kBuffetK1x + pz * kBuffetK1z - t * kBuffetR1) +
+           kBuffetW2 * std::sin(px * kBuffetK2x + pz * kBuffetK2z + t * kBuffetR2);
+}
+
 WindSample sample_wind(const WindParams& params, const glm::vec3& position, float timeSeconds) noexcept {
     WindSample out;
     out.direction = wind_direction(params);
     out.gust = wind_gust(params, position, timeSeconds);
     // A gust can lull the wind but never reverse it: a negative speed would flip every consumer's
     // bend direction, which reads as a glitch rather than as calm.
-    out.speed = std::max(0.0f, params.base_speed * (1.0f + params.gust_amplitude * out.gust));
+    out.buffet = wind_buffet(params, position, timeSeconds);
+    out.speed = std::max(0.0f, params.base_speed * (1.0f + params.gust_amplitude * out.gust +
+                                                    params.turbulence_intensity * out.buffet));
     return out;
 }
 

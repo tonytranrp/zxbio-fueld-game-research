@@ -66,6 +66,13 @@ struct AppOptions {
     // (app::kAimResolvableRange, 34 m); the override exists because the 94-ppd young-observer
     // ceiling gives 54 m and a capture session may legitimately want it.
     std::optional<float> aim_range;
+    // Prompt 007 goal 335: the tree sway. `sway_radius` bounds the simulated set by COST, not by
+    // visibility -- a 20 m tree's sway stays resolvable to about a kilometre, so the perceptual
+    // criterion inside `sway_joint_budget` thins each tree's chain list and this caps how many
+    // trees there are to thin.
+    bool sway = true;
+    float sway_radius = 120.0f;
+    int sway_max_trees = 512;
     // Goal 237. `auto_exposure` is the master switch; `exposure_metering_crosshair` false is the
     // flat frame average the goal's own A/B compares against, not a fallback.
     bool auto_exposure = true;

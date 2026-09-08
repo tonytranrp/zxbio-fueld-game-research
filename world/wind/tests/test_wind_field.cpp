@@ -46,13 +46,66 @@ TEST_CASE("Wind speed stays in the band the parameters describe", "[wind]") {
             }
         }
     }
-    // The gust term is a sum of weights 0.55 + 0.30 + 0.15 = 1, so speed spans
-    // base * (1 +/- gust_amplitude) at the extremes and never leaves it.
-    const float span = params.base_speed * params.gust_amplitude;
+    // The gust term is a sum of weights 0.55 + 0.30 + 0.15 = 1 and the buffet term of
+    // 0.50 + 0.33 + 0.17 = 1, so speed spans base * (1 +/- (gust_amplitude + turbulence_intensity))
+    // at the extremes and never leaves it.
+    //
+    // The buffet half arrived with Prompt 007 goal 335 and this bound is how it announced itself:
+    // the field had a ~0.05 Hz gust and a 4 Hz flutter and nothing in the 0.2-2 Hz band where trees
+    // actually resonate, so a swaying tree took its static lean and drifted. Widening the band is
+    // the deliberate consequence -- a gustier wind, by 0.20 of the mean, which is a mid-range
+    // longitudinal turbulence intensity for open terrain.
     REQUIRE(lowest >= 0.0f);              // never reverses
     REQUIRE(lowest < params.base_speed);  // it does actually lull
     REQUIRE(highest > params.base_speed); // and does actually gust
+    const float span = params.base_speed * (params.gust_amplitude + params.turbulence_intensity);
     REQUIRE(highest <= params.base_speed + span + 1e-4f);
+}
+
+TEST_CASE("the field has energy in the band trees resonate in", "[wind]") {
+    // The gap goal 335 found, pinned so it cannot silently reopen. A tree's fundamental is 0.26 Hz
+    // for a 20 m sycamore and ~0.94 Hz for an 8 m broadleaf; before the buffet term the field's only
+    // temporal content was a ~0.05 Hz gust and a 4 Hz flutter, so there was nothing at either.
+    //
+    // Measured as the number of sign changes in the speed trace at one point over 60 seconds, which
+    // is a period estimate that needs no FFT: a signal whose only content is a 0.05 Hz gust cannot
+    // cross its own mean more than a handful of times in a minute.
+    const WindParams withBuffet;
+    WindParams gustOnly = withBuffet;
+    gustOnly.turbulence_intensity = 0.0f;
+
+    const auto crossings = [](const WindParams& p) {
+        const glm::vec3 at{13.0f, 0.0f, -7.0f};
+        float mean = 0.0f;
+        constexpr int kSteps = 3000; // 60 s at 50 Hz
+        std::vector<float> trace;
+        trace.reserve(kSteps);
+        for (int i = 0; i < kSteps; ++i) {
+            const float s = sample_wind(p, at, static_cast<float>(i) * 0.02f).speed;
+            trace.push_back(s);
+            mean += s;
+        }
+        mean /= static_cast<float>(kSteps);
+        int n = 0;
+        for (std::size_t i = 1; i < trace.size(); ++i) {
+            if ((trace[i - 1] < mean) != (trace[i] < mean)) {
+                ++n;
+            }
+        }
+        return n;
+    };
+
+    const int slow = crossings(gustOnly);
+    const int fast = crossings(withBuffet);
+    INFO("mean crossings in 60 s: gust only " << slow << ", with buffeting " << fast);
+    CHECK(fast > 4 * slow);
+    // ...and in absolute terms. 28 crossings in 60 s is a dominant rate of 0.23 Hz, which is what a
+    // crossing count reads: the LARGEST component, not the total energy. That is the 0.170 Hz wave,
+    // and it is the largest on purpose -- amplitude falls with rate in a real turbulence spectrum,
+    // which is why the constants are weighted 0.50 / 0.33 / 0.17 rather than equally. The 0.59 and
+    // 1.87 Hz components are present at 6.6% and 3.4% of mean speed and drive the faster trees; they
+    // do not add crossings because they ride on top of the slow one without reaching its mean.
+    CHECK(fast >= 20);
 }
 
 TEST_CASE("Gusts travel downwind rather than pulsing in place", "[wind]") {

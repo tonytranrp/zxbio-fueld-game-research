@@ -7,6 +7,7 @@ add_executable(world_generation_tests
     test_heightmap_smoothness.cpp
     test_ground_query.cpp
     test_tree_skeleton.cpp
+    test_tree_sway.cpp
     test_terrain_field.cpp
     test_fluvial.cpp
     test_rivers.cpp

@@ -35,6 +35,7 @@
 #include "render/diligent/terrain_renderer.hpp"
 #include "render/interface/camera.hpp"
 #include "spectator_camera.hpp"
+#include "sway_forest.hpp"
 #include "svo_world.hpp"
 
 #include "world/svo/cell_marks.hpp"
@@ -991,6 +992,23 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     // E2: the swimmer's surface. Derived once from the wind, like the renderer's copy -- one field,
     // two readers, rather than two derivations that agree only approximately.
     const world::water::WaveField waveField = world::water::make_wave_field(options.svo_settings.wind);
+    // Prompt 007 goal 335. Grown once around the spawn and re-grown only when the camera leaves a
+    // quarter of the ring; the per-frame cost is the `sway` phase below and nothing else.
+    app::SwayForest swayForest(world.heightmap(), options.seed,
+                               {.radius_m = options.sway_radius,
+                                .max_trees = static_cast<std::size_t>(options.sway_max_trees),
+                                .enabled = options.sway && options.svo.trees});
+    swayForest.refresh(s.spawnPosition);
+    log(LogLevel::Info, "sway: {} trees within {:.0f} m, {} chains over {} segments, grown in {:.0f} ms",
+        swayForest.tree_count(), static_cast<double>(options.sway_radius), swayForest.chain_total(),
+        swayForest.segment_total(), swayForest.grow_seconds() * 1000.0);
+    float swayAccumulator = 0.0f;
+    // Goal 190's Check is a per-frame budget, so it gets a per-frame distribution and not one
+    // sample: a mean plus the worst frame is what makes "0.5 ms" a claim rather than an anecdote.
+    double swayMsTotal = 0.0;
+    double swayMsWorst = 0.0;
+    std::uint64_t swayFrames = 0;
+    std::uint64_t swaySteppedTotal = 0;
     const bool crosshairOn = options.crosshair.value_or(!options.verify_frame);
     std::size_t uploads = 0;
     double lastUploadMs = 0.0;
@@ -1127,11 +1145,12 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
                 // CLAUDE.md already documents at 200+ ms). A breakdown that does not add up to the
                 // total is not a breakdown.
                 log(LogLevel::Warn,
-                    "slow frame {}: {:.1f} ms = start {:.1f} + upload {:.1f} + camera {:.1f} + render "
-                    "{:.1f} + post {:.1f} + overlay {:.1f} + present {:.1f} + capture {:.1f}{}{}{}{}",
+                    "slow frame {}: {:.1f} ms = start {:.1f} + upload {:.1f} + camera {:.1f} + sway "
+                    "{:.1f} + render {:.1f} + post {:.1f} + overlay {:.1f} + present {:.1f} + "
+                    "capture {:.1f}{}{}{}{}",
                     frame - 1, frameMs, prevPhases.frame_start, prevPhases.upload, prevPhases.camera,
-                    prevPhases.render, prevPhases.post, prevPhases.overlay, prevPhases.present,
-                    prevPhases.capture, prevCauses.swapped ? " [tree swapped]" : "",
+                    prevPhases.sway, prevPhases.render, prevPhases.post, prevPhases.overlay,
+                    prevPhases.present, prevPhases.capture, prevCauses.swapped ? " [tree swapped]" : "",
                     prevCauses.uploading ? " [uploading]" : "", prevCauses.building ? " [building]" : "",
                     prevCauses.refreshed ? " [cache refreshed]" : "");
             }
@@ -1191,6 +1210,25 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
                 world.request_build(camera.position);
             }
             phases.camera = phase_ms(phaseClock);
+
+            // Goal 335. A FIXED tick with an accumulator, for the same reason the player's physics
+            // has one: a spring integrated at whatever the frame rate happens to be is a different
+            // spring on every machine, and this one's stability bound is stated against `kSwayTick`.
+            // Capped at four sub-steps so a 200 ms capture frame cannot turn into a 24-step catch-up
+            // spike -- the tree loses a little phase, which nobody can see, instead of the frame
+            // after a screenshot stuttering, which everybody can.
+            swayForest.refresh(camera.position);
+            swayAccumulator += std::min(static_cast<float>(s.clock.delta_seconds()), 0.25f);
+            for (int sub = 0; sub < 4 && swayAccumulator >= world::generation::kSwayTick; ++sub) {
+                swayForest.step(options.svo_settings.wind, renderer.anim_seconds(),
+                                world::generation::kSwayTick, camera.position);
+                swayAccumulator -= world::generation::kSwayTick;
+            }
+            phases.sway = phase_ms(phaseClock);
+            swayMsTotal += phases.sway;
+            swayMsWorst = std::max(swayMsWorst, phases.sway);
+            swaySteppedTotal += swayForest.stepped_chains();
+            ++swayFrames;
 
             renderer.render(camera);
             phases.render = phase_ms(phaseClock);
@@ -1449,6 +1487,14 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             usageReadbacks, renderer.last_usage_readback_bytes(),
             static_cast<double>(renderer.last_usage_readback_bytes()) / 1024.0,
             renderer.last_usage_readback_ms());
+    }
+    if (swayFrames > 0 && swayForest.tree_count() > 0) {
+        log(LogLevel::Info,
+            "sway: {} trees, {} chains ({} stepped/frame after the arcmin budget) -- {:.3f} ms/frame "
+            "mean, {:.3f} ms worst",
+            swayForest.tree_count(), swayForest.chain_total(),
+            static_cast<double>(swaySteppedTotal) / static_cast<double>(swayFrames),
+            swayMsTotal / static_cast<double>(swayFrames), swayMsWorst);
     }
     log(LogLevel::Info, "exiting after {} frames on {}", frame,
         render::diligent::to_string(s.context->backend()));

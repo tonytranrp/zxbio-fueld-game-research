@@ -20,6 +20,9 @@ struct FramePhases {
     double frame_start = 0.0; // Session::begin_frame(): poll_events, clock tick, resize check
     double upload = 0.0;      // begin_upload + pump_upload (buffer creation, a slice's UpdateBuffer)
     double camera = 0.0;      // input, collision (incl. a synchronous cache refresh), rebuild request
+    double sway = 0.0;        // Prompt 007 goal 335: the in-ring trees' spring sway. A NINTH phase
+                              // because goal 190's Check is stated as a per-frame budget, and a
+                              // budget folded into `camera` is a budget nobody can read off.
     double render = 0.0;      // SvoRenderer::render (CPU side: constants, draws recorded)
     double post = 0.0;        // the post chain
     double overlay = 0.0;     // ImGui
@@ -29,7 +32,7 @@ struct FramePhases {
                               // frame with no capture, and 200+ ms on one that has one.
 
     [[nodiscard]] double sum() const noexcept {
-        return frame_start + upload + camera + render + post + overlay + present + capture;
+        return frame_start + upload + camera + sway + render + post + overlay + present + capture;
     }
 };
 

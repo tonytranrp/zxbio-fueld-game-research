@@ -343,7 +343,8 @@ Full record: `research/dev-harness-log.md`; how to use it: `docs/dev-harness.md`
   catches shading-term changes, which is what regressions here look like.
 - **`dev/goldens` is 21 MB and churns.** Prompts 005 and 006 change the look on purpose; if the
   directory passes ~100 MB of history, move it to Git LFS rather than deleting scenarios.
-- **The frame report accounts for 99.9% of wall time in eight phases.** The two that were missing
+- **The frame report accounts for 99.9% of wall time in nine phases** (`sway` is the ninth, Prompt
+  007 goal 335). The two that were missing
   were found by its own check, and the second one -- `capture` (a staging copy + `WaitForIdle` +
   libpng) -- is 200+ ms on a frame that writes a PNG. A capture frame is not a normal frame.
 - **`--lod-radius 32` CRASHES** (access violation in `Builder::build_node`, every worker thread):
