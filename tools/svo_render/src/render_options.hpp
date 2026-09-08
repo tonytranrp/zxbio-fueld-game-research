@@ -36,6 +36,14 @@ struct Options {
     engine::cli::Size size{1280, 720};
     float fov_deg = 70.0f;
     bool trees = true;
+    // Goal 336: the macro terrain pipeline, ON by default because the app has it on by default and
+    // a CPU REFERENCE that renders a different world from the thing it is a reference for is worse
+    // than no reference. `--no-macro-field` is the A/B (and what a pure-noise determinism check
+    // wants).
+    bool macro_field = true;
+    // Goal 336: metres within which trees voxelize from their grown skeleton. 0 = implicit shapes,
+    // which is what the CI smoke test and every determinism check use.
+    float skeleton_radius = 0.0f;
     bool shadows = true;
     bool ao = true;
     // Prompt 005 goal 277: the albedo mottle is two octaves of world-XZ value noise with NO

@@ -42,41 +42,26 @@ namespace {
 // A_c = 0.1-5 km^2 against a 512 m region means the PLAYABLE WORLD holds 2.6 channel-head areas at
 // best, so the erosion has to run on something much wider and the region is a window into it. Full
 // arithmetic in research/earth-terrain-pipeline-log.md section 1.
-[[nodiscard]] world::generation::field::FieldGeometry macro_geometry() noexcept {
-    constexpr float kCell = 16.0f;
-    constexpr std::int32_t kCells = 500;
-    constexpr float kHalf = 0.5f * kCell * static_cast<float>(kCells);
-    return world::generation::field::FieldGeometry{
-        .origin_x = -kHalf, .origin_z = -kHalf, .cell_size = kCell, .cells = kCells};
-}
-
 [[nodiscard]] std::shared_ptr<const world::generation::field::TerrainField>
 bake_macro_field(const SvoWorldOptions& options) {
     if (!options.macro_field) {
         return nullptr;
     }
-    auto field = std::make_shared<world::generation::field::TerrainField>(macro_geometry());
     const auto started = std::chrono::steady_clock::now();
-    world::generation::field::run_pipeline(
-        *field, world::generation::field::MacroParams{.seed = options.seed}, options.field_stages,
-        [](std::string_view name, double seconds, void*) {
-            // Goal 299 wants a per-stage breakdown rather than one number, so the log line names
-            // the stage that cost it.
-            log(LogLevel::Info, "terrain field stage \"{}\": {:.3f} s", name, seconds);
-        },
-        nullptr);
-    // Goal 321: put the playable region on land. The 512 m region sits at world (0, 0) and the
-    // continent mask is a 4 km feature, so without this the spawn point is wherever the seed put
-    // it -- which on the shipped seed was open water to the horizon.
-    if (!world::generation::field::recentre_on_land(*field, 320.0f)) {
-        log(LogLevel::Warn, "terrain field: no land large enough for the playable region; "
-                            "the world origin is wherever the seed put it");
-    } else {
-        log(LogLevel::Info, "terrain field: world origin moved to ({:.0f}, {:.0f}) in field space "
-                            "so the playable region is on land",
-            -field->geometry().origin_x, -field->geometry().origin_z);
-    }
-
+    // ONE bake, shared with tools/svo_render. It used to live here, which is exactly why the CPU
+    // reference renderer was drawing a different world -- see bake_playable_field's own comment.
+    std::shared_ptr<const world::generation::field::TerrainField> field =
+        world::generation::field::bake_playable_field(
+            options.seed, options.field_stages,
+            [](std::string_view name, double seconds, void*) {
+                // Goal 299 wants a per-stage breakdown rather than one number, so the log line names
+                // the stage that cost it.
+                log(LogLevel::Info, "terrain field stage \"{}\": {:.3f} s", name, seconds);
+            },
+            nullptr);
+    log(LogLevel::Info, "terrain field: world origin moved to ({:.0f}, {:.0f}) in field space "
+                        "so the playable region is on land",
+        -field->geometry().origin_x, -field->geometry().origin_z);
     const double total =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     log(LogLevel::Info, "terrain field: {} x {} cells at {:.0f} m ({:.2f} MB) baked in {:.3f} s",
@@ -168,6 +153,10 @@ void SvoWorld::build_job(glm::vec3 camera) {
         world::svo::TerrainSamplerParams sp;
         sp.seed = options_.seed;
         sp.trees = options_.trees;
+        // Centred on the CAMERA this build is for, not on the region: the skeleton radius is about
+        // what the player is close enough to see branch structure on.
+        sp.skeleton_radius_m = options_.skeleton_radius;
+        sp.skeleton_centre = camera;
         const world::svo::Box region{g.origin, g.max_corner()};
         const auto samplerStart = std::chrono::steady_clock::now();
         world::svo::TerrainSampler sampler(heightmap_, sp, region);
@@ -206,6 +195,11 @@ void SvoWorld::build_job(glm::vec3 camera) {
         last.memory_bytes = tree.memory_bytes();
         last.trees = sampler.trees().size();
         last.sampler_seconds = samplerSeconds;
+        const world::svo::TerrainSampler::SkeletonStats sk = sampler.skeleton_stats();
+        last.skeleton_trees = sk.trees;
+        last.skeleton_primitives = sk.primitives;
+        last.skeleton_bytes = sk.memory_bytes;
+        last.skeleton_seconds = sk.seconds;
         last.valid = true;
 
         const std::lock_guard guard(mutex_);
@@ -344,6 +338,11 @@ void SvoWorld::build_grid_job(const world::svo::TreeGeometry& g,
     last.memory_bytes = static_cast<std::size_t>(flat->memory_bytes());
     last.trees = seeded.trees().size();
     last.sampler_seconds = samplerSeconds;
+    const world::svo::TerrainSampler::SkeletonStats sk = seeded.skeleton_stats();
+    last.skeleton_trees = sk.trees;
+    last.skeleton_primitives = sk.primitives;
+    last.skeleton_bytes = sk.memory_bytes;
+    last.skeleton_seconds = sk.seconds;
     last.cells = grid.present_count();
     last.cells_rebuilt = toBuild.size();
     last.cells_reused = reused;
@@ -449,6 +448,8 @@ void SvoWorld::pump_stream(std::size_t max) {
     world::svo::TerrainSamplerParams sp;
     sp.seed = options_.seed;
     sp.trees = options_.trees;
+    sp.skeleton_radius_m = options_.skeleton_radius;
+    sp.skeleton_centre = streamCamera_;
     world::svo::BuildParams bp;
     bp.lod_center = streamCamera_;
     bp.lod_radius = options_.effective_lod_radius();

@@ -12,6 +12,7 @@ add_library(world_generation STATIC
     src/tree_placement.cpp
     src/tree_skeleton.cpp
     src/tree_sway.cpp
+    src/tree_volume.cpp
 )
 
 target_sources(world_generation PUBLIC
@@ -32,6 +33,7 @@ target_sources(world_generation PUBLIC
         include/world/generation/tree_placement.hpp
         include/world/generation/tree_skeleton.hpp
         include/world/generation/tree_sway.hpp
+        include/world/generation/tree_volume.hpp
 )
 
 # engine_core for the GLM include convention (engine/core/math.hpp) tree_placement.hpp uses.

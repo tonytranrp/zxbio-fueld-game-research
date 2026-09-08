@@ -325,4 +325,25 @@ bool recentre_on_land(TerrainField& field, float regionHalfExtent, float minElev
     return true;
 }
 
+
+std::shared_ptr<const TerrainField> bake_playable_field(int seed, int stageCount,
+                                                        void (*on_stage)(std::string_view, double, void*),
+                                                        void* user) {
+    // The shipped geometry: 500 x 500 cells at 16 m -- an 8 km field centred on the origin. The
+    // erosion needs to run on something far wider than the playable region (a drainage basin is
+    // kilometres), and the region is a window into it. Arithmetic in
+    // research/earth-terrain-pipeline-log.md section 1.
+    constexpr float kCell = 16.0f;
+    constexpr std::int32_t kCells = 500;
+    constexpr float kHalf = 0.5f * kCell * static_cast<float>(kCells);
+    auto field = std::make_shared<TerrainField>(
+        FieldGeometry{.origin_x = -kHalf, .origin_z = -kHalf, .cell_size = kCell, .cells = kCells});
+    run_pipeline(*field, MacroParams{.seed = seed}, stageCount, on_stage, user);
+    // Goal 321: put the playable region on land. Not optional and not a caller's choice -- a caller
+    // that skipped it would be looking at a different world from every other caller, which is the
+    // exact failure this function was extracted to end.
+    (void)recentre_on_land(*field, 320.0f);
+    return field;
+}
+
 } // namespace world::generation::field

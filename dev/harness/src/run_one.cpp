@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "app_options.hpp"
+#include "world/generation/field/macro_pipeline.hpp"
 #include "app_run.hpp"
 #include "dev/scenario/parser.hpp"
 #include "dev/scenario/scenario.hpp"
@@ -64,7 +65,16 @@ using engine::core::LogLevel;
         // Resolved against the SAME generator the world is built from, and clamped to sea level
         // the same way tools/svo_render's --xz does -- so "0.3 m above the ground" over water means
         // 0.3 m above the water, not 0.3 m above a sea floor 60 m down.
-        const world::generation::HeightmapGenerator heightmap(out.seed);
+        // WITH THE MACRO FIELD, because that is the world the app builds. Without it this resolved
+        // `pose_ground` against the pre-Prompt-006 noise terrain -- a different surface, by tens of
+        // metres -- so every ground pose in the library was spawning the body somewhere the ground
+        // is not. Found in goal 336 by putting a CPU frame and a GPU frame of the same coordinates
+        // side by side; the collision counter had been reporting it as "ticks inside solid" all
+        // along.
+        const world::generation::HeightmapGenerator heightmap(
+            out.seed, out.svo.macro_field
+                          ? world::generation::field::bake_playable_field(out.seed, out.svo.field_stages)
+                          : nullptr);
         // The MAXIMUM over the body's footprint, not the height at its centre. The body is a
         // 0.6 m box; at (48, 0) the terrain falls ~0.6 m per metre, so the uphill corner of that
         // box sits ~0.19 m above the centre column, and a body spawned at the centre's surface is

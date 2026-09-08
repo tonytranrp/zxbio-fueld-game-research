@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 
@@ -34,6 +35,7 @@ TerrainSampler::TerrainSampler(const world::generation::HeightmapGenerator& heig
              std::max(region.max.x - region.min.x, region.max.z - region.min.z), params.height_field_cell) {
     if (params_.trees) {
         collect_trees(region);
+        grow_skeletons();
     }
 }
 
@@ -92,6 +94,35 @@ void TerrainSampler::collect_trees(const Box& region) {
             }
         }
     }
+}
+
+void TerrainSampler::grow_skeletons() {
+    treeVolumes_.assign(trees_.size(), world::generation::TreeVolume{});
+    if (params_.skeleton_radius_m <= 0.0f || trees_.empty()) {
+        return;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const float r2 = params_.skeleton_radius_m * params_.skeleton_radius_m;
+    for (std::size_t i = 0; i < trees_.size(); ++i) {
+        const float dx = trees_[i].world_x - params_.skeleton_centre.x;
+        const float dz = trees_[i].world_z - params_.skeleton_centre.z;
+        if (dx * dx + dz * dz > r2) {
+            continue;
+        }
+        world::generation::TreeVolume volume = world::generation::tree_volume_for(params_.seed, trees_[i]);
+        if (volume.empty()) {
+            continue;
+        }
+        // The volume's own bounds REPLACE the placement's: a grown crown does not fill the
+        // octahedron exactly, and a bound that is not the one the geometry uses is either a hole
+        // (too small) or wasted subdivision (too large).
+        treeBounds_[i] = Box{volume.bounds().min, volume.bounds().max};
+        ++skeletonStats_.trees;
+        skeletonStats_.primitives += volume.primitives().size();
+        skeletonStats_.memory_bytes += volume.memory_bytes();
+        treeVolumes_[i] = std::move(volume);
+    }
+    skeletonStats_.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 }
 
 void TerrainSampler::trees_touching(const Box& box, std::vector<std::uint32_t>& out) const {
@@ -160,10 +191,14 @@ BoxClassification TerrainSampler::classify(const Box& box) const {
         thread_local std::vector<std::uint32_t> touching;
         trees_touching(box, touching);
         for (const std::uint32_t index : touching) {
-            if (!world::generation::tree_intersects_box(trees_[index], box.min, box.max)) {
+            const world::generation::TreeVolume& volume = treeVolumes_[index];
+            const bool grown = !volume.empty();
+            if (!(grown ? volume.intersects_box(box.min, box.max)
+                        : world::generation::tree_intersects_box(trees_[index], box.min, box.max))) {
                 continue;
             }
-            if (world::generation::tree_lobe_contains_box(trees_[index], box.min, box.max)) {
+            if (grown ? volume.contains_box(box.min, box.max)
+                      : world::generation::tree_lobe_contains_box(trees_[index], box.min, box.max)) {
                 insideLobe = true; // only leaves if no terrain reaches into the box -- checked below
                 continue;
             }
@@ -426,7 +461,10 @@ void TerrainSampler::voxelize_trees(const glm::vec3& origin, float voxelEdge, Br
     for (const std::uint32_t index : touching) {
         const TreePlacement& tree = trees_[index];
         const Box& b = treeBounds_[index];
-        if (!world::generation::tree_intersects_box(tree, brickBox.min, brickBox.max)) {
+        const world::generation::TreeVolume& volume = treeVolumes_[index];
+        const bool grown = !volume.empty();
+        if (!(grown ? volume.intersects_box(brickBox.min, brickBox.max)
+                    : world::generation::tree_intersects_box(tree, brickBox.min, brickBox.max))) {
             continue; // AABB touched, actual trunk/lobes do not
         }
         // Only the voxels whose centers can fall inside the tree's bounds.
@@ -449,7 +487,8 @@ void TerrainSampler::voxelize_trees(const glm::vec3& origin, float voxelEdge, Br
                                                                  static_cast<float>(z)} +
                                                        0.5f) *
                                                           voxelEdge;
-                    const MaterialID tm = world::generation::tree_material_at(tree, center);
+                    const MaterialID tm = grown ? volume.material_at(center)
+                                                : world::generation::tree_material_at(tree, center);
                     if (tm == MaterialID::Air) {
                         continue;
                     }
@@ -478,7 +517,10 @@ MaterialID TerrainSampler::material_at(const glm::vec3& voxelMin, float voxelEdg
         trees_touching(voxel, touching);
         const glm::vec3 center = voxelMin + 0.5f * voxelEdge;
         for (const std::uint32_t index : touching) {
-            const MaterialID tm = world::generation::tree_material_at(trees_[index], center);
+            const world::generation::TreeVolume& volume = treeVolumes_[index];
+            const MaterialID tm = volume.empty()
+                                      ? world::generation::tree_material_at(trees_[index], center)
+                                      : volume.material_at(center);
             if (tm == MaterialID::Air) {
                 continue;
             }

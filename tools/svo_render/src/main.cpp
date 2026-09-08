@@ -24,6 +24,7 @@
 
 #include "engine/core/math.hpp"
 #include "engine/jobs/thread_pool.hpp"
+#include "world/generation/field/macro_pipeline.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/materials/materials.hpp"
 #include "world/svo/brick_tree.hpp"
@@ -127,7 +128,11 @@ int run(int argc, char** argv) {
     // x and z and derives the eye height from the terrain; neither gives the default pose, whose
     // height is derived the same way. Two optionals replaced a vec3 plus two `_set` booleans that
     // could disagree with each other.
-    const world::generation::HeightmapGenerator heightmap(opt.seed);
+    // The SAME bake the app does (world/generation/field/macro_pipeline.hpp), so a CPU frame and a
+    // GPU frame at the same pose are frames of the same world. They were not, until goal 336 put an
+    // svo_render frame beside a harness capture and found two unrelated landscapes.
+    const world::generation::HeightmapGenerator heightmap(
+        opt.seed, opt.macro_field ? world::generation::field::bake_playable_field(opt.seed) : nullptr);
     struct Resolved {
         glm::vec3 pos;
         std::uint32_t width;
@@ -168,6 +173,8 @@ int run(int argc, char** argv) {
     TerrainSamplerParams sp;
     sp.seed = opt.seed;
     sp.trees = opt.trees;
+    sp.skeleton_radius_m = opt.skeleton_radius;
+    sp.skeleton_centre = r.pos;
     const Box region{g.origin, g.max_corner()};
     const auto samplerStart = std::chrono::steady_clock::now();
     TerrainSampler sampler(heightmap, sp, region);

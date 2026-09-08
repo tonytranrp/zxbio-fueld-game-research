@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 
+#include "engine/core/math.hpp"
 #include "engine/cli/option.hpp"
 #include "engine/cli/parser.hpp"
 #include "engine/cli/value.hpp"
@@ -31,6 +32,13 @@ struct Options {
     bool branch_reaction = true;          // --no-branch-reaction is the tuned-mass-damper A/B
     engine::cli::Size sway_size{640, 720};
     std::string sway_png; // empty = <species>_sway_<seed>
+
+    // `--near x,z` lists the real world's tree placements around a world point, using the same
+    // generator the sampler calls. Added for goal 336: "capture a tree at 2 m" needs a tree's
+    // coordinates, and guessing at them wastes more time than the twelve lines this costs.
+    glm::vec2 near_xz{0.0f};
+    bool have_near = false;
+    float near_radius = 40.0f;
 };
 
 [[nodiscard]] engine::cli::ParseOutcome parse_options(int argc, char** argv, Options& out);

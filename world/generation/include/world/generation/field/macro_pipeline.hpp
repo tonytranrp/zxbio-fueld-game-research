@@ -22,6 +22,7 @@
 // Every stage knows `TerrainField` and nothing knows another stage.
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
 
@@ -74,5 +75,22 @@ void run_pipeline(TerrainField& out, const MacroParams& params, int count = -1,
 ///
 /// Returns false when no such cell exists (an all-ocean seed), leaving the field untouched.
 bool recentre_on_land(TerrainField& field, float regionHalfExtent = 320.0f, float minElevation = 3.0f);
+
+/// THE ONE WAY TO GET THE SHIPPED WORLD'S MACRO FIELD. Bakes the standard geometry (500 x 500 cells
+/// at 16 m, centred on the origin), runs `stageCount` stages, and recentres the playable region on
+/// land -- exactly what the app does, because until Prompt 007 goal 336 this WAS what only the app
+/// did.
+///
+/// That is the bug this function exists to make unrepeatable. The bake lived in `app/src/svo_world.cpp`
+/// in an anonymous namespace, so `tools/svo_render` -- the CPU reference renderer, the thing this
+/// project's own rules say to reproduce an artefact on BEFORE touching a shader -- was rendering the
+/// pre-pipeline noise terrain. Two tools, one seed, two different worlds, against a determinism
+/// standard that says the opposite. Found by putting an svo_render frame and a GPU frame of the same
+/// pose side by side and seeing two unrelated landscapes.
+///
+/// `on_stage` is optional and gets each stage's name and wall time.
+[[nodiscard]] std::shared_ptr<const TerrainField>
+bake_playable_field(int seed, int stageCount = -1,
+                    void (*on_stage)(std::string_view, double, void*) = nullptr, void* user = nullptr);
 
 } // namespace world::generation::field

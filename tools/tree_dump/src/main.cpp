@@ -28,6 +28,10 @@
 #include "dump_options.hpp"
 #include "engine/cli/help.hpp"
 #include "sway_frames.hpp"
+#include "world/chunk/chunk_voxels.hpp"
+#include "world/generation/field/macro_pipeline.hpp"
+#include "world/generation/heightmap_generator.hpp"
+#include "world/generation/tree_placement.hpp"
 #include "world/generation/tree_skeleton.hpp"
 #include "world/generation/tree_sway.hpp"
 #include "world/wind/wind_field.hpp"
@@ -151,6 +155,45 @@ int run(int argc, char** argv) {
         std::fputs(tools::tree_dump::help_text().c_str(), stdout);
         return EXIT_SUCCESS;
     }
+    if (opt.have_near) {
+        // The macro field, so --near lists the trees the APP has rather than the ones the
+        // pre-pipeline noise world would have had.
+        const world::generation::HeightmapGenerator heightmap(
+            opt.seed, world::generation::field::bake_playable_field(opt.seed));
+        const auto toChunk = [](float v) {
+            return static_cast<std::int32_t>(std::floor(v / static_cast<float>(world::chunk::kChunkSize)));
+        };
+        const auto reach =
+            static_cast<std::int32_t>(opt.near_radius / static_cast<float>(world::chunk::kChunkSize)) + 1;
+        const std::int32_t cx = toChunk(opt.near_xz.x);
+        const std::int32_t cz = toChunk(opt.near_xz.y);
+        std::printf("tree placements within %.0f m of (%.1f, %.1f), seed %d:\n",
+                    static_cast<double>(opt.near_radius), static_cast<double>(opt.near_xz.x),
+                    static_cast<double>(opt.near_xz.y), opt.seed);
+        std::size_t found = 0;
+        for (std::int32_t dz = -reach; dz <= reach; ++dz) {
+            for (std::int32_t dx = -reach; dx <= reach; ++dx) {
+                for (const world::generation::TreePlacement& t :
+                     world::generation::compute_tree_placements(cx + dx, cz + dz, opt.seed, heightmap)) {
+                    const float ddx = t.world_x - opt.near_xz.x;
+                    const float ddz = t.world_z - opt.near_xz.y;
+                    const float d = std::sqrt(ddx * ddx + ddz * ddz);
+                    if (d > opt.near_radius) {
+                        continue;
+                    }
+                    ++found;
+                    std::printf("  %6.2f m  at (%8.2f, %8.2f) base y %6.2f  trunk %.2f  canopy %.2f  %s\n",
+                                static_cast<double>(d), static_cast<double>(t.world_x),
+                                static_cast<double>(t.world_z), static_cast<double>(t.base_height),
+                                static_cast<double>(t.trunk_height), static_cast<double>(t.canopy_radius),
+                                tools::tree_dump::species_name(world::generation::species_of(t)).data());
+                }
+            }
+        }
+        std::printf("  %zu placements\n", found);
+        return EXIT_SUCCESS;
+    }
+
     const TreeSpecies species = opt.species;
     const std::string speciesName{tools::tree_dump::species_name(species)};
     const int seed = opt.seed;

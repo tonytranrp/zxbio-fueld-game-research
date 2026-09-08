@@ -106,6 +106,10 @@ struct SvoWorldOptions {
     // isolated for a capture or an acceptance statistic.
     int field_stages = -1;
     bool trees = true;
+    // Prompt 007 goal 336: metres within which trees are voxelized from their grown skeleton rather
+    // than the implicit box+octahedron. 0 = every tree implicit, which is what the tools and the
+    // equivalence test use.
+    float skeleton_radius = 128.0f;
     std::size_t worker_threads = 0; // 0 = three quarters of the hardware threads (goal 170)
 
     // ---- when to rebuild (Prompt 004 goals 249, 250) ---------------------------------------------
@@ -245,6 +249,11 @@ public:
         std::size_t memory_bytes = 0;
         std::size_t trees = 0;
         double sampler_seconds = 0.0;
+        // Goal 336's accounting, carried out of the build thread with everything else.
+        std::size_t skeleton_trees = 0;
+        std::size_t skeleton_primitives = 0;
+        std::size_t skeleton_bytes = 0;
+        double skeleton_seconds = 0.0;
         bool valid = false;
     };
     [[nodiscard]] LastBuild last_build() const;

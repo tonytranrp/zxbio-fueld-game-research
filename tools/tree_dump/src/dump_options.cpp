@@ -1,6 +1,7 @@
 #include "dump_options.hpp"
 
 #include <array>
+#include <string_view>
 #include <vector>
 
 #include "engine/cli/help.hpp"
@@ -39,6 +40,18 @@ constexpr std::array kTable{
            .kind = ValueKind::String,
            .help = "output .obj path",
            .default_text = "tree_<species>_<seed>.obj"},
+    Option{.name = "near",
+           .set = bind<&Options::near_xz>(),
+           .kind = ValueKind::Vec2,
+           .help = "list the real world's tree placements around this world x,z and exit",
+           .default_text = "off",
+           .group = "World"},
+    Option{.name = "near-radius",
+           .set = bind<&Options::near_radius>(),
+           .kind = ValueKind::Float,
+           .help = "metres around --near to list",
+           .default_text = "40",
+           .group = "World"},
     Option{.name = "sway-frames",
            .set = bind<&Options::sway_frames>(),
            .kind = ValueKind::Int,
@@ -104,6 +117,11 @@ engine::cli::ParseOutcome parse_options(int argc, char** argv, Options& out) {
         engine::cli::parse_command_line(kTable, &out, argc, argv, &positionals);
     if (!outcome.ok || outcome.help_requested) {
         return outcome;
+    }
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i] != nullptr && std::string_view{argv[i]} == "--near") {
+            out.have_near = true;
+        }
     }
     if (positionals.size() > kPositionalOrder.size()) {
         return {.ok = false,

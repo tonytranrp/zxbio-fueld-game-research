@@ -629,3 +629,42 @@ Machine-relevant deltas ONLY (read those files for the why):
 - One OPEN visual defect: floating sliver curtains at rare grazing angles — full repro + hunt
   state in `research/water-foliage-design.md`; next tool is RenderDoc (goals 73/105). Mesh data
   proven clean three ways; don't re-run the offline hunts, they're now permanent tests.
+
+## View distance, cover & the tree pass (2026-09-08, Prompt 007) -- operational deltas
+
+Full record: `research/view-distance-and-cover-log.md`; the backlog group is AN in `docs/goals.md`.
+Machine-relevant deltas ONLY:
+
+- **Every tool bakes the macro terrain field now, via `world::generation::field::bake_playable_field`.**
+  It used to live in an anonymous namespace in `app/src/svo_world.cpp`, so **`tools/svo_render` and the
+  harness's own `pose_ground` resolver were working in the pre-Prompt-006 NOISE world** -- a surface
+  tens of metres from the one the app builds. A CPU frame and a GPU frame at the same coordinates
+  showed two unrelated landscapes; that is how it was found. `svo_render --no-macro-field` is the A/B.
+  **Any pose written before 2026-09-08 is suspect**: `dev/scenarios/macro_tree.scn`'s "two metres from
+  a trunk" pose has no tree within 38 m of it.
+- **`tree_dump --near x,z [--near-radius M]`** lists the real world's tree placements around a point.
+  Reach for it before writing any scenario pose that is supposed to be looking at a tree.
+- **`tree_dump --sway-frames N`** writes a side-view flipbook of the sway across one fundamental
+  period, rest pose in grey behind the posed one. `--wind-speed`, `--sway-periods`, `--sway-settle`,
+  `--no-branch-reaction`. At the default 4 m/s the per-period swing is ~2 px at 560x640: a fresh
+  breeze is a LEAN, and seeing the oscillation needs `--wind-speed 14`.
+- **The frame attributor has a NINTH phase, `sway`.** `FramePhases::sum()`, the slow-frame line, the
+  harness report's `sway_ms` and `docs/gpu-architecture.md` all moved together.
+- **`--skeleton-radius M`** (app and `svo_render`): trees within M metres voxelize from their grown
+  skeleton -- capsule branches, leaf clouds -- instead of the implicit box+octahedron. 0 restores the
+  implicit shapes and is what the terrain-sampler equivalence test uses. The radius comes from the LOD
+  ladder, not from taste: a branch of radius r stops being representable past
+  `lod_radius * 2r / finest_voxel` (10 m for a 1 cm twig, 41 m for an 8 cm trunk).
+- **`--sway/--sway-radius/--sway-max-trees`**: the hierarchical spring sway. Measured at
+  **0.049 ms/frame mean for 129 trees in the 120 m ring**, and 0.585 ms at a 400 m ring, which is why
+  the default ring is 120 m and not larger.
+- **`world/wind` gained a BUFFET term** in the 0.17-1.9 Hz band. The field had a 0.05 Hz gust and a
+  4 Hz flutter and nothing between, which is exactly where tree fundamentals sit (0.26-1.0 Hz), so
+  trees leaned instead of swaying. `turbulence_intensity` 0.20 widens the speed envelope; the wind
+  band test states the new bound.
+- **`render/lod/perceptual.hpp`** is the one place a distance constant comes from now (MAR, Koschmieder
+  extinction, the `D = c(sqrt h + sqrt H)` horizon, the centre-pixel spread angle). `--visibility`
+  replaced the fog density; `--lod-arcmin` is the LOD radius stated as an angle (`--lod-radius` is a
+  faithful alias, and 4 m IS 6.71 arcmin).
+- **The region is 4096 m** (was 512). `valley_far`'s `moire_ratio < 2.1` and `gpu_ms_median < 3.6`
+  assertions FAIL at 2.30 and 3.88 as a result; confirmed pre-existing by stashing and re-running.

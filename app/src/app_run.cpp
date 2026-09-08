@@ -1099,6 +1099,15 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             last.cells > 0 ? std::format(", cells {} rebuilt / {} reused", last.cells_rebuilt,
                                          last.cells_reused)
                            : std::string{});
+        if (last.skeleton_trees > 0) {
+            // Goal 336's accounting, printed beside the tree it changed rather than at exit, so a
+            // before/after of the same scenario is a diff of two adjacent lines.
+            log(LogLevel::Info,
+                "svo skeletons: {} of {} trees grown ({} primitives, {:.2f} MB, {:.0f} ms) -- the rest "
+                "stay implicit",
+                last.skeleton_trees, last.trees, last.skeleton_primitives,
+                static_cast<double>(last.skeleton_bytes) / 1.0e6, last.skeleton_seconds * 1000.0);
+        }
         return true;
     };
 

@@ -11,6 +11,7 @@
 #include "world/generation/heightmap_generator.hpp"
 #include "world/svo/caves.hpp"
 #include "world/generation/tree_placement.hpp"
+#include "world/generation/tree_volume.hpp"
 #include "world/materials/terrain_query.hpp"
 #include "world/svo/brick.hpp"
 #include "world/svo/caves.hpp"
@@ -31,6 +32,18 @@ struct TerrainSamplerParams {
     // 2.5D world -- which is what `test_terrain_sampler.cpp`'s byte-equivalence against
     // `fill_terrain` runs with, since the mesh path has no cave rule.
     CaveParams caves{};
+    // Prompt 007 goal 336. Trees within `skeleton_radius_m` of `skeleton_centre` are voxelized from
+    // their GROWN SKELETON -- capsule branches and leaf clouds -- instead of the implicit
+    // box-plus-octahedron. 0 keeps every tree implicit, which is what the terrain-sampler
+    // equivalence test runs with and what every tool that has no camera gets.
+    //
+    // The radius is not taste. The LOD ladder makes the voxel edge at distance d
+    // `max(finest, d * finest / lod_radius)`, so a branch of radius r stops being representable past
+    // `d = lod_radius * 2r / finest`: 10 m for a 1 cm twig, 26 m for a 5 cm limb, 41 m for an 8 cm
+    // trunk. Beyond that the two representations voxelize to the same blob. The default the app
+    // passes is larger than 41 m only because the octree is built once and the camera keeps walking.
+    float skeleton_radius_m = 0.0f;
+    glm::vec3 skeleton_centre{0.0f};
 };
 
 // The world as a resolution-independent material field (research/micro-voxel-pivot-log.md §2.5):
@@ -108,6 +121,17 @@ public:
     }
     [[nodiscard]] const TerrainSamplerParams& params() const noexcept { return params_; }
 
+    // Goal 336's accounting: how many trees got a grown skeleton, what that cost to build, and how
+    // many bytes the volumes hold. Reported by the app so the growth has a number rather than a
+    // feeling.
+    struct SkeletonStats {
+        std::size_t trees = 0;
+        std::size_t primitives = 0;
+        std::size_t memory_bytes = 0;
+        double seconds = 0.0;
+    };
+    [[nodiscard]] SkeletonStats skeleton_stats() const noexcept { return skeletonStats_; }
+
     // Process-wide diagnostics: FastNoise2 grid calls made by fill_brick and column-cache hits.
     static std::uint64_t debug_grid_calls() noexcept;
     static std::uint64_t debug_grid_cache_hits() noexcept;
@@ -134,6 +158,7 @@ private:
         std::vector<std::vector<std::uint32_t>> cells;
     };
     void collect_trees(const Box& region);
+    void grow_skeletons();
     void trees_touching(const Box& box, std::vector<std::uint32_t>& out) const;
 
     // Column material rule shared by fill_brick and material_at.
@@ -156,7 +181,11 @@ private:
     FocusTiers focusFields_; // set_focus's tiers, finest first; shared so builds can reuse them
     std::vector<world::generation::TreePlacement> trees_;
     std::vector<Box> treeBounds_;
+    // Parallel to `trees_`, and EMPTY for every tree outside `skeleton_radius_m` -- an empty volume
+    // is the signal to fall back to the implicit shape, so there is no second list to keep in step.
+    std::vector<world::generation::TreeVolume> treeVolumes_;
     TreeGrid treeGrid_;
+    SkeletonStats skeletonStats_{};
 };
 
 static_assert(VoxelSampler<TerrainSampler>);
