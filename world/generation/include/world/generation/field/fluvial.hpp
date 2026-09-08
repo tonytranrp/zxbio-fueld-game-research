@@ -7,6 +7,7 @@
 // justified against it, so each carries its source in a comment rather than a plausible value.
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include "world/generation/field/terrain_field.hpp"
@@ -86,6 +87,26 @@ void priority_flood(TerrainField& out, float epsilon = 1.0e-4f);
 /// Upstream contributing CELLS per cell (multiply by `cell_area()` for m²). Exactly conservative:
 /// the total delivered to the outlets equals the cell count, which goal 304's Check asserts.
 void accumulate_flow(TerrainField& out, const FlowNetwork& net);
+
+/// Accumulation weighted by a per-cell quantity instead of counting cells -- the same one-pass
+/// sweep, with `weights[i]` added in place of 1.
+///
+/// This is how the orographic precipitation field reaches the discharge: research Part 2 §11 notes
+/// the Braun-Willett stack "accepts spatially varying precipitation (an orographic field plugs
+/// straight in)", and a wet windward basin should carry more water per square kilometre than a dry
+/// lee one. Returns the accumulated plane rather than writing `Plane::FlowAccum`, because the
+/// unweighted cell count is still what the channel threshold and drainage density are defined
+/// against.
+[[nodiscard]] std::vector<float> accumulate_weighted(const TerrainField& field, const FlowNetwork& net,
+                                                     std::span<const float> weights);
+
+/// Strahler order over the channel network -- 1 at a source, incremented only where two channels of
+/// EQUAL order meet. Non-channel cells are 0.
+///
+/// Shared rather than duplicated: `terrain_dump`'s constant-drop test and the river extraction both
+/// need it, and two copies of an ordering rule is two places for it to drift.
+[[nodiscard]] std::vector<std::uint8_t> strahler_order(const TerrainField& field, const FlowNetwork& net,
+                                                       float channelThresholdKm2);
 
 /// Braun-Willett implicit stream-power incision, n = 1. Unconditionally stable at any dt.
 void incise_stream_power(TerrainField& out, const FlowNetwork& net, const FluvialParams& p);

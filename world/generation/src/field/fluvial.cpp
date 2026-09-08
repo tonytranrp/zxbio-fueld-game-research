@@ -277,4 +277,52 @@ float characteristic_valley_spacing(const FluvialParams& p) noexcept {
     return std::pow(p.diffusivity / p.k, 1.0f / (2.0f * p.m + 2.0f));
 }
 
+std::vector<float> accumulate_weighted(const TerrainField& field, const FlowNetwork& net,
+                                       std::span<const float> weights) {
+    std::vector<float> acc(field.cell_count(), 0.0f);
+    for (std::size_t i = 0; i < field.cell_count(); ++i) {
+        acc[i] = weights.size() == field.cell_count() ? weights[i] : 1.0f;
+    }
+    // `net.order` is by DECREASING elevation, so a donor is always visited before its receiver and
+    // one pass suffices -- the same property `accumulate_flow` relies on.
+    for (const std::uint32_t i : net.order) {
+        const std::uint32_t r = net.receiver[i];
+        if (r != i) {
+            acc[r] += acc[i];
+        }
+    }
+    return acc;
+}
+
+std::vector<std::uint8_t> strahler_order(const TerrainField& field, const FlowNetwork& net,
+                                         float channelThresholdKm2) {
+    const std::span<const float> acc = field.plane(Plane::FlowAccum);
+    const float thresholdCells = channelThresholdKm2 * 1.0e6f / field.geometry().cell_area();
+    const std::size_t n = net.receiver.size();
+    std::vector<std::uint8_t> order(n, 0);
+    std::vector<std::uint8_t> maxDonor(n, 0);
+    std::vector<std::uint16_t> maxDonorCount(n, 0);
+    const auto isChannel = [&](std::size_t i) { return acc[i] >= thresholdCells; };
+    for (const std::uint32_t i : net.order) {
+        if (!isChannel(i)) {
+            continue;
+        }
+        order[i] = maxDonorCount[i] == 0 ? std::uint8_t{1}
+                   : maxDonorCount[i] >= 2
+                       ? static_cast<std::uint8_t>(maxDonor[i] + 1) // two equal orders meet: +1
+                       : maxDonor[i];
+        const std::uint32_t r = net.receiver[i];
+        if (r == i || !isChannel(r)) {
+            continue;
+        }
+        if (order[i] > maxDonor[r]) {
+            maxDonor[r] = order[i];
+            maxDonorCount[r] = 1;
+        } else if (order[i] == maxDonor[r]) {
+            ++maxDonorCount[r];
+        }
+    }
+    return order;
+}
+
 } // namespace world::generation::field

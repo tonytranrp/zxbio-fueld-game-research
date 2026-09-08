@@ -655,3 +655,142 @@ dendritic ridges. But the whole world spans **13.50 to 14.00 °C: half a degree.
 classifier that reads it will separate nothing. Precipitation, which spans 0.29 to 2.98 on the same
 field, is the only climate axis with real range here. That is a requirement on the biome work, not a
 defect in this stage.
+
+---
+
+## 10. Goal 309: the post-passes — and the finding that decided the module's shape before a line of it
+
+### Rivers on this world are SUB-CELL features of the macro field
+
+Measured first, built second. The largest basin on the 8 km field carries a
+**precipitation-weighted contributing area of 5.10 km²**, which through Petit & Pauquet's
+`Q_bf = 0.087·A^1.044` gives **0.48 m³/s bankfull**, and through `W = 3.5·Q^0.5` a
+**bankfull width of 2.42 m**.
+
+**The macro cell is 16 m.** The largest river on this world is a sixth of a cell wide, and its
+meander wavelength at λ = 12 W is **29 m — under two cells.**
+
+So goal 309 is not a heightfield stage and could not have been one. It extracts the network as
+**polylines carrying width, discharge and elevation**, meanders them in continuous space, and hands
+them to the detail layer. The research says exactly this (Part 7 §11(7) lists the post-passes as
+operating on *centrelines*; the Q&A section says "route on the macro-grid then smooth/meander the
+centerline polyline"), and the alternative would have been a heightfield operation whose own output
+resolution is six times coarser than its subject.
+
+`test_rivers.cpp` **asserts** `maxWidth < 16.0` for exactly this reason: if a river ever exceeds the
+cell size, rivers have become a heightfield feature and the module's premise needs revisiting.
+
+### Web research: the ratio I asked for does not exist, and the answer was better
+
+Full write-up with CONFIRMED/INFERENCE labels: **`research/bankfull-discharge-ratio.md`**.
+
+The regime equation the corpus gives is `W = a·Q_bankfull^0.5`, and what accumulation produces is
+mean annual flow. I dispatched one read-only agent for the conversion ratio. **It is not a published
+statistic** — the literature relates bankfull discharge to *drainage area* or to *recurrence
+interval*, essentially never to mean annual flow.
+
+What came back instead is strictly better: **Petit & Pauquet (1997)**, ~40 Ardennes gauging stations,
+**catchments 4–2,700 km²**, Cfb oceanic climate, r = 0.989:
+
+> Q_b = 0.087 · A^1.044   (m³/s, km²)
+
+That is calibrated *on catchments of this world's size, in this world's climate*. The
+`bankfull_multiple` parameter the research was requested for **was deleted** rather than tuned — the
+relation it existed to feed is no longer in the path. (For reference, Petit & Pauquet implies
+k = 5.8–6.9 over 1–50 km²; the guessed 10 sat at the top of the defensible 4–12 band.)
+
+Three cautions from the same pass, all now in the header where they apply:
+
+- **The width relation is extrapolated two orders of magnitude below calibration.** NEH Part 654
+  Ch. 9's data ranges put Nixon (1959) at 19.8–510 m³/s, Hey & Thorne at 3.9–425, and the chapter
+  says its generalized width predictors should not be used below 17 m³/s. This world's largest river
+  is 0.48 m³/s.
+- **An independent route disagrees by 2.8×**, measured: Sofia & Nikolopoulos's `W = 3.6·A^0.39` gives
+  **6.80 m** where the shipped route gives **2.42 m**. That gap is a real region effect (humid
+  maritime vs semi-arid montane), and it is the honest uncertainty on any river width here.
+  `terrain_dump` prints both side by side so it is visible rather than hidden behind whichever one
+  shipped.
+- **W ∝ √Q**, so even a 2× discharge error is only 1.41× in width. The uncertainty is large but its
+  leverage is small.
+
+### The meander curve — the research gives three constraints and not the shape
+
+Part 2 §7 states λ = 10–14 W, sinuosity 1.2–2.2, and R = 2–3 W. A lateral sinusoid cannot satisfy
+them together: solving for sinuosity 1.4 puts R/W near 1.5, solving for R/W = 2.5 puts sinuosity at
+1.15. That is the sinusoid being the wrong shape, not a tuning failure — it concentrates curvature at
+its crests.
+
+What ships is the **sine-generated curve**, where the channel's *direction* rather than its offset
+varies sinusoidally: θ(s) = ω sin(2πs/λ). ω is solved by **bisection against the target sinuosity**
+rather than from a formula, so the produced geometry hits the stated number regardless of how the
+curve is discretised. **FLAGGED**: the sine-generated curve is not in this project's research corpus;
+it is brought in from outside, which is why everything about it is measured back off the output.
+
+### Four defects, all found by measuring rather than reading
+
+**1. λ/W read 17.2 for a requested 12 — the research had a word in it I skipped.** Part 7 §11(7) says
+"route on the macro-grid then **smooth**/meander the centreline". D8 moves in 45° steps one cell
+(16 m) long, and this world's meander wavelength is 29 m — **the grid's own zig-zag is at the same
+scale as the meander being applied to it.** With four smoothing passes on the centreline first,
+λ/W measures **13.9**, inside the band.
+
+**2. Sinuosity read 1.02 for a requested 1.4.** The sample budget was sized from the valley length,
+but the channel is *longer* than the valley by exactly the sinuosity — the loop ran out of samples
+before consuming the valley. The curve was right and the loop stopped early. Now **1.52**, in band.
+
+**3. "Every reach terminates: NO", on a network whose lakes were all fine.** Sub-4-cell flat
+components were rejected as lakes *after* their cells had already been marked with the lake id, so a
+reach flowing into one carried an index into a lake that was never stored. Rejected components now
+release their cells.
+
+**4. Only 69% of junctions resolved their downstream link — two separate causes.** First, the link
+was indexed by reach HEADS, but a tributary joining a larger river lands **mid-reach**; only a
+confluence of two *equal* orders creates a head. Indexing every claimed cell dropped it to 66.5%,
+which exposed the second: a junction reach carries the join cell as its last node so the polylines
+meet without a gap, so **whichever reach was built first claimed the shared cell** and the link
+resolved to self, then to nothing. A junction reach no longer claims its own terminal cell. **100%
+now**, and the test asserts >90% of the population.
+
+Worth noting what #1 and #2 have in common with §9's four: every one was a correct mechanism
+reported wrongly by its own instrument, and none would have been visible in the code.
+
+### Lakes: a definition replacing a heuristic
+
+The first version identified lakes by the fill's epsilon slope — "a cell whose receiver is barely
+lower" — and found **173 on a field with a handful**, because a diffused plain is also barely
+sloping. A lake is now **exactly the set of cells the fill had to raise**, which needs the pre-fill
+surface passed in alongside. That is not a better heuristic; it is the definition.
+
+### Deltas: two of Galloway's three vertices, and saying so
+
+Research Part 2 §9.1 puts deltas on the river/wave/tide triangle. **This world has no tide model and
+no wave model**, so two vertices cannot be selected on their own terms. Rather than label deltas from
+a coin flip, the regime runs on the one axis both sides of which are computable: **discharge against
+open-water fetch at the mouth** (the fraction of a 200 m disc that is below sea level — an exposed
+headland gets planed off, a sheltered embayment progrades). **`Tide-dominated` is deliberately absent
+from the enum**, because an enumerator that can never occur is worse than an acknowledged gap.
+
+Measured: **37 deltas, 15 river-dominated and 22 wave-dominated** — the axis discriminates rather
+than collapsing to one answer, which is the thing worth checking about it.
+
+### Goal 309's Check, performed
+
+| Check item | result |
+|---|---|
+| meander wavelength-to-width **inside 10–14 for the largest rivers, stated** | **13.9**, measured off the produced node offsets over the largest tenth of reaches; asserted in `test_rivers.cpp` |
+| every river polyline ends at sea level or a lake, **asserted** | yes — 1160 reaches: 37 to sea, 557 to lake, 526 to a junction (not a terminus: the water continues, and the link is asserted), 40 off-field |
+| every lake has a spill path, **asserted** | **170 of 170** |
+| viewed capture of a meandering river reaching a delta | **`research/captures/am_river_delta.png`** — 400 m at 0.44 m/pixel: the channel meanders from its lake spill point to a delta fan at the coast. `am_rivers_field.png` is the whole 8 km network |
+
+Two numbers stated that the Check did not ask for, because they are the interesting ones: sinuosity
+**1.52** (band 1.2–2.2), and the **2.8× disagreement** between the two published width families.
+
+### And a note on what the whole-field capture shows
+
+`am_rivers_field.png` has visibly **grid-aligned straight reaches**. That is D8's 45°-multiple
+artefact, which the research names directly ("D8 gives 45°-multiples") and offers two fixes for:
+smooth/meander the polyline, or route on D∞/TIN. The first is done — but at 8.89 m/pixel a 29 m
+meander is three pixels, so the whole-field view cannot show it and the straightness is what reads.
+**The zoomed capture is not a nicer picture of the same thing; it is the only scale at which this
+world's rivers are resolvable at all.** Routing on D∞ would remove the residual alignment and is
+worth a later goal.

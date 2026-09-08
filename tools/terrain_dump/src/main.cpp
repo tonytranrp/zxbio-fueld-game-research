@@ -18,9 +18,12 @@
 #include <utility>
 #include <vector>
 
+#include <glm/vec2.hpp>
+
 #include "png_writer.hpp"
 #include "world/generation/field/climate.hpp"
 #include "world/generation/field/fluvial.hpp"
+#include "world/generation/field/rivers.hpp"
 #include "world/generation/field/macro_pipeline.hpp"
 #include "world/generation/field/terrain_field.hpp"
 
@@ -35,6 +38,11 @@ struct Options {
     float cell_size = 16.0f;
     std::string out = "terrain_dump.png";
     std::string plane = "elevation";
+    /// Zoomed river render: centre and span in world metres. A river 2.4 m wide is invisible in an
+    /// 8 km dump at one pixel per 16 m cell, so the only way to LOOK at a meander here is to zoom.
+    float zoom_x = 0.0f;
+    float zoom_z = 0.0f;
+    float zoom_span = 0.0f; ///< 0 = whole field
 };
 
 /// A blue-through-green-through-brown-through-white ramp, so an elevation map reads as terrain and
@@ -240,12 +248,26 @@ int main(int argc, char** argv) {
             o.cell_size = std::stof(next());
         } else if (a == "--out") {
             o.out = next();
+        } else if (a == "--zoom") {
+            // Split on commas by hand: MSVC treats sscanf as deprecated and this build is /WX.
+            const std::string v = next();
+            std::size_t at = 0;
+            float* fields[3] = {&o.zoom_x, &o.zoom_z, &o.zoom_span};
+            for (float* out : fields) {
+                if (at > v.size()) {
+                    break;
+                }
+                const std::size_t comma = v.find(',', at);
+                *out = std::stof(v.substr(at, comma == std::string::npos ? std::string::npos : comma - at));
+                at = comma == std::string::npos ? v.size() + 1 : comma + 1;
+            }
         } else if (a == "--plane") {
             o.plane = next();
         } else if (a == "--help" || a == "-h") {
             std::printf("terrain_dump: false-colour the macro terrain field and print its statistics\n"
                         "  --seed N --stages N --cells N --cell-size F --out FILE\n"
-                        "  --plane elevation|flow|precip|temperature\n");
+                        "  --plane elevation|flow|precip|temperature|rivers\n"
+                        "  --zoom X,Z,SPAN   (world metres; for looking at a river)\n");
             return 0;
         }
     }
@@ -445,6 +467,180 @@ int main(int argc, char** argv) {
     for (const float ac : {0.002f, 0.01f, 0.0625f, 0.1f, 1.0f, 5.0f}) {
         std::printf("drainage density at A_c = %.1f km^2: %6.2f km/km^2  (research §9.4 band 2-12)\n",
                     static_cast<double>(ac), drainage_density(working, ac));
+    }
+
+    // ---- goal 309: the river network as polylines ------------------------------------------
+    // `field` is the pipeline output BEFORE this tool's own fill; `working` is after it. The
+    // difference is exactly the lake surfaces, which is how the extractor identifies them.
+    const RiverNetwork rivers = extract_rivers(working, net, field.plane(Plane::Elevation), HydrologyParams{});
+    {
+        double maxAreaKm2 = 0.0;
+        for (std::size_t i = 0; i < working.cell_count(); ++i) {
+            maxAreaKm2 = std::max(maxAreaKm2, static_cast<double>(working.plane(Plane::FlowAccum)[i]) *
+                                                  working.geometry().cell_area() / 1.0e6);
+        }
+        double maxQ = 0.0;
+        double maxW = 0.0;
+        std::size_t sea = 0;
+        std::size_t lake = 0;
+        std::size_t edge = 0;
+        std::size_t junction = 0;
+        for (const RiverReach& r : rivers.reaches) {
+            for (const RiverNode& nd : r.nodes) {
+                maxQ = std::max(maxQ, static_cast<double>(nd.discharge_m3s));
+                maxW = std::max(maxW, static_cast<double>(nd.width_m));
+            }
+            switch (r.terminus) {
+            case RiverReach::Terminus::Sea: ++sea; break;
+            case RiverReach::Terminus::Lake: ++lake; break;
+            case RiverReach::Terminus::FieldEdge: ++edge; break;
+            case RiverReach::Terminus::Junction: ++junction; break;
+            }
+        }
+        std::size_t spilling = 0;
+        for (const Lake& l : rivers.lakes) {
+            spilling += l.has_spill_path ? 1u : 0u;
+        }
+        std::size_t riverDelta = 0;
+        for (const Delta& d : rivers.deltas) {
+            riverDelta += d.regime == DeltaRegime::RiverDominated ? 1u : 0u;
+        }
+        std::printf("rivers %zu reaches (%zu to sea, %zu to lake, %zu to a junction, %zu off-field), "
+                    "max basin %.2f km^2\n",
+                    rivers.reaches.size(), sea, lake, junction, edge, maxAreaKm2);
+        // The independent area-to-width route, so the ~2.6x disagreement between the two published
+        // families is visible rather than hidden behind whichever one shipped. See
+        // research/bankfull-discharge-ratio.md §6.
+        const HydrologyParams hp;
+        const double areaKm2OfLargest = maxQ * 3.15576e7 / (hp.mean_annual_runoff_m * 1.0e6);
+        const double crossCheck =
+            hp.width_area_coefficient * std::pow(areaKm2OfLargest, hp.width_area_exponent);
+        std::printf("  largest river: %.2f km^2 effective basin, Q %.3f m^3/s mean annual, "
+                    "bankfull width %.2f m\n",
+                    areaKm2OfLargest, maxQ, maxW);
+        std::printf("  cross-check (Sofia & Nikolopoulos W = 3.6 A^0.39): %.2f m -- the two "
+                    "published families disagree %.1fx\n",
+                    crossCheck, crossCheck / std::max(maxW, 1e-6));
+        std::printf("  measured wavelength/width %.1f (research §7.2 band 10-14), sinuosity %.2f "
+                    "(band 1.2-2.2)\n",
+                    static_cast<double>(rivers.measured_wavelength_over_width()),
+                    static_cast<double>(rivers.measured_sinuosity()));
+        std::printf("  lakes %zu, of which %zu have a spill path; every reach terminates: %s\n",
+                    rivers.lakes.size(), spilling, rivers.every_reach_terminates() ? "yes" : "NO");
+        std::printf("  deltas %zu (%zu river-dominated, %zu wave-dominated)\n", rivers.deltas.size(),
+                    riverDelta, rivers.deltas.size() - riverDelta);
+        // The three biggest, so --zoom has somewhere to point without guessing from a thumbnail.
+        std::vector<const Delta*> byQ;
+        byQ.reserve(rivers.deltas.size());
+        for (const Delta& d : rivers.deltas) {
+            byQ.push_back(&d);
+        }
+        std::sort(byQ.begin(), byQ.end(),
+                  [](const Delta* a, const Delta* b) { return a->discharge_m3s > b->discharge_m3s; });
+        for (std::size_t k = 0; k < std::min<std::size_t>(3, byQ.size()); ++k) {
+            std::printf("  delta %zu at %.0f,%.0f  Q %.4f m^3/s  radius %.1f m  %s\n", k,
+                        static_cast<double>(byQ[k]->apex.x), static_cast<double>(byQ[k]->apex.y),
+                        static_cast<double>(byQ[k]->discharge_m3s), static_cast<double>(byQ[k]->radius_m),
+                        byQ[k]->regime == DeltaRegime::RiverDominated ? "river-dominated" : "wave-dominated");
+        }
+    }
+
+    // ---- goal 309's viewed capture: the river polylines, drawn at a scale that can show them ----
+    //
+    // A 2.4 m channel in an 8 km dump at one pixel per 16 m cell is a sixth of a pixel. The zoomed
+    // render exists because "viewed capture of a meandering river reaching a delta" is otherwise
+    // not a thing this world can produce -- not because the river is wrong, but because the macro
+    // dump's resolution is 6x coarser than its subject. See rivers.hpp on why that is the finding
+    // rather than a defect.
+    if (o.plane == "rivers") {
+        const std::int32_t px = 900;
+        const float span = o.zoom_span > 0.0f ? o.zoom_span : field.geometry().extent();
+        const float originX = o.zoom_span > 0.0f ? o.zoom_x - 0.5f * span : field.geometry().origin_x;
+        const float originZ = o.zoom_span > 0.0f ? o.zoom_z - 0.5f * span : field.geometry().origin_z;
+        const float metresPerPixel = span / static_cast<float>(px);
+        std::vector<std::uint8_t> img(static_cast<std::size_t>(px) * px * 3);
+
+        // Terrain underneath, bilinearly sampled so the zoom is smooth rather than blocky.
+        for (std::int32_t py = 0; py < px; ++py) {
+            for (std::int32_t pxi = 0; pxi < px; ++pxi) {
+                const float wx = originX + (static_cast<float>(pxi) + 0.5f) * metresPerPixel;
+                const float wz = originZ + (static_cast<float>(py) + 0.5f) * metresPerPixel;
+                const glm::vec2 c = field.geometry().to_cell(wx, wz);
+                const auto x0 = static_cast<std::int32_t>(std::floor(c.x));
+                const auto z0 = static_cast<std::int32_t>(std::floor(c.y));
+                float height = 0.0f;
+                if (field.in_bounds(x0, z0) && field.in_bounds(x0 + 1, z0 + 1)) {
+                    const float tx = c.x - static_cast<float>(x0);
+                    const float tz = c.y - static_cast<float>(z0);
+                    const float a = h[field.index(x0, z0)] * (1.0f - tx) + h[field.index(x0 + 1, z0)] * tx;
+                    const float b =
+                        h[field.index(x0, z0 + 1)] * (1.0f - tx) + h[field.index(x0 + 1, z0 + 1)] * tx;
+                    height = a * (1.0f - tz) + b * tz;
+                }
+                const float tt = height >= 0.0f ? 0.5f + 0.5f * (height / std::max(hi, 1e-6f))
+                                                : 0.5f * (1.0f - height / std::min(lo, -1e-6f));
+                const std::array<std::uint8_t, 3> col = terrain_colour(tt);
+                const std::size_t q = (static_cast<std::size_t>(py) * px + pxi) * 3;
+                // Desaturated, so the water drawn on top reads as the subject.
+                img[q + 0] = static_cast<std::uint8_t>(120 + (col[0] * 135) / 255);
+                img[q + 1] = static_cast<std::uint8_t>(120 + (col[1] * 135) / 255);
+                img[q + 2] = static_cast<std::uint8_t>(120 + (col[2] * 135) / 255);
+            }
+        }
+
+        const auto plot = [&](float wx, float wz, std::uint8_t r, std::uint8_t gg, std::uint8_t b) {
+            const auto ix = static_cast<std::int32_t>((wx - originX) / metresPerPixel);
+            const auto iz = static_cast<std::int32_t>((wz - originZ) / metresPerPixel);
+            if (ix < 0 || iz < 0 || ix >= px || iz >= px) {
+                return;
+            }
+            const std::size_t q = (static_cast<std::size_t>(iz) * px + ix) * 3;
+            img[q + 0] = r;
+            img[q + 1] = gg;
+            img[q + 2] = b;
+        };
+        // A disc of the channel's real half-width, so what is drawn is the river's actual size.
+        const auto stamp = [&](glm::vec2 at, float radiusM, std::uint8_t r, std::uint8_t gg,
+                               std::uint8_t b) {
+            const float rp = std::max(radiusM / metresPerPixel, 0.6f);
+            const auto ri = static_cast<std::int32_t>(std::ceil(rp));
+            for (std::int32_t dy = -ri; dy <= ri; ++dy) {
+                for (std::int32_t dx = -ri; dx <= ri; ++dx) {
+                    if (static_cast<float>(dx * dx + dy * dy) > rp * rp) {
+                        continue;
+                    }
+                    plot(at.x + static_cast<float>(dx) * metresPerPixel,
+                         at.y + static_cast<float>(dy) * metresPerPixel, r, gg, b);
+                }
+            }
+        };
+
+        // Deltas first, so the channel is drawn over its own fan.
+        for (const Delta& d : rivers.deltas) {
+            const std::uint8_t tone = d.regime == DeltaRegime::RiverDominated ? 190 : 150;
+            stamp(d.apex, d.radius_m, tone, static_cast<std::uint8_t>(tone - 30), 120);
+        }
+        for (const RiverReach& r : rivers.reaches) {
+            for (const RiverNode& node : r.nodes) {
+                stamp(node.position, 0.5f * node.width_m, 30, 90, 200);
+            }
+        }
+        // Lake surfaces.
+        for (const Lake& lk : rivers.lakes) {
+            const auto lx = static_cast<std::int32_t>(lk.outlet_cell % static_cast<std::size_t>(field.cells()));
+            const auto lz = static_cast<std::int32_t>(lk.outlet_cell / static_cast<std::size_t>(field.cells()));
+            const glm::vec2 w = field.geometry().to_world(lx, lz);
+            stamp(w, 2.0f, 240, 60, 60); // the spill point, in red
+        }
+
+        if (!svo_render::PngWriter::write(o.out.c_str(), static_cast<std::uint32_t>(px),
+                                          static_cast<std::uint32_t>(px), img.data())) {
+            std::fprintf(stderr, "terrain_dump: could not write %s\n", o.out.c_str());
+            return 1;
+        }
+        std::printf("wrote %s (%.0f m across at %.2f m/pixel)\n", o.out.c_str(),
+                    static_cast<double>(span), static_cast<double>(metresPerPixel));
+        return 0;
     }
 
     const bool wantFlow = o.plane == "flow";
