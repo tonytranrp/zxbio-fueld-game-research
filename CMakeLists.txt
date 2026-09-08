@@ -95,6 +95,11 @@ add_subdirectory(world)
 # The development harness (Prompt 002). dev/scenario and dev/telemetry are GPU-free by design and
 # build in the no-GPU CI job; dev/harness is gated on VOXEL_BUILD_RENDERER inside dev/CMakeLists.
 add_subdirectory(dev)
+# Prompt 007 goal 326. OUTSIDE the renderer guard on purpose: `render/lod` is header-only and
+# depends on nothing, and `world/svo`'s LOD ladder cites it -- so it has to build in the no-GPU CI
+# job too. It lives under render/ because that is where the prompt named it and where its consumers
+# mostly are, not because it needs a graphics API.
+add_subdirectory(render/lod)
 if(VOXEL_BUILD_RENDERER)
   add_subdirectory(render)
   add_subdirectory(app)

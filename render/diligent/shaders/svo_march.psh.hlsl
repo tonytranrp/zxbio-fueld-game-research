@@ -61,6 +61,9 @@ cbuffer MarchConstants
     // kept so the two can be compared.
     float4 g_ProxyOrigin;
     uint4 g_ProxyInts; // x = root node offset, y = voxel bits V, zw spare
+    // Prompt 007 goal 327. x = extinction coefficient sigma at sea level (1/m), derived on the CPU
+    // from an authored meteorological visibility; y = atmospheric scale height (m); zw spare.
+    float4 g_FogParams;
     // One record per material (render/diligent/detail/material_macros.hpp's material_record):
     // rgb = linear albedo, w = shading model. MATERIAL_COUNT and MAT_SHADING_* are macros the C++
     // side passes at shader creation from the material registry -- no material literal lives here.
@@ -1153,12 +1156,34 @@ void main(in PSInput PSIn, out PSOutput PSOut)
         color = ShadeWater(p, -dir, g_CameraPosWorld.w, 1.0) * lerp(0.6, 1.0, lit);
     }
 
-    // exp2 height fog converging on the sky gradient (terrain.psh.hlsl's formula, goals 33/34/91).
+    // PROMPT 007 GOAL 327: Koschmieder's law, with the rate constant the physics fixes rather than
+    // an artist-chosen number.
+    //
+    // What was here: `density = 0.0030 * (0.80 + 0.20*exp2(-y*0.012))` and a falloff SQUARED in
+    // distance. Three things were wrong with it. The 0.0030 was a bare constant; the squared
+    // distance is a Gaussian, not the exponential Koschmieder's law actually is; and the height
+    // term was an unexplained 1/58 m e-fold, which is nothing like an atmosphere.
+    //
+    // What is here now:
+    //   * `sigma` comes from an AUTHORED meteorological visibility V. Eye research §8.2 and
+    //     aesthetics §9.6: contrast decays as e^(-sigma*d), and V is the distance at which it
+    //     reaches the convention's threshold. The CPU derives sigma = k/V and passes it; "how far
+    //     can you see" is a number a person can hold and 0.0030 was not.
+    //   * The height term is the BAROMETRIC form, exp(-y/H) with H the atmospheric scale height,
+    //     because extinction is height-dependent for the reason air density is. Over this world's
+    //     ~112 m of relief that varies sigma by 1.3% -- physically right, practically negligible,
+    //     and correct in advance if the world ever gets mountains. It is evaluated at the HIT
+    //     point rather than integrated along the ray, which is the same approximation the previous
+    //     code made and is exact for a horizontal view.
+    //   * The lerp toward `SkyGradient(dir)` STAYS, and is not merely an aesthetic choice: it is
+    //     Narasimhan & Nayar's two-term model, `color*T + L_inf*(1-T)`, with the airlight radiance
+    //     L_inf being the sky in that direction. It is also the decided-against-flat-fog constraint
+    //     from docs/progress.md -- flat fog made fogged ridges vanish while their darker trees
+    //     lingered as floating dashes.
     const float dist = hit.t;
-    const float heightFactor = exp2(-max(p.y, 0.0) * 0.012);
-    const float density = 0.0030 * (0.80 + 0.20 * heightFactor);
-    const float rawFog = 1.0 - exp2(-(dist * density) * (dist * density) * 1.442695);
-    const float fogAmount = saturate(rawFog * 1.12);
+    const float sigma = g_FogParams.x * exp(-max(p.y, 0.0) / max(g_FogParams.y, 1.0));
+    const float transmission = exp(-sigma * dist);
+    const float fogAmount = saturate(1.0 - transmission);
     color = lerp(color, SkyGradient(dir), fogAmount);
 
     if (view != kViewNone)

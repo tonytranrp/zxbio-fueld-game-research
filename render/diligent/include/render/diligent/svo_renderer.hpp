@@ -99,6 +99,19 @@ public:
         float smooth_pixels = 6.0f; // the averaged normal comes from the ancestor spanning ~this many pixels
         float grain_amplitude = 0.10f; // +-10% brightness per cube at full size
         float taa_blend = 0.125f;      // weight of the new frame (1/8 = eight-frame history)
+        // Prompt 007 goal 327. METEOROLOGICAL VISIBILITY IS THE AUTHORED PARAMETER and the
+        // extinction coefficient is derived from it -- `render/lod/perceptual.hpp` does the
+        // conversion and cites WMO and Koschmieder for the two conventions.
+        //
+        // 20 km is the research's "clear" band (eye research §8.2). It is chosen rather than
+        // maximal because the US EPA's authoring rule puts noticeable scenic degradation within
+        // 10% of the visual range -- 2 km here -- so fog is doing perceptible work across the whole
+        // near/mid tier and can CARRY the LOD transition instead of fighting it.
+        float visibility_m = 20000.0f;
+        // The atmospheric scale height, metres. The barometric constant, ~8.5 km. Over this world's
+        // relief it changes extinction by ~1.3%; it is here because it is the right model, not
+        // because it is visible.
+        float atmosphere_scale_height_m = 8500.0f;
         SvoDebugView debug_view = SvoDebugView::None;
         // The ONE wind field (world/wind, Prompt 001 Group B). Everything that moves reads it;
         // --no-wind sets still_wind(), which zeroes the field itself rather than making each

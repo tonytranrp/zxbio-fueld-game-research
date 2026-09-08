@@ -11,6 +11,8 @@
 
 #include "render/diligent/svo_renderer.hpp"
 
+#include "render/lod/perceptual.hpp"
+
 #include "world/svo/resident_grid.hpp"
 
 #include "engine/core/log.hpp"
@@ -77,10 +79,16 @@ struct MarchConstantsCpu {
     // there is no proxy and an absent cell is passed through.
     glm::vec4 proxyOrigin;
     glm::uvec4 proxyInts; // x = root node offset, y = voxel bits V
+    // Prompt 007 goal 327. x = sigma at sea level (1/m) from the authored visibility, y = the
+    // atmospheric scale height (m). Inserted BEFORE `materials` because the cbuffer mirror is an
+    // ORDERED contract -- the comment above g_MarkParams records what happened the last time a
+    // field went in at the wrong place.
+    glm::vec4 fogParams;
     std::array<detail::MaterialRecord, kMaterialCount> materials;
 };
 static_assert(sizeof(MarchConstantsCpu) ==
-                  64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * 5 + 16 * kMaterialCount,
+                  // + 16 for Prompt 007 goal 327's g_FogParams.
+                  64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * 6 + 16 * kMaterialCount,
               "must match the HLSL cbuffer exactly");
 
 // Mirror of svo_beam.psh.hlsl's cbuffer BeamConstants -- update both together.
@@ -1246,6 +1254,14 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
             cb->proxyOrigin = glm::vec4(0.0f);
             cb->proxyInts = glm::uvec4(0u);
         }
+        // Prompt 007 goal 327: sigma derived from the authored visibility, not authored directly.
+        // Koschmieder's convention (C_t = 0.02, k = 3.912) because that is the one the eye
+        // research's own transmission table was computed in, and that table is what
+        // `render/lod/tests/test_perceptual.cpp` asserts against.
+        cb->fogParams = glm::vec4(
+            static_cast<float>(render::lod::extinction_from_visibility(
+                static_cast<double>(s.visibility_m), render::lod::VisibilityConvention::Koschmieder)),
+            s.atmosphere_scale_height_m, 0.0f, 0.0f);
         cb->markParams = glm::vec4(static_cast<float>(impl_->frameCounter),
                                    s.mark_cell_usage && impl_->gridDims.x > 0.0f ? 1.0f : 0.0f, 0.0f,
                                    0.0f);

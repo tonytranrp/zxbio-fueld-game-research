@@ -391,6 +391,16 @@ constexpr std::array kTable{
            .kind = ValueKind::Toggle,
            .help = "band-limit the albedo toward the hit node's average (goal 278)",
            .group = "Shading"},
+    // Prompt 007 goal 327: METEOROLOGICAL VISIBILITY, in metres, is the authored fog parameter.
+    // The extinction coefficient is derived from it (render/lod/perceptual.hpp), which is what
+    // replaced a bare 0.0030. The research's named bands: 10 km light haze, 20 km clear, 50 km very
+    // clear, 100 km exceptional -- and the model is outside its own validity domain past ~200 km.
+    Option{.name = "visibility",
+           .set = bind<&AppOptions::svo_settings, &Settings::visibility_m>(),
+           .kind = ValueKind::Float,
+           .help = "meteorological visibility in metres (10000 haze, 20000 clear, 50000 very clear)",
+           .default_text = "20000",
+           .group = "SVO shading"},
     Option{.name = "grain",
            .set = bind<&AppOptions::svo_settings, &Settings::grain_amplitude>(),
            .kind = ValueKind::Float,
