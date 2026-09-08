@@ -116,6 +116,15 @@ public:
         // Guenter et al. 2012's budget is 1.32-1.65. DEFAULT OFF -- see the log: the measured
         // saving on this hardware does not clear the 10% bar the prompt set for keeping it.
         float foveation_arcmin_per_deg = 0.0f;
+        // Prompt 007 goal 337 (= goal 192): metres of domain warp applied to the position a
+        // WIND-RESPONSIVE material's shading is evaluated at. Traversal, depth and the silhouette
+        // are untouched, which is why the CPU tracer needs no mirror. 0 = off; the shipped default
+        // is recorded in goal 337's entry along with why.
+        float canopy_warp_m = 0.0f;
+        // Goal 337: seconds the animation clock advances per rendered frame. 0 = the wall clock,
+        // which is what an interactive session wants and what makes every wind-driven A/B
+        // irreproducible; the harness sets a fixed step so a scripted run sees the same wind twice.
+        float fixed_anim_step = 0.0f;
         SvoDebugView debug_view = SvoDebugView::None;
         // The ONE wind field (world/wind, Prompt 001 Group B). Everything that moves reads it;
         // --no-wind sets still_wind(), which zeroes the field itself rather than making each

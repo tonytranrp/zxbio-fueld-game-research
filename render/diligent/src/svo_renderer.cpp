@@ -84,11 +84,15 @@ struct MarchConstantsCpu {
     // ORDERED contract -- the comment above g_MarkParams records what happened the last time a
     // field went in at the wrong place.
     glm::vec4 fogParams;
+    // Goal 337: x = canopy domain-warp amplitude (metres), yzw spare. NOT folded into waveParams --
+    // its documented "zw spare" is goal 285's stipple, which is how a spare lane stops being spare.
+    glm::vec4 foliageParams;
     std::array<detail::MaterialRecord, kMaterialCount> materials;
 };
 static_assert(sizeof(MarchConstantsCpu) ==
-                  // + 16 for Prompt 007 goal 327's g_FogParams.
-                  64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * 6 + 16 * kMaterialCount,
+                  // + 16 for Prompt 007 goal 327's g_FogParams and + 16 for goal 337's
+                  // g_FoliageParams.
+                  64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * 7 + 16 * kMaterialCount,
               "must match the HLSL cbuffer exactly");
 
 // Mirror of svo_beam.psh.hlsl's cbuffer BeamConstants -- update both together.
@@ -398,6 +402,10 @@ struct SvoRenderer::Impl {
     glm::vec3 gridOrigin{0.0f};
     float gridCellEdge = 0.0f;
     std::chrono::steady_clock::time_point animStart = std::chrono::steady_clock::now();
+    // Goal 337: the animation clock, when it is not the wall clock. `fixed_anim_step` > 0 makes it
+    // advance by exactly that much per rendered frame, which is the only way a wind-driven A/B is
+    // reproducible at all -- see anim_seconds().
+    float animAccum = 0.0f;
 
     void create_pipelines();
     void bind_tree_buffers();
@@ -1209,6 +1217,9 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
             impl_->gpuTimer->Begin(ctx);
         }
 
+        if (s.fixed_anim_step > 0.0f) {
+            impl_->animAccum += s.fixed_anim_step;
+        }
         const float animSeconds = anim_seconds();
         MapHelper<MarchConstantsCpu> cb(ctx, impl_->constants, MAP_WRITE, MAP_FLAG_DISCARD);
         cb->invViewProj = invViewProj;
@@ -1262,6 +1273,7 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
             static_cast<float>(render::lod::extinction_from_visibility(
                 static_cast<double>(s.visibility_m), render::lod::VisibilityConvention::Koschmieder)),
             s.atmosphere_scale_height_m, s.foveation_arcmin_per_deg, camera.fov_y_radians);
+        cb->foliageParams = glm::vec4(s.canopy_warp_m, 0.0f, 0.0f, 0.0f);
         cb->markParams = glm::vec4(static_cast<float>(impl_->frameCounter),
                                    s.mark_cell_usage && impl_->gridDims.x > 0.0f ? 1.0f : 0.0f, 0.0f,
                                    0.0f);
@@ -1344,6 +1356,18 @@ bool SvoRenderer::has_tree() const noexcept {
 }
 
 float SvoRenderer::anim_seconds() const noexcept {
+    // WALL CLOCK by default, because interactively that is what "the wind kept blowing while the
+    // frame rate wobbled" should mean.
+    //
+    // But a wall clock makes every wind-driven measurement unreproducible, and goal 337 is where
+    // that stopped being theoretical: three runs of the same scenario, capturing at the same
+    // SCRIPTED second, measured canopy frame-to-frame motion at 0.122% / 0.255% / 0.192% -- a
+    // spread three times larger than the effect being measured, because each run sampled the wind
+    // at a different phase. `fixed_anim_step` makes a scripted run advance the clock by a fixed
+    // amount per frame instead, so the same scenario sees the same wind. The harness sets it.
+    if (impl_->settings.fixed_anim_step > 0.0f) {
+        return impl_->animAccum;
+    }
     return std::chrono::duration<float>(std::chrono::steady_clock::now() - impl_->animStart).count();
 }
 

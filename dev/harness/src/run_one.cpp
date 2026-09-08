@@ -116,6 +116,13 @@ using engine::core::LogLevel;
     // --verify-frame turns them off: a HUD cross carries local contrast, and head-bob moves the
     // rendered eye off the body the assertions are about. A scenario can turn them back on with
     // its own `option --crosshair` line, because that line is parsed BEFORE this.
+    // Goal 337: a scripted run gets a FIXED animation clock, so the wind is at the same phase at
+    // the same scripted second on every run. Without it, three runs of one scenario measured canopy
+    // motion at 0.122% / 0.255% / 0.192% -- a spread larger than anything a change would make.
+    // 1/60 s per frame: the scenario clock's own nominal rate.
+    if (out.svo_settings.fixed_anim_step <= 0.0f) {
+        out.svo_settings.fixed_anim_step = 1.0f / 60.0f;
+    }
     if (!out.crosshair.has_value()) {
         out.crosshair = false;
     }

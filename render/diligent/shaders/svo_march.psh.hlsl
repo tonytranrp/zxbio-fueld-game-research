@@ -41,7 +41,8 @@ cbuffer MarchConstants
     // kWaveCount, so the array cannot get out of step with the C++ that fills it.
     float4 g_Waves[WAVE_COUNT];
     float4 g_WaveParams;       // x = steepness Q (shared, so the field's total stays in budget),
-                               // y = goal 266's beam tile size (0 = no seed)
+                               // y = goal 266's beam tile size (0 = no seed),
+                               // z = goal 285's stipple amount, w = its period in pixels
     // Goal 256's cell grid. xyz = grid dimensions in cells, w = cell edge in metres; 0 dims means
     // the grid is off and the whole region is marched as one tree, which MakeWholeCell() expresses
     // as a grid of exactly one cell.
@@ -66,6 +67,11 @@ cbuffer MarchConstants
     // z = foveation slope in arcmin/degree (0 = off, goal 331); w = vertical FOV in radians, which
     // the foveation needs to turn a normalised screen offset into an eccentricity angle.
     float4 g_FogParams;
+    // Prompt 007 goal 337. x = the canopy domain-warp amplitude in METRES (0 = off); yzw spare.
+    // A field of its own rather than a spare lane of g_WaveParams, whose zw turned out to be
+    // goal 285's stipple -- the comment there said "spare" and the code disagreed, which is exactly
+    // the kind of thing the ORDERED contract note above g_MarkParams exists to stop.
+    float4 g_FoliageParams;
     // One record per material (render/diligent/detail/material_macros.hpp's material_record):
     // rgb = linear albedo, w = shading model. MATERIAL_COUNT and MAT_SHADING_* are macros the C++
     // side passes at shader creation from the material registry -- no material literal lives here.
@@ -1164,12 +1170,47 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const float n1 = ValueNoise(p.xz * (1.0 / 24.0));
     const float n2 = ValueNoise(p.xz * (1.0 / 7.0) + 17.31);
     const float mottle = 0.90 + 0.20 * (0.65 * n1 + 0.35 * n2);
+    // Goal 337 (= goal 192, C6.2's bounded experiment): DOMAIN-WARP THE SAMPLE POSITION inside
+    // canopy bricks.
+    //
+    // The warp moves the position the SHADING is evaluated at, and nothing else. Traversal, the
+    // depth written to SV_Depth, the shadow and AO origins and the silhouette are all untouched --
+    // which is why `world::svo::trace_ray` needs no mirror of this and the 7,000-ray oracle is
+    // unaffected by construction rather than by luck. What it buys is that the per-cube brightness
+    // pattern TRAVELS across a canopy instead of being nailed to it: at 6 cm of warp against a
+    // 7.8 mm voxel the cube a shading sample lands in changes several times a second, so a still
+    // crown's own texture drifts the way a moving one's would.
+    //
+    // What it CANNOT buy is a moving silhouette. A crown's edge is where the traversal stopped, and
+    // this deliberately does not touch traversal. Read goal 337's entry for the honest verdict.
+    // GATED ON THE SHADING MODEL, not on `wind_responsive`, and that distinction was made by a
+    // difference image rather than by reading the code. Ground grass IS wind-responsive (goal 334
+    // gave it the distance shimmer on purpose), so the first version warped the ground too -- and a
+    // 6 cm domain warp on a lawn does not read as grass moving, it reads as the ground BOILING. It
+    // was the dominant change in the frame-to-frame diff, far larger than anything in the canopy.
+    // `material_def.hpp` already records this exact trap for the brightness term.
+    float3 shadePos = p;
+    if (g_FoliageParams.x > 0.0 && MaterialShading(hit.material) == MAT_SHADING_FOLIAGE &&
+        g_WindDirSpeed.z > 0.0)
+    {
+        const float tw = g_CameraPosWorld.w;
+        const float gw = WindGust(p, g_WindDirSpeed.xy, tw, g_WindGustFlutter.x, g_WindGustFlutter.y);
+        const float fw = WindFlutter(p, tw, g_WindGustFlutter.z, g_WindGustFlutter.w);
+        const float3 along = float3(g_WindDirSpeed.x, 0.0, g_WindDirSpeed.y);
+        const float3 across = float3(-g_WindDirSpeed.y, 0.0, g_WindDirSpeed.x);
+        // Scaled by the wind's own strength for the same reason the brightness term above is:
+        // --no-wind must be bit-for-bit the still image.
+        const float amp = g_FoliageParams.x * saturate(g_WindDirSpeed.z / 6.0);
+        shadePos = p + amp * (along * (0.55 + 0.45 * gw) + across * (0.40 * fw) +
+                              float3(0.0, 0.30 * fw, 0.0));
+    }
+
     // Per-cube brightness grain (Binks' recipe: fade the pattern toward its mean as it approaches
     // pixel frequency). The cube's integer coordinates come from a point just inside its hit face.
     float grain = 1.0;
     if ((flags & kFlagGrain) != 0u && hit.cubeEdge > 0.0)
     {
-        const float3 cell = floor((p - faceNormal * (0.5 * hit.cubeEdge)) / hit.cubeEdge);
+        const float3 cell = floor((shadePos - faceNormal * (0.5 * hit.cubeEdge)) / hit.cubeEdge);
         // Gone by 1.5 px (a per-cube hash at pixel frequency is structured noise against the
         // pixel grid -- its own moire), full from 4 px up.
         // Goal 332: the grain fade in arcminutes too. Was `(cubePixels - 1.5) / 2.5`, i.e. full
