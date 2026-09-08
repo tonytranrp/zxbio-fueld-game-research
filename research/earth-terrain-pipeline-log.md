@@ -188,3 +188,50 @@ recording because the corrected forms are the reusable ones:
 character rather than replacing it, so the architecture change (295–299) and the physics (300+) are
 separate risks. If the world looks wrong after the next commit there is one candidate cause, not
 two.
+
+---
+
+## 4. Wiring it in, and the cost (goals 298, 299)
+
+`--macro-field` bakes the field at world construction and generates from it; `--field-stages N`
+stops the pipeline after N stages. **Off by default**, and for the same reason goal 295 rejected
+option (b): shipping a half-built pipeline as the default would make the world's shape depend on
+how far the pipeline had got, which is the determinism hazard from the other direction.
+
+### Measured, `stress_pose`, vk
+
+| | analytic noise (today) | baked field + analytic detail |
+|---|---|---|
+| **field bake** | — | **0.005 s** |
+| build | 3.37 s | **3.53 s (+4.7%)** |
+| **`sampler` share of the build** | **0.17 s** | **0.17 s — unchanged** |
+| bricks | 892,655 | 900,458 |
+| resident | 279.5 MB | 281.9 MB |
+
+**Goal 298's Check is a 25% build regression as the failure threshold. Measured: +4.7%.** And the
+number that matters more is the one that did not move: **the sampler's own share is 0.17 s in both**.
+`height_at` reading a Catmull-Rom interpolation of a baked plane costs the same as a FastNoise2
+`GenSingle2D` — the memory lookup the prompt hoped for, confirmed rather than assumed.
+
+The +0.9% brick count is not a cost, it is a different world: the macro stage uses value noise
+(this translation unit must not include FastNoise2 — `heightmap_generator.cpp` is documented as the
+only place that does), so the terrain differs in detail while matching in character.
+
+### Goal 299 — eager, and there is nothing to stage
+
+The field is **8 MB and bakes in 5 milliseconds**. Goal 299's threshold for needing a progress
+display is ~2 s; this is three orders of magnitude below it. The per-stage callback and its log line
+exist anyway, because the stages that carry real cost (priority-flood, flow accumulation, the
+implicit SPIM solver) are still to come and the place to report them should exist before they do.
+
+World-ready is unchanged.
+
+### The viewed capture
+
+`research/captures/am_macro_field_pair.png`: the two worlds side by side. **Same character — same
+amplitude, same water level, same material banding, same isotropic noise cones — and different in
+detail.** That is precisely what this group was for: the architecture changed and the world did not.
+
+**Both halves still show the noise cones the prompt complains about, and that is correct at this
+point.** The physics that removes them is goals 300+; putting it in the same commit would have meant
+that a wrong-looking world afterwards had two candidate causes.

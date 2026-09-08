@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "engine/core/log.hpp"
+#include "world/generation/field/macro_pipeline.hpp"
 #include "world/svo/terrain_sampler.hpp"
 
 #if defined(TRACY_ENABLE)
@@ -35,8 +36,47 @@ std::size_t default_build_threads() noexcept {
 
 } // namespace
 
+namespace {
+
+// Goal 296: 8 km at 16 m cells. The size is not a preference -- the channel-head threshold
+// A_c = 0.1-5 km^2 against a 512 m region means the PLAYABLE WORLD holds 2.6 channel-head areas at
+// best, so the erosion has to run on something much wider and the region is a window into it. Full
+// arithmetic in research/earth-terrain-pipeline-log.md section 1.
+[[nodiscard]] world::generation::field::FieldGeometry macro_geometry() noexcept {
+    constexpr float kCell = 16.0f;
+    constexpr std::int32_t kCells = 500;
+    constexpr float kHalf = 0.5f * kCell * static_cast<float>(kCells);
+    return world::generation::field::FieldGeometry{
+        .origin_x = -kHalf, .origin_z = -kHalf, .cell_size = kCell, .cells = kCells};
+}
+
+[[nodiscard]] std::shared_ptr<const world::generation::field::TerrainField>
+bake_macro_field(const SvoWorldOptions& options) {
+    if (!options.macro_field) {
+        return nullptr;
+    }
+    auto field = std::make_shared<world::generation::field::TerrainField>(macro_geometry());
+    const auto started = std::chrono::steady_clock::now();
+    world::generation::field::run_pipeline(
+        *field, world::generation::field::MacroParams{.seed = options.seed}, options.field_stages,
+        [](std::string_view name, double seconds, void*) {
+            // Goal 299 wants a per-stage breakdown rather than one number, so the log line names
+            // the stage that cost it.
+            log(LogLevel::Info, "terrain field stage \"{}\": {:.3f} s", name, seconds);
+        },
+        nullptr);
+    const double total =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    log(LogLevel::Info, "terrain field: {} x {} cells at {:.0f} m ({:.2f} MB) baked in {:.3f} s",
+        field->cells(), field->cells(), field->geometry().cell_size,
+        static_cast<double>(field->bytes()) / 1.0e6, total);
+    return field;
+}
+
+} // namespace
+
 SvoWorld::SvoWorld(const SvoWorldOptions& options)
-    : options_(options), heightmap_(options.seed),
+    : options_(options), heightmap_(options.seed, bake_macro_field(options)),
       pool_(options.worker_threads == 0 ? default_build_threads() : options.worker_threads) {}
 
 SvoWorld::~SvoWorld() = default; // worker_ joins first (declared last), then pool_ drains

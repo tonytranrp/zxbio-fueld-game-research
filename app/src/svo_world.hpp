@@ -11,6 +11,7 @@
 #include "engine/jobs/thread_pool.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/svo/brick_tree.hpp"
+#include "world/generation/field/terrain_field.hpp"
 #include "world/svo/terrain_sampler.hpp"
 #include "world/svo/cell_grid.hpp"
 #include "world/svo/lod_bands.hpp"
@@ -47,6 +48,15 @@ struct SvoWorldOptions {
     // ~690 MB, 1.2 M x 280 B is ~336 MB. Still comfortably above the 902,616 bricks the shipping
     // 512 m world measures, and now with 354 MB more of the 7,180 MiB budget left over.
     int brick_slots = 1200000;
+    // Prompt 006 Group AM-A: bake the macro terrain field at load and generate the world from
+    // it, rather than from four octaves of analytic noise. OFF by default until the pipeline's
+    // physics stages exist (goals 300+) -- goal 295's option (b) is rejected precisely because a
+    // world whose shape depends on what has been baked is a determinism hazard, and shipping a
+    // half-built pipeline as the default would be the same mistake from the other direction.
+    bool macro_field = false;
+    // Stop the pipeline after N stages; -1 runs all of them. How one stage's contribution is
+    // isolated for a capture or an acceptance statistic.
+    int field_stages = -1;
     bool trees = true;
     std::size_t worker_threads = 0; // 0 = three quarters of the hardware threads (goal 170)
 

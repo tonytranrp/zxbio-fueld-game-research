@@ -342,6 +342,16 @@ constexpr std::array kTable{
     // Goal 289. Applies AT THE POSITION IT APPEARS -- anything after it overrides it, and it
     // overwrites anything before it. See look_preset.hpp for why that ordering rather than
     // per-option provenance tracking in the parser.
+    Option{.name = "macro-field",
+           .set = bind<&AppOptions::svo, &SvoWorldOptions::macro_field>(),
+           .kind = ValueKind::Toggle,
+           .help = "generate the world from the baked macro terrain field (Prompt 006)",
+           .group = "World"},
+    Option{.name = "field-stages",
+           .set = bind<&AppOptions::svo, &SvoWorldOptions::field_stages>(),
+           .kind = ValueKind::Int,
+           .help = "stop the terrain pipeline after N stages (-1 = all)",
+           .group = "World"},
     Option{.name = "look",
            .set = [](void* base, std::string_view token, const Option& self) -> engine::cli::Status {
                for (const EnumEntry& entry : self.enum_values) {
