@@ -97,9 +97,15 @@ struct HydrologyParams {
     /// requested 12 until the staircase was smoothed out of the way.
     int centreline_smoothing_passes = 4;
 
-    /// lambda / W. Research Part 2 §7.2 band is 10-14; 12 is its middle. The composite fit is
-    /// 10.2 and the Braudrick flume stabilised at 14.
-    float meander_wavelength_ratio = 12.0f;
+    /// lambda / W. Research Part 2 §7.2 band is 10-14; the composite fit is 10.2 and the Braudrick
+    /// flume stabilised at 14.
+    ///
+    /// **10, not 12, because the research's band is on the MEASURED wavelength and the construction
+    /// parameter is not the same number.** At 12 the produced geometry measures 14.6 -- a systematic
+    /// ~21% overshoot, because the centreline is smoothed before the meander is integrated along it
+    /// and smoothing shortens the valley length that the measurement divides by. The parameter is
+    /// therefore set so the MEASUREMENT lands mid-band, which is what the band is a statement about.
+    float meander_wavelength_ratio = 10.0f;
 
     /// Target sinuosity (channel length / valley length). Research Part 2 §7.3: Sacramento bends
     /// average ~1.4, cutoff-prone ~2.0, working band 1.2-2.2.

@@ -65,6 +65,18 @@ bake_macro_field(const SvoWorldOptions& options) {
             log(LogLevel::Info, "terrain field stage \"{}\": {:.3f} s", name, seconds);
         },
         nullptr);
+    // Goal 321: put the playable region on land. The 512 m region sits at world (0, 0) and the
+    // continent mask is a 4 km feature, so without this the spawn point is wherever the seed put
+    // it -- which on the shipped seed was open water to the horizon.
+    if (!world::generation::field::recentre_on_land(*field, 320.0f)) {
+        log(LogLevel::Warn, "terrain field: no land large enough for the playable region; "
+                            "the world origin is wherever the seed put it");
+    } else {
+        log(LogLevel::Info, "terrain field: world origin moved to ({:.0f}, {:.0f}) in field space "
+                            "so the playable region is on land",
+            -field->geometry().origin_x, -field->geometry().origin_z);
+    }
+
     const double total =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     log(LogLevel::Info, "terrain field: {} x {} cells at {:.0f} m ({:.2f} MB) baked in {:.3f} s",

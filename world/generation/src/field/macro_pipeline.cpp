@@ -229,4 +229,78 @@ void run_pipeline(TerrainField& out, const MacroParams& params, int count,
     }
 }
 
+
+bool recentre_on_land(TerrainField& field, float regionHalfExtent, float minElevation) {
+    const std::span<const float> h = field.plane(Plane::Elevation);
+    const FieldGeometry& g = field.geometry();
+    const auto margin = static_cast<std::int32_t>(std::ceil(regionHalfExtent / g.cell_size));
+    if (margin * 2 >= g.cells) {
+        return false;
+    }
+
+    // "At least regionHalfExtent from any water" is a distance query, and doing it per candidate
+    // would be O(cells * margin²). One pass of a separable min-filter over a land mask gives the
+    // same answer in O(cells * margin): a cell survives only if every cell within the box is land.
+    // A box rather than a disc, deliberately -- the playable region IS a box.
+    std::vector<std::uint8_t> land(field.cell_count(), 0);
+    for (std::size_t i = 0; i < field.cell_count(); ++i) {
+        land[i] = h[i] > minElevation ? 1u : 0u;
+    }
+    std::vector<std::uint8_t> rows(field.cell_count(), 0);
+    for (std::int32_t cz = 0; cz < g.cells; ++cz) {
+        for (std::int32_t cx = 0; cx < g.cells; ++cx) {
+            std::uint8_t all = 1;
+            for (std::int32_t d = -margin; d <= margin && all != 0; ++d) {
+                const std::int32_t sx = cx + d;
+                all = (sx < 0 || sx >= g.cells) ? 0u : land[field.index(sx, cz)];
+            }
+            rows[field.index(cx, cz)] = all;
+        }
+    }
+    std::vector<std::uint8_t> ok(field.cell_count(), 0);
+    for (std::int32_t cz = 0; cz < g.cells; ++cz) {
+        for (std::int32_t cx = 0; cx < g.cells; ++cx) {
+            std::uint8_t all = 1;
+            for (std::int32_t d = -margin; d <= margin && all != 0; ++d) {
+                const std::int32_t sz = cz + d;
+                all = (sz < 0 || sz >= g.cells) ? 0u : rows[field.index(cx, sz)];
+            }
+            ok[field.index(cx, cz)] = all;
+        }
+    }
+
+    // Nearest to the field centre, so the playable region stays as close to the middle of the
+    // eroded field as the terrain allows -- the edges are where the fill's boundary conditions and
+    // the flow network's off-field termini live.
+    const std::int32_t centre = g.cells / 2;
+    std::int32_t bestX = -1;
+    std::int32_t bestZ = -1;
+    std::int64_t bestD2 = std::numeric_limits<std::int64_t>::max();
+    for (std::int32_t cz = 0; cz < g.cells; ++cz) {
+        for (std::int32_t cx = 0; cx < g.cells; ++cx) {
+            if (ok[field.index(cx, cz)] == 0) {
+                continue;
+            }
+            const std::int64_t dx = cx - centre;
+            const std::int64_t dz = cz - centre;
+            const std::int64_t d2 = dx * dx + dz * dz;
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                bestX = cx;
+                bestZ = cz;
+            }
+        }
+    }
+    if (bestX < 0) {
+        return false;
+    }
+
+    // Shift the origin so the chosen cell is at world (0, 0). Elevations are untouched.
+    FieldGeometry moved = g;
+    moved.origin_x = -static_cast<float>(bestX) * g.cell_size;
+    moved.origin_z = -static_cast<float>(bestZ) * g.cell_size;
+    field.set_geometry(moved);
+    return true;
+}
+
 } // namespace world::generation::field

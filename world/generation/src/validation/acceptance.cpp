@@ -242,14 +242,45 @@ SpectrumStats power_spectrum(const TerrainField& field) {
     // Fit over the band that is actually meaningful: above the lowest few wavenumbers (where a
     // finite transect has almost no samples) and below the top octave (where the window's own
     // roll-off dominates).
-    std::vector<double> lx;
-    std::vector<double> ly;
+    // LOG-SPACED BINS, and this is not a refinement -- it is the difference between a fit and a
+    // fiction. A least-squares fit over every integer k weights each wavenumber equally, so the
+    // top octave (k = 64..128) supplies HALF the points and owns the slope, while the bottom octave
+    // (k = 4..8) supplies four. Fitted that way, a surface whose spectrum is steep at low k and flat
+    // at high k reports the flat part's slope and nothing else.
+    //
+    // That is exactly what happened: the detail-parameter sweep reported beta FALLING for every
+    // change that added low-frequency energy, which is impossible. Binning by octave gives each
+    // decade of scale equal say, which is what "the spectral slope" means.
+    constexpr std::size_t kBinsPerOctave = 4;
     const std::size_t kLo = 4;
     const std::size_t kHi = n / 4;
-    for (std::size_t k = kLo; k < kHi; ++k) {
-        if (power[k] > 1e-30) {
-            lx.push_back(std::log(static_cast<double>(k)));
-            ly.push_back(std::log(power[k]));
+    std::vector<double> lx;
+    std::vector<double> ly;
+    {
+        const double logLo = std::log(static_cast<double>(kLo));
+        const double logHi = std::log(static_cast<double>(kHi));
+        const auto binCount = static_cast<std::size_t>(
+            std::max(4.0, (logHi - logLo) / std::log(2.0) * static_cast<double>(kBinsPerOctave)));
+        std::vector<double> sum(binCount, 0.0);
+        std::vector<double> logK(binCount, 0.0);
+        std::vector<std::size_t> count(binCount, 0);
+        for (std::size_t k = kLo; k < kHi; ++k) {
+            if (power[k] <= 1e-30) {
+                continue;
+            }
+            const double lk = std::log(static_cast<double>(k));
+            const auto b = std::min(binCount - 1, static_cast<std::size_t>((lk - logLo) / (logHi - logLo) *
+                                                                          static_cast<double>(binCount)));
+            sum[b] += power[k];
+            logK[b] += lk;
+            ++count[b];
+        }
+        for (std::size_t b = 0; b < binCount; ++b) {
+            if (count[b] == 0) {
+                continue;
+            }
+            lx.push_back(logK[b] / static_cast<double>(count[b]));
+            ly.push_back(std::log(sum[b] / static_cast<double>(count[b])));
         }
     }
     const Fit fit = least_squares(lx, ly);

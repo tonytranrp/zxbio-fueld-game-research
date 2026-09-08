@@ -76,27 +76,61 @@ FastNoise::SmartNode<> build_terrain_noise() {
 // above the 16 m cell size; this carries what a 16 m grid provably cannot, and it is analytic
 // because there is nowhere to bake it that would not be the same noise call again.
 //
-// Two octaves at 50 m and 25 m -- the two the shipped 4-octave stack had below the macro pair --
-// at the same gain, so the summed character matches what the world had before rather than being a
-// new choice made in passing.
-constexpr float kDetailScaleA = 50.0f;
-constexpr float kDetailScaleB = 25.0f;
-constexpr float kDetailAmplitude = 64.0f * 0.25f; // octaves 3 and 4 of a gain-0.5 stack
+// The FIRST version of this was two octaves at 50 m and 25 m at gain 0.5, remapped to +-16 m,
+// chosen to reproduce "the two the shipped 4-octave stack had below the macro pair". That reasoning
+// was about matching the OLD stack's octaves, and goal 320 measured what it actually produced:
+//
+//   * spectral beta 0.50 against a band of [1.6, 2.5], with log-log R² 0.54 -- the surface has a
+//     BREAK where the macro's roll-off meets the detail's band and is not a power law at all
+//   * variogram Hurst 0.129 against [0.46, 0.77], the same cause seen by a second instrument
+//   * mean land slope 42.6 degrees, because a 25 m octave carrying ~5 m of amplitude has a gradient
+//     of 2*pi*5/25 = 1.26, which is 51 degrees -- and nothing at all existed below 25 m, so the
+//     world was perfectly smooth under it and cliff-like just above
+//
+// The parameters are `DetailParams` now, defaulted to the values `test_detail_spectrum.cpp` SWEPT
+// and selected against the acceptance suite rather than reasoned toward. Two changes matter:
+//
+//   * gain 0.71 rather than 0.5. With lacunarity 2 the fractal's Hurst exponent is H = -log2(gain),
+//     so 0.5 gives H = 1 (beta 3, far too smooth per octave) and 0.71 gives H = 0.5 -- beta = 2,
+//     which is research §9.2's target value exactly.
+//   * five octaves from 32 m rather than two from 50 m. 32 m is the finest wavelength a 16 m macro
+//     grid can reconstruct, so the two terms JOIN there instead of overlapping and beating; and
+//     five octaves carry the surface down to 2 m instead of stopping dead at 25 m.
 
-FastNoise::SmartNode<> build_detail_noise() {
+FastNoise::SmartNode<> build_detail_noise(const DetailParams& p) {
     auto simplex = new_pinned_node<FastNoise::Simplex>();
-    simplex->SetScale(kDetailScaleA);
+    simplex->SetScale(p.scale_m);
     auto fractal = new_pinned_node<FastNoise::FractalFBm>();
     fractal->SetSource(simplex);
-    fractal->SetOctaveCount(2);
-    fractal->SetLacunarity(kDetailScaleA / kDetailScaleB);
-    fractal->SetGain(kGain);
+    fractal->SetOctaveCount(std::max(1, p.octaves));
+    fractal->SetLacunarity(p.lacunarity);
+    fractal->SetGain(p.gain);
+    // THE REMAP MUST DIVIDE BY THE OCTAVE WEIGHT SUM, and this is a real bug that predates the
+    // sweep. A FractalFBm here is NOT normalised: an N-octave stack at gain g spans roughly
+    // +-sum(g^i), not +-1. Mapping [-1, 1] onto [-A, A] therefore delivers A * sum(g^i), which for
+    // five octaves at gain 0.71 is 2.82x the amplitude the constant asks for.
+    //
+    // MEASURED, which is how it was found: the surface's semivariogram read gamma(7.8 m) = 16.6 m²
+    // -- a 5.8 m RMS height change over 7.8 m of ground, a 37-degree slope EVERYWHERE -- against
+    // gamma(500 m) = 44.3 m². The detail term was drowning the macro field at every scale below a
+    // kilometre, which is why both the spectral and variogram instruments read the surface as
+    // uncorrelated no matter what the octave structure was changed to.
+    //
+    // The same error is present in `build_terrain_noise` and always was: four octaves at gain 0.5 is
+    // a weight sum of 1.875, so its stated 64 m amplitude has always delivered ~120 m. That matches
+    // the ~112 m relief this world has been documented as having, which is the confirmation.
+    float weightSum = 0.0f;
+    float w = 1.0f;
+    for (int i = 0; i < std::max(1, p.octaves); ++i) {
+        weightSum += w;
+        w *= p.gain;
+    }
     auto remap = new_pinned_node<FastNoise::Remap>();
     remap->SetSource(fractal);
-    remap->SetFromMin(kNoiseOutputMin);
-    remap->SetFromMax(kNoiseOutputMax);
-    remap->SetToMin(-kDetailAmplitude);
-    remap->SetToMax(kDetailAmplitude);
+    remap->SetFromMin(-weightSum);
+    remap->SetFromMax(weightSum);
+    remap->SetToMin(-p.amplitude_m);
+    remap->SetToMax(p.amplitude_m);
     return remap;
 }
 
@@ -110,9 +144,10 @@ struct HeightmapGenerator::Impl {
 HeightmapGenerator::HeightmapGenerator(int seed)
     : impl_(std::make_unique<Impl>(Impl{build_terrain_noise(), nullptr, nullptr, seed})) {}
 
-HeightmapGenerator::HeightmapGenerator(int seed, std::shared_ptr<const field::TerrainField> macro)
+HeightmapGenerator::HeightmapGenerator(int seed, std::shared_ptr<const field::TerrainField> macro,
+                                       const DetailParams& detail)
     : impl_(std::make_unique<Impl>(
-          Impl{build_terrain_noise(), build_detail_noise(), std::move(macro), seed})) {}
+          Impl{build_terrain_noise(), build_detail_noise(detail), std::move(macro), seed})) {}
 
 const field::TerrainField* HeightmapGenerator::macro_field() const noexcept {
     return impl_->macro.get();
@@ -137,9 +172,46 @@ HeightmapMinMax HeightmapGenerator::generate_column_heights(std::int32_t worldXO
 HeightmapMinMax HeightmapGenerator::generate_column_heights_spaced(float xStart, float zStart,
                                                                    std::int32_t width, std::int32_t depth,
                                                                    float step, float* outHeights) const {
-    const FastNoise::OutputMinMax minMax =
-        impl_->root->GenUniformGrid2D(outHeights, xStart, zStart, width, depth, step, step, impl_->seed);
-    return HeightmapMinMax{minMax.min, minMax.max};
+    // THE BULK PATH MUST AGREE WITH `height_at`, and for the whole of Group AM-B it did not.
+    //
+    // This function fills every brick and every column -- it is where essentially all of the
+    // world's geometry comes from -- and it called the raw four-octave noise root, ignoring the
+    // macro field completely. `height_at` read macro + detail. So the world that was RENDERED and
+    // the world that was COLLIDED WITH were two different surfaces, and every acceptance statistic
+    // in this pass was measured on the one nobody could see.
+    //
+    // It was caught by the rule that a visual change is verified by a VIEWED capture: after the
+    // detail retune put mean slope at 4.8 degrees, the rendered frame still showed near-vertical
+    // spires. Nothing in the numbers said so, because the numbers were reading `height_at`.
+    if (impl_->macro == nullptr) {
+        const FastNoise::OutputMinMax minMax =
+            impl_->root->GenUniformGrid2D(outHeights, xStart, zStart, width, depth, step, step, impl_->seed);
+        return HeightmapMinMax{minMax.min, minMax.max};
+    }
+
+    // The detail term in bulk -- one grid call, the same as before -- then the macro field added
+    // per cell. The min/max has to be RECOMPUTED rather than taken from the grid call, because the
+    // macro shifts every cell by a different amount and the detail's own extremes are not the
+    // sum's. (`HeightField::range` is built on this return value and uses it to reject boxes, so a
+    // wrong bound here is a hole in the world, not a cosmetic error.)
+    impl_->detail->GenUniformGrid2D(outHeights, xStart, zStart, width, depth, step, step, impl_->seed);
+    const field::FieldSampler macro{*impl_->macro, field::Plane::Elevation};
+    float lo = std::numeric_limits<float>::max();
+    float hi = std::numeric_limits<float>::lowest();
+    for (std::int32_t z = 0; z < depth; ++z) {
+        const float worldZ = zStart + static_cast<float>(z) * step;
+        for (std::int32_t x = 0; x < width; ++x) {
+            float& h = outHeights[static_cast<std::size_t>(z) * static_cast<std::size_t>(width) +
+                                  static_cast<std::size_t>(x)];
+            h += macro.value_at(xStart + static_cast<float>(x) * step, worldZ);
+            lo = std::min(lo, h);
+            hi = std::max(hi, h);
+        }
+    }
+    if (width <= 0 || depth <= 0) {
+        return HeightmapMinMax{0.0f, 0.0f};
+    }
+    return HeightmapMinMax{lo, hi};
 }
 
 float HeightmapGenerator::height_at(float worldX, float worldZ) const {

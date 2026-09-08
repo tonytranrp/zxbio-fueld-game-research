@@ -53,7 +53,11 @@ struct SvoWorldOptions {
     // physics stages exist (goals 300+) -- goal 295's option (b) is rejected precisely because a
     // world whose shape depends on what has been baked is a determinism hazard, and shipping a
     // half-built pipeline as the default would be the same mistake from the other direction.
-    bool macro_field = false;
+    /// ON by default as of goal 321. It was opt-in while Group AM-B was being built, which meant
+    /// every rendered frame during this pass showed the OLD four-octave noise terrain -- caught by
+    /// taking a capture after the detail retune and seeing near-vertical spires where the metrics
+    /// said 4.8 degrees. A pipeline the shipped binary does not run is not shipped.
+    bool macro_field = true;
     // Stop the pipeline after N stages; -1 runs all of them. How one stage's contribution is
     // isolated for a capture or an acceptance statistic.
     int field_stages = -1;

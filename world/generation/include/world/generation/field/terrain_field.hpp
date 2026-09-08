@@ -108,6 +108,19 @@ public:
     explicit TerrainField(FieldGeometry geometry);
 
     [[nodiscard]] const FieldGeometry& geometry() const noexcept { return geometry_; }
+
+    /// Moves where this field sits in world space WITHOUT touching a single elevation. The cell
+    /// count must not change -- the planes are already sized for it.
+    ///
+    /// It exists for `recentre_on_land`, which chooses where the world's origin should be after
+    /// seeing the terrain rather than before. Guarded rather than a plain setter because a geometry
+    /// whose cell count disagreed with the allocated planes would be an out-of-bounds read
+    /// everywhere, silently.
+    void set_geometry(const FieldGeometry& g) noexcept {
+        if (g.cells == geometry_.cells) {
+            geometry_ = g;
+        }
+    }
     [[nodiscard]] std::int32_t cells() const noexcept { return geometry_.cells; }
     [[nodiscard]] std::size_t cell_count() const noexcept {
         return static_cast<std::size_t>(geometry_.cells) * static_cast<std::size_t>(geometry_.cells);

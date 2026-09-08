@@ -16,6 +16,52 @@ struct HeightmapMinMax {
 // included (project brief §8: "FastNoise2 usage lives here, nowhere else"). PIMPL keeps
 // FastNoise2's own types from leaking into this header, the same compile-firewall pattern
 // render/diligent uses for DiligentCore.
+/// The high-frequency half of the surface, exposed so it can be SWEPT against the acceptance
+/// suite rather than guessed at.
+///
+/// Goal 320 measured that the pass's own macro field made the surface spectrum worse -- spectral
+/// beta fell from 2.27 to 0.50 and its log-log R² from 0.92 to 0.54 -- because the detail term was
+/// never re-tuned to CONTINUE the macro field's spectrum after the macro field was introduced. It
+/// went from four octaves carrying the whole surface to two octaves sitting on something with a
+/// different slope, and nothing checked the join.
+///
+/// These are the knobs that join has to be tuned on, and `test_detail_spectrum.cpp` is the sweep.
+struct DetailParams {
+    /// Coarsest detail wavelength, metres. Must sit at or below the macro field's own resolution
+    /// (16 m cells reconstruct nothing finer than ~32 m) or the two terms overlap and beat.
+    float scale_m = 32.0f;
+    /// How many octaves BELOW that. Each halves the wavelength, so the finest is
+    /// scale_m / 2^(octaves-1).
+    int octaves = 5;
+    float lacunarity = 2.0f;
+    /// Amplitude ratio between successive octaves. With lacunarity 2, the fractal's Hurst exponent
+    /// is H = -log2(gain), and research §9.2's beta = 2H + 1 -- so gain 0.5 is H = 1 (beta 3, too
+    /// smooth per octave) and gain 0.71 is H = 0.5 (beta 2, the target).
+    float gain = 0.71f;
+    /// Peak-to-zero amplitude of the whole detail stack, metres.
+    ///
+    /// SWEPT, not chosen. `test_detail_spectrum.cpp` measures beta and Hurst across the amplitude,
+    /// and both move monotonically with it because the amplitude is what decides whether the macro
+    /// field or the detail term owns each scale:
+    ///
+    ///     6 m -> beta 1.23 (R² 0.80), H 0.291      4 m -> beta 1.55 (R² 0.85), H 0.391
+    ///     3 m -> beta 1.78 (R² 0.88), H 0.463      2 m -> beta 2.11 (R² 0.91), H 0.558
+    ///
+    /// 2 m is shipped: it is the only value that puts BOTH comfortably inside their bands
+    /// ([1.6, 2.5] and [0.46, 0.77]), lands beta near §9.2's stated target of 2, and has the best
+    /// log-log linearity of the four. 3 m clears Hurst's floor by three thousandths, which is not
+    /// clearing it.
+    ///
+    /// THE SWEEP IS MEASURED ON THE RECENTRED (LAND) WINDOW, and that matters: run on the raw field
+    /// centre -- which for the shipped seed is a bay -- the same amplitudes read 1.12 / 1.43 / 1.66
+    /// / 1.98, and an intermediate version that stamped a land bump under the origin instead read
+    /// 1.97 / 2.29 / 2.51 / 2.82. Three different tables for one parameter, because **the detail
+    /// amplitude is not independent of the macro relief underneath it**. The five-seed spread says
+    /// the same thing from the other direction: an absolute amplitude cannot track a varying macro,
+    /// and expressing it as a fraction of local relief is the open goal.
+    float amplitude_m = 2.0f;
+};
+
 class HeightmapGenerator {
 public:
     explicit HeightmapGenerator(int seed);
@@ -35,7 +81,8 @@ public:
     // this from goal 295's option (b), whose residual is absent until a tile is baked and
     // whose world therefore has a shape that depends on where the player has been -- a
     // determinism hazard, and determinism is this pass's first rule.
-    HeightmapGenerator(int seed, std::shared_ptr<const field::TerrainField> macro);
+    HeightmapGenerator(int seed, std::shared_ptr<const field::TerrainField> macro,
+                       const DetailParams& detail = {});
 
     /// The gradient of the same surface `height_at` returns, in metres per metre.
     ///
