@@ -429,6 +429,17 @@ about variance**, and that reframing is why the pass is shaped the way it is.
   first wiring bracketed the dump block inside `capture_phase`, which runs *after* the draw calls. It
   would have produced a capture file containing the staging read-back and nothing else — plausible,
   and useless. The bracket now spans `begin_frame()` to after `present()`.
+- **A gate is only met or unmet with respect to the quantity it was set on, and Group T's
+  changed.** Goal 135 measured the mesh world at **343 MiB sitting still** and gated storage
+  Phases 2/3 behind it — deliberately, and recorded at the time as *"the intended good outcome,
+  not a skipped step."* That reasoning was right and stays right for the mesh path. It does not
+  transfer to the svo path, because the number that hurt there was **395–543 MB re-uploaded
+  every 2 m of camera motion** — bandwidth and latency, not footprint, and those are not the
+  same kind of number. **Prompt 004 reopened the gate on that basis** and met it: goal 258's
+  palette is Phase 1's analogue (**543.7 → 279.5 MB**), Phase 2's "skip what is uniform" was
+  already true per brick and is now true per cell, and Phase 3 (SVDAG interning) is no longer
+  gated at all — it is goal 275d, blocked on one specific prerequisite. Goals 136/137 stay
+  written against the mesh path, where their gate is still unmet and their argument still holds.
 - **Say what was not done, and why, in the same breath as what was.** Editing (HashDAG), hardware
   ray tracing with SER, and NAADF's in-cell distance fields are all unattempted; each is goals 275a-275c
   with a reason and a Check. NAADF is recorded as **the highest-leverage unexplored idea the research

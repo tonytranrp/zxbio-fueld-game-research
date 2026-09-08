@@ -806,6 +806,30 @@ see that document's §8 before assuming these run top-to-bottom or all at once.
 
 ## T. Storage compression, phased
 
+> **THE GATE HAS NOW BEEN MET, on the svo path, and this note says why (Prompt 004).** Goal 135
+> gated Phases 2 and 3 on a measurement of the MESH world: 343 MiB, sitting still, comfortably
+> inside any budget. That reasoning was correct and stays correct for the mesh path. **It does
+> not transfer to the svo path, and the reason is that the quantity that mattered changed.**
+> The svo world was 395-543 MB *re-uploaded whenever the camera moved 2 m* — a BANDWIDTH and
+> LATENCY problem, not a footprint one, and 343 MiB of resident data is not the same kind of
+> number as 543 MB crossing the bus every second.
+>
+> So Prompt 004 reopened it, and the phases map onto Group AK like this:
+>
+> - **Phase 1's analogue is done**: goal 258's per-brick palette, **543.68 -> 279.46 MB**
+>   (-48.6%) for +1.5% of march on vk and no measurable change on d3d12.
+> - **Phase 2's analogue — "skip storage entirely for what is known uniform" — was already
+>   true** and is now also true per cell: a homogeneous brick collapses to a solid leaf and
+>   never becomes a brick at all (which is why the palette probe found no 1-material bricks),
+>   and goal 263's `kFlatCellEmpty` records a whole cell as resident-and-empty at zero storage.
+> - **Phase 3 (SVDAG interning) is still not started, and now has a specific reason rather than
+>   a gate**: goal 275d. Dedup interns identical subtrees, and goal 258 changed which subtrees
+>   are bit-identical, so a palette-canonicalisation pass is a prerequisite.
+>
+> Goals 136 and 137 below therefore stay written against the MESH path, where their gate is
+> still unmet and their reasoning still holds. Nothing about them is wrong; they are simply no
+> longer the live question, because the live renderer is not the one they were written for.
+
 135. [x] Measure Phase 1 (§4.2) directly: the existing per-chunk palette compression's real total memory
      across the full static world at the §3.2 trial size — this may already be small enough that
      Phase 2/3 are unnecessary, and that's a real, good outcome to confirm rather than assume needs
