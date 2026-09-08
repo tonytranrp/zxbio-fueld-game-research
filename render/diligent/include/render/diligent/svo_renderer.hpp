@@ -2,9 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <memory>
 #include <vector>
 
+#include "render/diligent/grass_overlay.hpp"
 #include "render/diligent/memory_tracking.hpp"
 #include "render/diligent/render_context.hpp"
 #include "world/wind/wind_field.hpp"
@@ -125,6 +127,9 @@ public:
         // which is what an interactive session wants and what makes every wind-driven A/B
         // irreproducible; the harness sets a fixed step so a scripted run sees the same wind twice.
         float fixed_anim_step = 0.0f;
+        // Prompt 007 goal 339: the instanced raster grass overlay. Its instance list is built by
+        // the app (the placement rule lives in world/generation); this is only how it draws.
+        GrassOverlaySettings grass{};
         SvoDebugView debug_view = SvoDebugView::None;
         // The ONE wind field (world/wind, Prompt 001 Group B). Everything that moves reads it;
         // --no-wind sets still_wind(), which zeroes the field itself rather than making each
@@ -139,6 +144,13 @@ public:
     // can sample the SAME wind the marcher is drawing, rather than a second clock that agrees only
     // approximately -- the whole point of Group B is one field, read consistently.
     [[nodiscard]] float anim_seconds() const noexcept;
+
+    /// Goal 339: hand the overlay this frame's blades. Uploaded once per call into a dynamic
+    /// buffer; an empty span draws nothing and costs nothing. `playerPos` drives the sphere-mask
+    /// bend, and is the BODY's position rather than the camera's -- the polish offsets the camera
+    /// and grass should not bend to a head bob.
+    void set_grass(std::span<const GrassBladeInstance> blades, const glm::vec3& playerPos);
+    [[nodiscard]] std::size_t grass_blade_count() const noexcept;
 
     // Throws std::runtime_error on shader/PSO failure. `context` must outlive the renderer.
     explicit SvoRenderer(RenderContext& context);

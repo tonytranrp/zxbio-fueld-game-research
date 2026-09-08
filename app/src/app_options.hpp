@@ -73,6 +73,13 @@ struct AppOptions {
     bool sway = true;
     float sway_radius = 120.0f;
     int sway_max_trees = 512;
+    // Prompt 007 goal 339: the raster grass overlay's ring and its hard blade ceiling.
+    float grass_overlay_radius = 14.0f;
+    int grass_overlay_max_blades = 131072;
+    // How much DENSER the raster ring is than the voxel tier. This is the whole point of the
+    // overlay: the research measures raster grass at 32K-131K blades in production, where the voxel
+    // tier's own memory budget stops at a few thousand tufts.
+    float grass_overlay_density = 8.0f;
     // Goal 237. `auto_exposure` is the master switch; `exposure_metering_crosshair` false is the
     // flat frame average the goal's own A/B compares against, not a fallback.
     bool auto_exposure = true;

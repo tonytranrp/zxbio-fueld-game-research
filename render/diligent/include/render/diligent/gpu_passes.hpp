@@ -36,6 +36,7 @@ enum class GpuPass : std::uint8_t {
     March,   // the fullscreen ray march
     Resolve, // the TAA temporal resolve
     Post,    // bloom + tonemap composite
+    Grass,   // Prompt 007 goal 339: the instanced raster blade overlay
     Overlay, // ImGui
     Count,
 };
@@ -43,8 +44,8 @@ enum class GpuPass : std::uint8_t {
 [[nodiscard]] const char* to_string(GpuPass pass) noexcept;
 
 // The ranges whose sum is checked against GpuPass::Frame.
-inline constexpr GpuPass kSummedPasses[] = {GpuPass::Beam, GpuPass::March, GpuPass::Resolve,
-                                            GpuPass::Post, GpuPass::Overlay};
+inline constexpr GpuPass kSummedPasses[] = {GpuPass::Beam, GpuPass::March,   GpuPass::Resolve,
+                                            GpuPass::Post, GpuPass::Grass, GpuPass::Overlay};
 
 // Scoped begin/end. A pass that is not entered on a frame simply reports its previous value, which
 // is why last_ms() is paired with measured_this_frame().

@@ -62,10 +62,12 @@ struct FrameCounters {
     double gpu_march_ms = 0.0;
     double gpu_resolve_ms = 0.0;
     double gpu_post_ms = 0.0;
+    double gpu_grass_ms = 0.0; // Prompt 007 goal 339: the instanced raster blade overlay
     double gpu_overlay_ms = 0.0;
 
     [[nodiscard]] double gpu_pass_sum() const noexcept {
-        return gpu_beam_ms + gpu_march_ms + gpu_resolve_ms + gpu_post_ms + gpu_overlay_ms;
+        return gpu_beam_ms + gpu_march_ms + gpu_resolve_ms + gpu_post_ms + gpu_grass_ms +
+               gpu_overlay_ms;
     }
 };
 

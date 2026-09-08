@@ -101,6 +101,7 @@ bool write_report(const std::string& path, const scenario::Scenario& sc, const O
         write_percentiles(json, "gpu_march_ms", run.report.gpu_pass_ms(0));
         write_percentiles(json, "gpu_resolve_ms", run.report.gpu_pass_ms(1));
         write_percentiles(json, "gpu_post_ms", run.report.gpu_pass_ms(2));
+        write_percentiles(json, "gpu_grass_ms", run.report.gpu_pass_ms(5));
         write_percentiles(json, "gpu_overlay_ms", run.report.gpu_pass_ms(3));
         json.field("gpu_pass_coverage", run.report.gpu_pass_coverage());
 

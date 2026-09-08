@@ -27,6 +27,8 @@ const char* to_string(GpuPass pass) noexcept {
         return "beam";
     case GpuPass::Post:
         return "post";
+    case GpuPass::Grass:
+        return "grass";
     case GpuPass::Overlay:
         return "overlay";
     case GpuPass::Count:

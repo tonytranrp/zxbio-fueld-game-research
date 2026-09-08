@@ -95,6 +95,34 @@ static_assert(sizeof(MarchConstantsCpu) ==
                   64 + 64 + 16 * 8 + 16 * world::water::kWaveCount + 16 + 16 * 7 + 16 * kMaterialCount,
               "must match the HLSL cbuffer exactly");
 
+
+// The marcher's sun, mirrored for the grass overlay (goal 339). `sky_common.fxh` is the original and
+// this is a copy, which is a duplication worth naming: the shader constant is `static const` inside
+// HLSL and there is no macro path out of it, so the alternative was passing it through a cbuffer the
+// marcher does not need. A test pins the two to each other.
+inline constexpr glm::vec3 kGrassSunDirection = glm::vec3(0.4f, -1.0f, 0.25f) * 0.36181f;
+inline constexpr glm::vec3 kGrassSunColor{1.05f, 0.95f, 0.78f};
+
+// Mirrors of grass.vsh.hlsl / grass.psh.hlsl's cbuffers -- update each pair together.
+struct GrassVsConstantsCpu {
+    glm::mat4 viewProj;
+    glm::vec4 cameraPos;     // xyz + animation time
+    glm::vec4 windDirSpeed;
+    glm::vec4 windGustFlutter;
+    glm::vec4 params;        // segments, width scale, bend gain, spare
+    glm::vec4 playerBend;    // xyz player, w radius
+};
+static_assert(sizeof(GrassVsConstantsCpu) == 64 + 16 * 5, "must match the HLSL cbuffer exactly");
+
+struct GrassPsConstantsCpu {
+    glm::vec4 albedo;   // rgb + root occlusion
+    glm::vec4 sunDir;
+    glm::vec4 sunColor;
+    glm::vec4 ambient;
+    glm::vec4 viewport; // 1/size
+};
+static_assert(sizeof(GrassPsConstantsCpu) == 16 * 5, "must match the HLSL cbuffer exactly");
+
 // Mirror of svo_beam.psh.hlsl's cbuffer BeamConstants -- update both together.
 struct BeamConstantsCpu {
     glm::mat4 invViewProj;
@@ -337,6 +365,18 @@ struct SvoRenderer::Impl {
 
     // Temporal resolve pass.
     RefCntAutoPtr<IPipelineState> taaPso;
+    // Goal 339's overlay. `grassDistance` is a COPY of the march's hit-distance target: the overlay
+    // samples it to composite against the world, and writes the live one, and a pass cannot read
+    // and write the same texture.
+    RefCntAutoPtr<IPipelineState> grassPso;
+    RefCntAutoPtr<IShaderResourceBinding> grassSrb;
+    RefCntAutoPtr<IBuffer> grassVsConstants;
+    RefCntAutoPtr<IBuffer> grassPsConstants;
+    RefCntAutoPtr<IBuffer> grassInstances;
+    RefCntAutoPtr<ITexture> grassDistance;
+    std::size_t grassCapacity = 0;
+    std::size_t grassCount = 0;
+    glm::vec3 grassPlayer{0.0f};
     RefCntAutoPtr<IShaderResourceBinding> taaSrb;
     RefCntAutoPtr<IBuffer> taaConstants;
     TEXTURE_FORMAT finalFormat = TEX_FORMAT_UNKNOWN;
@@ -584,6 +624,73 @@ void SvoRenderer::Impl::create_pipelines() {
             throw std::runtime_error("svo temporal resolve SRB creation failed");
         }
     }
+    {
+        // Goal 339. Depth ENABLED and written, which nothing else on this path does: the DSV is
+        // otherwise untouched, so grass sorting against grass is exactly what it buys. Occlusion by
+        // the WORLD is a different mechanism entirely -- see grass.psh.hlsl.
+        RefCntAutoPtr<IShader> gvs =
+            create_shader(rc, factory, SHADER_TYPE_VERTEX, "grass.vsh.hlsl", "Grass overlay VS");
+        RefCntAutoPtr<IShader> gps =
+            create_shader(rc, factory, SHADER_TYPE_PIXEL, "grass.psh.hlsl", "Grass overlay PS");
+
+        GraphicsPipelineStateCreateInfo psoCI;
+        psoCI.PSODesc.Name = "Grass overlay PSO";
+        psoCI.pVS = gvs;
+        psoCI.pPS = gps;
+        psoCI.GraphicsPipeline.NumRenderTargets = 2;
+        psoCI.GraphicsPipeline.RTVFormats[0] = finalFormat;
+        psoCI.GraphicsPipeline.RTVFormats[1] = TEX_FORMAT_R32_FLOAT;
+        psoCI.GraphicsPipeline.DSVFormat = scDesc.DepthBufferFormat;
+        psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        // Two-sided: a blade is a ribbon and the far side of it is as visible as the near one.
+        psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = True;
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = True;
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthFunc = COMPARISON_FUNC_LESS;
+
+        ShaderResourceVariableDesc gvars[] = {
+            {SHADER_TYPE_VERTEX, "GrassConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+            {SHADER_TYPE_VERTEX, "g_Blades", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+            {SHADER_TYPE_PIXEL, "GrassPixelConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+            {SHADER_TYPE_PIXEL, "g_HitDistance", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        };
+        psoCI.PSODesc.ResourceLayout.Variables = gvars;
+        psoCI.PSODesc.ResourceLayout.NumVariables = 4;
+        SamplerDesc pointClamp;
+        pointClamp.MinFilter = FILTER_TYPE_POINT;
+        pointClamp.MagFilter = FILTER_TYPE_POINT;
+        pointClamp.MipFilter = FILTER_TYPE_POINT;
+        pointClamp.AddressU = TEXTURE_ADDRESS_CLAMP;
+        pointClamp.AddressV = TEXTURE_ADDRESS_CLAMP;
+        ImmutableSamplerDesc gsamplers[] = {{SHADER_TYPE_PIXEL, "g_HitDistance", pointClamp}};
+        psoCI.PSODesc.ResourceLayout.ImmutableSamplers = gsamplers;
+        psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = 1;
+
+        rc.device->CreateGraphicsPipelineState(psoCI, &grassPso);
+        if (!grassPso) {
+            throw std::runtime_error("grass overlay PSO creation failed");
+        }
+        grassVsConstants =
+            create_constant_buffer(rc.device, "Grass VS CB", sizeof(GrassVsConstantsCpu));
+        grassPsConstants =
+            create_constant_buffer(rc.device, "Grass PS CB", sizeof(GrassPsConstantsCpu));
+        if (IShaderResourceVariable* var =
+                grassPso->GetStaticVariableByName(SHADER_TYPE_VERTEX, "GrassConstants")) {
+            var->Set(grassVsConstants);
+        } else {
+            throw std::runtime_error("grass shader variable not found: GrassConstants");
+        }
+        if (IShaderResourceVariable* var =
+                grassPso->GetStaticVariableByName(SHADER_TYPE_PIXEL, "GrassPixelConstants")) {
+            var->Set(grassPsConstants);
+        } else {
+            throw std::runtime_error("grass shader variable not found: GrassPixelConstants");
+        }
+        grassPso->CreateShaderResourceBinding(&grassSrb, true);
+        if (!grassSrb) {
+            throw std::runtime_error("grass overlay SRB creation failed");
+        }
+    }
 
     // Bindable placeholders until the first upload (one zero word each: an empty root).
     nodes = create_word_buffer(rc.device, "SVO nodes (empty)", 0);
@@ -669,6 +776,12 @@ void SvoRenderer::Impl::ensure_targets() {
     targetHeight = scDesc.Height;
     rawColor = create_target(rc.device, "SVO raw color", targetWidth, targetHeight, finalFormat);
     distance = create_target(rc.device, "SVO hit distance", targetWidth, targetHeight, TEX_FORMAT_R32_FLOAT);
+    // Goal 339: the overlay samples last-pass hit distance while writing this-pass hit distance, so
+    // it needs its own copy. One full-res R32 blit per frame that has grass on it, and none at all
+    // on a frame that does not.
+    grassDistance =
+        create_target(rc.device, "SVO hit distance (grass read)", targetWidth, targetHeight,
+                      TEX_FORMAT_R32_FLOAT);
     history[0] =
         create_target(rc.device, "SVO history 0", targetWidth, targetHeight, TEX_FORMAT_RGBA16_FLOAT);
     history[1] =
@@ -1199,9 +1312,15 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
     ITextureView* finalRtv = impl_->final_rtv();
     ITextureView* dsv = rc.swapchain->GetDepthBufferDSV();
     const bool timeThisFrame = impl_->gpuTimer && impl_->frameCounter >= 2;
+    if (s.fixed_anim_step > 0.0f) {
+        impl_->animAccum += s.fixed_anim_step;
+    }
+    // Hoisted out of the march block so the grass overlay (goal 339) can re-bind the same pair
+    // rather than re-deriving them and risking a different answer.
+    ITextureView* rtvs[2] = {taa ? impl_->rawColor->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET) : finalRtv,
+                             impl_->distance->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET)};
+    const float animSeconds = anim_seconds();
     {
-        ITextureView* rtvs[2] = {taa ? impl_->rawColor->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET) : finalRtv,
-                                 impl_->distance->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET)};
         ctx->SetRenderTargets(2, rtvs, dsv, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         const float clear[4] = {0.25f, 0.5f, 0.8f, 1.0f};
         const float farClear[4] = {1.0e6f, 0.0f, 0.0f, 0.0f};
@@ -1217,10 +1336,7 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
             impl_->gpuTimer->Begin(ctx);
         }
 
-        if (s.fixed_anim_step > 0.0f) {
-            impl_->animAccum += s.fixed_anim_step;
-        }
-        const float animSeconds = anim_seconds();
+
         MapHelper<MarchConstantsCpu> cb(ctx, impl_->constants, MAP_WRITE, MAP_FLAG_DISCARD);
         cb->invViewProj = invViewProj;
         cb->viewProj = viewProj;
@@ -1302,14 +1418,73 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         ctx->Draw({3, DRAW_FLAG_VERIFY_ALL, 1});
     }
 
+    // Pass 1b: the instanced grass overlay (goal 339). Between the march and the temporal resolve,
+    // so blades enter the TAA history the same way the marched world does -- which is what the
+    // goal's Check says to verify rather than assume.
+    if (s.grass.enabled && impl_->grassCount > 0 && impl_->grassPso) {
+        ZoneScopedN("grass overlay");
+        const GpuPassScope grassScope(*impl_->context, GpuPass::Grass);
+        // The read copy. Rebound as a shader resource by the SRB below; Diligent inserts the
+        // barriers because both views are transition-mode TRANSITION.
+        CopyTextureAttribs copy;
+        copy.pSrcTexture = impl_->distance;
+        copy.pDstTexture = impl_->grassDistance;
+        copy.SrcTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+        copy.DstTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+        ctx->CopyTexture(copy);
+
+        ctx->SetRenderTargets(2, rtvs, dsv, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        {
+            MapHelper<GrassVsConstantsCpu> cb(ctx, impl_->grassVsConstants, MAP_WRITE, MAP_FLAG_DISCARD);
+            cb->viewProj = viewProj;
+            cb->cameraPos = glm::vec4(camera.position, animSeconds);
+            const glm::vec3 windDir = world::wind::wind_direction(s.wind);
+            cb->windDirSpeed = glm::vec4(windDir.x, windDir.z, s.wind.base_speed, s.wind.gust_amplitude);
+            cb->windGustFlutter = glm::vec4(s.wind.gust_frequency, s.wind.gust_scroll, s.wind.flutter_hz,
+                                            s.wind.flutter_frequency);
+            cb->params = glm::vec4(static_cast<float>(std::max(1, s.grass.segments)), s.grass.width_scale,
+                                   s.grass.bend_gain, 0.0f);
+            cb->playerBend = glm::vec4(impl_->grassPlayer, s.grass.player_bend_radius);
+        }
+        {
+            MapHelper<GrassPsConstantsCpu> cb(ctx, impl_->grassPsConstants, MAP_WRITE, MAP_FLAG_DISCARD);
+            // The blade's albedo is the REGISTRY's GrassBlade albedo, not a second green -- the
+            // voxel tier and the raster tier have to be the same plant (goal 340).
+            const world::materials::Color albedo =
+                world::materials::properties_of(world::chunk::MaterialID::GrassBlade).albedo;
+            cb->albedo = glm::vec4(albedo.r, albedo.g, albedo.b, s.grass.root_occlusion);
+            // The SAME sun the marcher uses (svo_march.psh.hlsl's kSunDirection/kSunColor). A
+            // second sun would light grass differently from the ground it stands on, which is the
+            // most visible way a hybrid renderer gives itself away.
+            cb->sunDir = glm::vec4(kGrassSunDirection, 0.0f);
+            cb->sunColor = glm::vec4(kGrassSunColor, 0.0f);
+            cb->ambient = glm::vec4(0.34f, 0.33f, 0.30f, 0.0f);
+            cb->viewport = glm::vec4(1.0f / static_cast<float>(std::max<Uint32>(scDesc.Width, 1)),
+                                     1.0f / static_cast<float>(std::max<Uint32>(scDesc.Height, 1)), 0.0f,
+                                     0.0f);
+        }
+        impl_->grassSrb->GetVariableByName(SHADER_TYPE_VERTEX, "g_Blades")
+            ->Set(impl_->grassInstances->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+        impl_->grassSrb->GetVariableByName(SHADER_TYPE_PIXEL, "g_HitDistance")
+            ->Set(impl_->grassDistance->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE));
+        ctx->SetPipelineState(impl_->grassPso);
+        ctx->CommitShaderResources(impl_->grassSrb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        DrawAttribs draw;
+        draw.NumVertices = 6u * static_cast<Uint32>(std::max(1, s.grass.segments));
+        draw.NumInstances = static_cast<Uint32>(impl_->grassCount);
+        draw.Flags = DRAW_FLAG_VERIFY_ALL;
+        ctx->Draw(draw);
+    }
+
     // Pass 2: temporal resolve into the final target + the next frame's history.
     if (taa) {
         ZoneScopedN("svo taa");
         const GpuPassScope resolveScope(*impl_->context, GpuPass::Resolve);
         const std::uint32_t prev = impl_->historyIndex;
         const std::uint32_t cur = prev ^ 1u;
-        ITextureView* rtvs[2] = {finalRtv, impl_->history[cur]->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET)};
-        ctx->SetRenderTargets(2, rtvs, dsv, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ITextureView* resolveRtvs[2] = {finalRtv,
+                                        impl_->history[cur]->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET)};
+        ctx->SetRenderTargets(2, resolveRtvs, dsv, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         {
             MapHelper<TaaConstantsCpu> cb(ctx, impl_->taaConstants, MAP_WRITE, MAP_FLAG_DISCARD);
             cb->invViewProj = invViewProj;
@@ -1353,6 +1528,43 @@ const GpuAllocationTracker& SvoRenderer::gpu_memory() const noexcept {
 
 bool SvoRenderer::has_tree() const noexcept {
     return impl_->hasTree;
+}
+
+void SvoRenderer::set_grass(std::span<const GrassBladeInstance> blades, const glm::vec3& playerPos) {
+    impl_->grassPlayer = playerPos;
+    impl_->grassCount = blades.size();
+    if (blades.empty()) {
+        return;
+    }
+    auto& rc = impl_->context->impl();
+    if (impl_->grassCapacity < blades.size()) {
+        // Grow in powers of two so a slowly-growing field does not reallocate every frame.
+        std::size_t capacity = std::max<std::size_t>(impl_->grassCapacity, 4096);
+        while (capacity < blades.size()) {
+            capacity *= 2;
+        }
+        BufferDesc desc;
+        desc.Name = "Grass instances";
+        desc.Usage = USAGE_DEFAULT;
+        desc.BindFlags = BIND_SHADER_RESOURCE;
+        desc.Mode = BUFFER_MODE_STRUCTURED;
+        desc.ElementByteStride = sizeof(glm::vec4);
+        desc.Size = capacity * sizeof(GrassBladeInstance);
+        impl_->grassInstances.Release();
+        rc.device->CreateBuffer(desc, nullptr, &impl_->grassInstances);
+        if (!impl_->grassInstances) {
+            impl_->grassCount = 0;
+            impl_->grassCapacity = 0;
+            return;
+        }
+        impl_->grassCapacity = capacity;
+    }
+    rc.context->UpdateBuffer(impl_->grassInstances, 0, blades.size() * sizeof(GrassBladeInstance),
+                             blades.data(), RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+}
+
+std::size_t SvoRenderer::grass_blade_count() const noexcept {
+    return impl_->grassCount;
 }
 
 float SvoRenderer::anim_seconds() const noexcept {

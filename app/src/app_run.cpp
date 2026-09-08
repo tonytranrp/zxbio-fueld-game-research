@@ -35,6 +35,7 @@
 #include "render/diligent/terrain_renderer.hpp"
 #include "render/interface/camera.hpp"
 #include "spectator_camera.hpp"
+#include "grass_field.hpp"
 #include "sway_forest.hpp"
 #include "svo_world.hpp"
 
@@ -1002,6 +1003,15 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     log(LogLevel::Info, "sway: {} trees within {:.0f} m, {} chains over {} segments, grown in {:.0f} ms",
         swayForest.tree_count(), static_cast<double>(options.sway_radius), swayForest.chain_total(),
         swayForest.segment_total(), swayForest.grow_seconds() * 1000.0);
+    // Goal 339: the raster overlay's instance list, built from the SAME placement call the voxel
+    // tier uses so the two tiers draw the same tufts (goal 340).
+    app::GrassField grassField(world.heightmap(), options.seed, world::generation::GrassCoverParams{},
+                               {.radius_m = options.grass_overlay_radius,
+                                .max_blades = static_cast<std::size_t>(options.grass_overlay_max_blades),
+                                .density_scale = options.grass_overlay_density,
+                                .enabled = options.svo_settings.grass.enabled});
+    double grassMsTotal = 0.0;
+    double grassMsWorst = 0.0;
     float swayAccumulator = 0.0f;
     // Goal 190's Check is a per-frame budget, so it gets a per-frame distribution and not one
     // sample: a mean plus the worst frame is what makes "0.5 ms" a claim rather than an anecdote.
@@ -1227,6 +1237,20 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             // spike -- the tree loses a little phase, which nobody can see, instead of the frame
             // after a screenshot stuttering, which everybody can.
             swayForest.refresh(camera.position);
+            {
+                // The grass rebuild lands in the `sway` phase, so it is timed separately here and
+                // reported at exit -- goal 335 measured sway at 0.049 ms/frame and a 17 ms phase
+                // that was actually a grass rebuild would make that number a lie to anyone reading
+                // the log afterwards.
+                const auto grassStart = std::chrono::steady_clock::now();
+                grassField.refresh(camera.position);
+                renderer.set_grass(grassField.blades(), camera.position);
+                const double ms =
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - grassStart)
+                        .count();
+                grassMsTotal += ms;
+                grassMsWorst = std::max(grassMsWorst, ms);
+            }
             swayAccumulator += std::min(static_cast<float>(s.clock.delta_seconds()), 0.25f);
             for (int sub = 0; sub < 4 && swayAccumulator >= world::generation::kSwayTick; ++sub) {
                 swayForest.step(options.svo_settings.wind, renderer.anim_seconds(),
@@ -1408,6 +1432,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             pending.counters.gpu_march_ms = gpu_pass_ms(*s.context, GpuPass::March);
             pending.counters.gpu_resolve_ms = gpu_pass_ms(*s.context, GpuPass::Resolve);
             pending.counters.gpu_post_ms = gpu_pass_ms(*s.context, GpuPass::Post);
+            pending.counters.gpu_grass_ms = gpu_pass_ms(*s.context, GpuPass::Grass);
             pending.counters.gpu_overlay_ms = gpu_pass_ms(*s.context, GpuPass::Overlay);
             pendingReady = renderer.has_tree();
             pendingValid = true;
@@ -1496,6 +1521,25 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             usageReadbacks, renderer.last_usage_readback_bytes(),
             static_cast<double>(renderer.last_usage_readback_bytes()) / 1024.0,
             renderer.last_usage_readback_ms());
+    }
+    if (grassField.tuft_count() > 0) {
+        // Goal 339's Check asks for the blade count and the per-blade size stated, so they are
+        // printed beside each other rather than left to be derived from a memory figure.
+        log(LogLevel::Info,
+            "grass overlay: {} blades over {} tufts within {:.0f} m, {} B/blade ({:.2f} MB), rebuilt in "
+            "{:.0f} ms{}",
+            renderer.grass_blade_count(), grassField.tuft_count(),
+            static_cast<double>(options.grass_overlay_radius),
+            sizeof(render::diligent::GrassBladeInstance),
+            static_cast<double>(renderer.grass_blade_count() *
+                                sizeof(render::diligent::GrassBladeInstance)) /
+                1.0e6,
+            grassField.build_seconds() * 1000.0, grassField.truncated() ? " [TRUNCATED]" : "");
+        log(LogLevel::Info,
+            "grass overlay rebuild: {:.3f} ms/frame mean, {:.1f} ms WORST -- the worst is a full "
+            "rebuild, which happens once per quarter-radius of camera movement and is a dropped "
+            "frame at this blade count",
+            swayFrames > 0 ? grassMsTotal / static_cast<double>(swayFrames) : 0.0, grassMsWorst);
     }
     if (swayFrames > 0 && swayForest.tree_count() > 0) {
         log(LogLevel::Info,

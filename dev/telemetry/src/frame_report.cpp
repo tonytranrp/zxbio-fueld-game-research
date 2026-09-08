@@ -99,6 +99,9 @@ Percentiles FrameReport::gpu_pass_ms(int index) const {
         case 4:
             values.push_back(r.counters.gpu_beam_ms);
             break;
+        case 5:
+            values.push_back(r.counters.gpu_grass_ms);
+            break;
         default:
             values.push_back(r.counters.gpu_overlay_ms);
             break;
@@ -261,10 +264,11 @@ std::string FrameReport::summary() const {
 
     // Goal 220: the four named ranges and how much of the whole-frame range they account for.
     std::snprintf(line, sizeof(line),
-                  "gpu passes (median ms): beam %.2f  march %.2f  resolve %.2f  post %.2f  overlay "
-                  "%.2f  |  whole frame %.2f  |  sum accounts for %.1f%%\n",
+                  "gpu passes (median ms): beam %.2f  march %.2f  resolve %.2f  post %.2f  grass "
+                  "%.2f  overlay %.2f  |  whole frame %.2f  |  sum accounts for %.1f%%\n",
                   gpu_pass_ms(4).median, gpu_pass_ms(0).median, gpu_pass_ms(1).median,
-                  gpu_pass_ms(2).median, gpu_pass_ms(3).median, gpu_frame_ms().median,
+                  gpu_pass_ms(2).median, gpu_pass_ms(5).median, gpu_pass_ms(3).median,
+                  gpu_frame_ms().median,
                   gpu_pass_coverage() * 100.0);
     out += line;
 

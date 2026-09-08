@@ -17,6 +17,7 @@ add_executable(voxel_harness
     ${CMAKE_CURRENT_SOURCE_DIR}/../../app/src/app_run.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../app/src/aim_query.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../app/src/sway_forest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../app/src/grass_field.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../app/src/crash_handler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../app/src/glfw_window.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../app/src/spectator_camera.cpp
