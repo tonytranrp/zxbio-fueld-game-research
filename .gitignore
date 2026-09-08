@@ -22,3 +22,11 @@ target/
 heightmap_profile.csv
 .token-optimizer/
 loading_*.png
+
+# voxel_harness writes its captures to --out-dir, which defaults to the working directory, and
+# the harness must be RUN FROM THE REPO ROOT so dev/scenarios and dev/goldens resolve. So a plain
+# `voxel_harness --scenario X` drops <backend>_<capture>.png here every time. They are
+# regenerable outputs, never sources -- a capture worth keeping is copied into research/captures/
+# under a name that says what it shows. Anchored to the root so research/captures/ is unaffected.
+/vk_*.png
+/d3d12_*.png

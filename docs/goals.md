@@ -992,10 +992,18 @@ not (the brief's §2.2 "bricked SVO" was built here directly, in `world/svo`).
 
 156. [x] Real numbers table (`research/micro-voxel-pivot-log.md` §4): bricks per LOD level, MB,
      build/upload times, fps by pose and feature. **Check**: every number from an actual run.
-157. Per-brick palette / 4-bit materials (brief §3.2's "cheap first" step): 2–4x on the ~350–400 MB
+157. [x] **Done as Prompt 004 goal 258** -- a 3-bit index into an 8-entry palette rather than
+     4-bit: the registry holds 8 materials, so 3 bits with entry 0 reserved for Air is *provably*
+     sufficient instead of sufficient-in-sample, and a `static_assert` makes a ninth material a
+     build error. **Check PERFORMED**: resident **543.68 -> 279.46 MB** at the same pose (-48.6%),
+     march **+1.5% on vk and no measurable change on d3d12**, oracle 0/7,000, all seven goldens
+     pass on both backends. Original entry: per-brick palette / 4-bit materials (brief §3.2's "cheap first" step): 2–4x on the ~350–400 MB
      the surface bricks take at the shipping default. **Check**: before/after tree bytes at the
      same pose, and no `--verify-frame`/oracle regression.
-158. Incremental rebuild: reuse unchanged subtrees (far rings) and a persistent brick pool with
+158. [x] **Done as Prompt 004 goal 257** -- per-cell rebuild over the cell grid, with detail
+     quantised to a distance BAND so "unchanged" is decidable at all, together with goal 260's
+     resident pools so an unchanged cell costs **zero upload bytes**. **Check PERFORMED**:
+     rebuild **10.4x faster**. Original entry: incremental rebuild, reuse unchanged subtrees (far rings) and a persistent brick pool with
      partial uploads, instead of the whole-tree rebuild + 200–400 MB upload on every move.
      **Check**: rebuild wall-clock and upload bytes per camera step, before/after.
 159. [x] Temporal AA (or supersampling) for the sub-pixel voxel shimmer 2–8 m out — visible moiré in
@@ -1004,15 +1012,26 @@ not (the brief's §2.2 "bricked SVO" was built here directly, in `world/svo`).
      lighting component.
 160. Editing: the tree is rebuilt from an analytic sampler and never mutated; digging/placing needs
      a mutable structure (HashDAG is the researched shape, brief §2.2). Not started.
-161. `fill_terrain` truncates the surface height toward zero (`static_cast<int32_t>`) instead of
+161. [x] **Done as Prompt 004 goal 252.** **Check PERFORMED**: the equivalence test now covers
+     **196,608 voxels with 0 skipped**, where it previously excluded every negative-height column
+     -- roughly a third of the region. Original entry: `fill_terrain` truncates the surface height toward zero (`static_cast<int32_t>`) instead of
      flooring, so underwater terrain sits one voxel higher than the geometric rule the sampler
      uses — a pre-existing quirk found by the equivalence test (which skips negative-height
      columns). **Check**: switch to `floor`, then the equivalence test covers every column.
-162. Build-time profile is now ~60% `fill_brick` (2.9 µs per sampled brick, ~2x sampled per kept)
+162. [x] **Answered as Prompt 004 goal 259** (the shipping build's codegen decided, with LTO
+     measured and rejected as pay-to-win that does not win here) and re-measured under goal 258:
+     `fill_brick` CPU is **19.86 s summed across threads**, **+11.7%** after the palette, with
+     **build wall clock unchanged** because the build is not throughput-bound on 3/4 of the
+     hardware threads. Original entry: build-time profile is ~60% `fill_brick` (2.9 µs per sampled brick, ~2x sampled per kept)
      with the column grid cache hitting only ~9%: the remaining oversampling is horizontal, not the
      vertical stacks the cache was written for. **Check**: Tracy capture of one build before the
      next optimization, not another guess.
-163. DAG deduplication as a measurement (brief §5.3, hash-interning): expected small on noise
+163. **STILL OPEN, deliberately -- see Prompt 004 goal 279.** Deferred for ORDERING, not value:
+     dedup interns identical subtrees, and goal 258's palette changed which subtrees are
+     bit-identical (two bricks holding the same materials in a different insertion order now get
+     different palettes), so a canonicalisation pass is a prerequisite and measuring dedup before
+     the payload was settled would have measured the wrong tree.
+     Original entry: DAG deduplication as a measurement (brief §5.3, hash-interning): expected small on noise
      terrain; the brief's 16-identical-tiles test is the unit check.
 
 ## Lin-look, collision & lag pass (groups Z–AC)
@@ -1940,6 +1959,331 @@ Reasoning and every measurement: `research/player-embodiment-log.md`.
      watches. The one open question named: a model's feet follow the PHYSICAL eye, not the smoothed
      one, since goal 240 establishes the smoothing as render-only.
 
+
+## AK. Frame time and the GPU architecture (Prompt 004)
+
+Every measurement, every rejected alternative and every vacuous instrument caught on the way:
+`research/frame-time-and-gpu-architecture-log.md`. The architecture it arrived at:
+`docs/gpu-architecture.md`.
+
+The prompt's premise was *"76 fps at 13.15 ms with only 3.2–6.3 ms of GPU march means roughly half
+the frame is not the marcher — find the other 7–10 ms."* **The first measurement falsified it** and
+that reframed the whole pass, so AK-A's ordering is load-bearing rather than procedural.
+
+### AK-A. Find the frame time before optimising it (goals 244–248)
+
+244. [x] Every millisecond of the worst frame accounted for. Found first that **vsync was hardcoded**
+     (`Present(1)`, so every percentile downstream was measuring the panel, not the renderer); it is
+     `--vsync`/`--no-vsync` now, on by default because that is the shipping behaviour, and every
+     number in this group is vsync-off.
+     **Check PERFORMED**: `stress_pose`, vk, RelWithDebInfo — frame **mean 5.36 / median 5.21 ms**,
+     p95 7.09, p99 10.23, max 13.68, **GPU march median 4.93**, phase coverage 96.6%.
+     **The brief's missing 7–10 ms does not exist**: the median frame is 5.21 ms (192 fps) and 4.93
+     of it is the marcher. The 76 fps baseline predates Prompt 002's overlay change and Prompt 003.
+     Verdict recorded in the log §1: **the frame is GPU-bound on the march, the average is already
+     past 150 fps, and the owner's complaint is entirely about variance.**
+245. [x] Counted what the marcher does, per pixel, as a debug view and as a report counter.
+     **Check PERFORMED**: `stress_pose` averages **91.9 primary traversal steps** per pixel with 52%
+     of pixels hitting; `--debug-view steps` renders the map the counters are summed from. One
+     premise did not survive: see goal 269.
+246. [x] Priced the secondary rays. **Check PERFORMED**, march GPU ms at `stress_pose`:
+     shipping 4.90 (vk) / 5.12 (d3d12); `--no-ao` 3.09 / 3.70; `--no-shadows` 4.41 / 4.83; both off
+     **2.50 / 3.18**. So **AO is 1.81 ms = 37% of the marcher** for four rays, shadows 0.49 ms = 10%
+     for one, and **secondary rays together are 49% (vk) / 38% (d3d12)**. The primary ray alone is
+     2.50 ms — 400 fps — so *any plan that optimises primary traversal is optimising the smaller
+     half*, which is the reframing this goal existed to produce.
+247. [x] Priced the rebuild storm. **Check PERFORMED**, `fly_transect` with and without rebuilds:
+     median 4.64 → 4.01, p95 7.17 → 5.96, **p99 13.16 → 6.89**, slow frames 7/2014 → 3/2265, and
+     **upload- or build-caused stalls 5 → 0**. The storm owns the p99, exactly as the brief's §0
+     said. Also found here: the 180 ms frames in both conditions were **the harness's own PNG
+     capture**, and the live slow-frame line was printing seven phases summing to 0.7 ms of 180
+     because `capture` (Prompt 002's eighth phase) was missing from it. A breakdown that does not
+     add up to its own total is not a breakdown; `capture` is in that line now.
+248. [x] Yardstick and budget. **Check PERFORMED**: the budget is a GPU-timestamp **p95 across a
+     fixed camera path**, per backend, asserted in the scenario files and in `ctest` — 4.4 ms vk /
+     6.0 ms d3d12 at `stress_pose` when set (recalibrated in goal 273a below, with the reason).
+     fps is explicitly rejected as a signal: this machine's 165 Hz FIFO_RELAXED panel caps it at
+     155–159, so it cannot express a regression at all.
+
+### AK-B. Stop the rebuild storm (goals 249–253) — a stopgap, and labelled as one
+
+249. [x] The rebuild trigger is decoupled from `lod_radius`. It was `> lod_radius * 0.5f`, which at
+     the 4 m default demanded a full 400 MB rebuild **every 2 metres** against a 40–160 m/s fly speed
+     and a 0.6–1.3 s build. It is now a named policy on `SvoWorldOptions`: trigger distance,
+     hysteresis, minimum interval, and a speed gate.
+     **Check PERFORMED**: `fly_transect` median 4.64 → **4.02**, p95 7.17 → **5.89**,
+     **p99 13.16 → 8.52 (−35%)** against a rebuilds-disabled floor of 6.89 — about two thirds of the
+     available win. Slow frames 7/2014 → 4/2271, upload/build-caused 5 → 2.
+250. [x] No rebuild while the camera is moving fast. **Check PERFORMED**: p99 by trigger distance is
+     **9.32 / 8.19 / 8.06 / 8.28 ms at 4 / 8 / 16 / 24 m** — flat inside the run-to-run spread,
+     because the speed gate already suppresses rebuilds during a fast flight. The distance is
+     therefore chosen on IMAGE STALENESS, not frame time: LOD-centre offset 4 m → 0.2% of pixels
+     changed, **8 m → 2.9%**, 16 m → 36.7%, 24 m → 45.3%. **Free to 8 m, off a cliff by 16**, so
+     8 m ships. Capture: `research/captures/ak_lod_staleness.png`.
+251. [x] The fine height field is shared rather than regenerated: `TerrainSampler` gained
+     `FocusTiers` and the tiers are shareable across builds.
+     **Check PERFORMED, and it is a negative that removed code**: the column-grid cache inside it
+     measured a **0% hit rate at both 32 m and 64 m regions over a 900-frame flight** — the reason is
+     arithmetic, in the log §8 — so the cache is gone and the sharing primitive stayed. `sampler` is
+     **0.15–0.19 s of a 1.89–3.60 s build, 5–9%**, which is why this was never going to be the win.
+252. [x] Goal 161's floor-truncation quirk fixed (`static_cast<int32_t>` → `floor`).
+     **Check PERFORMED**: the sampler/`fill_terrain` byte-equivalence test now covers
+     **196,608 voxels with 0 skipped**, where it previously excluded every negative-height column —
+     roughly a third of the region. A test that skipped the disagreeing cases is worse than no test.
+253. [x] The stopgap is reported as one. AK-B does not make rebuilds cheap; it makes them rarer. The
+     p99 floor with rebuilds disabled entirely is 6.89 ms and AK-B reaches 8.52, so **1.6 ms of p99
+     is still rebuild cost that only AK-C/AK-D could remove** — which they then did (goal 257).
+
+### AK-C. Make the structure streamable (goals 254–259)
+
+254. [x] The paged layout designed on paper, in the log, before any code — including its cost model.
+     **Check PERFORMED, and the design's own arithmetic was wrong**: writing the model down and
+     evaluating it *before* implementing is what caught it (log §5 and the correction that follows).
+     The ranking, and where I ranked differently from the brief, are recorded with reasons.
+255. [x] Implemented in the CPU reference first: `CellGrid` (a grid of shallow trees walked by
+     Amanatides–Woo DDA), `TreeView` (a non-owning window onto one), `FlatCellGrid` (the GPU-shaped
+     concatenation). **Check PERFORMED**: the 7,000-ray oracle at **0/7,000**, and **52% fewer
+     traversal steps** than the single deep tree — while goal 254's cost model had predicted a
+     *rise*. The measurement, not the model, decided it.
+256. [x] Mirrored in the shader, both backends. **Check PERFORMED**: march GPU ms
+     **d3d12 5.12 → 3.99 (−22%)**, vk unchanged, so **the two backends converge** rather than
+     d3d12 trailing by 30–35%. The collider and the crosshair aim query moved to the grid in the
+     same change — not optional, because a camera that collides against a different structure from
+     the one it sees is the bug class this engine already had once.
+257. [x] Per-cell rebuild replaces whole-world rebuild — **closes goal 158**. Detail is quantised to
+     a distance BAND (`lod_bands.hpp`) so a cell's content depends on which band it is in, not on
+     the exact camera position, which is what makes "unchanged" decidable at all.
+     **Check PERFORMED**: rebuild **10.4× faster**; the blocker goal 255 predicted was real and is
+     named in log §20.
+258. [x] The payload shrunk — **palette compression, implemented and measured** (advances goal 157).
+     `tools/palette_probe` measured a real shipping build first rather than trusting the standing
+     theory: **55.2% of bricks hold 2 distinct materials, 43.4% hold 3, 98.6% hold ≤3, and nothing
+     in a real build exceeds 5.** The brick is now 16 mask words + 52 index words (ten 3-bit palette
+     indices per word) + a 2-word 8-entry palette = **70 words, 280 B, down from 144 words / 576 B**.
+     Ten indices per word rather than the 10.67 that would fit is deliberate: 3 does not divide 32,
+     and wasting two bits per word buys a material fetch that is **exactly one load with no
+     boundary case** — the term this goal says to measure, since the march is GPU-bound.
+     **Check PERFORMED**: `stress_pose`, same seed and pose, three runs each —
+     **resident 543.68 → 279.46 MB (−264.2 MB, −48.6%)**, peak GPU 648.12 → 333.14 MB, and
+     **bricks, internal nodes and every other report counter byte-identical** (the tree's shape did
+     not change, only its payload). March median **vk 3.45/3.44/3.45 → 3.50/3.50/3.50 (+1.5%)** and
+     **d3d12 6.05/6.10/5.51 → 5.60/5.52/6.06 (ranges overlap, no measurable change)**. So:
+     **264 MB for 0.05 ms** — the extra dependent load is paid once per hit (52% of pixels) while
+     the bandwidth saving applies to every brick word the traversal touches. The build cost is
+     recorded too because it is real and invisible: **`fill_brick` CPU 19.86 → 22.18 s summed across
+     threads, +11.7%**, with **build wall clock unchanged** (3.40 → 3.27 s, inside the spread)
+     because the build is not throughput-bound on 3/4 of the hardware threads.
+     Determinism preserved (a test asserts two identical fills produce byte-identical words), the
+     oracle at 0/7,000, and **all seven goldens pass on both backends**: `stress_pose` reads
+     **0.1009% of pixels changed against a pre-palette golden**, *below* the 0.1317% a pre-palette
+     run scores against that same golden — the change is inside the run-to-run noise floor.
+     **The encoding is not the one §7 proposed, and the reason is a boundary case rather than a
+     preference**: a 2-bit index with a >4-material fallback gives bricks TWO SIZES, and
+     `BrickPool` — the fixed-size slot allocator the whole AK-D resident cache is built on — assumes
+     one. The shipped 3-bit/8-entry form is *provably* sufficient rather than sufficient-in-sample
+     (`kMaterialCount` is 8, entry 0 is Air, entries 1–7 are exactly the seven possible non-Air
+     materials), and a `static_assert` turns a ninth material into a build error that names both
+     alternatives instead of a rare corrupted brick at run time.
+     **Also decided against, as instructed: no apron** — research §1.3's 1.95× blow-up would undo
+     the entire lever and then some. And **DAG dedup (goal 163) deliberately not attempted here**,
+     for an ordering reason rather than a value one: dedup interns identical subtrees, the palette
+     changes which subtrees are bit-identical, so measuring dedup before the payload was settled
+     would have measured the wrong tree. Palette first, then dedup — goal 163 stays open with that
+     note attached (goal 275d).
+259. [x] Goal 162 — the build profile decided, and **LTO is pay-to-win that does not win here**.
+     **Check PERFORMED**: log §6 has the before/after; the recommendation is recorded with its
+     numbers rather than adopted on principle.
+
+### AK-D. The resident cache and ray-guided streaming (goals 260–265)
+
+260. [x] Fixed-size GPU pools with slot allocation: `BrickPool` (fixed capacity, LRU stamps,
+     `kNoSlot` when full) and `ResidentGrid` (persistent slots, dirty runs, structural repack).
+     **Check PERFORMED**: an unchanged cell now costs **zero upload bytes**. The split between what
+     is pooled (bricks, 94.6% of resident bytes) and what is repacked (nodes) was chosen from where
+     the bytes actually are, not from the architecture diagram — and log §21 books the bill that
+     simplification later presented.
+261. [x] The marcher marks cell usage and files requests through a UAV.
+     **Check PERFORMED**: **no measurable cost** — but only after a real 30% regression was found
+     and fixed. See goal 262.
+262. [x] GPU-side LRU with stream compaction, and a **16 KB/frame readback**.
+     **Check PERFORMED**: the compaction is checked against **10,000 generated patterns**. And the
+     gate from goal 273 caught a **30% regression** that had nothing to do with the LRU: **a bound
+     pixel-shader UAV costs ~30% of the march even when nothing writes to it.** Fixed with two PSOs
+     behind an `SVO_MARK_USAGE` define, so the non-marking path binds no UAV at all. This is the
+     single best argument in the pass for having built the gate before the feature.
+263. [x] Never stall a ray: an always-resident coarse proxy answers for a cell that is not resident.
+     **Check PERFORMED**: 29 dumps over a 240-frame run — **frame 8 is the complete landscape at 1 m
+     voxels with zero fine bricks resident**, and **near-black pixels stay at 0.00% on every frame
+     of the sequence**, which is the mechanical form of "no holes, no black, no sky where terrain
+     should be". Capture: `research/captures/akd_never_stall_convergence.png`. A distinction the
+     test forced into existence: **"not loaded" and "resident and empty" are opposites**, and the
+     proxy must answer for the first and stay silent for the second — `kFlatCellEmpty` exists
+     because a coarse proxy was overriding space the fine build had correctly found empty.
+264. [x] The producer side, bounded. **Check PERFORMED, and the starvation failure mode was
+     reproduced first**: the initial version put **1,710 ms on one frame** (synchronous proxy build
+     plus 4,096 cell submissions at once) — research §1.9(a)'s warning, reproduced exactly. Split
+     into `start_stream` (PLANS) and `pump_stream` (SUBMITS, bounded, nearest-first):
+     **7 slow frames of 2,000, none on swap, none while uploading.**
+265. [x] The staged bulk upload is retired on this path — cells install into fixed pools and only
+     dirty brick runs are sent. `--upload-budget` keeps its exact meaning (a per-frame byte ceiling)
+     and is applied to dirty runs.
+     **Check PERFORMED**: 2,000 frames, stationary, `--cell-log2 5 --stream-cells` — **4,090 of 4,096
+     cells resident, 3,011.6 MB total, 1.51 MB/frame mean, zero swap stalls, zero upload stalls.**
+     **And the honest reading of that 3 GB**, which is larger than a single 292.9 MB whole-tree
+     upload would have been: almost all of it is the node array being re-sent whole on each of ~511
+     install frames — goal 260's documented simplification meeting its bill. **Streaming's win here
+     is latency and smoothness, not total bytes**, and pooling nodes too would cut it to ~300 MB.
+     That is now a measured justification for doing it rather than a guess.
+
+### AK-E. The marcher itself (goals 266–270)
+
+266. [x] A coarse start-`t` pre-pass, built, correct, and a **measured wash** — closed as a negative.
+     **Check PERFORMED**: the CPU reference (8 cases, 8,189 assertions) shows the conservative bound
+     reaches **~80% of the oracle ceiling and skips 40–53% of primary traversal steps**; on the GPU
+     **the march really does get 19% faster on vk and the pre-pass really does cost 0.69 ms, and
+     they cancel.** No tile size wins — the best total is worse than doing nothing, because 14,400
+     tile pixels cannot fill this GPU. The follow-up that could change the answer (the beam and the
+     march are serialised) is recorded rather than attempted.
+267. [x] The compute port, answered as a **decisive negative, with the mechanism measured
+     separately** — which is why the negative is trustworthy. `SV_Depth` forces ROP ordered export;
+     **not writing it is 3.35/3.37 vs 4.03 ms on vk (17% of the march) and 10% on d3d12** — and
+     nothing was reading it. Removed. The port's main published justification was escaping exactly
+     that, so it is already banked. Then goal 271's warp-efficiency measurement closed the rest:
+     **92.0–94.1% on every pose**, step divergence ~7%, so there is no occupancy prize left for
+     compute to win. **Recommendation recorded, not acted on: do not port to compute yet.**
+268. [x] The secondary rays cheapened using what the structure already knows — **the largest single
+     win in this prompt**. **Check PERFORMED**: two AO rays instead of four is **−13% vk / −9%
+     d3d12**; clamping the AO ray to ≤2 m is **−9% / −5%**; **both together −18% vk / −13% d3d12**,
+     and the image difference is **mean 0.097/255 over 0.11% of pixels, max 10** — visually
+     indistinguishable, which is the whole argument. The unbounded ray length was the real defect:
+     `rayLength = max(0.15, aoRadiusPx * hitDistance * pixelAngle)` grows without limit with
+     distance, so distant pixels were paying for AO rays that could never occlude.
+269. [x] `kMaxIterations`, the stack and register pressure examined. **Check PERFORMED**: 2048
+     iterations (22 stack entries, shipping) measures 4.97/4.96 vk and 5.10 d3d12; the alternatives
+     move it by less than the noise on one backend and **16% the wrong way on the other**, which is
+     a shader-compiler artefact rather than a register-pressure finding, and is reported as such.
+270. [x] TAA history length revisited — **free to lengthen, and the decision is deliberately Prompt
+     005's**. **Check PERFORMED**: the cost of a longer history is **exactly zero** (an exponential
+     history is not a ring of N frames — the same two texture reads regardless), so this is purely a
+     look decision. At rest 8 and 32 frames are indistinguishable (16.64% vs 16.62% contrast); one
+     second after motion the longer history is **19% softer**. Capture:
+     `research/captures/ake_taa_history_8_vs_32.png`.
+
+### AK-F. Measurement, counters, and the standing regression gate (goals 271–275)
+
+271. [x] Both unverified measurement questions resolved **on this machine, by checking rather than
+     assuming**. `VK_KHR_performance_query`: **not exposed by this NVIDIA driver.** Nsight Perf SDK
+     / Nsight Graphics: **not installed**, and would additionally need a privileged registry change
+     for counter permissions even after installing — so **no counter SDK this pass**, stated as a
+     decision with its cost rather than an omission. What replaced it is better targeted anyway: a
+     warp-divergence estimator over the real per-pixel cost map (`warp_divergence.hpp`), **falsified
+     before it was trusted** — it moves in the predicted direction when fed a deliberately divergent
+     map. Result: **92.0–94.1% warp efficiency across six poses and every tiling**, which is what
+     closes goal 267.
+272. [x] The in-app RenderDoc trigger — **built, absent path verified, active path honestly
+     UNTESTED**. Passive `GetModuleHandleA("renderdoc.dll")`, no vendored header; because the API
+     struct prefix could not be checked against the real header on this machine it **validates
+     itself at run time** (requests exactly 1.6.0, checks `GetAPIVersion`, and disables itself if
+     `IsFrameCapturing()` says no capture started), so a wrong offset turns the feature off and says
+     so instead of calling an arbitrary pointer.
+     **Check PERFORMED, part one — the absent path**: `renderdoc: not injected` at start-up,
+     **333/333 tests including all seven GPU goldens byte-identical**, and frame time unaffected
+     (`stress_pose` vk p95 3.667/3.669/3.677/3.687 ms with the trigger compiled in).
+     **Check NOT PERFORMED, part two — the active path**: RenderDoc is not installed on this machine
+     (no install directory under either `Program Files` root, no DLL on the volume, no registry
+     entry — checked, not assumed). The capture path has never run and that is not claimed.
+     **A bug worth recording**: the first wiring bracketed the *dump block* inside `capture_phase`,
+     which runs after the draw calls — it would have captured the staging read-back and nothing
+     else, and it would have looked like it worked. The bracket now spans `begin_frame()` to after
+     `present()` in both loops, sharing one `frame_dumps` predicate.
+272a. The sliver curtains (goals 73/105) stay **BLOCKED**, and the nature of the blockage changed:
+     it was "no in-app trigger exists", which is now done; it is now "RenderDoc is not installed",
+     which is a five-minute install after which `--dump-every` on the repro in
+     `research/water-foliage-design.md` is a one-command investigation. **Check**: run it and report
+     what the capture shows — even "the capture shows X, which does not explain it" is progress.
+273. [x] Frame-time regression as a standing gate. **Check PERFORMED**: **six of six pass at the
+     budget and six of six fail when it is tightened by 20%** — the falsification this goal asks
+     for. Registered in `ctest -L scenario` on `stress_pose` and `fly_transect`. Two things had to
+     be measured to make it real: a p95 needs about **800 frames** before it is a statistic (at 320
+     the 95th percentile is the sixteenth-worst frame, one hitch from meaningless), and the gate must
+     be **per backend**, because vk and d3d12 differ by 30–35% at this pose and `ctest -L scenario`
+     runs vk only — one shared threshold would have to be set by the slower backend and would let a
+     30% vk regression through. **CI does not run it**: the GitHub Windows runner has no Vulkan ICD.
+     Said plainly rather than left implied.
+273a. [x] A **moving** scenario is not gateable, measured — and the gate is what showed it
+     (log §24). `fly_transect`'s gate was removed together with the measurement that justifies it.
+273b. [x] The gate recalibrated after it flaked, **and chasing the flake found something worth more
+     than the gate**. **Check PERFORMED**: nine standalone runs spread **0.3%** (p95 3.67–3.73)
+     while the same scenario inside a full 333-test `ctest` measured **4.511 and failed, about one
+     run in three** — with a bimodal frame histogram and 15–18 ms `present` stalls. That failing
+     run's **median was 3.49, unmoved**, so the gate became two metrics: a median that carries the
+     regression signal and a p95 that guards the tail. Then vk began failing a threshold it had
+     passed twelve times that morning — **median 4.01–4.14 against 3.49–3.50 three hours earlier,
+     same binary, same pose** — and `nvidia-smi` sampled *during* a run reads **2445 MHz of a
+     3105 MHz maximum at 23 W with no thermal-slowdown flag**. 3.50/4.13 = 84.7% against
+     2445/3105 = 78.7%: **the GPU's boost state explains essentially all of it.**
+     **An absolute millisecond threshold on this machine therefore has an ~18% noise floor that
+     belongs to the laptop, and nothing in the frame data shows it.** Gates are set from the full
+     observed range including the low power state: **vk median < 4.8, p95 < 5.2; d3d12 median < 7.2,
+     p95 < 10.0.** The 20%-tightening Check was performed and passed (measured 3.495 against a
+     tightened 3.2) **but in the high power state — a check at a moment, not an invariant**, and
+     **d3d12's gate is not falsifiable at 20% at all** because its 18% spread is wider than the
+     tightening margin. Said in the scenario file rather than papered over; vk carries the Check,
+     which is also the backend `ctest -L scenario` runs.
+274. [x] The throughput answer, restated on the finished architecture. **Check PERFORMED**:
+     **260 M primary rays/s, 23.9 G traversal steps/s, 937 M rays/s counting every ray cast**, and
+     **21–26% faster at every rung than before this prompt, with p95 improving more than p50
+     (20–38%)** — the second number is the variance answer the owner actually asked for.
+     **The form Prompt 007 needs: 457 million voxels at 7.8 mm, 544 MB resident, at 150+ fps on both
+     backends** (conservative, both-backends figure). **And it is a modest result for the hardware,
+     which is said plainly** rather than presented as a win: the literature comparison is in log §17.
+275. [x] What this pass did not do — recorded with reasons and follow-up goals, below.
+
+### AK-G. What this pass did not do (goal 275)
+
+*These were drafted as goals 276-283 and renumbered to 275a-275h: **Prompt 005's Group AL owns
+276-294**, and two goals sharing a number is exactly the kind of drift `Prompts/README.md` exists
+to prevent. Commit `ed273cf`'s message refers to "goal 281", which is 275e here.*
+
+275a. Editing (goal 160), and whether the new structure makes it reachable — **it does, and the
+     answer is explicit**: the resident cell grid is already a page table with per-cell trees, fixed
+     slots and dirty runs, which is structurally most of what HashDAG's page + hash-table design
+     needs (research §3.3). What is missing is the hash-interning of subtrees and an edit path that
+     rebuilds one cell rather than one world — and goal 257 already made per-cell rebuild 10.4×
+     faster, so the expensive half exists. **Check**: an edit that changes one voxel re-uploads only
+     that cell's dirty brick runs, with the bytes measured.
+275b. Hardware ray tracing and SER — **not attempted, and the reason is scope, not value**: it needs
+     the RT pipeline rather than a shader change (research §4.6), which is a larger change than the
+     compute port this pass already declined. The documented prize is real (38% → 70% active
+     threads). **Check**: a prototype that traces the same scene through the RT pipeline and reports
+     march ms and active-thread percentage against the 92–94% warp efficiency measured here.
+275c. NAADF's in-cell distance-field caches — **the highest-leverage unexplored idea found in the
+     research, and it stays unexplored**. Research §3.5 reports *"3-5x compared to ... variants of
+     directed acyclic graphs"*, doubling again to ~10× with AADFs, and there is an open-source
+     implementation. It was not attempted because AK-C/AK-D consumed the structural budget and a
+     distance-field cache belongs inside a cell, so it wants the cell grid to exist first — which it
+     now does. **Check**: build it in the CPU reference, measure traversal steps per primary ray
+     against the 91.9 measured here, then decide.
+275d. DAG deduplication (goal 163) — deferred **for ordering, not value**; see goal 258.
+     **Check**: measure on the post-palette tree, with the brief's 16-identical-tiles unit check.
+275e. A **clock-independent** regression metric, which is the real fix for goal 273b. A gate on
+     wall-clock GPU milliseconds measures the machine as much as the renderer (the 18% finding
+     above). `mean_primary_steps` — mean primary traversal steps per pixel — is **deterministic**:
+     the same scene and pose give the same number on any clock, on either backend, forever. It
+     already exists in `run_ramp.cpp`, derived from a `--debug-view steps` capture; it is not yet a
+     scenario assertion. **Check**: assert it on `stress_pose`, confirm it is bit-identical across
+     backends and across power states, and confirm it fails when LOD or traversal changes.
+275f. `--dump-every` produces an **all-black frame on alternate dumps** past roughly the fiftieth
+     frame, with TAA off and GPU timers off. Found while capturing goal 263's convergence sequence,
+     which it made impossible to read at a fixed camera; not attributed to this pass's changes.
+     **Check**: a 200-frame `--dump-every 4` run in which every PNG has non-zero contrast.
+275g. The **Vulkan timestamp query pool exhausts** (`Failed to allocate Vulkan query for type
+     QUERY_TYPE_TIMESTAMP`) on long runs with frequent dumps — new since `GpuPass::Beam` took the
+     range count from four to five. **Check**: a 5,000-frame run with dumps that allocates no query
+     it cannot free.
+275h. `research/gpu-voxel-streaming-and-profiling-research.md` §8's gap list: §8.1 was closed by
+     recovering the lost stretch into the research appendix (§9); §8.4 was closed by goal 271 as a
+     negative. The remainder is not closed and is not claimed to be.
 
 ## Tooling defects found in passing (goal 101's standing expectation)
 

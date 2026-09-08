@@ -90,6 +90,9 @@ public:
     /// Bytes those runs represent -- the number goal 257's Check asks for.
     [[nodiscard]] std::uint64_t dirty_brick_bytes() const noexcept;
     void clear_dirty() noexcept { dirtyBricks_.clear(); }
+    /// Put a run back on the dirty list -- for an uploader that could only afford part of it this
+    /// frame. Runs are independent, so re-queuing a suffix is exactly correct.
+    void mark_dirty_run(DirtyRun run) { dirtyBricks_.push_back(run); }
 
     /// A view onto a resident cell, for the CPU-side trace. Empty when the cell is not resident.
     [[nodiscard]] TreeView view_of(std::size_t index) const noexcept;

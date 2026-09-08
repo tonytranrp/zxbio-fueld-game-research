@@ -60,7 +60,7 @@ assert contrast_percent > 6
 # power state. Goal 273's 20%-tightening Check was performed and passed (measured 3.495 against a
 # tightened 3.2), but it was performed in the high state -- it is a check at a moment, not an
 # invariant, and saying otherwise would be overclaiming. The real fix is a clock-independent
-# metric; `mean_primary_steps` already exists in the ramp path and goal 281 is to make it a
+# metric; `mean_primary_steps` already exists in the ramp path and goal 275e is to make it a
 # scenario assertion.
 #   d3d12 median 5.50 5.51 5.52 5.60 5.66 6.05 6.06 6.10 6.44 6.51 6.59
 #         p95    5.97 6.16 6.41 6.62 6.99 7.10 8.32

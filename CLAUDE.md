@@ -418,6 +418,70 @@ Full record: `research/player-embodiment-log.md`. Machine-relevant deltas ONLY:
   static poses had been stale since walk became the default, and the moving ones moved with the new
   speeds and gravity.
 
+## Frame time & the GPU architecture (2026-09-07, Prompt 004 Group AK) -- operational deltas
+
+Full record: `research/frame-time-and-gpu-architecture-log.md`; the architecture itself, written so
+the next pass need not re-read 700 lines of shader: `docs/gpu-architecture.md`. Machine-relevant
+deltas ONLY:
+
+- **A CBUFFER CHANGE MEANS REBUILDING EVERY BINARY THAT RENDERS.** `voxel_harness` is a different
+  binary from `voxel_app`. Shaders load at runtime so a shader edit needs no rebuild, but the C++
+  cbuffer mirror does, and the harness renders with its own copy. Goldens read 48.5% and the bisect
+  ran four times before this was noticed. It has now cost time twice.
+- **A cbuffer field-ORDER mismatch is invisible to `static_assert`.** Same total size, so the assert
+  passes and the world renders EMPTY (0.0% contrast against 19.8%). If that happens after touching
+  constants, check field order before anything else. The tail order is, in both languages:
+  `g_WaveParams, g_GridDims, g_GridOrigin, g_MarkParams, g_ProxyOrigin, g_ProxyInts, g_Materials`.
+- **A bound pixel-shader UAV costs ~30% of the march even when nothing writes to it.** Two PSOs
+  behind an `SVO_MARK_USAGE` define is why the non-marking path is fast. Add another define before
+  adding another UAV; do not bind one unconditionally.
+- **FXC will not unroll an `[unroll]` loop containing `continue` or `return`**, which makes any
+  vector-component write inside it runtime-indexed -> X3500 -- and Vulkan accepts what d3d12 rejects.
+  Both marcher loops are branch-free with early-outs hoisted out. Test both backends.
+- **`--vsync` / `--no-vsync` exists now** (on by default). It was hardcoded `Present(1)`, so every
+  frame-time percentile before this pass was measuring the panel. Measure with it OFF.
+- **New flags**: `--cell-log2 N` (cell edge, 0 = the old single tree), `--stream-cells` (the resident
+  cache; OFF by default -- the single-tree and whole-grid paths are measured and shipping),
+  `--cells-per-frame N` (default 8), `--proxy-voxel-log2 N`, `--brick-slots N`, `--no-beam`/`--beam`,
+  `--no-rebuild`. `--upload-budget` KEEPS ITS EXACT MEANING (a per-frame byte ceiling) but now
+  applies to dirty brick runs rather than tree slices, which is why it was kept rather than deleted.
+- **A brick is 280 B now, not 576** (goal 258): 16 mask words + 52 index words holding ten 3-bit
+  palette indices each + a 2-word 8-entry palette. `kBrickWords` is 70. A `static_assert` pins
+  `kMaterialCount <= 8`, so **adding a ninth material is a BUILD ERROR** naming both fixes -- that is
+  deliberate, not an oversight. `brick.hpp` and `svo_march.psh.hlsl` change together.
+- **New baseline at `stress_pose`** (the budget pose -- ground level at a hilltop, NOT the panorama),
+  RelWithDebInfo, vsync off: march median **3.50 ms vk / 5.5-6.1 ms d3d12**, resident **279.5 MB**,
+  peak GPU **333.1 MB**, 892,655 bricks. Throughput at 150+ fps: **457 M voxels at 7.8 mm**.
+- **AN ABSOLUTE ms THRESHOLD ON THIS MACHINE HAS AN ~18% NOISE FLOOR THAT IS NOT THE CODE.** Twelve
+  runs early in a session measured vk median 3.49-3.50; three hours of continuous GPU load later the
+  same binary at the same pose measured 4.01-4.14, and `nvidia-smi` sampled DURING a run reads
+  **2445 MHz of a 3105 MHz maximum at 23 W with no thermal-slowdown flag** -- a lower boost state,
+  not throttling, and 2445/3105 = 78.7% against 3.50/4.13 = 84.7% accounts for essentially all of it.
+  **Before concluding a change made things slower, sample the clock.** Contention is a separate
+  effect and moves the TAIL only: a p95 gate flaked one full-`ctest` run in three at a median
+  indistinguishable from standalone.
+- **`stress_pose` gates on FOUR assertions**: `gpu_ms_median` (the regression signal) and
+  `gpu_ms_p95` (a loose tail guard), per backend. Read that file's own comment block before changing
+  any of them. `ctest -L scenario` runs **vk only**; CI runs neither (no Vulkan ICD on the runner).
+- **NVIDIA counter SDKs are NOT available here and it is not a five-minute fix**: this driver does
+  not expose `VK_KHR_performance_query` (checked with `vulkaninfo`, not assumed), Nsight Perf SDK /
+  Nsight Graphics are not installed, and enabling GPU counters additionally needs a PRIVILEGED
+  registry write. `world/svo/warp_divergence.hpp` over a `--debug-view steps` capture is the
+  substitute actually used, and it measured 92.0-94.1% warp efficiency.
+- **RenderDoc: the in-app trigger exists** (`render/diligent/renderdoc_trigger.hpp`, a process-wide
+  `renderdoc_trigger()`), brackets exactly the frames `--dump-every` writes, and is a no-op costing
+  one failed `GetModuleHandleA` when RenderDoc is absent -- which it is on this machine (checked: no
+  install directory under either `Program Files` root, no DLL on the volume, no registry entry). The
+  ACTIVE path has never run and the API struct layout could not be verified against the real header,
+  so it validates itself at runtime and disables itself if `IsFrameCapturing()` disagrees. Goals
+  73/105 are blocked on installing RenderDoc, nothing else.
+- **Two open tooling defects found in passing**: `--dump-every` writes an all-black frame on
+  alternate dumps past ~frame 50 (goal 275f), and the **Vulkan timestamp query pool exhausts** on
+  long runs with frequent dumps, new since the fifth GPU range was added (goal 275g).
+- **338 tests** (331 unit + 7 GPU scenarios). The scenario tests need a real GPU; CI runs
+  `ctest ... -LE scenario`.
+
+
 ## Phase status
 
 **Phase 0 (repo scaffold + dependency fetch/build smoke test): DONE.** Clean configure+build

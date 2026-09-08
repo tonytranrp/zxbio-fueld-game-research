@@ -19,7 +19,18 @@ water) chosen to evoke the *feeling* of that aesthetic. Since the Voxel Represen
 (`research/voxel-representation-redesign.md`), the terrain mesh itself is genuinely blocky —
 per-voxel-face, greedy-merged cubes — rather than a smooth iso-surface merely *lit* to look chunky.
 
-## Current state (2026-09-07, after the micro-voxel pivot, the Lin-look/collision/lag pass, materials as components, and the gameplay/wind/water pass)
+## Current state (2026-09-07, after Prompt 004 -- the architecture is a resident cache)
+
+**The renderer streams.** The world is a grid of independent 32 m octree cells in fixed GPU
+pools; the marcher marks what it used and requests what it wanted; an LRU evicts; a coarse
+always-resident proxy answers for anything not yet loaded, so no frame has a hole. Bricks are
+palette-compressed to 280 B. At the budget pose the march is **3.50 ms on vk** and the two
+backends have converged, resident memory is **279.5 MB** (was 543.7), `fly_transect`'s p99 is
+**8.52 ms** (was 13.16), and the measured throughput at 150+ fps is **457 million voxels at
+7.8 mm on both backends** -- the number Prompt 007 derives its view distance from. Details:
+[`docs/gpu-architecture.md`](gpu-architecture.md); reasoning:
+`research/frame-time-and-gpu-architecture-log.md`. Everything below describes the world that
+architecture draws, which is unchanged.
 
 **The world is now sub-centimeter.** `voxel_app`'s default path (`--renderer svo`,
 `research/micro-voxel-pivot-log.md`) builds a **sparse-brick octree** around the camera — 8³
@@ -188,9 +199,16 @@ engine/{core,ecs,jobs,input,events}   -- core loop/log/config, EnTT wrapper, Thr
                                           backed), GLFW input (+G walk toggle, F2 screenshot),
                                           entt::dispatcher event bus
 world/{chunk,generation,meshing,streaming,svo,collision}
-  svo/         -- MICRO-VOXEL PIVOT (2026-09-05): sparse-brick octree -- 8^3 bricks (material
-                  bytes + occupancy mask) under an SVDAG-layout node array with distance LOD built
-                  in; layout v2 (Group Z) adds one attribute word per node -- int8 x3 area-weighted
+  svo/         -- MICRO-VOXEL PIVOT (2026-09-05): sparse-brick octree -- 8^3 bricks under an
+                  SVDAG-layout node array with distance LOD built in. PROMPT 004 made it a
+                  RESIDENT CACHE: cell_grid (a grid of 32 m shallow trees + Amanatides-Woo DDA,
+                  no cross-cell pointers), resident_grid (persistent brick slots, dirty runs,
+                  per-cell install/evict), brick_pool (fixed-capacity slot allocator + LRU
+                  stamps), cell_marks (the marcher's usage/request words), lod_bands (detail
+                  quantised to a distance band so "unchanged" is decidable), beam (a
+                  conservative cone bound -- built, correct, and a measured wash),
+                  warp_divergence. A brick is 280 B now, not 576: 16 mask words + 52 index
+                  words (ten 3-bit palette indices each) + a 2-word 8-entry palette; layout v2 (Group Z) adds one attribute word per node -- int8 x3 area-weighted
                   average normal + uint8 volume coverage, built bottom-up; TerrainSampler (the
                   generator generalized to meters + implicit trees); HeightField (sound min/max
                   pyramid); parallel build_tree; trace_ray (TraceParams: secondary rays judge LOD
@@ -317,6 +335,105 @@ threshold is a number of stops above what the eye is adapted to.
   tree-layout change that fixes it (goal 276). And adaptation-scaled bloom is **a correct mechanism
   with no subject**: 147× the energy at −4 EV proves it works, and across this world's real −0.96 to
   −1.55 EV range it does nothing, because the HDR output rarely exceeds 1.0.
+
+## Prompt 004 — the architecture is a resident cache now (Group AK, goals 244-275)
+
+Full reasoning and every measurement: `research/frame-time-and-gpu-architecture-log.md`. The
+architecture itself, written so the next pass does not have to re-read 700 lines of shader:
+`docs/gpu-architecture.md`.
+
+**Current state.** The world is no longer one deep tree rebuilt whole. It is a **grid of independent
+shallow octrees** — 32 m cells, each a `BrickTree` with no pointers leaving it — walked by a 3D DDA,
+living in **fixed-capacity GPU pools**. The marcher **marks which cells it used and requests the ones
+it wanted**, through a UAV read back three frames later; a CPU-side LRU evicts by that; the producer
+**plans and then pumps a bounded slice per frame**; and a ray entering a cell that is not resident is
+answered from an **always-resident coarse proxy** rather than passing through, so **no frame has a
+hole in it**. Bricks are **palette-compressed** — 280 B instead of 576 B.
+
+The numbers, all at `stress_pose` (ground level at a hilltop, shadows and AO on — the budget pose,
+not the panorama), RelWithDebInfo, vsync off:
+
+| | before this prompt | after |
+|---|---|---|
+| march, vk | 4.90 ms | **3.50 ms** |
+| march, d3d12 | 5.12 ms | **5.5–6.1 ms** (was trailing vk by 30–35%; now converged) |
+| resident | 543.7 MB | **279.5 MB** |
+| peak GPU | 648.1 MB | **333.1 MB** |
+| `fly_transect` p99 | 13.16 ms | **8.52 ms** |
+| throughput at 150+ fps | — | **457 M voxels at 7.8 mm, both backends** |
+
+**And the prompt's own premise was wrong, which is the most useful thing the first measurement
+did.** It asked for the missing 7–10 ms between a 13.15 ms frame and a 3.2–6.3 ms march. There is
+none: vsync was hardcoded (`Present(1)`, so every percentile downstream was measuring the panel), and
+with it off the median frame is **5.21 ms — 192 fps — of which 4.93 ms is the marcher.** The frame
+was already GPU-bound and already past the target on average. **The owner's complaint was entirely
+about variance**, and that reframing is why the pass is shaped the way it is.
+
+### Decisions that survived contact with evidence (Prompt 004's additions)
+
+- **Measure the instrument before believing the result, and keep a tally.** This pass caught **ten or
+  more vacuous instruments**, several of them mine: a scenario copy whose `sed` matched no line, so
+  both arms of an A/B ran the identical configuration and produced identical numbers; a camera
+  eighteen metres inside a hill; a serial-vs-parallel comparison that never ran serially; two grids
+  that were not aligned; frame-index captures taken at different yaws; a `present_count()` read from
+  a shape-only grid. The one that cost the most was **the harness being a different binary from the
+  app**: shaders load at runtime so a shader edit needs no rebuild, but the C++ cbuffer mirror does,
+  and only the app had been rebuilt. Goldens read 48.5% and the bisect ran four times before the
+  shader was exonerated. **Operational rule: a cbuffer change means rebuilding every binary that
+  renders.**
+- **Build the gate before the feature it will judge.** The frame-time gate (goal 273) caught a **30%
+  march regression** that had nothing to do with the feature being added — **a bound pixel-shader UAV
+  costs ~30% of the march even when nothing writes to it**, which is now fixed with two PSOs behind
+  an `SVO_MARK_USAGE` define. Without the gate that would have shipped inside a change whose own
+  measurements all looked fine.
+- **A threshold measures the machine as much as the code, and this machine drifts 18%.** Twelve runs
+  early in a session measured vk median 3.49–3.50 ms; three hours of continuous GPU load later the
+  same binary at the same pose measured 4.01–4.14, with `nvidia-smi` reading **2445 MHz of a
+  3105 MHz maximum at 23 W and no thermal-slowdown flag** — a lower boost state, and 2445/3105 =
+  78.7% against 3.50/4.13 = 84.7% accounts for essentially all of it. So goal 273's gate is set from
+  the full range including the low power state, its 20%-falsification is recorded as **a check at a
+  moment rather than an invariant**, and **d3d12's gate is honestly labelled a guard that cannot be
+  falsified at 20% at all** because its spread is wider than the margin. The real fix — a
+  deterministic, clock-independent metric — is goal 275e.
+- **A design's arithmetic is worth evaluating before it is worth implementing.** Goal 254's cost
+  model for the cell grid predicted traversal steps would *rise*. Writing it down and checking it is
+  what caught that it was wrong; the implementation measured **52% fewer** steps. Neither the model
+  nor the intuition decided it — the measurement did, and the model earned its place by being wrong
+  in public rather than silently.
+- **"Not loaded" and "empty" are opposites, not synonyms.** They look identical to a marcher — both
+  are a cell it cannot trace — but the never-stall proxy must answer for the first and stay silent
+  for the second. Conflating them put a coarse hit 0.3 m in front of the camera, in space the fine
+  build had correctly found empty. `kFlatCellEmpty` exists because a test forced the distinction.
+- **Reproduce the failure mode you are guarding against, then fix it.** The first streaming producer
+  put **1,710 ms on one frame** by building the proxy synchronously and submitting 4,096 cells at
+  once — research §1.9(a)'s starvation warning, reproduced exactly rather than taken on faith.
+  Splitting "plan" from "pump" took it to **7 slow frames of 2,000, none on swap, none uploading.**
+- **A negative with two numbers is a completed goal.** Three of this pass's larger items are
+  measured noes and they are worth as much as the yeses: the **beam pre-pass** genuinely skips 40–53%
+  of primary traversal steps and genuinely makes the march 19% faster on vk, and **costs 0.69 ms to
+  do it, which exactly cancels** — no tile size wins. The **compute port** is a no because its main
+  published prize was already banked by removing `SV_Depth` (17% of the march on vk, and *nothing was
+  reading it*) and because warp efficiency measured **92.0–94.1%**, leaving no occupancy left to win.
+  The **column-grid cache** measured a **0% hit rate** over a 900-frame flight and was deleted.
+- **A simplification should be made to present its bill.** Bricks are pooled and nodes are repacked
+  and re-sent, chosen because bricks are 94.6% of resident bytes. The bill arrived on schedule: a
+  stationary 2,000-frame streaming run sends **3,011.6 MB**, almost all of it the node array re-sent
+  whole on ~511 install frames, where a single whole-tree upload would have been 292.9 MB. That is
+  the measured justification for pooling nodes too — and it is why streaming's win is stated as
+  **latency and smoothness, not total bytes**.
+- **A test that skips the cases it would disagree on is worse than no test.** The
+  sampler/`fill_terrain` byte-equivalence test excluded every negative-height column — about a third
+  of the region — because of a floor-vs-truncate quirk. Fixing the quirk (goal 161) took it to
+  **196,608 voxels with 0 skipped**.
+- **A capture bracket that compiles is not a capture bracket that works.** The RenderDoc trigger's
+  first wiring bracketed the dump block inside `capture_phase`, which runs *after* the draw calls. It
+  would have produced a capture file containing the staging read-back and nothing else — plausible,
+  and useless. The bracket now spans `begin_frame()` to after `present()`.
+- **Say what was not done, and why, in the same breath as what was.** Editing (HashDAG), hardware
+  ray tracing with SER, and NAADF's in-cell distance fields are all unattempted; each is goals 275a-275c
+  with a reason and a Check. NAADF is recorded as **the highest-leverage unexplored idea the research
+  found** — the honest reading is that it stayed unexplored because AK-C/AK-D consumed the structural
+  budget, not because it lost an argument.
 
 ## Decided against, Prompt 003 Group AJ-C/AJ-D (goals 239, 243)
 
