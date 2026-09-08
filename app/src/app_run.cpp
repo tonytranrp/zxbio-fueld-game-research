@@ -30,6 +30,7 @@
 #include "render/diligent/gpu_tools.hpp"
 #include "render/diligent/post_process.hpp"
 #include "render/diligent/render_context.hpp"
+#include "render/diligent/renderdoc_trigger.hpp"
 #include "render/diligent/svo_renderer.hpp"
 #include "render/diligent/terrain_renderer.hpp"
 #include "render/interface/camera.hpp"
@@ -482,6 +483,24 @@ struct CaptureState {
     std::uint32_t screenshotCounter = 0; // F2 capture numbering (goal 9)
 };
 
+// Goal 272: the frames a RenderDoc capture brackets are exactly the frames that write a numbered
+// dump, so "the artefact is on frame 340" and "the capture of frame 340" are the same selection and
+// an unattended run produces both. Shared with capture_phase so the two can never disagree.
+[[nodiscard]] bool frame_dumps(const AppOptions& options, std::uint32_t frame) {
+    return options.dump_every > 0 && frame % options.dump_every == 0;
+}
+
+// A capture must open BEFORE the frame's draw calls and close after Present -- opening it in
+// capture_phase (which runs after rendering, next to the readback) would have captured the readback
+// and nothing else. Both are no-ops when RenderDoc is not injected, which is why neither call site
+// tests available(): the branch would only duplicate the one inside.
+void renderdoc_frame_begin(const AppOptions& options, std::uint32_t frame) {
+    if (frame_dumps(options, frame)) {
+        render::diligent::renderdoc_trigger().begin_capture();
+    }
+}
+void renderdoc_frame_end() { (void)render::diligent::renderdoc_trigger().end_capture(); }
+
 bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t frame,
                    render::diligent::RenderContext& context, std::size_t sceneReady, FrameInput& input,
                    const RunHooks& hooks, const std::string& scenarioCapture) {
@@ -779,6 +798,7 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
             break;
         }
         input.begin_frame();
+        renderdoc_frame_begin(options, frame);
 
         if (!world.finished()) {
             // Goal 128/130: one increment of the one-time generation/mesh/upload pass, then a
@@ -859,6 +879,7 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
         }
 
         s.context->present();
+        renderdoc_frame_end();
         FrameMark;
         ++frame;
         ++telemetry.framesSinceReport;
@@ -1010,6 +1031,10 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     // Goals 263-265: the streaming path. Started once, then fed a bounded number of finished cells
     // per frame -- the producer never touches the render thread's critical path, which is the
     // starvation failure research 1.9(a) warns about and goal 170 measured as `present` stalls.
+    // Goal 272: the RenderDoc trigger, wired to the SAME frames --dump-every and the capture
+    // points already fire on, so a scenario can capture the exact frame an artefact appears on
+    // unattended. A no-op when RenderDoc is not injected, which is every run on this machine.
+    log(LogLevel::Info, "renderdoc: {}", render::diligent::renderdoc_trigger().status());
     bool streamStarted = false;
     std::uint64_t streamedCells = 0;
     std::uint64_t streamBytes = 0;
@@ -1071,6 +1096,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             break;
         }
         input.begin_frame();
+        renderdoc_frame_begin(options, frame);
         // The clock's delta is the PREVIOUS frame's duration: attribute it to that frame's phases,
         // and hand the held-over record its true wall time.
         if (pendingValid) {
@@ -1269,6 +1295,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
         frameScope.reset(); // closes the whole-frame GPU range before Present
         phaseClock = std::chrono::steady_clock::now();
         s.context->present();
+        renderdoc_frame_end();
         phases.present = phase_ms(phaseClock);
         render::diligent::gpu_passes_end_frame(*s.context);
         prevPhases = phases;
@@ -1304,6 +1331,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             }
             streamBytes += renderer.flush_cells();
         }
+
 
         // Goal 262: the usage readback, pipelined three frames deep so it never stalls. OUTSIDE
         // the hooks.on_frame block on purpose -- that block only runs under the harness, and a

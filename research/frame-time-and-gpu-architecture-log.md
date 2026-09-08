@@ -1913,3 +1913,285 @@ is only possible if the two binaries disagree.
 
 **Operational rule, now in CLAUDE.md: a cbuffer change means rebuilding every binary that renders,
 not just the one being run by hand.**
+
+---
+
+## 26. The RenderDoc trigger: built, absent-path verified, active path honestly UNTESTED (goal 272)
+
+`CLAUDE.md` has carried "in-app RenderDoc trigger (no vendored `renderdoc_app.h`)" as deferred since
+Phase 1, and goals 73/105 — the floating sliver curtains — have been waiting on it for three passes.
+Research §6.7 says the vendoring was never the obstacle: *"The recommended way to access the
+RenderDoc API is to passively check if the module is loaded, and use the API if it is."*
+
+**RenderDoc is not installed on this machine.** Checked rather than assumed: no install directory
+under either `Program Files` root, no `renderdoc.dll` anywhere on the volume, no registry entry.
+That fact splits this goal cleanly in two, and both halves are reported honestly below rather than
+merged into a claim the evidence does not support.
+
+### What is built
+
+`render/diligent/renderdoc_trigger.hpp` — `GetModuleHandleA("renderdoc.dll")` (which never *loads*
+the module, only asks whether the injector already did) → `GetProcAddress(..., "RENDERDOC_GetAPI")`
+→ `StartFrameCapture` / `EndFrameCapture`. No vendored header: the struct prefix is written from the
+documented v1.6.0 API.
+
+Because that prefix could not be checked against the real `renderdoc_app.h` on this machine, **the
+class validates itself at run time** instead of trusting the layout:
+
+1. it requests exactly version 1.6.0 (RenderDoc's compatibility promise is that a *requested*
+   version's layout never changes afterwards);
+2. it calls `GetAPIVersion` — the first pointer in the table, so if that offset is wrong nothing
+   else can be right — and rejects anything below 1.6;
+3. after `StartFrameCapture` it asks `IsFrameCapturing()`, and **disables itself and logs an error**
+   if the answer is no.
+
+A wrong offset therefore turns the feature off and says so. It cannot call an arbitrary function
+pointer. That is the whole reason this is shippable without the header.
+
+### The bracket, and the bug that writing it the obvious way would have caused
+
+The trigger hangs off the existing `--dump-every` selection, so the frames RenderDoc captures are
+exactly the frames that write a numbered PNG — "the artefact is on frame 340" and "the capture of
+frame 340" become one selection, which is what makes an unattended scenario run useful.
+
+**The first wiring was wrong in a way that would have produced a capture of the wrong thing.** I put
+`begin_capture()`/`end_capture()` around the dump block itself, inside `capture_phase` — which runs
+*after* the frame's draw calls, next to the read-back. A capture opened there contains the staging
+copy and nothing else: no march, no post, no geometry. It compiled, it would have run, and it would
+have produced a capture file that looked plausible and answered no question at all.
+
+The bracket now spans the real frame — `renderdoc_frame_begin` immediately after `input.begin_frame()`,
+`renderdoc_frame_end` immediately after `present()`, in **both** the mesh and svo loops — with the
+"does this frame dump" predicate shared (`frame_dumps`) so the two can never drift apart.
+
+### Check, part one: the absent path — PERFORMED, and it is free
+
+- `voxel_app` logs `renderdoc: not injected (run under RenderDoc to enable)` once at start-up.
+- 333/333 tests pass, **including all seven GPU scenario goldens**, so the frame output is
+  byte-identical with the trigger compiled in and the module absent.
+- Frame time is unaffected, which is not an inference: `stress_pose` on vk measured
+  **p95 3.667 / 3.669 / 3.677 / 3.687 ms** across four runs with the trigger in the binary, against
+  a pre-trigger gate of 4.4 ms set from p95 3.80/3.80/3.82. The cost is one failed
+  `GetModuleHandleA` per process and one predictable branch per frame.
+
+### Check, part two: the active path — NOT PERFORMED, and it cannot be here
+
+*"A scenario run under RenderDoc produces a capture at the requested frame"* cannot be executed
+without RenderDoc installed. It is not claimed. The code path has never run.
+
+### Check, part three: the sliver curtains — BLOCKED, and this is the honest status
+
+*"Then use it: capture the sliver-curtain frame and report what the capture shows"* is blocked on
+the same absence. Goals 73/105 stay open. What changed is the nature of the blockage: it was "no
+in-app trigger exists"; it is now "RenderDoc is not installed on this machine." The first was a
+piece of missing engineering and is done; the second is a five-minute install, and the moment it
+happens `--dump-every` on the repro from `research/water-foliage-design.md` is a one-command
+investigation. Recorded as goal 272a rather than left implicit.
+
+---
+
+## 27. Palette compression, implemented and measured: **48.6% of the memory for 1.5% of the march** (goal 258)
+
+§7 measured the headroom and chose an encoding but explicitly did not implement it, and said so:
+*"the implementation and its before/after march number are not done."* This is that.
+
+### The design changed after §7, and the reason is a boundary case, not a preference
+
+§7 concluded *"the right design is the 2-bit one with a fallback"* — a 4-entry palette covering 98.6%
+of bricks, with the other 1.4% keeping the byte-per-voxel encoding behind a kind bit. **I did not
+build that, and the reason is that the fallback is not free the way §7's arithmetic assumed.**
+
+A brick with a fallback encoding is a *different size* from a brick without one, and
+`BrickPool` — goal 260's fixed-size slot allocator, which the whole resident-cache architecture in
+AK-D is built on — assumes exactly one brick size. Two size classes means two pools, two free lists,
+two eviction policies and two dirty-run encodings, to save 1.4% of bricks from a wider index. §7's
+table priced the encodings and not that.
+
+**What shipped instead: a 3-bit index into an 8-entry palette, one size, no fallback.** It is
+provably sufficient rather than merely sufficient in the sample: `world::chunk::kMaterialCount` is
+8, entry 0 is reserved for Air, and entries 1–7 are exactly enough for the seven possible non-Air
+materials. A `static_assert` pins that to the registry, so **adding a ninth material is a build
+error with a message naming both alternatives** rather than a rare corrupted brick at run time.
+
+| | material bytes | brick | ratio |
+|---|---|---|---|
+| before: 1 byte/voxel | 512 | **576 B** (144 words) | 1.00× |
+| §7's proposal: 2-bit + 4-entry + fallback | 128 + 4 | 196 B | 2.94× (on 98.6%) |
+| 3-bit + 8-entry, packed 10 per word | 192 + 8 | **280 B** (70 words) | **2.06×** |
+
+**Ten indices per word, not the 10.67 that fit.** 3 does not divide 32, so a densely packed 3-bit
+index straddles a word boundary roughly once every ten voxels, and a correct material fetch would
+need two loads and a shift-select. Wasting two bits per word costs four extra words — 280 B instead
+of 264 B, 2.06× instead of 2.18× — and buys a fetch that is **exactly one load with no boundary
+case**. Since goal 258's own instruction is to measure the tracing cost against the bandwidth
+saving, paying 6% of the memory win to keep the marcher's added work at its minimum is the trade
+that goal is asking for.
+
+### Measured: memory
+
+`stress_pose`, same seed, same pose, from the harness's own report counters:
+
+| | before | after | change |
+|---|---|---|---|
+| bricks | 892,655 | 892,655 | **identical** |
+| internal nodes | 360,393 | 360,393 | **identical** |
+| **resident MB** | **543.68** | **279.46** | **−264.2 MB, −48.6%** |
+| **peak GPU MB** | **648.12** | **333.14** | **−315.0 MB, −48.6%** |
+
+**Every other counter in the report is byte-identical**, which is the useful part: the tree's shape
+did not change at all, only its payload encoding. The overall ratio is **1.95×** rather than the
+brick array's 2.06× because the node array (29.5 MB) is untouched — §7's projected "2.7× overall"
+was for the 2.94× encoding that this did not build, and the difference is stated rather than
+quietly inherited.
+
+### Measured: the march, which is what goal 258 says decides it
+
+Three runs each, `stress_pose`, RelWithDebInfo, GPU-timestamp median of the march+resolve range:
+
+| | vk before | vk after | d3d12 before | d3d12 after |
+|---|---|---|---|---|
+| median | 3.45 / 3.44 / 3.45 | 3.50 / 3.50 / 3.50 | 6.05 / 6.10 / 5.51 | 5.60 / 5.52 / 6.06 |
+| p95 | 4.24 / 3.68 / 3.69 | 3.72 / 3.71 / 3.73 | 7.59 / 6.48 / 5.93 | 6.62 / 6.16 / 6.41 |
+
+**vk: +0.05 ms, +1.5%. d3d12: no measurable change — the before and after ranges overlap.**
+
+So the answer to the goal's own question is decisive and in the opposite direction from the risk it
+was guarding against: **264 MB of GPU memory for 0.05 ms of march.** The extra dependent load is
+paid only on a *hit* — 52% of pixels — and only once per hit, while the bandwidth saving applies to
+every brick word the traversal touches. It ships.
+
+*(One honesty note on the A/B: the "after" runs were taken about twenty minutes later than the
+"before" runs, and §28 establishes that this machine's GPU drifts ~18% slower over a long session.
+That drift can only make the after look worse, so +1.5% is an upper bound on the palette's cost, not
+an estimate of it.)*
+
+### Measured: the build, where it does cost something
+
+The palette adds an intern step to the hottest path in the whole build — goal 162 measured
+`fill_brick` at ~60% of a tree build. So the bulk paths had to stay bulk. `brick_pack_materials`
+takes 512 material bytes and produces mask, indices and palette in one pass, interning through a
+direct lookup by MaterialID (one load and one predictable branch per voxel, not a scan of the
+palette). `TerrainSampler`'s two uniform fast paths, which previously wrote whole material words
+straight into the brick, now write into the same byte scratch and pack once — a local "write this
+layer" edit is no longer possible when an index's *value* depends on what else the brick holds.
+
+Three runs each of `svo_render --xz 48,0`, identical tree (903,469 bricks, 1,575,152 bricks sampled):
+
+| | before | after | change |
+|---|---|---|---|
+| `fill_brick` CPU (summed over threads) | 20.24 / 19.50 / 19.85 s | 21.32 / 22.83 / 22.38 s | **+11.7%** |
+| build wall clock | 3.36 / 3.30 / 3.55 s | 3.12 / 3.50 / 3.19 s | **inside the spread** |
+
+**+11.7% of `fill_brick`'s CPU time, and zero wall-clock cost**, because the build runs on three
+quarters of the hardware threads and is not throughput-bound there. Recorded because that is exactly
+the kind of cost that stays invisible until something else makes the build throughput-bound — at
+which point this is a real 12%.
+
+### Correctness
+
+- **331/331 unit tests**, five of them new and specific to this: the layout constants, all 512 voxel
+  indices round-tripped through the ten-per-word packing (512 does not divide by 10, so voxels
+  510–511 sit at a boundary the arithmetic has to get right, and each is checked for not disturbing
+  its 511 neighbours), the interning invariant, Air clearing both bit and index, and **two identical
+  fills producing byte-identical words** — determinism, which a palette could plausibly have broken
+  by ordering entries by insertion.
+- **All seven GPU golden scenarios pass on both backends.** `stress_pose`'s golden distance is
+  **0.1009% of pixels changed against a pre-palette golden**, versus 0.1317% for a pre-palette run
+  against the same golden — **the palette is inside the run-to-run noise floor**, which is the
+  strongest available statement that no pixel changed.
+- The sampler/`fill_terrain` byte-equivalence test survives, and the 7,000-ray oracle stays 0/7,000.
+
+### DAG dedup (goal 163) still not attempted, and the ordering reason is now stronger
+
+§7 deferred it because the palette changes which subtrees are bit-identical. That is now concrete:
+two bricks holding the same materials in a different *insertion order* get different palettes and
+are not bit-identical, so a canonicalisation pass (sort the palette, remap the indices) is a
+prerequisite for dedup to see the matches that exist. That is a small, well-defined piece of work
+and it is goal 279's first step.
+
+---
+
+## 28. The gate flaked, and chasing it found an 18% noise floor that belongs to the laptop (goal 273b)
+
+§16 set `gpu_ms_p95 < 4.4` on vk from *"~1.2x the worst of four runs"*, and §16's own numbers were
+p95 3.80/3.80/3.82. It passed its Check, it caught a real 30% regression (§23), and then it **failed
+inside a full `ctest` run** — 4.511 measured — while passing every standalone run.
+
+### The first thing measured was the instrument, not the renderer
+
+| condition | runs | gpu p95 | gpu median |
+|---|---|---|---|
+| standalone, `--no-golden` | 6 | 3.67–3.73 | 3.39–3.53 |
+| standalone, exactly as `ctest` invokes it | 3 | 3.68 / 3.67 / 3.69 | 3.43 / 3.43 / 3.45 |
+| **inside a 333-test `ctest` run** | 1 (of 3) | **4.511 FAIL** | **3.49** |
+
+**Nine consecutive standalone runs spread 0.3%.** The failing run's median was 3.49 — squarely
+inside the standalone range. Only the tail moved, and its frame histogram says why: bimodal, with
+**267 of 551 frames pacing at 11–16 ms and `present` at 15–18 ms**, i.e. the whole machine
+hiccupping, not the marcher slowing down. Two further full `ctest` runs passed 333/333, so the flake
+rate is roughly one in three.
+
+**So the median carries the signal and the p95 does not**, and the gate became two metrics:
+a tight, falsifiable median and a deliberately loose tail guard. Both are per backend for the reason
+§16 already established (vk and d3d12 differ by 30–35% and `ctest -L scenario` runs vk only).
+
+### Then the deeper cause turned up, and it invalidates absolute thresholds on this machine
+
+While re-measuring d3d12 for the new gate, vk started failing a threshold it had passed twelve times
+that morning: **median 4.01, 4.13, 4.135 against the 3.489–3.50 measured three hours earlier.** Same
+binary, same pose, same scenario.
+
+`nvidia-smi` sampled **during** a run:
+
+```
+59 C, 2445 MHz SM (max 3105), 8101 MHz mem, 23.31 W, sw_thermal_slowdown Not Active
+```
+
+**A lower boost state, not thermal throttling** — no slowdown flag, 54–59 °C, and only 23 W on a GPU
+rated far above that. And the arithmetic lines up: **3.50 / 4.13 = 84.7%** against
+**2445 / 3105 = 78.7%**. The clock explains essentially all of the drift.
+
+**An absolute millisecond threshold on this laptop therefore has an ~18% noise floor that belongs to
+the machine's power state, and nothing in the frame data shows it.** That is the real finding of this
+section and it is worth more than the gate it came from.
+
+### What the gate is now, and what it honestly is not
+
+| metric | vk | d3d12 | role |
+|---|---|---|---|
+| `gpu_ms_median` | < 4.8 | < 7.2 | regression signal |
+| `gpu_ms_p95` | < 5.2 | < 10.0 | tail guard |
+
+Observed ranges these were set from — the full range including the low power state, not a
+favourable window:
+
+- **vk** median 3.49–4.14, p95 3.68–4.51 (the 4.51 under full-suite contention)
+- **d3d12** median 5.50–6.59, p95 5.97–8.32
+
+**The 20%-tightening Check was performed and passed**: with the gate at 4.0 vk, a copy tightened to
+3.2 failed at measured 3.495, and the loose p95 gate correctly did *not* fail — which the scenario
+file states as intended rather than glossing. **But it was performed in the high power state, so it
+is a check at a moment and not an invariant, and claiming otherwise would be overclaiming.**
+
+**And d3d12's gate is not falsifiable at 20% at all**, which is stated in the scenario file rather
+than papered over: ten runs spread 5.50–6.51 ms (18%), with consecutive runs 15% apart (6.507 then
+5.658, back to back). A spread wider than the tightening margin means no single threshold both
+survives the spread and fails a 20% tighten. d3d12's gate is a regression guard only. Goal 273's
+falsification Check is carried by vk — the backend `ctest -L scenario` actually runs.
+
+### The fix this points at, recorded as goal 281
+
+A gate on wall-clock GPU milliseconds measures the machine as much as the renderer. The
+clock-independent alternative already half-exists: **`mean_primary_steps`**, the mean primary
+traversal steps per pixel, which `run_ramp.cpp` already derives from a `--debug-view steps` capture
+and which is *deterministic* — the same scene and pose produce the same number on any clock, on
+either backend, forever. Making it a scenario assertion would catch exactly the regressions that
+matter most here (structure, LOD, traversal) with no noise floor at all, leaving the millisecond
+gates to do what they are actually good for: catching a shader that got slower at constant work.
+
+### And a note on what a flaky gate cost, since it is the argument for fixing it
+
+The 30% regression in §23 was caught by this gate and would otherwise have shipped. A gate that
+cries wolf one run in three gets ignored, and then it catches nothing. Widening it to stop flaking
+was not optional; the honest bookkeeping is that the widening cost real sensitivity, and goal 281 is
+how to get that sensitivity back without buying the noise.

@@ -9,6 +9,7 @@ add_library(render_diligent STATIC
     src/auto_exposure.cpp
     src/vulkan_tools.cpp
     src/debug_overlay.cpp
+    src/renderdoc_trigger.cpp
     src/svo_renderer.cpp
     # The vendored ImGui GLFW platform backend (renderer half comes from Diligent-Imgui). Compiled
     # here because DiligentTools only builds its own Win32/etc. platform impls, and this app's
@@ -42,6 +43,7 @@ target_sources(render_diligent PUBLIC
         include/render/diligent/post_process.hpp
         include/render/diligent/gpu_tools.hpp
         include/render/diligent/debug_overlay.hpp
+        include/render/diligent/renderdoc_trigger.hpp
         include/render/diligent/svo_renderer.hpp
 )
 
