@@ -794,3 +794,119 @@ meander is three pixels, so the whole-field view cannot show it and the straight
 **The zoomed capture is not a nicer picture of the same thing; it is the only scale at which this
 world's rivers are resolvable at all.** Routing on D∞ would remove the residual alignment and is
 worth a later goal.
+
+---
+
+## 11. Goals 317 and 318: the acceptance suite, and the three things it caught in its own first run
+
+The prompt's own sequencing note said to build these early — *"they are how you will see everything
+else. Doing them last means debugging blind, which is how the last two passes lost time."* It was
+right, and the first run paid for the whole module.
+
+### The shape of it
+
+`world/generation/validation/acceptance.hpp` implements research Part 7 §9's ten tests. Two
+structural decisions, both from the prompt's Check:
+
+- **Every band is a named constant with its citation in a comment beside it.** A threshold whose
+  provenance lives somewhere else becomes a magic number within one refactor, and this pass has
+  already found three numbers that had drifted from the reason they were chosen.
+- **Every metric is a separate free function with its own instrument test.** `test_acceptance.cpp`
+  feeds each one a synthetic with an *analytically known* answer — a plane reads 45.000°, a
+  synthesised k⁻² surface reads β = 1.85, a bowl reads exactly one internal basin, a plane's
+  variogram reads H = 1.00 and white noise reads H = 0.00, the FFT puts a pure tone in exactly one
+  bin and satisfies Parseval, and a synthetic V and U valley read b = 1.0 and b = 2.0 apart.
+
+**The FFT is written, not depended on** (rule 7). Only a 1D transform is needed — the research's
+β band is quoted for the *1D angle-integrated* slope, and a 2D radial average of the same surface
+goes as k^−(2H+2) and would read a full unit high against the band. That is a units error that would
+have looked like a real result.
+
+### Three defects in the suite itself, all found by running it
+
+**1. It was measuring the wrong surface.** §9 says its tests run on "final (post-pipeline) heights".
+On this project the macro field is *not* that: `height_at` is macro **plus an analytic detail term**,
+and the macro field alone has no energy below its own ~100 m feature scale. Run on it, spectral β
+read **5.30** against a band of [1.6, 2.5] and Hurst read **0.84** against [0.46, 0.77]. Both were
+reporting, correctly, that a surface with nothing in it below 100 m is too smooth to be terrain —
+they simply were not measuring the terrain.
+
+The five **shape** tests (1, 2, 3, 5, 8) now read a 512² sample of `height_at` at 7.8 m spacing; the
+four **network** tests (4, 6, 7, 9) stay on the macro field, because flow routing is a macro concept
+and the detail term is not routed through. The report names which surface each used.
+
+**2. It was measuring the sea floor.** Every one of §9's bands comes from a source that measured a
+*landscape*, and none of them measured bathymetry. With the seabed in, mean slope read **1.7°** and
+the slope–area regression read **R² = 0.001 — no relationship at all**, because the ocean carries
+every high-area cell at near-zero slope and owns the entire high-area end of the fit. Land-masked,
+the same fit reads **R² = 0.826**. The relationship was always there; two thirds of the samples were
+drowning it.
+
+**3. It had an invented band.** §9.1 gives no numeric skewness range — it gives *unimodality* and a
+*sign trend* (positive skew at low mean slope, negative at high). The first version invented
+[−1.5, 2.5], and the terrain "failed" it at 3.24. **An invented band that a real landscape fails is
+worse than no band: it reports a defect that was never established.** The band is now on the sign
+only, with the pivot (15°) flagged as this project's reading rather than cited.
+
+A fourth, smaller: the mode counter only looked at interior histogram bins, so a monotonically
+decreasing distribution — the commonest shape a gentle landscape makes — reported "0 modes,
+unimodal = yes". Right verdict, wrong reason, which is worse than wrong.
+
+### The reading, on the shipped seed
+
+| # | test | measured | band | |
+|---|---|---|---|---|
+| 1 | slope skew sign | **−0.549** at 42.6° mean, unimodal | negative above 15° | **PASS** |
+| 2 | spectral β | **0.429** (R² 0.46) | 1.6–2.5 | FAIL |
+| 3 | hypsometry median/max | **0.139** | ≤ 0.40 | **PASS** |
+| 4 | drainage density | **5.58** km/km² | 2–12 | **PASS** |
+| 5 | valley exponent b | **2.33** (median 1.70, V-index 0.18) | 0.7–1.4 fluvial | FAIL |
+| 6 | constant-drop \|t\| | **13.67** | < 2 | FAIL |
+| 7 | slope–area exponent | **−1.651** (R² 0.83, plateau present) | −0.6 to −0.35 | FAIL |
+| 8 | variogram Hurst | **0.095** (R² 0.70) | 0.46–0.77 | FAIL |
+| 9 | hydrological coherence | 0 basins, 1160/1160 reaches, 170/170 lakes | structural | **PASS** |
+| 10 | stems/ha | n/a until goal 316 | 400–700 | — |
+
+**The headline is clean and was not visible before this suite existed: the macro pipeline passes
+every hydrological test it is judged on, and the ANALYTIC DETAIL TERM fails every surface-shape
+test.**
+
+Three metrics say the same thing three ways:
+
+- **Mean land slope is 42.6°** at 7.8 m sampling. That independently confirms Prompt 003's finding
+  — recorded in CLAUDE.md as "57–71 degrees where it is called a hillside, mostly unwalkable at any
+  realistic limit" — from a completely different instrument.
+- **β = 0.43** where real terrain is ≈ 2. A β near zero is white noise.
+- **H = 0.095** where the band is 0.46–0.77. Near-zero H is, again, an uncorrelated surface.
+
+And the two disagree with each other in an informative way: for fBm, β = 2H + 1, so H = 0.095
+implies β = 1.19, not 0.43. **Neither R² is high (0.46 and 0.70), and that is the real signal**: the
+surface is macro fBm *plus* white detail, so it has a spectral BREAK and no single power law
+describes it. A suite that reported one confident β for this surface would be hiding the finding.
+
+Two failures are already-known and already-owned: **6** is goal 308's constant-drop result, recorded
+in §8 as failing wherever it has the statistical power to say anything. **7**'s exponent of −1.651 is
+steeper than the −0.5 the shipped m/n = 0.5 implies — but §8 also set **uplift to zero**, and the
+slope–area power law is a *steady-state* relation between uplift and incision. With no uplift the
+landscape is decaying rather than graded, so −0.5 is not the prediction and −1.65 is not a defect in
+the solver. Its hillslope plateau is present, which is the half of §9.7 that judges the diffusion.
+
+**5** is a genuine and interesting result: this pipeline's valleys read as U-shaped (b = 2.33 mean,
+1.70 median) against a fluvial band of 0.7–1.4. Hillslope diffusion rounds a V into a parabola, and
+at 16 m cells with 112 m of relief there is not much V left to round. Goal 310's glacial stencil is
+judged against the *glacial* band (1.5–2.2) — which this fluvial terrain is already inside, meaning
+the b-value test cannot currently distinguish glaciated from unglaciated terrain here. That is a
+finding about the instrument's power on this world, and it is recorded rather than tuned around.
+
+### 318, and what it stopped duplicating
+
+`terrain_dump` previously carried **its own copies** of drainage density and the constant-drop test.
+They are gone; it calls the library. Goal 318's Check is exactly that — "the ten statistics printed
+match the library's" — and the two copies had already diverged: the tool's version sampled only
+link-END cells and reported first-order drops *larger* than higher-order, while the library's samples
+every channel cell and reports the opposite sign. **Two implementations of one test gave opposite
+answers, and nothing would have caught it but merging them.**
+
+The tool keeps the *sweeps* (drainage density and |t| across six channel thresholds), because a suite
+reports one threshold and a sweep answers which threshold the test selects — which is where both of
+goals 307 and 308's findings came from.

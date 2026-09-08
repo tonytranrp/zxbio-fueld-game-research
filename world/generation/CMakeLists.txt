@@ -4,6 +4,7 @@ add_library(world_generation STATIC
     src/field/macro_pipeline.cpp
     src/field/fluvial.cpp
     src/field/rivers.cpp
+    src/validation/acceptance.cpp
     src/field/climate.cpp
     src/terrain_fill.cpp
     src/tree_placement.cpp
@@ -20,6 +21,7 @@ target_sources(world_generation PUBLIC
         include/world/generation/field/macro_pipeline.hpp
         include/world/generation/field/fluvial.hpp
         include/world/generation/field/rivers.hpp
+        include/world/generation/validation/acceptance.hpp
         include/world/generation/field/climate.hpp
         include/world/generation/terrain_fill.hpp
         include/world/generation/tree_placement.hpp
