@@ -47,6 +47,10 @@ struct Options {
     // else, which no existing flag could do -- every other toggle removes a term applied AFTER
     // the material is chosen, and all six of them measured at zero.
     bool flat_albedo = false;
+    // Goal 278: blend the albedo toward the smoothing ancestor's representative material as the
+    // hit cube approaches pixel size -- the same rule, and the same weight, the NORMAL has used
+    // since Group Z. Material IDs cannot be averaged; their albedos can.
+    bool filter_albedo = true;
     bool grain = true;
     bool no_grain = false; // removes the grain TERM; --grain sets its amplitude. See the table.
     bool verify = false;

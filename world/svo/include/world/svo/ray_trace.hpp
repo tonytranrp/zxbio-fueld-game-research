@@ -68,6 +68,20 @@ struct Hit {
     glm::vec3 smooth_normal{0.0f};
     float coverage = 0.0f;
     int smooth_level = -1; // the level whose attributes smooth_normal came from
+    // Prompt 005 goal 278: the representative material of that SAME ancestor. Costs nothing to
+    // carry -- every node header already holds one (tree_layout.hpp bits 16-23) and the walk
+    // above already has the header in hand. It exists because goal 277 measured discrete
+    // material sampling as 59% of the moire, and this is the band-limited version of it: two
+    // adjacent rays that hit different fine nodes usually share an ancestor spanning ~6 px, so
+    // shading from the ancestor makes them AGREE instead of flickering.
+    world::chunk::MaterialID smooth_material = world::chunk::MaterialID::Air;
+    // Goal 278: the AREA-WEIGHTED AVERAGE albedo of that ancestor (tree_layout.hpp packs it R4
+    // G6 B4 into the header's free bits). This is the band-limited albedo the shading blends
+    // toward as a cube approaches pixel size -- an average, not a representative, because goal
+    // 277 measured that a representative is a quantiser and turns speckle into blotches.
+    // The zero vector when the node carries none, which `has_smooth_albedo` reports.
+    glm::vec3 smooth_albedo{0.0f};
+    bool has_smooth_albedo = false;
 };
 
 // The CPU REFERENCE marcher (research/micro-voxel-pivot-log.md §2.7): stack-based octree descent

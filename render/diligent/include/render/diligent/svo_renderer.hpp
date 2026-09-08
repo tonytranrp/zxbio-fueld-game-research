@@ -52,6 +52,11 @@ public:
         bool lod_march = true;      // Laine-Karras early-out when a node projects under a pixel
         bool sky = true;            // analytic sky on miss (false: flat clear color, --no-sky)
         bool grain = true;          // per-cube brightness hash, faded toward pixel size (goal 167)
+        // Prompt 005 goal 278: band-limit the albedo toward the hit node's area-weighted
+        // average as its cube approaches pixel size. Goal 277 measured discrete material
+        // sampling as 59% of the moire -- the largest single contributor, and the only one of
+        // the six candidates the prompt named that was not measured at zero.
+        bool filter_albedo = true;
         bool taa = true;            // temporal anti-aliasing resolve (goal 168)
         // Goal 266: the coarse start-t pre-pass. One conservative cone bound per `beam_tile`
         // square of pixels, computed at 1/beam_tile resolution, from which every primary ray in

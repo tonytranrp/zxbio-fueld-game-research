@@ -57,6 +57,56 @@ inline constexpr std::uint32_t kNodeWordsSolid = 1u;
 [[nodiscard]] constexpr world::chunk::MaterialID node_material(std::uint32_t header) noexcept {
     return static_cast<world::chunk::MaterialID>((header >> 16) & 0xFFu);
 }
+
+// LAYOUT v3 (Prompt 005 goal 278): the node's AREA-WEIGHTED AVERAGE ALBEDO, packed R4 G6 B4 into
+// the header's previously unused bits 10-15 and 24-31.
+//
+// WHY THIS EXISTS. Goal 277 measured discrete sampling of the per-hit MATERIAL as 59% of the
+// moire -- Laine & Karras' "blockiness caused by discrete sampling of shading attributes" -- and
+// the obvious zero-storage fix, shading from the smoothing ancestor's REPRESENTATIVE material,
+// was tried and REJECTED with a viewed capture: a representative is a majority vote, so it is a
+// coarser QUANTISER, not a filter. It moved the metric from 3.127 to 1.795 while turning fine red
+// speckle into large salmon blotches, and no ancestor span fixed it (2.41 / 1.95 / 1.80 / 2.04 at
+// 2 / 4 / 6 / 12 px, non-monotonic). Only a genuine average is a filter.
+//
+// WHY IN THE HEADER RATHER THAN A SECOND ATTRIBUTE WORD. A second word costs 4 bytes on every
+// internal node and brick leaf -- about 5.0 MB on the shipping tree. These 14 bits cost nothing,
+// they sit beside the representative material they band-limit, and -- the part that matters most --
+// SOLID LEAVES HAVE A HEADER AND NO ATTRIBUTE WORD, so this is the only place that reaches the
+// 804,157 of them the prompt flags as the largest hole in the current filtering.
+//
+// WHY R4 G6 B4. This is a band-limited term by construction: it is an average over a node, so it
+// carries no high-frequency content and 16/64/16 levels are far more than a low-frequency colour
+// needs. Green gets the extra two bits because luminance is mostly green.
+inline constexpr std::uint32_t kNodeAlbedoRShift = 24; // 4 bits
+inline constexpr std::uint32_t kNodeAlbedoGShift = 10; // 6 bits
+inline constexpr std::uint32_t kNodeAlbedoBShift = 28; // 4 bits
+
+[[nodiscard]] constexpr std::uint32_t pack_node_albedo(float r, float g, float b) noexcept {
+    const auto q = [](float v, std::uint32_t bits) {
+        const float clamped = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+        const auto maxv = static_cast<float>((1u << bits) - 1u);
+        return static_cast<std::uint32_t>(clamped * maxv + 0.5f);
+    };
+    return (q(r, 4) << kNodeAlbedoRShift) | (q(g, 6) << kNodeAlbedoGShift) |
+           (q(b, 4) << kNodeAlbedoBShift);
+}
+
+/// The three components, decoded to 0..1. A header written before this existed decodes to black,
+/// which is why every consumer must gate on `node_has_albedo`.
+[[nodiscard]] constexpr glm::vec3 node_albedo(std::uint32_t header) noexcept {
+    return glm::vec3{static_cast<float>((header >> kNodeAlbedoRShift) & 0xFu) / 15.0f,
+                     static_cast<float>((header >> kNodeAlbedoGShift) & 0x3Fu) / 63.0f,
+                     static_cast<float>((header >> kNodeAlbedoBShift) & 0xFu) / 15.0f};
+}
+
+/// False for a node whose albedo bits are all zero -- either never written, or a genuinely black
+/// node. Treating black as "absent" is deliberate and safe: this world has no black material, and
+/// the fallback is the unfiltered albedo, which is what the renderer did before this word existed.
+[[nodiscard]] constexpr bool node_has_albedo(std::uint32_t header) noexcept {
+    return (header & ((0xFu << kNodeAlbedoRShift) | (0x3Fu << kNodeAlbedoGShift) |
+                      (0xFu << kNodeAlbedoBShift))) != 0u;
+}
 // Word offset (relative to the header) of octant `octant`'s child pointer: pointers are packed in
 // octant order behind the attribute word, so it is 2 + the number of present octants below it.
 [[nodiscard]] constexpr std::uint32_t node_child_slot(std::uint32_t header, int octant) noexcept {

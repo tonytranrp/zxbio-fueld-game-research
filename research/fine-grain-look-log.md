@@ -179,3 +179,112 @@ With the material sampled per hit, turning off every other term made the ratio *
 material aliasing is large enough to swamp the others, so measuring them individually against the
 shipping configuration reads zero for all of them — which is exactly what happened, and is why the
 attribution needed `--flat-albedo` to exist before any of it could be believed.
+
+---
+
+## 3. Pre-filtered shading: an AVERAGE, not a representative (goals 278, 279)
+
+Goal 278 says *"store a distribution, not a mean"* and organises itself around normals, because
+that is what Crassin's open question is about. **§2 measured that the normals are already fine at
+this pose** (`smooth` 1.351, blended `normal` 1.279, against a target of 1.144) and that the
+material is what is unfiltered. So this section filters the material — and the design went through
+two rejected versions first, both rejected by a viewed capture rather than by argument.
+
+### Attempt 1 — the smoothing ancestor's REPRESENTATIVE material. Rejected.
+
+Zero storage: every node header already carries a representative material, and the attribute walk
+already has the header in hand. Blend the albedo toward the ancestor's as the cube approaches pixel
+size, using the same `faceWeight` the normal has used since Group Z.
+
+**Metric: 3.127 → 1.795. Image: worse.** The fine red speckle became *large salmon blotches*. A
+representative is a **majority vote**, so it is a coarser quantiser, not a filter — and no ancestor
+span fixes that: 2.407 / 1.948 / 1.795 / 2.035 at `--smooth-pixels` 2 / 4 / 6 / 12, non-monotonic,
+with the coarser settings trading small blotches for big ones with hard edges.
+
+**This is the case the prompt warns about — the metric improved and the picture got worse — and it
+is recorded rather than shipped.** It is also the argument for what follows: only a genuine average
+is a filter.
+
+### Attempt 2 — a real average, read at the normal's smoothing ancestor. Rejected.
+
+`Brick::mean_albedo()` plus an accumulator up the tree, packed into the header's free bits, read at
+the ~6 px ancestor the normal uses.
+
+**It failed a test rather than an eye**: `--verify-frame`'s local contrast fell to **5.7% against a
+6% floor** and `svo_render_smoke` went red. The 6 px ancestor is the right scale for a *normal* —
+a staircase has to be averaged over several steps before it stops shading as a staircase — and the
+wrong scale for an *albedo*, which needs only the pixel's own footprint. **Two quantities, two
+scales; conflating them blurred the terrain flat.**
+
+### Attempt 3 — and the bug in it that a capture caught
+
+Read the average at the **hit node**, not at the smoothing ancestor. Tests passed, moiré fell
+3.127 → 1.952 — and every green hillside turned **olive**.
+
+`Brick::mean_albedo()` averaged every *occupied* voxel, which includes the dirt and stone **buried
+under a grass cap**, and no viewer ever sees those. The correct weight is **exposed face count** —
+the same quantity `exposed_face_sum()` already accumulates as a vector, counted here as a scalar.
+
+### What shipped
+
+- **`Brick::exposed_albedo_sum()`** — Σ(albedo × exposed faces) and its denominator. Faces on the
+  brick's outer boundary are excluded, for the same reason `exposed_face_sum` excludes them.
+- **`NodeSummary` gains `albedo_sum` and `albedo_weight`**, in world units² so coarse and fine
+  children mix by real surface area, exactly as `normal_sum` already does.
+- **Solid leaves get one too**, weighted by one face at their own level — which is what lets this
+  reach the **804,157 solid leaves** the prompt calls the largest hole in the filtering. They have
+  no attribute word; they do have a header.
+- **Storage: the header's previously unused bits, R4 G6 B4 into bits 24–27 / 10–15 / 28–31.**
+  Green gets the extra two bits because luminance is mostly green. **Zero bytes.**
+
+**Why the header and not a second attribute word.** A second word costs 4 B on every internal node
+and brick leaf — about **5.0 MB** on the shipping tree. These 14 bits cost nothing, they sit beside
+the representative material they band-limit, and they are the only storage a **solid leaf** has.
+The prompt's own ranking asked for the second word to be measured rather than assumed; it was, and
+it lost to a free option.
+
+**Why a flag bit and not a cbuffer field.** Prompt 004 lost hours to a cbuffer field-*order*
+mismatch that a size `static_assert` cannot catch. A spare bit in a word that already exists cannot
+reorder. `kFlagFilterAlbedo = 64u`.
+
+### Measured
+
+| pose | moiré OFF → ON | local contrast OFF → ON |
+|---|---|---|
+| `stress_pose` | **3.814 → 1.800** (−53%) | 17.98 → 9.44 |
+| `macro_ground` | **2.367 → 1.665** (−30%) | 28.47 → 23.57 |
+| `valley_far` | **4.333 → 1.756** (−59%) | 22.25 → 9.89 |
+
+**The two backends agree to 0.03%** (vk 1.79963, d3d12 1.80010) — which for a shader change that
+unpacks bit fields is the check that matters, since FXC and Vulkan's compiler have disagreed here
+before.
+
+**Cost: free, in both senses.** GPU march median, `stress_pose`: vk **3.89 on / 3.94 off**, d3d12
+**5.32 on / 5.34 off** — the "on" case is nominally faster on both, i.e. the difference is noise.
+Memory: **zero**. In `release-codegen-and-tradeoffs.md` §1's classification this is the **free**
+bucket: no compile cost, no runtime cost, no memory cost.
+
+Captures, both viewed: `research/captures/al_filtered_albedo_closeup.png` (the close-up pair) and
+`research/captures/al_filtered_albedo_pair.png` (`stress_pose` and `valley_far`, before and after).
+
+### And the cost that is not free, stated plainly
+
+**Local contrast drops 47–56% at the two distant poses.** The filter removes texture — that is what
+a filter does — and it cannot tell the wanted half from the unwanted half. `valley_far`'s "before"
+is the clearest evidence: its mountains carry a dense tan hatching that genuinely *resembles the
+target capture*, and the filter removes it along with the speckle.
+
+**That is the AL-A / AL-B trade, and it is why the prompt sequences them this way**: *"putting a
+deliberate stipple on top of an aliasing surface is painting over a crack."* AL-A removes both
+halves by design; AL-B has to earn the wanted half back deliberately, at a chosen frequency. If it
+does not, this change is a net loss on look and should be reconsidered — and the honest place to
+judge that is goal 288's side-by-side, not this section.
+
+### Goal 279, answered by 277's negative
+
+Goal 279 says *"if 277 confirms (a) [the albedo mottle], the mottle needs the same treatment as the
+normal."* **277 did not confirm (a): `--no-mottle` measured 3.134 against a base of 3.127.** The
+mottle is world-locked 2D value noise at 1/24 m and 1/7 m, and at this pose those features are far
+larger than a pixel, so it is not near Nyquist and does not alias. It needs no distance fade, and
+adding one would be a fix for a problem that was measured not to exist. **Recorded as a completed
+negative rather than an unimplemented task.**

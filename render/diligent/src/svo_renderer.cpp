@@ -109,6 +109,7 @@ constexpr std::uint32_t kFlagAO = 4u;
 constexpr std::uint32_t kFlagTree = 8u;
 constexpr std::uint32_t kFlagSky = 16u;
 constexpr std::uint32_t kFlagGrain = 32u;
+constexpr std::uint32_t kFlagFilterAlbedo = 64u; // goal 278; mirrored in svo_march.psh.hlsl
 constexpr std::uint32_t kViewShift = 8u;
 constexpr std::uint32_t kJitterSamples = 8u;
 
@@ -1215,6 +1216,7 @@ void SvoRenderer::render(const render::interface::Camera& camera) {
         flags |= impl_->hasTree ? kFlagTree : 0u;
         flags |= s.sky ? kFlagSky : 0u;
         flags |= s.grain ? kFlagGrain : 0u;
+        flags |= s.filter_albedo ? kFlagFilterAlbedo : 0u;
         flags |= static_cast<std::uint32_t>(s.debug_view) << kViewShift;
         cb->treeInts = glm::uvec4(static_cast<std::uint32_t>(g.voxel_bits()),
                                   static_cast<std::uint32_t>(g.max_brick_level()), impl_->rootOffset, flags);

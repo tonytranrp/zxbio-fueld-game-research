@@ -145,6 +145,10 @@ static const uint kFlagAO = 4u;
 static const uint kFlagTree = 8u;
 static const uint kFlagSky = 16u;
 static const uint kFlagGrain = 32u;
+// Goal 278: band-limit the albedo toward the hit node's area-weighted average. A FLAG rather than a
+// new cbuffer field on purpose -- Prompt 004 lost hours to a cbuffer field-ORDER mismatch that a
+// size static_assert cannot catch, and a spare bit in a word that already exists cannot reorder.
+static const uint kFlagFilterAlbedo = 64u;
 static const uint kViewShift = 8u;
 static const uint kViewNone = 0u;
 static const uint kViewLit = 1u;
@@ -197,7 +201,25 @@ struct Hit
     float3 smoothNormal; // averaged normal of the node the smoothing rule picked (0 = none)
     float  coverage;
     int    smoothLevel;
+    // Goal 278: the hit node's own AREA-WEIGHTED AVERAGE albedo, unpacked from the header's free
+    // bits (world/svo/tree_layout.hpp packs it R4 G6 B4). Filtered at the HIT NODE, not at the
+    // normal's smoothing ancestor -- two quantities, two correct scales. Reading it from the 6 px
+    // normal ancestor blurred the terrain flat (local contrast 5.7% against a 6% floor).
+    float3 nodeAlbedo;
+    bool   hasNodeAlbedo;
 };
+
+// Mirrors node_albedo() / node_has_albedo() in tree_layout.hpp -- change both together.
+float3 NodeAlbedo(uint header)
+{
+    return float3(float((header >> 24) & 0xFu) / 15.0,
+                  float((header >> 10) & 0x3Fu) / 63.0,
+                  float((header >> 28) & 0xFu) / 15.0);
+}
+bool NodeHasAlbedo(uint header)
+{
+    return (header & ((0xFu << 24) | (0x3Fu << 10) | (0xFu << 28))) != 0u;
+}
 
 int ArgMin3(float3 v)
 {
@@ -239,6 +261,8 @@ Hit MakeMiss()
     m.smoothNormal = float3(0.0, 0.0, 0.0);
     m.coverage = 0.0;
     m.smoothLevel = -1;
+    m.nodeAlbedo = float3(0.0, 0.0, 0.0);
+    m.hasNodeAlbedo = false;
     return m;
 }
 
@@ -325,6 +349,14 @@ float AttrCoverage(uint attr) { return float(attr >> 24) / 255.0; }
 // t * smoothPixelAngle.
 void ReadAttributes(inout Hit h, uint stack[kMaxLevels], int attrLevel, float smoothPixelAngle, Cell cell)
 {
+    // Goal 278: the albedo comes from attrLevel -- the node actually hit -- before any smoothing
+    // walk. See the comment on Hit::nodeAlbedo for why this scale and not the normal's.
+    if (attrLevel >= 0)
+    {
+        const uint hitHeader = CellNode(cell, stack[attrLevel]);
+        h.nodeAlbedo = NodeAlbedo(hitHeader);
+        h.hasNodeAlbedo = NodeHasAlbedo(hitHeader);
+    }
     int L = attrLevel;
     if (smoothPixelAngle > 0.0)
     {
@@ -623,6 +655,10 @@ Hit TraceCell(Cell cell, float3 rayOrigin, float3 rayDir, float lodPixelAngle, f
                 h.solidLeaf = true;
                 h.steps = iteration;
                 h.cubeEdge = rootEdge * exp2(-float(level));
+                // A solid leaf has only a header, and that header carries its albedo -- which is
+                // what lets goal 278 reach the 804,157 solid leaves that have no attribute word.
+                h.nodeAlbedo = NodeAlbedo(header);
+                h.hasNodeAlbedo = NodeHasAlbedo(header);
                 ReadAttributes(h, stack, level - 1, smoothPixelAngle, cell);
                 return h;
             }
@@ -943,7 +979,14 @@ void main(in PSInput PSIn, out PSOutput PSOut)
     const float3 smoothNormal = haveSmooth ? normalize(hit.smoothNormal) : faceNormal;
     const float3 normal = normalize(lerp(smoothNormal, faceNormal, faceWeight));
 
-    const float3 albedoBase = MaterialAlbedo(hit.material);
+    // Goal 278: band-limit the albedo toward the hit node's average as the cube approaches pixel
+    // size. `faceWeight` is 1 when the cube is large on screen (shade it as itself -- the John Lin
+    // close-up) and 0 when it is sub-pixel. Colours interpolate; material IDs do not, which is why
+    // this blends the resolved albedo rather than choosing between two IDs.
+    float3 albedoBase = MaterialAlbedo(hit.material);
+    if ((flags & kFlagFilterAlbedo) != 0u && hit.hasNodeAlbedo)
+        albedoBase = lerp(hit.nodeAlbedo, albedoBase, faceWeight);
+
     const float n1 = ValueNoise(p.xz * (1.0 / 24.0));
     const float n2 = ValueNoise(p.xz * (1.0 / 7.0) + 17.31);
     const float mottle = 0.90 + 0.20 * (0.65 * n1 + 0.35 * n2);

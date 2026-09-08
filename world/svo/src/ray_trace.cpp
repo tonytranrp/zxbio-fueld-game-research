@@ -172,6 +172,19 @@ Hit trace_ray(const TreeView& tree, const Ray& ray, const TraceParams& params) n
         h.solid_leaf = attrLevel < hitLevel; // only a solid leaf's attributes come from its parent
         h.steps = steps;
         h.cube_edge = cubeEdge;
+        // Goal 278: the albedo is filtered at the HIT NODE, not at the normal's smoothing ancestor.
+        // Two quantities, two correct scales, and conflating them is what the first attempt got
+        // wrong: the normal needs a WIDE ancestor because a staircase has to be averaged over
+        // several steps before it stops shading as a staircase, while the albedo needs only the
+        // pixel's own footprint. Reading it from the 6 px normal ancestor blurred the terrain flat
+        // -- local contrast fell to 5.7% against a 6% floor, which is the collapse goal 279 warns
+        // about. The hit node's OWN average is already a genuine average over its subtree, so it
+        // removes the flicker without removing the texture.
+        if (attrLevel >= 0) {
+            const std::uint32_t hitHeader = nodes[stack[attrLevel]];
+            h.smooth_albedo = node_albedo(hitHeader);
+            h.has_smooth_albedo = node_has_albedo(hitHeader);
+        }
         int L = attrLevel;
         if (params.smooth_pixel_angle > 0.0f) {
             const float wanted = tHit * params.smooth_pixel_angle;
@@ -187,6 +200,7 @@ Hit trace_ray(const TreeView& tree, const Ray& ray, const TraceParams& params) n
                 h.smooth_normal = node_attr_normal(attr);
                 h.coverage = node_attr_coverage(attr);
                 h.smooth_level = L;
+                h.smooth_material = node_material(attrHeader);
             }
         }
         return h;

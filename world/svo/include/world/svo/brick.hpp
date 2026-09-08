@@ -227,6 +227,19 @@ public:
     // occupied. Used as the LOD-cube shading material carried in the parent node header.
     [[nodiscard]] world::chunk::MaterialID representative() const noexcept;
 
+    // Prompt 005 goal 278: the albedo a viewer whose pixel covers this whole brick actually sees,
+    // as a sum weighted by EXPOSED FACE COUNT plus its denominator, so a parent can combine
+    // children by real surface area. `representative()` above answers a different question --
+    // "which single material best stands for this brick" -- and goal 277 measured that a
+    // representative is a quantiser rather than a filter: it turns fine speckle into coarse
+    // blotches. Weighting by exposure rather than by volume matters and was got wrong once: a
+    // volume average includes the stone buried under a grass cap and turns hillsides olive.
+    struct AlbedoSum {
+        glm::vec3 sum{0.0f};
+        float faces = 0.0f;
+    };
+    [[nodiscard]] AlbedoSum exposed_albedo_sum() const noexcept;
+
     // Sum of the outward normals of the brick's EXPOSED faces -- an occupied voxel's face against
     // an empty voxel of the same brick -- in units of one voxel face (Group Z: the per-node
     // average normal the shader blends toward at distance is built bottom-up from this). Faces on

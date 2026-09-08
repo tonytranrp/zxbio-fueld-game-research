@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "world/materials/materials.hpp"
 #include "world/svo/tree_builder.hpp"
 
 namespace world::svo::detail {
@@ -23,9 +24,26 @@ namespace world::svo::detail {
 // units squared, so coarse and fine children mix by real surface area) and the fraction of its
 // volume that is occupied. The parent packs its own summary into its attribute word
 // (tree_layout.hpp) and keeps accumulating.
+// Goal 278: one place the builder asks world::materials for a colour. Materials are components
+// (Group AC) -- no ID literals, no parallel table here.
+[[nodiscard]] inline glm::vec3 albedo_of(world::chunk::MaterialID material) noexcept {
+    const world::materials::MaterialDef& props = world::materials::properties_of(material);
+    return glm::vec3{props.albedo.r, props.albedo.g, props.albedo.b};
+}
+
 struct NodeSummary {
     glm::vec3 normal_sum{0.0f};
     float coverage = 0.0f;
+    // Goal 278: an AREA-WEIGHTED albedo sum and its denominator, so a parent can average its
+    // children by how much surface each actually contributes rather than by how many there
+    // are. Kept as a sum plus a weight rather than a running mean because a mean of means is
+    // not a mean when the children carry different amounts of surface.
+    glm::vec3 albedo_sum{0.0f};
+    float albedo_weight = 0.0f;
+
+    [[nodiscard]] glm::vec3 mean_albedo() const noexcept {
+        return albedo_weight > 1.0e-9f ? albedo_sum / albedo_weight : glm::vec3{0.0f};
+    }
 };
 
 struct SubtreeOutput {
@@ -123,7 +141,8 @@ public:
             return kNoNode;
         }
         if (cls.cls == BoxClass::Solid) {
-            return emit_solid(out, cls.material, summary);
+            return emit_solid(out, cls.material, summary,
+                              geometry_.level_edge(level) * geometry_.level_edge(level));
         }
         if (jobs != nullptr && level == params_.parallel_split_level) {
             return splice_job(cell, out, *jobs, summary);
@@ -178,6 +197,9 @@ public:
             return kNoNode;
         }
         out.stats.padding_words += nonAir - static_cast<std::uint32_t>(std::popcount(mask));
+        // The header is written twice: once here for the representative material (which the
+        // loop below reads back through node_child_slot), and again after the loop to add the
+        // averaged albedo, which is not known until every child has reported.
         out.nodes[me] = make_node_header(kNodeKindInternal, mask, choose_representative(reps, mask));
 
         // Attributes: children's summaries plus the coarse exposure a brick cannot see -- a solid
@@ -192,6 +214,8 @@ public:
             const NodeSummary& cs = childSummary[static_cast<std::size_t>(octant)];
             mine.normal_sum += cs.normal_sum;
             mine.coverage += cs.coverage * 0.125f;
+            mine.albedo_sum += cs.albedo_sum;
+            mine.albedo_weight += cs.albedo_weight;
             const std::uint32_t childHeader =
                 out.nodes[out.nodes[me + node_child_slot(out.nodes[me], octant)]];
             if (node_kind(childHeader) != kNodeKindSolid) {
@@ -206,6 +230,10 @@ public:
             }
         }
         out.nodes[me + kNodeAttrSlotInternal] = pack_summary(mine);
+        {
+            const glm::vec3 avg = mine.mean_albedo();
+            out.nodes[me] |= pack_node_albedo(avg.r, avg.g, avg.b);
+        }
         if (summary != nullptr) {
             *summary = mine;
         }
@@ -249,13 +277,25 @@ private:
         return make_node_attributes(n, s.coverage);
     }
 
+    // `faceArea` is one face of this node's own cube, in world units squared -- the surface the
+    // parent will credit this leaf with when it sits against an absent sibling. Passed in because
+    // this is static and the caller is the one that knows the level.
     static std::uint32_t emit_solid(SubtreeOutput& out, world::chunk::MaterialID material,
-                                    NodeSummary* summary) {
+                                    NodeSummary* summary, float faceArea) {
         const auto at = static_cast<std::uint32_t>(out.nodes.size());
-        out.nodes.push_back(make_node_header(kNodeKindSolid, 0u, material));
+        // A solid leaf is one material, so its average albedo IS that material's -- and it goes
+        // in the header, which is the only word a solid leaf has. That is what lets goal 278
+        // reach the 804,157 solid leaves the prompt calls the largest hole in the filtering.
+        const glm::vec3 albedo = albedo_of(material);
+        out.nodes.push_back(make_node_header(kNodeKindSolid, 0u, material) |
+                            pack_node_albedo(albedo.r, albedo.g, albedo.b));
         ++out.stats.solid_leaves;
         if (summary != nullptr) {
-            *summary = NodeSummary{glm::vec3{0.0f}, 1.0f}; // exposure is the parent's to judge
+            // Exposure is the parent's to judge -- a solid leaf has no INTERNAL exposed faces, and
+            // the parent adds one whole child face for each absent sibling. So the albedo weight
+            // here is one such face at this node's own level, which is the surface the parent will
+            // credit it with; the caller scales it into world units the same way it does normals.
+            *summary = NodeSummary{glm::vec3{0.0f}, 1.0f, albedo * faceArea, faceArea};
         }
         return at;
     }
@@ -285,13 +325,24 @@ private:
         }
         if (brick.is_homogeneous()) {
             ++out.stats.solid_per_level[lv];
-            return emit_solid(out, brick.at(std::size_t{0}), summary);
+            return emit_solid(out, brick.at(std::size_t{0}), summary,
+                              geometry_.level_edge(level) * geometry_.level_edge(level));
         }
         NodeSummary mine;
         mine.normal_sum = glm::vec3{brick.exposed_face_sum()} * (voxelEdge * voxelEdge);
         mine.coverage = static_cast<float>(brick.occupied_count()) / static_cast<float>(kBrickVoxels);
+        // Weighted by real exposed surface AREA, in the same world units as normal_sum above, so
+        // coarse and fine children mix correctly at a parent -- and so a mostly-buried brick
+        // counts for less than a mostly-exposed one.
+        const Brick::AlbedoSum ex = brick.exposed_albedo_sum();
+        const float faceArea = voxelEdge * voxelEdge;
+        mine.albedo_sum = ex.sum * faceArea;
+        mine.albedo_weight = ex.faces * faceArea;
+        const glm::vec3 brickAlbedo =
+            ex.faces > 0.0f ? ex.sum / ex.faces : albedo_of(brick.representative());
         const auto at = static_cast<std::uint32_t>(out.nodes.size());
-        out.nodes.push_back(make_node_header(kNodeKindBrick, 0u, brick.representative()));
+        out.nodes.push_back(make_node_header(kNodeKindBrick, 0u, brick.representative()) |
+                            pack_node_albedo(brickAlbedo.r, brickAlbedo.g, brickAlbedo.b));
         out.nodes.push_back(static_cast<std::uint32_t>(out.bricks.size() / kBrickWords));
         out.nodes.push_back(pack_summary(mine));
         out.bricks.insert(out.bricks.end(), brick.words().begin(), brick.words().end());

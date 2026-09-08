@@ -358,6 +358,15 @@ int run(int argc, char** argv) {
                     glm::vec3 albedo = opt.flat_albedo
                                            ? glm::vec3{0.5f, 0.5f, 0.5f}
                                            : glm::vec3{props.albedo.r, props.albedo.g, props.albedo.b};
+                    // Goal 278: band-limit the ALBEDO, which goal 277 measured as 59% of the moire.
+                    // Colours interpolate; material IDs do not, so the blend is done here on the
+                    // resolved albedo rather than by choosing between two IDs. `faceWeight` is 1
+                    // when the cube is large on screen (shade it as itself, the John Lin close-up)
+                    // and 0 when it is sub-pixel (shade from the ancestor, which neighbouring rays
+                    // share -- so they agree instead of flickering).
+                    if (opt.filter_albedo && !opt.flat_albedo && hit.has_smooth_albedo) {
+                        albedo = glm::mix(hit.smooth_albedo, albedo, faceWeight);
+                    }
                     if (opt.mottle) {
                         const float n1 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 24.0f));
                         const float n2 = value_noise(glm::vec2{p.x, p.z} * (1.0f / 7.0f) + 17.31f);
