@@ -2,6 +2,7 @@
 set(CMAKE_CXX_CLANG_TIDY "")
 add_executable(world_collision_tests
     test_aabb_sweep.cpp
+    test_ground_snap.cpp
     test_terrain_collider.cpp
     test_octree_collider.cpp
     test_grid_collider.cpp

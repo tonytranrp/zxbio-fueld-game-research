@@ -38,6 +38,16 @@ struct PlayerState {
     float coyote_remaining = 0.0f; // > 0 means "still counts as grounded for a jump"
     float jump_buffer_remaining = 0.0f;
 
+    // Did the SWEEP put the body on the ground last tick? Distinct from `stance`, and the
+    // distinction is load-bearing: the too-steep test reads "am I in contact with the ground", and
+    // reading that off `stance` closed a loop -- Grounded implied contact, contact implied
+    // too-steep, too-steep implied sliding, and sliding is exactly the condition that REFUSES to
+    // set Airborne. So on ground past `max_walk_slope_radians` the stance latched to Grounded and
+    // never came back, which handed the body infinite mid-air jumps, suppressed every landing (and
+    // its dip), and let `update_slide` ramp to `max_slide_speed` while in free fall. The sweep's
+    // own answer cannot close that loop because nothing in the too-steep path writes it.
+    bool grounded_by_sweep = false;
+
     // Eye smoothing (A3). The offset the RENDERED eye sits at relative to the physical eye; the
     // physical position is never touched by it. Negative = the view is still catching up upward.
     float eye_smooth_offset = 0.0f;

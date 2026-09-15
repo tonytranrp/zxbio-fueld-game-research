@@ -16,6 +16,7 @@ target_sources(world_materials INTERFACE
         include/world/materials/defs/leaves.hpp
         include/world/materials/defs/sand.hpp
         include/world/materials/defs/grass.hpp
+        include/world/materials/defs/grass_blade.hpp
 )
 
 target_link_libraries(world_materials INTERFACE project_warnings)

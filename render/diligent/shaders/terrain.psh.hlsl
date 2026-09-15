@@ -26,7 +26,12 @@ float3 MaterialAlbedo(uint material)
 
 uint MaterialShading(uint material)
 {
-    return uint(g_Materials[min(material, MATERIAL_COUNT - 1u)].w + 0.5);
+    // floor, NOT round: goal 285 packs the material's stipple amplitude into this float's
+    // FRACTIONAL part, so `+ 0.5` rounds an amplitude of 0.5 or more into the NEXT shading
+    // model. svo_march.psh.hlsl has said so since goal 285; these two were not updated with
+    // it. Latent only because the largest shipped amplitude is stone's 0.076 -- `--stipple-
+    // amount` and the Hatched preset both reach past 0.5.
+    return uint(floor(g_Materials[min(material, MATERIAL_COUNT - 1u)].w));
 }
 
 struct PSInput

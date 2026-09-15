@@ -5,8 +5,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <format>
 #include <cstdlib>
+#include <format>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +23,7 @@
 #include "engine/ecs/registry.hpp"
 #include "engine/input/glfw_input.hpp"
 #include "engine/jobs/thread_pool.hpp"
+#include "grass_field.hpp"
 #include "render/diligent/auto_exposure.hpp"
 #include "render/diligent/debug_overlay.hpp"
 #include "render/diligent/frame_verify.hpp"
@@ -35,11 +36,9 @@
 #include "render/diligent/terrain_renderer.hpp"
 #include "render/interface/camera.hpp"
 #include "spectator_camera.hpp"
-#include "grass_field.hpp"
-#include "sway_forest.hpp"
 #include "svo_world.hpp"
+#include "sway_forest.hpp"
 
-#include "world/svo/cell_marks.hpp"
 #include "world/collision/aabb_sweep.hpp"
 #include "world/collision/octree_collider.hpp"
 #include "world/collision/terrain_collider.hpp"
@@ -47,6 +46,7 @@
 #include "world/player/view_polish.hpp"
 #include "world/streaming/chunk_events.hpp"
 #include "world/streaming/world_bounds.hpp"
+#include "world/svo/cell_marks.hpp"
 #include "world/water/gerstner.hpp"
 #include "world/wind/wind_field.hpp"
 #include "world_loader.hpp"
@@ -501,7 +501,9 @@ void renderdoc_frame_begin(const AppOptions& options, std::uint32_t frame) {
         render::diligent::renderdoc_trigger().begin_capture();
     }
 }
-void renderdoc_frame_end() { (void)render::diligent::renderdoc_trigger().end_capture(); }
+void renderdoc_frame_end() {
+    (void)render::diligent::renderdoc_trigger().end_capture();
+}
 
 bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t frame,
                    render::diligent::RenderContext& context, std::size_t sceneReady, FrameInput& input,
@@ -717,7 +719,18 @@ LiveInput::~LiveInput() = default;
 void LiveInput::begin_frame() {
     // The jump press is taken ONCE per frame here and handed to at most the first tick, which is
     // world/player's own contract. Taking it inside tick() would re-arm the buffer every tick.
-    jumpEdgeThisFrame_ = input_->take_jump();
+    //
+    // THE LATCH MUST SURVIVE A TICK-LESS FRAME, and this used to be a plain assignment. The sim is
+    // fixed-step at 60 Hz (world/player/fixed_step.hpp) while the render loop is not, so
+    // `stepper.begin_frame()` returns 0 for most frames at any frame rate above 60 -- MEASURED at
+    // 1,504 ticks over ~5,200 post-load frames, i.e. 71% of frames run no tick at all at 165 fps.
+    // `take_jump()` CLEARS engine::input::InputState::pending_jump, so a press observed on one of
+    // those frames was drained here and then discarded by the next frame's assignment: roughly
+    // seven jumps in ten did nothing. OR-ing holds the edge until a tick actually consumes it
+    // (tick() clears it on the first tick of the frame), which is what "take-once per PRESS"
+    // always meant -- the old code implemented "take-once per FRAME", which is a different thing
+    // whenever a frame carries no tick.
+    jumpEdgeThisFrame_ = input_->take_jump() || jumpEdgeThisFrame_;
 }
 bool LiveInput::quit_requested() const {
     return input_->state().quit_requested;
@@ -1055,7 +1068,18 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
 
     // Hands a finished build to the renderer's staged upload, and pumps that upload one slice per
     // frame; logs the tree the frame it lands.
-    glm::vec3 lastCameraPos{0.0f};
+    //
+    // SEEDED FROM THE SPAWN, not from the origin. This is only assigned inside the has_tree()
+    // branch below, which has not run when the FIRST tree is adopted -- so a `{0,0,0}` initialiser
+    // made three separate numbers wrong at once, and the first of them is the instrument that
+    // should have caught the stranded LOD centre:
+    //   * `note_adopted(now, lastCameraPos)` reported `adopt lag 206.4 m` for a camera that had
+    //     never moved -- exactly |{40,110,170}|, the spawn's distance from the world origin. That
+    //     number is what --skeleton-radius's default was derived from.
+    //   * the camera-speed finite difference below read ~34,000 m/s on the first ready frame.
+    //   * on the --stream-cells path, `stream_shape`/`start_stream` (outside the has_tree branch)
+    //     centred the entire cell grid on the origin rather than on the player.
+    glm::vec3 lastCameraPos = s.spawnPosition;
     // Goals 263-265: the streaming path. Started once, then fed a bounded number of finished cells
     // per frame -- the producer never touches the render thread's critical path, which is the
     // starvation failure research 1.9(a) warns about and goal 170 measured as `present` stalls.
@@ -1106,9 +1130,9 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             renderer.last_upload_frames(), last.trees, world.last_adopt_lag_metres(),
             // Goal 257: what the incremental rebuild actually saved. Empty on the single-tree path,
             // where there is nothing to reuse and printing "0 reused" would imply there was.
-            last.cells > 0 ? std::format(", cells {} rebuilt / {} reused", last.cells_rebuilt,
-                                         last.cells_reused)
-                           : std::string{});
+            last.cells > 0
+                ? std::format(", cells {} rebuilt / {} reused", last.cells_rebuilt, last.cells_reused)
+                : std::string{});
         if (last.skeleton_trees > 0) {
             // Goal 336's accounting, printed beside the tree it changed rather than at exit, so a
             // before/after of the same scenario is a diff of two adjacent lines.
@@ -1312,8 +1336,7 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
                     ? app::query_aim_octree(*collider.grid(), camera.position, aimDir, aimRange)
                     : (collider.tree() != nullptr
                            ? app::query_aim_octree(*collider.tree(), camera.position, aimDir, aimRange)
-                           : app::query_aim(world.heightmap(), camera.position, aimDir, aimRange,
-                                            &aimTrees));
+                           : app::query_aim(world.heightmap(), camera.position, aimDir, aimRange, &aimTrees));
             if (aim.hit) {
                 std::snprintf(stats.aim_line, sizeof(stats.aim_line), "%s @ %.0f,%.0f,%.0f (%.0f m)",
                               app::material_name(aim.material), static_cast<double>(aim.position.x),
@@ -1382,9 +1405,10 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
         if (options.svo.stream_cells && options.svo.cell_size_log2 > 0) {
             if (!streamStarted) {
                 const world::svo::CellGrid shape = world.stream_shape(lastCameraPos);
-                renderer.begin_stream(shape, options.svo.brick_slots > 0
-                                                 ? static_cast<std::size_t>(options.svo.brick_slots)
-                                                 : 1200000u,
+                renderer.begin_stream(shape,
+                                      options.svo.brick_slots > 0
+                                          ? static_cast<std::size_t>(options.svo.brick_slots)
+                                          : 1200000u,
                                       world.build_proxy(shape));
                 world.start_stream(shape, lastCameraPos);
                 streamStarted = true;
@@ -1402,7 +1426,6 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             }
             streamBytes += renderer.flush_cells();
         }
-
 
         // Goal 262: the usage readback, pipelined three frames deep so it never stalls. OUTSIDE
         // the hooks.on_frame block on purpose -- that block only runs under the harness, and a
@@ -1529,10 +1552,8 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
             "grass overlay: {} blades over {} tufts within {:.0f} m, {} B/blade ({:.2f} MB), rebuilt in "
             "{:.0f} ms{}",
             renderer.grass_blade_count(), grassField.tuft_count(),
-            static_cast<double>(options.grass_overlay_radius),
-            sizeof(render::diligent::GrassBladeInstance),
-            static_cast<double>(renderer.grass_blade_count() *
-                                sizeof(render::diligent::GrassBladeInstance)) /
+            static_cast<double>(options.grass_overlay_radius), sizeof(render::diligent::GrassBladeInstance),
+            static_cast<double>(renderer.grass_blade_count() * sizeof(render::diligent::GrassBladeInstance)) /
                 1.0e6,
             grassField.build_seconds() * 1000.0, grassField.truncated() ? " [TRUNCATED]" : "");
         log(LogLevel::Info,

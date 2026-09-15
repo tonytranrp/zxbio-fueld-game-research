@@ -49,9 +49,9 @@ inline constexpr std::uint32_t kBrickPaletteBits = 3;
 inline constexpr std::size_t kBrickPaletteSize = 8; // 1 << kBrickPaletteBits
 inline constexpr std::size_t kBrickIndicesPerWord = 10;
 inline constexpr std::size_t kBrickIndexWords =
-    (kBrickVoxels + kBrickIndicesPerWord - 1) / kBrickIndicesPerWord; // 52
-inline constexpr std::size_t kBrickPaletteWords = kBrickPaletteSize / 4; // 2
-inline constexpr std::size_t kBrickIndexWord0 = kBrickMaskWords;        // 16
+    (kBrickVoxels + kBrickIndicesPerWord - 1) / kBrickIndicesPerWord;                  // 52
+inline constexpr std::size_t kBrickPaletteWords = kBrickPaletteSize / 4;               // 2
+inline constexpr std::size_t kBrickIndexWord0 = kBrickMaskWords;                       // 16
 inline constexpr std::size_t kBrickPaletteWord0 = kBrickIndexWord0 + kBrickIndexWords; // 68
 inline constexpr std::size_t kBrickWords = kBrickPaletteWord0 + kBrickPaletteWords;    // 70
 
@@ -117,6 +117,31 @@ namespace detail {
     return ((words[index >> 5] >> (index & 31u)) & 1u) != 0u;
 }
 
+/// Does this brick's palette name ANY material satisfying `pred`? Two word loads, no voxel walk.
+///
+/// The point is the negative answer. A caller asking "does this brick contain solid?" otherwise
+/// has to scan up to 512 voxels, because the occupancy mask means "not Air" -- it says nothing
+/// about phase -- so a brick of pure Water, Leaves or GrassBlade sets every bit the scan looks at
+/// and answers no on every one of them. That is the whole of goal 346's measured 5x: collision at
+/// a pose standing in grass ran 0.35-0.43 ms/tick against 0.069-0.079 with `--grass-radius 0`,
+/// and the sweep's bisection issues this query 8-78 times per tick.
+///
+/// Exact, not conservative, because the palette is exact: `brick_word_set`/`brick_pack_materials`
+/// intern in first-appearance order from entry 1, entry 0 is always Air, and an unassigned entry
+/// is Air -- so scanning entries 1..7 for a non-Air match visits every material the brick can hold
+/// and nothing it cannot.
+template <typename Pred>
+[[nodiscard]] inline bool brick_palette_any(const std::uint32_t* words, Pred pred) noexcept {
+    for (std::size_t e = 1; e < kBrickPaletteSize; ++e) {
+        const std::uint32_t word = words[kBrickPaletteWord0 + (e >> 2)];
+        const auto m = static_cast<world::chunk::MaterialID>((word >> ((e & 3u) * 8u)) & 0xFFu);
+        if (m != world::chunk::MaterialID::Air && pred(m)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // One palette entry. Entry 0 is Air by the invariant above.
 [[nodiscard]] inline world::chunk::MaterialID brick_palette_entry(const std::uint32_t* words,
                                                                   std::size_t entry) noexcept {
@@ -132,8 +157,7 @@ inline void brick_palette_set(std::uint32_t* words, std::size_t entry,
 }
 
 // The three-bit index of voxel `index`: ten per word, so exactly one load and no boundary case.
-[[nodiscard]] inline std::uint32_t brick_word_index(const std::uint32_t* words,
-                                                    std::size_t index) noexcept {
+[[nodiscard]] inline std::uint32_t brick_word_index(const std::uint32_t* words, std::size_t index) noexcept {
     const std::size_t w = index / kBrickIndicesPerWord;
     const auto shift = static_cast<std::uint32_t>((index - w * kBrickIndicesPerWord) * kBrickPaletteBits);
     return (words[kBrickIndexWord0 + w] >> shift) & 7u;

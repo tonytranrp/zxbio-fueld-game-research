@@ -30,7 +30,40 @@ struct SweepParams {
     // surfaces at exact coordinates constantly. 1 mm is far under the 7.8 mm finest voxel and far
     // over any rounding.
     float skin = 0.001f;
+
+    // THE STEP DOWN. The sweep has always had a step UP and no counterpart, and that asymmetry is
+    // why a body walking downhill leaves the ground. The vertical axis resolves BEFORE the
+    // horizontal one, so `grounded` describes the floor under where the body WAS, and the only
+    // downward motion a tick carries is `vertical_velocity * dt` -- from rest that is g*dt^2 =
+    // 2.7 mm. The terrain under a moving body drops by v*dt*tan(slope). Contact therefore survives
+    // only while slope <= atan(g*dt/v): 6.7 degrees walking, 1.3 sprinting, against terrain whose
+    // measured slope at the metre scale is ~25. So the body free-falls down essentially every
+    // descent -- ~0.5 m of air at sprint -- and lands a third of a second later. That is the stance
+    // churn walk_hillside measures (18 grounded->airborne in one traverse) and the "stuck on the
+    // blocks" the player feels.
+    //
+    // This is the standard second half of the step-up: Quake's PM_CategorizePosition, Source's
+    // StayOnGround, Unreal's FindFloor/MAX_FLOOR_DIST. After the horizontal move, probe down and
+    // re-establish contact if the floor is within reach.
+    //
+    // 0 disables it and is the default, so no existing caller changes behaviour. It MUST exceed
+    // `step_height` to do its job -- one sprint tick down a 40-degree slope descends 98 mm against
+    // a 40 mm step budget -- which is why it is derived rather than chosen (`ground_snap_for`).
+    float ground_snap = 0.0f;
+    // Only a body that was already in contact gets snapped down. Without this a jump, a fall and a
+    // dive would each be cut short by the floor reaching up for them.
+    bool grounded_hint = false;
 };
+
+/// The step-down distance, derived from the tuning rather than picked.
+///
+/// One tick of the fastest ground motion down the steepest walkable ground, plus one voxel so the
+/// quantised surface is never itself the thing that breaks contact. At the shipped 7 m/s sprint,
+/// 60 Hz, 40-degree limit and 7.8 mm voxels that is 105.7 mm.
+[[nodiscard]] inline float ground_snap_for(float maxGroundSpeed, float tickSeconds, float maxSlopeRadians,
+                                           float finestVoxelEdge) noexcept {
+    return maxGroundSpeed * tickSeconds * std::tan(maxSlopeRadians) + finestVoxelEdge;
+}
 
 // The sub-step rule, stated rather than assumed (goal 229).
 //
@@ -212,6 +245,29 @@ SweepResult move_and_slide(const Q& query, const Aabb& body, const glm::vec3& wa
         total.grounded = total.grounded || r.grounded;
         total.stepped_up = total.stepped_up || r.stepped_up;
     }
+    // The step DOWN (SweepParams::ground_snap). Runs once, after the horizontal motion is final,
+    // and only for a body that was in contact, is not rising, and did not already end grounded.
+    // `sweep_axis` bisects to the largest free fraction and reports `blocked` when the full probe
+    // was refused -- so `blocked` is exactly "there is floor within reach", and `drop` is the
+    // distance to just above it. An unblocked probe means open air below and the body genuinely is
+    // falling, so nothing happens and gravity keeps its meaning.
+    //
+    // NOTE THE ABSENT `!total.grounded` GUARD, which is the whole point. `total.grounded` is set by
+    // the vertical axis, which resolves BEFORE the horizontal one -- so a body that was resting on
+    // a voxel reports grounded and is then carried out over the drop by the very same tick. Gating
+    // the probe on it would skip precisely the case it exists for. A body that genuinely is still
+    // resting costs one blocked probe that returns ~0 and changes nothing.
+    if (params.ground_snap > 0.0f && params.grounded_hint && wanted.y <= 0.0f) {
+        bool floorFound = false;
+        const float drop = detail::sweep_axis(query, box, 1, -params.ground_snap, params.bisection_steps,
+                                              params.bisection_tolerance, floorFound);
+        if (floorFound) {
+            box = box.translated(glm::vec3{0.0f, drop, 0.0f});
+            total.delta.y += drop;
+            total.grounded = true;
+        }
+    }
+
     // Sub-stepping is a search strategy, not a change to the answer: a motion that was never
     // blocked on an axis must apply EXACTLY the wanted delta on it. Summing `wanted/n` n times does
     // not -- 1.5 m in five 0.3 m pieces sums to 1.499999762, and the test that caught this was

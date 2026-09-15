@@ -338,8 +338,7 @@ private:
         const float faceArea = voxelEdge * voxelEdge;
         mine.albedo_sum = ex.sum * faceArea;
         mine.albedo_weight = ex.faces * faceArea;
-        const glm::vec3 brickAlbedo =
-            ex.faces > 0.0f ? ex.sum / ex.faces : albedo_of(brick.representative());
+        const glm::vec3 brickAlbedo = ex.faces > 0.0f ? ex.sum / ex.faces : albedo_of(brick.representative());
         const auto at = static_cast<std::uint32_t>(out.nodes.size());
         out.nodes.push_back(make_node_header(kNodeKindBrick, 0u, brick.representative()) |
                             pack_node_albedo(brickAlbedo.r, brickAlbedo.g, brickAlbedo.b));
@@ -415,6 +414,30 @@ BrickTree build_tree(const S& sampler, const TreeGeometry& geometry, const Build
                                                 static_cast<std::size_t>(n));
         std::vector<std::future<void>> futures;
         futures.reserve(jobs.size());
+        // EVERY WORKER MUST FINISH BEFORE `jobs` AND `builder` DIE, and before this guard nothing
+        // made that true. The jobs capture both BY REFERENCE, `f.get()` below rethrows a worker's
+        // exception on THIS thread, and a `std::future`'s destructor does not block (only
+        // `std::async`'s shared state does). So one worker's `bad_alloc` -- which is exactly what a
+        // large `--lod-radius` produces -- unwound `build_tree`, destroyed `jobs` and `builder`,
+        // and left the other 32,767 workers writing into freed memory: an access violation inside
+        // `Builder::build_node` on every worker at once, which is goal 219a's reported symptom and
+        // why it arrives as a crash rather than as the `catch` in SvoWorld::build_job.
+        //
+        // Declared AFTER `futures` so it destructs BEFORE it, and after `jobs`/`builder` so it
+        // destructs before those too -- reverse declaration order is the whole mechanism.
+        struct JoinAll {
+            std::vector<std::future<void>>& f;
+            ~JoinAll() {
+                for (std::future<void>& x : f) {
+                    if (x.valid()) {
+                        try {
+                            x.wait();
+                        } catch (...) { // NOLINT(bugprone-empty-catch) -- a destructor may not throw
+                        }
+                    }
+                }
+            }
+        } joinAll{futures};
         for (int z = 0; z < n; ++z) {
             for (int y = 0; y < n; ++y) {
                 for (int x = 0; x < n; ++x) {

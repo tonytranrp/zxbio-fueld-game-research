@@ -66,7 +66,6 @@ void TerrainSampler::collect_trees(const Box& region) {
             }
         }
     }
-
 }
 
 void TerrainSampler::build_tree_grid(const Box& region) {
@@ -135,7 +134,6 @@ void TerrainSampler::grow_skeletons() {
     skeletonStats_.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 }
 
-
 void TerrainSampler::place_grass() {
     if (params_.grass_radius_m <= 0.0f) {
         return;
@@ -158,8 +156,8 @@ void TerrainSampler::place_grass() {
             return world::generation::field::Biome::Grassland;
         }
         const auto index = static_cast<std::uint8_t>(std::lround(
-            world::generation::field::FieldSampler{*macro, world::generation::field::Plane::Biome}
-                .value_at(x, z)));
+            world::generation::field::FieldSampler{*macro, world::generation::field::Plane::Biome}.value_at(
+                x, z)));
         return index < static_cast<std::uint8_t>(world::generation::field::Biome::Count)
                    ? static_cast<world::generation::field::Biome>(index)
                    : world::generation::field::Biome::Grassland;
@@ -473,8 +471,24 @@ void TerrainSampler::fill_brick(const glm::vec3& origin, float voxelEdge, Brick&
             }
         }
         brick_pack_materials(brick.words().data(), materials.data());
-    } else if (brickTop <= hRange.min - kSoilDepth - voxelEdge) {
-        // Every voxel is at least kSoilDepth + voxelEdge below the lowest column: solid stone.
+    } else if (brickTop <= hRange.min - kSoilDepth - voxelEdge &&
+               !caves_possible_in_band(params_.caves, origin.y, brickTop + voxelEdge, hRange.min,
+                                       hRange.max)) {
+        // Every voxel is at least kSoilDepth + voxelEdge below the lowest column, AND no cave can
+        // reach this band: solid stone.
+        //
+        // THE CAVE TEST IS NOT OPTIONAL HERE, and its absence meant the world had no caves at all.
+        // caves.hpp names the four sites that must agree and this is one of them ("fill_brick /
+        // fill_columns, which write the actual voxels: carve per voxel") -- but only the
+        // `fill_columns` branch below ever called `cave_at`. This branch wrote Stone directly, and
+        // since kSoilDepth is 3 m while CaveParams::min_depth_m is 6 m, EVERY cave voxel in the
+        // world is deeper than this guard requires: the fast path fired for all of them.
+        //
+        // The builder was already paying for the caves it then erased -- `classify` correctly
+        // returns Mixed across the whole band (see the caves_possible_in_band call there), so the
+        // 6-55 m band was subdivided to brick level and the resulting bricks came back uniformly
+        // Stone and collapsed to solid leaves. Mirroring classify's own test here costs `cave_at`
+        // only in bricks the builder is already sampling, and changes no subdivision decision.
         for (int j = 0; j < N; ++j) {
             fill_layer(materials.data(), j, MaterialID::Stone);
         }
@@ -525,10 +539,9 @@ void TerrainSampler::fill_columns(const glm::vec3& origin, float voxelEdge, cons
             std::uint8_t* column = bytes.data() + brick_voxel_index(i, 0, k);
             for (int j = 0; j < N; ++j) {
                 const float bottom = origin.y + static_cast<float>(j) * voxelEdge;
-                column[static_cast<std::size_t>(j) * N] = static_cast<std::uint8_t>(
-                    column_material(origin.x + static_cast<float>(i) * voxelEdge,
-                                    origin.z + static_cast<float>(k) * voxelEdge, surface, beach, grassy,
-                                    bottom, voxelEdge));
+                column[static_cast<std::size_t>(j) * N] = static_cast<std::uint8_t>(column_material(
+                    origin.x + static_cast<float>(i) * voxelEdge,
+                    origin.z + static_cast<float>(k) * voxelEdge, surface, beach, grassy, bottom, voxelEdge));
             }
         }
     }
@@ -601,9 +614,8 @@ MaterialID TerrainSampler::material_at(const glm::vec3& voxelMin, float voxelEdg
         const glm::vec3 center = voxelMin + 0.5f * voxelEdge;
         for (const std::uint32_t index : touching) {
             const world::generation::TreeVolume& volume = treeVolumes_[index];
-            const MaterialID tm = volume.empty()
-                                      ? world::generation::tree_material_at(trees_[index], center)
-                                      : volume.material_at(center);
+            const MaterialID tm = volume.empty() ? world::generation::tree_material_at(trees_[index], center)
+                                                 : volume.material_at(center);
             if (tm == MaterialID::Air) {
                 continue;
             }

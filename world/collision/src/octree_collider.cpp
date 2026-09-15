@@ -54,8 +54,8 @@ struct VoxelBox {
 // The recursive descent. `node` is a word offset; the node covers voxel cube
 // [origin, origin + size)^3 where size = 1 << (V - level). Returns true on the first solid voxel
 // that overlaps `box` -- an O(depth) walk with early-out, not an n^3 point sample.
-bool node_overlaps(const world::svo::TreeView& tree, std::uint32_t node, int level, const std::int64_t origin[3],
-                   const VoxelBox& box, int V, std::size_t& visited) {
+bool node_overlaps(const world::svo::TreeView& tree, std::uint32_t node, int level,
+                   const std::int64_t origin[3], const VoxelBox& box, int V, std::size_t& visited) {
     ++visited;
     const std::uint32_t header = tree.nodes[node];
     const std::uint32_t kind = world::svo::node_kind(header);
@@ -72,6 +72,15 @@ bool node_overlaps(const world::svo::TreeView& tree, std::uint32_t node, int lev
         const int shift = V - level - TreeGeometry::kBrickLog2;
         const std::int64_t cell = std::int64_t{1} << shift;
         const std::uint32_t* words = tree.brick_words(tree.nodes[node + world::svo::kNodeBrickIndexSlot]);
+        // Goal 346: ask the PALETTE before walking the voxels. The occupancy mask means "not Air",
+        // not "solid", so a brick of pure Water, Leaves or GrassBlade sets every bit this loop
+        // tests and rejects every one of them -- the scan runs to exhaustion, up to 512 voxels with
+        // three dependent loads each, for a guaranteed `false`. Two word loads answer it instead.
+        // Measured cause of 151.9 nodes/query and 0.35-0.43 ms/tick standing in grass, against
+        // 85.9 and 0.069-0.079 with `--grass-radius 0`, on a 0.20 ms budget nothing gates.
+        if (!world::svo::brick_palette_any(words, material_is_solid)) {
+            return false;
+        }
         std::int64_t begin[3];
         std::int64_t end[3];
         for (int a = 0; a < 3; ++a) {
@@ -136,8 +145,9 @@ bool node_overlaps(const world::svo::TreeView& tree, std::uint32_t node, int lev
 // first hit, which is why it is O(depth) rather than a scan of the column.
 constexpr std::int64_t kNoVoxel = std::numeric_limits<std::int64_t>::min();
 
-std::int64_t column_top(const world::svo::TreeView& tree, std::uint32_t node, int level, const std::int64_t origin[3],
-                        std::int64_t cx, std::int64_t cz, std::int64_t yLimit, int V) {
+std::int64_t column_top(const world::svo::TreeView& tree, std::uint32_t node, int level,
+                        const std::int64_t origin[3], std::int64_t cx, std::int64_t cz, std::int64_t yLimit,
+                        int V) {
     const std::uint32_t header = tree.nodes[node];
     const std::uint32_t kind = world::svo::node_kind(header);
     const std::int64_t size = std::int64_t{1} << (V - level);
@@ -154,6 +164,12 @@ std::int64_t column_top(const world::svo::TreeView& tree, std::uint32_t node, in
         const int shift = V - level - TreeGeometry::kBrickLog2;
         const std::int64_t cell = std::int64_t{1} << shift;
         const std::uint32_t* words = tree.brick_words(tree.nodes[node + world::svo::kNodeBrickIndexSlot]);
+        // The same palette guard as node_overlaps, for the same reason: a brick with no solid
+        // material in its palette cannot contain a column top, and asking costs two words instead
+        // of eight occupancy-plus-material probes.
+        if (!world::svo::brick_palette_any(words, material_is_solid)) {
+            return kNoVoxel;
+        }
         const int bx = static_cast<int>((cx - origin[0]) / cell);
         const int bz = static_cast<int>((cz - origin[2]) / cell);
         for (int by = kBrickEdge - 1; by >= 0; --by) {
@@ -248,8 +264,8 @@ bool OctreeCollider::overlaps_solid(const Aabb& box) const noexcept {
         return false; // wholly outside the tree
     }
     const std::int64_t origin[3]{0, 0, 0};
-    const bool hit = node_overlaps(tree_->view(), tree_->root, 0, origin, vb,
-                                   tree_->geometry.voxel_bits(), lastNodesVisited_);
+    const bool hit = node_overlaps(tree_->view(), tree_->root, 0, origin, vb, tree_->geometry.voxel_bits(),
+                                   lastNodesVisited_);
     nodeVisitTotal_ += lastNodesVisited_;
     return hit;
 }

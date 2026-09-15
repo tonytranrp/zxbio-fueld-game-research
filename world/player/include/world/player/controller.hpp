@@ -54,7 +54,17 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
         // down -- and gating the slide on strict groundedness made it flicker on and off, which the
         // stability test caught as two state changes in 60 ticks. Coyote time is already the
         // engine's name for "recently grounded"; reusing it here is the same idea, not a new one.
-        const bool groundContact = state.stance == Stance::Grounded || state.coyote_remaining > 0.0f;
+        //
+        // CONTACT COMES FROM THE SWEEP, NOT FROM THE STANCE. Reading `state.stance == Grounded`
+        // here made the predicate depend on the value the `sliding` branch below writes, and that
+        // is a closed loop: Grounded -> groundContact -> tooSteep -> sliding -> `if (!sliding)`
+        // is false -> the stance is never set to Airborne -> Grounded. On ground steeper than
+        // `max_walk_slope_radians` the body could never report Airborne again, so it kept
+        // `mayJump` forever (infinite mid-air jumps), never fired `landed` (no landing dip on any
+        // fall down a steep face), ran the eye smoothing during free fall, and had `update_slide`
+        // ramp to `max_slide_speed` while airborne. `grounded_by_sweep` is the previous tick's
+        // answer from `move_and_slide`, which nothing in this branch writes, so the loop is open.
+        const bool groundContact = state.grounded_by_sweep || state.coyote_remaining > 0.0f;
         const bool tooSteep = groundContact && sense.ground_slope_radians > tuning.max_walk_slope_radians;
         if (tooSteep) {
             const float uphill = glm::dot(target, sense.ground_uphill);
@@ -83,6 +93,7 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
         eyePosition += collision::move_and_slide(query, body, delta, sweep).delta;
         state.stance = Stance::Airborne;
         state.vertical_velocity = 0.0f;
+        state.grounded_by_sweep = false; // cleared with the rest of the walk state, not carried into fly
         state.coyote_remaining = 0.0f;
         state.jump_buffer_remaining = 0.0f;
         state.eye_smooth_offset = 0.0f;
@@ -133,10 +144,28 @@ StepResult step_player(const Q& query, PlayerState& state, const PlayerTuning& t
     if (state.mode == MoveMode::Walk && sense.ground_slope_radians > tuning.max_walk_slope_radians) {
         sweep.step_height = 0.0f;
     }
+    // The matching step DOWN (see SweepParams::ground_snap). Only a walking body that was already
+    // in contact gets it -- the same "in contact" the slide and the too-steep test use, so the body
+    // allowed to stay on the ground is exactly the body the rest of the tick treats as on it.
+    //
+    // The distance is DERIVED, not chosen, so it cannot drift from the motion it has to cover: one
+    // tick of the fastest ground speed down the steepest ground the limit still calls walkable,
+    // plus `step_height` as the surface-irregularity margin the engine already accepts. At the
+    // shipped 7 m/s / 60 Hz / 40 degrees / 40 mm that is 138 mm, against a per-tick descent of
+    // 98 mm -- so it covers the worst legal case with margin, and it is deliberately LARGER than
+    // the step-up, because the step-up only has to clear a riser while this has to follow a slope.
+    if (state.mode == MoveMode::Walk && (state.grounded_by_sweep || state.coyote_remaining > 0.0f)) {
+        sweep.ground_snap = collision::ground_snap_for(tuning.sprint_speed, dt, tuning.max_walk_slope_radians,
+                                                       tuning.step_height);
+        sweep.grounded_hint = true;
+    }
     const collision::SweepResult moved = collision::move_and_slide(query, body, delta, sweep);
     eyePosition += moved.delta;
     result.stepped_up = moved.stepped_up;
     result.started_inside = moved.started_inside;
+    // The sweep's own answer, recorded for the NEXT tick's too-steep test. See the note at that
+    // test for why it may not read `stance` instead.
+    state.grounded_by_sweep = moved.grounded;
 
     // --- swim-to-shore assist (A5) -------------------------------------------------------------------
     // rlVoxel's "liquid pop-up": swimming into a bank is the one case where a body that is doing
