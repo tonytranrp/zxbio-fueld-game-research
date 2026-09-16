@@ -59,11 +59,11 @@ bake_macro_field(const SvoWorldOptions& options) {
                 log(LogLevel::Info, "terrain field stage \"{}\": {:.3f} s", name, seconds);
             },
             nullptr);
-    log(LogLevel::Info, "terrain field: world origin moved to ({:.0f}, {:.0f}) in field space "
-                        "so the playable region is on land",
+    log(LogLevel::Info,
+        "terrain field: world origin moved to ({:.0f}, {:.0f}) in field space "
+        "so the playable region is on land",
         -field->geometry().origin_x, -field->geometry().origin_z);
-    const double total =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    const double total = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     log(LogLevel::Info, "terrain field: {} x {} cells at {:.0f} m ({:.2f} MB) baked in {:.3f} s",
         field->cells(), field->cells(), field->geometry().cell_size,
         static_cast<double>(field->bytes()) / 1.0e6, total);
@@ -108,20 +108,27 @@ bool SvoWorld::should_rebuild(glm::vec3 camera, float speed, double now) const n
         return false;
     }
     const float distance = distance_from_build_center(camera);
-    // Goal 249's hysteresis. Having triggered once, wait until the camera settles near the new
-    // centre before arming again -- otherwise a camera drifting along the trigger radius asks for
-    // a rebuild on every frame it crosses back and forth.
-    if (awaitingSettle_) {
-        if (distance <= options_.rebuild_settle_metres) {
-            awaitingSettle_ = false;
-        }
-        return false;
-    }
-    if (distance <= options_.rebuild_trigger_metres) {
-        return false;
-    }
-    awaitingSettle_ = true;
-    return true;
+    // GOAL 347. There was a third gate here -- goal 249's `awaitingSettle_` latch -- and it could
+    // never clear, which stranded the LOD centre for the entire remaining run.
+    //
+    // The latch was set on every trigger and cleared only while the camera sat within
+    // `rebuild_settle_metres` (3 m) of `buildCenter_`. But `request_build` sets `buildCenter_` to
+    // the camera, so the only window in which that test can pass is the one immediately after a
+    // request -- and the `building_` gate at the top of this function returns false for the whole
+    // of it. By the time a build finished (3.7 s, and 19 s once the centre was correct) the camera
+    // had moved well past 3 m, the latch stayed true, and NO FURTHER REBUILD WAS EVER REQUESTED.
+    // Permanent, and the visible symptom was a world whose near voxels resolved at ~19 cm instead
+    // of 7.81 mm, plus an overlay stuck on `[rebuilding]`.
+    //
+    // It is DELETED rather than repaired, because the hysteresis it was written for cannot occur:
+    // "a camera drifting along the trigger radius re-triggers every frame it crosses back and
+    // forth" describes a FIXED centre, and this centre is not fixed. Every trigger re-centres on
+    // the camera, so the distance drops to zero and the camera must travel a full
+    // `rebuild_trigger_metres` again before the next one. That is the hysteresis, structurally,
+    // and `rebuild_min_interval_seconds` and `rebuild_max_speed` bound the rate on top of it.
+    // `SvoWorldOptions::rebuild_settle_metres` goes with it -- an option nothing reads is a
+    // promise the code does not keep.
+    return distance > options_.rebuild_trigger_metres;
 }
 
 void SvoWorld::note_adopted(double now, glm::vec3 cameraAtAdopt) noexcept {
@@ -237,8 +244,7 @@ std::shared_ptr<const world::svo::FlatCellGrid> SvoWorld::take_finished_grid() {
 //      `build_tree`'s own subtree split to divide, so handing it the pool and building cells one at
 //      a time measures a serial grid against a parallel region -- which reported the grid 6.1x
 //      slower before the mistake was caught (research section 18).
-void SvoWorld::build_grid_job(const world::svo::TreeGeometry& g,
-                              const world::svo::TerrainSamplerParams& sp,
+void SvoWorld::build_grid_job(const world::svo::TreeGeometry& g, const world::svo::TerrainSamplerParams& sp,
                               const world::svo::BuildParams& bp, const world::svo::TerrainSampler& seeded,
                               double samplerSeconds) {
     const int cellLog2 = options_.cell_size_log2;
@@ -260,7 +266,8 @@ void SvoWorld::build_grid_job(const world::svo::TreeGeometry& g,
     // continuous rule made "rebuild what changed" mean "rebuild everything".
     std::vector<int> bands(count);
     for (std::size_t i = 0; i < count; ++i) {
-        bands[i] = world::svo::cell_band(bp.lod_center, grid.coord_of(i), cellEdge, options_.effective_lod_radius());
+        bands[i] =
+            world::svo::cell_band(bp.lod_center, grid.coord_of(i), cellEdge, options_.effective_lod_radius());
     }
 
     // A cell can be carried over when the previous grid had it AND its band is unchanged AND the
@@ -322,8 +329,7 @@ void SvoWorld::build_grid_job(const world::svo::TreeGeometry& g,
     auto flat = std::make_shared<const world::svo::FlatCellGrid>(grid);
 
     LastBuild last;
-    last.stats.seconds =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() - buildStart).count();
+    last.stats.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - buildStart).count();
     // Summed across cells rather than left at zero: the log line prints these, and "0 internal,
     // 0 solid leaves" on a 543 MB world reads as a broken build rather than as an unfilled field.
     for (const std::shared_ptr<const world::svo::BrickTree>& cell : built) {
@@ -374,7 +380,6 @@ SvoWorld::LastBuild SvoWorld::last_build() const {
     const std::lock_guard guard(mutex_);
     return lastBuild_;
 }
-
 
 // ---- Goal 264: the streaming producer ---------------------------------------------------------
 //
@@ -437,8 +442,7 @@ void SvoWorld::start_stream(const world::svo::CellGrid& shape, glm::vec3 camera)
     world::svo::TerrainSamplerParams sp;
     sp.seed = options_.seed;
     sp.trees = options_.trees;
-    world::svo::TerrainSampler seed(heightmap_, sp,
-                                    world::svo::Box{shape.world_min(), shape.world_max()});
+    world::svo::TerrainSampler seed(heightmap_, sp, world::svo::Box{shape.world_min(), shape.world_max()});
     seed.set_focus(camera, 4.0f * options_.effective_lod_radius());
     streamTiers_ = seed.focus_tiers();
 }
@@ -473,15 +477,14 @@ void SvoWorld::pump_stream(std::size_t max) {
         streamInFlight_.fetch_add(1, std::memory_order_relaxed);
         (void)pool_.submit([this, index, shape, sp, bp, cellEdge, finest, camera] {
             const world::svo::TreeGeometry cg = shape.geometry_for(shape.coord_of(index));
-            world::svo::TerrainSampler sampler(heightmap_, sp,
-                                               world::svo::Box{cg.origin, cg.max_corner()});
+            world::svo::TerrainSampler sampler(heightmap_, sp, world::svo::Box{cg.origin, cg.max_corner()});
             sampler.adopt_focus(streamTiers_);
             world::svo::BuildParams cellParams = bp;
-            cellParams.quantized_voxel_edge = world::svo::band_voxel_edge(
-                world::svo::cell_band(camera, shape.coord_of(index), cellEdge, options_.effective_lod_radius()),
-                finest, cellEdge);
-            world::svo::BrickTree cell =
-                world::svo::build_tree(sampler, cg, cellParams, nullptr, nullptr);
+            cellParams.quantized_voxel_edge =
+                world::svo::band_voxel_edge(world::svo::cell_band(camera, shape.coord_of(index), cellEdge,
+                                                                  options_.effective_lod_radius()),
+                                            finest, cellEdge);
+            world::svo::BrickTree cell = world::svo::build_tree(sampler, cg, cellParams, nullptr, nullptr);
 
             BuiltCell out;
             out.index = index;

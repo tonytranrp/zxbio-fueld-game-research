@@ -9,12 +9,12 @@
 
 #include "engine/core/math.hpp"
 #include "engine/jobs/thread_pool.hpp"
+#include "world/generation/field/terrain_field.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/svo/brick_tree.hpp"
-#include "world/generation/field/terrain_field.hpp"
-#include "world/svo/terrain_sampler.hpp"
 #include "world/svo/cell_grid.hpp"
 #include "world/svo/lod_bands.hpp"
+#include "world/svo/terrain_sampler.hpp"
 #include "world/svo/tree_builder.hpp"
 
 #include <vector>
@@ -23,11 +23,39 @@ namespace app {
 
 struct SvoWorldOptions {
     int seed = 1337;
-    int voxel_size_log2 = -7; // 7.8 mm: sub-centimeter, the pivot's whole point
+    // 0.98 mm. Goal 349, and the reason it is not 7.8 mm any more is that the FINEST VOXEL AND THE
+    // ANGULAR QUALITY ARE INDEPENDENT, which had never been exploited.
+    //
+    // The LOD rule is `target(d) = max(finest, d * finest / lod_radius)`. Beyond `lod_radius` the
+    // term that survives is `finest / lod_radius` -- an ANGLE -- so shrinking `finest` and
+    // `lod_radius` together leaves every voxel past the ring byte-identical and refines only what
+    // is INSIDE it. That is the near field, which is the only place a human can resolve a voxel
+    // anyway, and it is why this is nearly free: the added detail is a thin shell, not a volume.
+    //
+    // Measured at the spawn pose, RelWithDebInfo, vk, all three at the SAME 6.71 arcmin:
+    //
+    //   finest     ring    bricks      MB     build     fps
+    //   7.81 mm    4.0 m   1,182,397   409.0  39.6 s    164.1
+    //   1.95 mm    1.0 m   1,383,872   479.3  41.2 s    161.8
+    //   0.98 mm    0.5 m   1,462,289   513.0  44.2 s    164.2   <- shipped
+    //
+    // **+24% memory and +12% build for 8x finer near voxels, at no measurable frame cost** -- the
+    // three fps readings are inside this machine's own 18% noise floor and two of them are
+    // identical. The visible result is the whole point: at 7.81 mm, gently sloping ground reads as
+    // broad contour TERRACES, because a terrace's tread is `voxel / slope` and a 2 degree slope
+    // turns a 7.8 mm riser into a 22 cm band. Shrinking the voxel shrinks the tread proportionally,
+    // and at 0.98 mm the banding drops below the pixel and the ground reads as a smooth surface
+    // with a fine grain -- the look this engine exists to produce.
+    //
+    // This was only worth measuring once goal 347 fixed the stranded LOD centre. Before that the
+    // finest ring sat 96 m above the player and NONE of this reached the eye.
+    int voxel_size_log2 = -10;
     // Prompt 007 goal 329. 4096 m: 2048 m of view in every direction, EIGHT TIMES the 256 m the
-    // 512 m default gave. V = root - voxel = 12 + 7 = 19, five bits under tree_layout.hpp's
-    // kMaxVoxelBits = 24, so no cascaded root is needed -- **V was never the binding constraint in
-    // this range; cost was.**
+    // 512 m default gave. V = root - voxel, which goal 349 moved from 12 + 7 = 19 to **12 + 10 =
+    // 22** -- still under tree_layout.hpp's kMaxVoxelBits = 24, so no cascaded root is needed, but
+    // the headroom is two bits now rather than five. **V was never the binding constraint in this
+    // range; cost was** -- and it still is not, but a future pass that wants BOTH a larger region
+    // and a finer voxel has to check this sum now, where before it could ignore it.
     //
     // Measured, and the shape of it is the finding: growing the REGION is nearly free because the
     // added volume is all coarse levels, while growing the LOD RADIUS (goal 328) is superlinear.
@@ -55,10 +83,12 @@ struct SvoWorldOptions {
     // recomputed and the tree is byte-identical to the pre-change build (asserted in
     // test_lod_quality.cpp).
     //
-    // The shipped default is 6.71 arcmin, which is exactly what lod_radius = 4.0 has always meant
-    // at a 7.8 mm finest voxel -- stated rather than changed, because changing it is a cost
-    // decision and goal 328 measures that separately.
-    float lod_radius = 4.0f;  // full resolution within this distance, halving per doubling beyond
+    // The shipped default is 6.71 arcmin. It was `lod_radius = 4.0` at a 7.8 mm finest voxel and is
+    // `lod_radius = 0.5` at 0.98 mm -- THE SAME ANGLE, deliberately, because goal 349 shrank the
+    // voxel and the ring together precisely so the angular quality (which is what costs) did not
+    // move. Sharpening the angle is still ~4.8x memory per halving (goal 328's measurement) and is
+    // still not affordable; shrinking the finest voxel at a fixed angle costs 24%.
+    float lod_radius = 0.5f;         // full resolution within this distance, halving per doubling beyond
     float lod_quality_arcmin = 0.0f; // 0 = derive from lod_radius
 
     /// The radius the builder should actually use: the angular quality when one was asked for,
@@ -144,10 +174,9 @@ struct SvoWorldOptions {
     // threw away. A first draft of this shipped 24 and the near field was visibly blocky
     // (research/captures/ak_lod_staleness.png); the ramp is what caught it.
     float rebuild_trigger_metres = 8.0f;
-    // Hysteresis: having triggered, do not trigger again until the camera has settled within this
-    // of the NEW centre. Without it a camera drifting along the trigger radius re-triggers every
-    // frame it crosses back and forth.
-    float rebuild_settle_metres = 3.0f;
+    // (Goal 347 deleted `rebuild_settle_metres` from here. It backed a hysteresis latch that could
+    // never clear and that guarded against a drift pattern this trigger cannot produce, since every
+    // rebuild re-centres on the camera. Nothing read it but the latch.)
     // A build cannot start until this long after the previous one's upload finished. The upload is
     // ~13-21 frames of UpdateBuffer traffic; starting the next build inside that window stacks a
     // CPU-side resample on top of it, which is two of goal 247's five slow frames.
@@ -247,9 +276,9 @@ public:
     struct LastBuild {
         world::svo::BuildStats stats;
         world::svo::BrickTree::Stats tree;
-    std::size_t cells = 0;         // goal 256: present cells, 0 on the single-tree path
-    std::size_t cells_rebuilt = 0; // goal 257: of those, the ones this build actually rebuilt
-    std::size_t cells_reused = 0;  // and the ones carried over from the previous grid
+        std::size_t cells = 0;         // goal 256: present cells, 0 on the single-tree path
+        std::size_t cells_rebuilt = 0; // goal 257: of those, the ones this build actually rebuilt
+        std::size_t cells_reused = 0;  // and the ones carried over from the previous grid
         std::size_t bricks = 0;
         std::size_t memory_bytes = 0;
         std::size_t trees = 0;
@@ -266,9 +295,10 @@ public:
 private:
     void build_job(glm::vec3 camera);
 
-    // Trigger state (goals 249/250). `settled_` is the hysteresis latch: set when a build is
-    // requested, cleared once the camera comes back inside `rebuild_settle_metres` of the centre.
-    mutable bool awaitingSettle_ = false;
+    // Trigger state (goals 249/250). Goal 347 removed the `awaitingSettle_` hysteresis latch that
+    // used to live here -- see should_rebuild's comment for why it could never clear and why the
+    // hysteresis it was written for is structural rather than stateful. `should_rebuild` is a pure
+    // predicate now: it mutates nothing, which is why none of this needs to be `mutable`.
     double lastAdoptSeconds_ = -1.0e9;
     float lastAdoptLag_ = 0.0f;
     glm::vec3 lastAdoptCamera_{0.0f};
@@ -298,9 +328,9 @@ private:
     glm::ivec3 lastOriginCell_{0};
     bool haveLastGrid_ = false;
 
-    void build_grid_job(const world::svo::TreeGeometry& g,
-                        const world::svo::TerrainSamplerParams& sp, const world::svo::BuildParams& bp,
-                        const world::svo::TerrainSampler& seeded, double samplerSeconds);
+    void build_grid_job(const world::svo::TreeGeometry& g, const world::svo::TerrainSamplerParams& sp,
+                        const world::svo::BuildParams& bp, const world::svo::TerrainSampler& seeded,
+                        double samplerSeconds);
     LastBuild lastBuild_;
     std::atomic<bool> building_{false};
     bool requested_ = false;

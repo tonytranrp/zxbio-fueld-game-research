@@ -10,6 +10,7 @@ target_sources(world_player PUBLIC
         include/world/player/tuning.hpp
         include/world/player/player_state.hpp
         include/world/player/fixed_step.hpp
+        include/world/player/spawn.hpp
         include/world/player/controller.hpp
         include/world/player/view_polish.hpp
 )

@@ -4,6 +4,7 @@ add_executable(world_player_tests
     test_fixed_step.cpp
     test_player_state.cpp
     test_controller.cpp
+    test_spawn.cpp
 )
 target_link_libraries(world_player_tests PRIVATE world_player Catch2::Catch2WithMain project_warnings)
 

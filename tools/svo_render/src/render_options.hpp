@@ -19,9 +19,16 @@ namespace tools::svo_render {
 
 struct Options {
     int seed = 1337;
-    int voxel_log2 = -7; // 7.8 mm
-    int root_log2 = 9;   // 512 m
-    float lod_radius = 4.0f;
+    // Goal 349 moved these WITH the app's (`app/src/svo_world.hpp`), and the reason is Prompt 007's
+    // most expensive finding: this tool is the CPU reference an artefact is supposed to be
+    // reproduced on BEFORE a shader is touched, and a reference that renders a different world from
+    // the app is worse than no reference at all. That happened once already, via the macro-field
+    // bake, at a mean surface difference of 35.5 m. A different finest voxel would do it again,
+    // quietly, in the one direction this tool exists to measure.
+    int voxel_log2 = -10;    // 0.98 mm, the app's default
+    int root_log2 = 9;       // 512 m -- deliberately NOT the app's 4096: this is a CPU renderer and
+                             // the region is the one thing that costs it wall time rather than detail.
+    float lod_radius = 0.5f; // 6.71 arcmin at 0.98 mm -- the same angle the app ships
     // Default pose: hovering above the ~65 m summit near the origin, looking down the -Z valley
     // toward the sea -- chosen by looking at real renders (a ground-level pose here stares into a
     // slope half a meter away), not guessed.

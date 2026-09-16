@@ -43,6 +43,7 @@
 #include "world/collision/octree_collider.hpp"
 #include "world/collision/terrain_collider.hpp"
 #include "world/player/fixed_step.hpp"
+#include "world/player/spawn.hpp"
 #include "world/player/view_polish.hpp"
 #include "world/streaming/chunk_events.hpp"
 #include "world/streaming/world_bounds.hpp"
@@ -594,6 +595,60 @@ bool capture_phase(CaptureState& cap, const AppOptions& options, std::uint32_t f
     return true;
 }
 
+// Goal 347: put the body on the ground before anything reads its position.
+//
+// The default spawn is a Phase-1 FLY-CAMERA pose, {40, 110, 170}, and it survived unchanged through
+// Prompt 003 making a walking body the default. Ground at that column is 13.65 m, so every launch
+// without an explicit `--pos` began with a 96 m free fall -- and the LOD ball is centred on the
+// spawn (`request_build(s.spawnPosition)` below), so the finest ring was left 96 m over the
+// player's head. Voxels at the feet resolved at ~19 cm instead of 7.81 mm, which is why the world
+// read as Minecraft blocks: measured 460,399 bricks / 142.4 MB against 1,145,695 / 392.5 MB for the
+// same world centred correctly. It compounded in the shader, too -- `svo_march.psh.hlsl` blends to
+// the HARD CUBE FACE above 30.089 arcmin, and a 19 cm voxel at 4 m is ~163, so the marcher was
+// deliberately drawing hard faces. Centred properly the near cubes are 6.7 arcmin and smooth on
+// their own, with no shader change.
+//
+// Resolved HERE rather than in the Session constructor because the answer needs a heightmap, and
+// the world owns one already -- baking a second macro field just to place the camera would cost
+// 0.545 s for a number the world is about to have anyway.
+//
+// An explicit pose always wins: `--pos` is how a capture pins a camera, and silently moving it
+// would break every scenario in dev/scenarios that names one.
+template <world::player::HeightSampler H>
+void place_spawn_on_ground(Session& s, const AppOptions& options, const H& heightmap, float voxelEdge) {
+    if (options.start_pos) {
+        return;
+    }
+    auto& transform = s.registry.get<engine::ecs::Transform>(s.cameraEntity);
+    const float was = transform.position.y;
+    const float feet =
+        world::player::ground_feet_height(heightmap, transform.position.x, transform.position.z, voxelEdge);
+    transform.position.y = feet;
+    // Both, and they are not the same variable: `spawnPosition` is what the world centres its first
+    // build on, and it was captured from the transform in the Session constructor.
+    s.spawnPosition = transform.position;
+
+    // AND THE PITCH, which is the half that is easy to miss: the Session constructor derives the
+    // look direction by aiming at the terrain origin FROM THE SPAWN, and from 110 m up that is a
+    // steep downward angle. Moving the body to the ground without touching it leaves the camera
+    // staring at its own feet -- the first capture of this fix was a full frame of ground, no
+    // horizon, and it read as "still blocky" because everything in it was the far half of the LOD
+    // ramp seen edge-on.
+    //
+    // A standing body looks at the HORIZON, so the derived pitch is simply wrong once the pose is a
+    // ground pose; yaw (which way to face) is still meaningful and is kept. An explicit --pitch
+    // still wins -- the Session constructor applies it after the derivation, and this runs before
+    // any of that is read.
+    if (!options.start_pitch_deg) {
+        s.registry.get<app::SpectatorCameraState>(s.cameraEntity).pitch_radians = 0.0f;
+    }
+    log(LogLevel::Info,
+        "spawn: ground at ({:.1f}, {:.1f}) is {:.2f} m; camera was {:.2f} m, moved to {:.2f}{}",
+        static_cast<double>(transform.position.x), static_cast<double>(transform.position.z),
+        static_cast<double>(feet), static_cast<double>(was), static_cast<double>(feet),
+        options.start_pitch_deg ? "" : ", pitch levelled to the horizon");
+}
+
 } // namespace
 
 // ---- Session -----------------------------------------------------------------------------------
@@ -772,6 +827,13 @@ int run_mesh(Session& s, const AppOptions& options, FrameInput& input, const Run
     app::WorldLoader world(bounds, options.seed, std::jthread::hardware_concurrency(), renderer, s.registry,
                            dispatcher, s.spawnPosition, options.upload_budget);
     world.begin();
+    // Goal 347, the mesh path's half. The LOD-ball consequence is the svo path's alone -- this
+    // world is static, bounded and pregenerated at one resolution -- but the 96 m free fall was
+    // shared, and a body that starts by falling for 4.4 s is wrong on both. Resolved after
+    // construction because WorldLoader owns the heightmap; its `spawnWorldPosition` is a
+    // nearest-first ORDERING hint over a set of chunks that are all generated regardless, so
+    // taking it from the pre-drop position costs ordering, not correctness.
+    place_spawn_on_ground(s, options, world.heightmap(), 1.0f); // 1 m blocks on this path
     // Group AA: the mesh world is 1 m blocks, so the body collides against 1 m voxel columns.
     world::collision::TerrainColliderParams colliderParams;
     colliderParams.seed = options.seed;
@@ -977,12 +1039,19 @@ int run_svo(Session& s, const AppOptions& options, FrameInput& input, const RunH
     render::diligent::SvoRenderer renderer(*s.context);
     renderer.set_settings(options.svo_settings);
     app::SvoWorld world(options.svo);
+    // Goal 347. BEFORE the first `request_build` below, which centres the LOD ball on this
+    // position -- that ordering is the whole point.
+    place_spawn_on_ground(s, options, world.heightmap(), std::ldexp(1.0f, options.svo.voxel_size_log2));
     // Prompt 003 goals 226/227, closing goal 173: the body collides against the SAME immutable
     // octree the marcher is drawing, not against a 16 m cached height grid a fast camera outruns.
     // There is no cache to refresh and no edge to cross. Measured: inside the finest LOD ring the
     // tree and the sampler agree exactly (0 disagreements in 10,000 voxel boxes), and the body is
-    // always inside that ring because the LOD centre IS the camera -- see
+    // inside that ring because the LOD centre follows the camera -- see
     // research/player-embodiment-log.md for the hole rate binned by distance.
+    //
+    // "Follows the camera" was an ASPIRATION rather than a fact until goal 347: the settle latch in
+    // SvoWorld::should_rebuild could never clear, so after the first post-spawn rebuild the centre
+    // stopped moving for the rest of the run. Both halves of that are fixed now.
     world::collision::OctreeCollider collider;
 
     CaptureState cap;

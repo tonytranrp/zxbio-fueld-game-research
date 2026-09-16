@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -91,13 +92,23 @@ TEST_CASE("the defaults survive the port unchanged", "[app][cli]") {
     CHECK_FALSE(o.start_pitch_deg.has_value());
     // svo world
     CHECK(o.svo.seed == 1337);
-    CHECK(o.svo.voxel_size_log2 == -7);
+    // Goal 349 moved this from -7 (7.8 mm) to -10 (0.98 mm), and `lod_radius` from 4.0 to 0.5 with
+    // it. THE PAIR IS THE POINT: `finest / lod_radius` is the angular quality and it is unchanged
+    // at 6.71 arcmin, so only the near field refines. Updated rather than relaxed, same as goal 329
+    // below -- this test's job is to catch an ACCIDENTAL change to a default, and both of these
+    // were deliberate with a measured cost table behind them (see svo_world.hpp).
+    CHECK(o.svo.voxel_size_log2 == -10);
     // Prompt 007 goal 329 moved this from 9 (512 m) to 12 (4096 m): 2048 m of view instead of
-    // 256 m. The test is UPDATED rather than relaxed -- its job is to catch an accidental change to
-    // a default, and this was a deliberate one with a measured cost table behind it (see
-    // svo_world.hpp). V = 12 + 7 = 19, five bits under kMaxVoxelBits.
+    // 256 m. V = 12 + 10 = 22 since goal 349, two bits under kMaxVoxelBits = 24 rather than five.
     CHECK(o.svo.root_size_log2 == 12);
-    CHECK(o.svo.lod_radius == Approx(4.0f));
+    CHECK(o.svo.lod_radius == Approx(0.5f));
+    // The invariant the two of them exist to preserve, asserted directly so a future change to
+    // either one alone fails here with the reason rather than as two unrelated line diffs.
+    CHECK(o.svo.effective_lod_radius() == Approx(0.5f));
+    const float arcmin =
+        std::atan(std::exp2(static_cast<float>(o.svo.voxel_size_log2)) / o.svo.effective_lod_radius()) *
+        (180.0f / 3.14159265f) * 60.0f;
+    CHECK(arcmin == Approx(6.71f).margin(0.02f));
     CHECK(o.svo.trees);
     CHECK(o.svo.worker_threads == 0u);
     // svo shading
@@ -397,8 +408,8 @@ TEST_CASE("the look flag selects an appearance preset", "[app][options][look]") 
         // The failure this guards against: a "look" that silently turns shadows off is a
         // performance setting wearing a costume, and it would show up as a frame-time win nobody
         // asked for.
-        for (LookPreset look : {LookPreset::Shipping, LookPreset::Raw, LookPreset::Flat,
-                                LookPreset::Hatched}) {
+        for (LookPreset look :
+             {LookPreset::Shipping, LookPreset::Raw, LookPreset::Flat, LookPreset::Hatched}) {
             AppOptions o;
             o.svo_settings.shadows = false;
             o.svo_settings.ao = false;

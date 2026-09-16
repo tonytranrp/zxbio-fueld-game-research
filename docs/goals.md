@@ -3176,6 +3176,114 @@ reopens goal 40.
      no scenario asserts it), which is why this would otherwise have shipped as a number nobody read;
      a gate belongs with the fix.
 
+## AO. The stranded LOD centre
+
+The owner's report, 2026-09-15: "the voxels are still this big." They had been since the svo path
+shipped. Found by diagnosis in the prior session and fixed here.
+
+347. [x] **The LOD centre never followed the player, so the world was rendered at a fraction of its
+     resolution — and every svo performance number in this repo was measured on the degraded
+     version.** Two independent bugs, both required:
+     - **The spawn is a fly-camera pose.** `app_run.cpp`'s `{40, 110, 170}` dates from Phase 1 and
+       survived Prompt 003 making a walking body the default. Ground at that column is 13.65 m, so
+       every launch without `--pos` began with a 96 m free fall — and `request_build(spawnPosition)`
+       centres the finest LOD ring on the spawn, leaving it 96 m over the player's head.
+     - **The settle latch could never clear.** `should_rebuild`'s `awaitingSettle_` was set on every
+       trigger and cleared only while the camera sat within `rebuild_settle_metres` (3 m) of
+       `buildCenter_` — but `request_build` sets `buildCenter_` to the camera, so the only window in
+       which that test can pass is the one immediately after a request, and the `building_` gate
+       returns false for the whole of it. By the time a build landed the camera was well past 3 m,
+       the latch stayed true, and **no further rebuild was ever requested for the rest of the run.**
+
+     **The measurement.** Same world, same 7.81 mm voxels, same 6.71 arcmin: stranded centre
+     **460,399 bricks / 142.4 MB**, correct centre **1,145,695 / 392.5 MB**. Voxels at the player's
+     feet resolved at ~19 cm rather than 7.81 mm. It compounded in the shader —
+     `svo_march.psh.hlsl` blends to the hard cube face above 30.089 arcmin and to the smooth
+     ancestor normal below 10.030, and a 19 cm voxel at 4 m is ~163 arcmin, so the marcher was
+     *deliberately* drawing hard faces. Centred properly the near cubes are 6.7 arcmin and smooth on
+     their own, with no shader change.
+
+     **The fix.** The spawn resolves onto the ground through
+     `world::player::ground_feet_height` — the harness's own `pose_ground` arithmetic (goal 228's
+     footprint maximum, sea clamp, voxel snap, two voxels of clearance), moved out of
+     `dev/harness/src/run_one.cpp` into `world/player/spawn.hpp` so both callers share one function
+     rather than two matching copies (goal 340's rule). It is a `HeightSampler` concept rather than
+     a link-time dependency, so `world_player` keeps its dependency set. The latch is **deleted, not
+     repaired**: the hysteresis it was written for describes a FIXED centre, and this centre
+     re-centres on the camera at every trigger, so the camera must travel a full
+     `rebuild_trigger_metres` again before the next one — the hysteresis is structural.
+     `rebuild_settle_metres` went with it, and `should_rebuild` is a pure predicate now.
+
+     **Check:** `app/tests/test_svo_rebuild.cpp` (4 cases) asserts the trigger arms again after the
+     camera walks away — asking twice must not disarm it, which is exactly what the old latch did —
+     and pins the speed gate and minimum interval that goals 249/250 added, so removing the latch
+     did not remove the rebuild storm's fix. `world/player/tests/test_spawn.cpp` (4 cases) pins each
+     of the four steps of the ground resolver separately.
+
+     **Consequence for the record, and it is the uncomfortable part:** every svo-path performance
+     number in `CLAUDE.md`, `docs/` and `research/` predating this — the 279.5 MB resident, the
+     3.50 ms march, the 457 M voxels/s, the whole of Prompt 004's architecture baseline — was
+     measured on the degraded world. The harness was NOT affected (it uses `pose_ground`), so the
+     app and the harness had been rendering different worlds. Re-measure before trusting any of
+     them. That re-measurement is goal 348.
+
+349. [x] **The finest voxel is 0.98 mm, not 7.81 mm, at the same 6.71 arcmin and no measurable frame
+     cost.** The owner's actual complaint after goal 347 landed was still "the voxels are too big",
+     and he was right for a second, independent reason: **on gently sloping ground a voxel
+     heightfield reads as broad contour TERRACES, because a terrace's tread is `voxel / slope`.** A
+     2 degree slope turns a 7.8 mm riser into a 22 cm band, which is a strong shaded line, and the
+     spawn sits on exactly that kind of ground.
+
+     **The insight the whole change rests on: the finest voxel and the angular quality are
+     independent.** The LOD rule is `target(d) = max(finest, d * finest / lod_radius)`, so past the
+     ring only `finest / lod_radius` — an angle — survives. Shrinking both together leaves every
+     voxel beyond the ring byte-identical and refines only the near shell. Measured at the spawn
+     pose, vk, RelWithDebInfo, all three at 6.71 arcmin:
+
+     | finest | ring | bricks | MB | build | fps |
+     |---|---|---|---|---|---|
+     | 7.81 mm | 4.0 m | 1,182,397 | 409.0 | 39.6 s | 164.1 |
+     | 1.95 mm | 1.0 m | 1,383,872 | 479.3 | 41.2 s | 161.8 |
+     | 0.98 mm | 0.5 m | 1,462,289 | 513.0 | 44.2 s | 164.2 |
+
+     **+24% memory and +12% build for 8x finer near voxels at no measurable frame cost** — the three
+     fps readings sit inside this machine's own 18% noise floor and two are identical. `--lod-radius`
+     is untouched as a knob; only its default moved, so goal 328's "sharpening the ANGLE costs 4.8x
+     memory per halving" is unaffected and still unaffordable.
+
+     **Check:** the three-way capture ladder at one pose, viewed —
+     `research/captures/ao_voxel_size_ladder.png`. The terraces visibly collapse into a fine grain.
+     `tools/svo_render`'s defaults moved with the app's, because Prompt 007's most expensive finding
+     was a CPU reference rendering a different world from the app. `test_app_options.cpp` pins the
+     new pair AND the 6.71 arcmin invariant they exist to preserve, so changing one alone fails with
+     the reason rather than as two unrelated line diffs. V = root - voxel is 22 now, two bits under
+     `kMaxVoxelBits` rather than five.
+
+350. [ ] **`spawn_stand`, `macro_ground`, `walk_cliff`, `stress_pose` and `grass_walk` fail with
+     ZERO FRAMES, and it is PRE-EXISTING — not goals 347/349.** Verified by stashing every change in
+     this pass, rebuilding `voxel_harness` at `192fa6ea`, and re-running: identical failure,
+     `frames: 0 measured (+5999 warm-up over 37.2 s)`. The four that pass do so only because their
+     scripts are longer.
+     **Cause:** the first SVO build takes ~37-44 s and the harness's 6000-frame ceiling is ~36.5 s
+     of warm-up at 165 fps, so `world-ready` never fires, every capture point misses, and
+     `assert frames > 0` reads 0. The scenario is described in its own file as failing "in six
+     seconds instead of six minutes"; it now cannot reach its first frame.
+     **This means CLAUDE.md's "7 GPU scenarios pass" is stale**, and the gates in those five files
+     have not been measuring anything for some number of commits. That is the same class of defect
+     as goal 347 itself — an instrument that quietly stopped reporting.
+     The fix is a warm-up budget expressed in SECONDS or in "frames since world-ready" rather than a
+     total frame ceiling, which is a harness change, not a world change. Goal 348's rebuild-cadence
+     question is the same cost from the other side.
+
+348. [ ] **Re-baseline the svo path against the correctly-centred world.** `stress_pose` and the
+     other scenario gates were calibrated against harness poses and are unaffected, but every number
+     quoted from a `voxel_app` run is not. The honest cost is roughly 2.8x the memory and ~5x the
+     build time, which makes the rebuild cadence a real question rather than a theoretical one: at
+     `rebuild_trigger_metres` 8 and a walking speed of 1.4 m/s a rebuild is requested every ~5.7 s
+     against a build that now takes far longer than that. The single-tree path may need the resident
+     cell cache (`--stream-cells`, built in Prompt 004 and off by default) turned on before the LOD
+     centre can follow a sprinting player without the world being permanently one build behind.
+
 ## Sources
 
 Every technical detail in groups C–F, I, and L traces to the extended research task completed this

@@ -8,12 +8,10 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
-#include <limits>
 #include <string>
 #include <vector>
 
 #include "app_options.hpp"
-#include "world/generation/field/macro_pipeline.hpp"
 #include "app_run.hpp"
 #include "dev/scenario/parser.hpp"
 #include "dev/scenario/scenario.hpp"
@@ -27,8 +25,10 @@
 #include "moire_metric.hpp"
 #include "render/diligent/frame_verify.hpp"
 #include "scripted_input.hpp"
+#include "world/generation/field/macro_pipeline.hpp"
 #include "world/generation/heightmap_generator.hpp"
 #include "world/player/fixed_step.hpp"
+#include "world/player/spawn.hpp"
 #include "world/player/tuning.hpp"
 
 namespace dev::harness {
@@ -75,38 +75,14 @@ using engine::core::LogLevel;
             out.seed, out.svo.macro_field
                           ? world::generation::field::bake_playable_field(out.seed, out.svo.field_stages)
                           : nullptr);
-        // The MAXIMUM over the body's footprint, not the height at its centre. The body is a
-        // 0.6 m box; at (48, 0) the terrain falls ~0.6 m per metre, so the uphill corner of that
-        // box sits ~0.19 m above the centre column, and a body spawned at the centre's surface is
-        // 0.19 m INSIDE the uphill ground. That was the rest of goal 228's counter: after fixing
-        // the analytic-vs-voxelised offset, spawn_stand still reported 181 of 181 ticks inside
-        // solid, because a point height cannot place a box.
-        float analytic = -std::numeric_limits<float>::infinity();
-        constexpr float kHalf = world::player::kDefaultTuning.body_half_width;
-        for (int corner = 0; corner < 5; ++corner) {
-            const float dx = corner == 4 ? 0.0f : ((corner & 1) != 0 ? kHalf : -kHalf);
-            const float dz = corner == 4 ? 0.0f : ((corner & 2) != 0 ? kHalf : -kHalf);
-            analytic =
-                std::max(analytic, heightmap.height_at(sc.ground_pose->xz.x + dx, sc.ground_pose->xz.y + dz));
-        }
-        analytic = std::max(analytic, world::player::kSeaLevelWorld);
-        // ...and then SNAPPED UP TO THE VOXEL GRID, which is the surface the body actually stands
-        // on. The sampler's rule is "a voxel is solid iff its BOTTOM is at or below the column's
-        // surface height", so the voxel containing the analytic height is SOLID and its top is
-        // above that height. Spawning the feet at the analytic height therefore puts them inside
-        // the top solid voxel -- which is exactly what goal 228's new counter reported the moment
-        // the analytic backstop stopped hiding it: `spawn_stand`, a scenario in which nothing
-        // moves, logged 181 ticks with the body inside solid. Snapping up is the fix, and it is
-        // the same arithmetic TerrainCollider::voxel_top_of has always used.
+        // The footprint maximum, the sea-level clamp, the snap up to the voxel grid and the two
+        // voxels of clearance all live in `world::player::ground_feet_height` now, with the reason
+        // for each step written there. They moved because the APP needs the same answer: its
+        // default spawn was a Phase-1 fly pose 96 m in the air, which stranded the LOD centre
+        // (goal 347). Two callers, one function -- goal 340's rule.
         const float voxelEdge = std::ldexp(1.0f, out.svo.voxel_size_log2);
-        // Snapped up, plus TWO voxels of clearance. One is not enough and the reason is the
-        // sampler's own rule: a voxel is solid iff its BOTTOM is at or below the column height
-        // sampled at THAT VOXEL's min corner -- so no point sample of height_at can predict the
-        // voxel top of a neighbouring column, and the measured miss was exactly one voxel
-        // (feet 66.3438, uphill corner voxel top 66.3516, edge 0.0078). The second voxel is float
-        // margin. The body then settles the remaining centimetre under gravity, which is what
-        // walk mode is for -- and is why this and goal 231 landed together.
-        const float ground = std::ceil(analytic / voxelEdge) * voxelEdge + 2.0f * voxelEdge;
+        const float ground = world::player::ground_feet_height(heightmap, sc.ground_pose->xz.x,
+                                                               sc.ground_pose->xz.y, voxelEdge);
         out.start_pos = glm::vec3{sc.ground_pose->xz.x, ground + sc.ground_pose->height_above_ground,
                                   sc.ground_pose->xz.y};
         out.start_yaw_deg = sc.ground_pose->yaw_deg;

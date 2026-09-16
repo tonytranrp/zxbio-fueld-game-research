@@ -9,6 +9,8 @@ add_executable(app_tests
     test_tree_decoration.cpp
 test_aim_query.cpp
     test_app_options.cpp
+    test_svo_rebuild.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/svo_world.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/app_options.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/spectator_camera.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/tree_decoration.cpp
@@ -18,6 +20,7 @@ target_include_directories(app_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src
 target_link_libraries(app_tests PRIVATE engine_cli engine_core engine_ecs engine_input world_generation
                                         world_meshing world_player world_collision world_streaming
                                         world_svo world_wind render_diligent
+                                        Tracy::TracyClient # svo_world.cpp's ZoneScoped
                                         Catch2::Catch2WithMain project_warnings)
 
 include(Catch)
